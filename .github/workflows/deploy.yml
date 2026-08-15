@@ -64,3 +64,7 @@ jobs:
           action: upload
           app_location: "hebridescyber-app"
           output_location: ".next"
+          # Skip Oryx's internal build — we already ran `npm run build` above.
+          # Without this, Oryx picks up the runner's system Node (24.x) which
+          # Azure SWA does not support (allowed: 18, 20, 22).
+          skip_app_build: true
