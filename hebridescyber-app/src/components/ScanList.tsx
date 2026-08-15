@@ -7,64 +7,94 @@ export type Scan = {
   target_url: string;
   status: "pending" | "running" | "completed" | "failed";
   created_at: string;
+  score?: number | null;
 };
 
-// Presentational component — takes scans as a prop so it can be reused with
-// real Supabase data (dashboard) or mock data (local dev / Storybook-style
-// testing) without changing this file.
 export default function ScanList({ scans }: { scans: Scan[] }) {
   if (scans.length === 0) {
     return (
-      <p className="text-sm text-slatedark/60">
-        No scans yet. Run one from the dashboard to see results here.
-      </p>
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm text-slate-500">No scans yet. Enter a URL above and click <strong>Run scan</strong>.</p>
+      </div>
     );
   }
 
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left">
-          <th className="py-2 pr-4">Target</th>
-          <th className="py-2 pr-4">Status</th>
-          <th className="py-2 pr-4">Created</th>
-          <th className="py-2" />
-        </tr>
-      </thead>
-      <tbody>
-        {scans.map((scan) => (
-          <tr key={scan.id} className="border-b border-slate-100">
-            <td className="py-2 pr-4">{scan.target_url}</td>
-            <td className="py-2 pr-4">
-              <StatusBadge status={scan.status} />
-            </td>
-            <td className="py-2 pr-4 text-slatedark/60">
-              {new Date(scan.created_at).toLocaleString()}
-            </td>
-            <td className="py-2">
-              <Link
-                href={`/dashboard/scans/${scan.id}`}
-                className="text-atlantic hover:underline"
-              >
-                View report
-              </Link>
-            </td>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-100">
+        <h2 className="text-sm font-semibold text-atlantic">Recent scans</h2>
+      </div>
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-left bg-slate-50">
+            <th className="px-5 py-2.5 text-xs font-medium text-slate-500">Target</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Score</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Status</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Date</th>
+            <th className="px-4 py-2.5" />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {scans.map((scan) => (
+            <tr key={scan.id} className="border-b border-slate-100 last:border-0">
+              <td className="px-5 py-3 font-mono text-xs text-atlantic max-w-[180px] truncate">
+                {scan.target_url}
+              </td>
+              <td className="px-4 py-3">
+                {scan.score != null ? (
+                  <ScoreBadge score={scan.score} />
+                ) : (
+                  <span className="text-xs text-slate-300">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <StatusBadge status={scan.status} />
+              </td>
+              <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {scan.status === "completed" ? (
+                  <Link
+                    href={`/dashboard/scans/${scan.id}`}
+                    className="text-xs font-medium text-atlantic hover:underline"
+                  >
+                    View report →
+                  </Link>
+                ) : (
+                  <span className="text-xs text-slate-300">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const colour =
+    score >= 80 ? "text-green-700 bg-green-50 border-green-200"
+    : score >= 60 ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+    : score >= 40 ? "text-orange-700 bg-orange-50 border-orange-200"
+    : "text-red-700 bg-red-50 border-red-200";
+  return (
+    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${colour}`}>
+      {score}/100
+    </span>
   );
 }
 
 function StatusBadge({ status }: { status: Scan["status"] }) {
-  const colors: Record<Scan["status"], string> = {
-    pending: "bg-slate-200 text-slate-700",
-    running: "bg-amber-200 text-amber-800",
-    completed: "bg-green-200 text-green-800",
-    failed: "bg-red-200 text-red-800",
+  const colours: Record<Scan["status"], string> = {
+    pending:   "bg-slate-100 text-slate-600",
+    running:   "bg-amber-100 text-amber-700",
+    completed: "bg-green-100 text-green-700",
+    failed:    "bg-red-100 text-red-700",
   };
   return (
-    <span className={`rounded-full px-2 py-1 text-xs font-medium ${colors[status]}`}>
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colours[status]}`}>
       {status}
     </span>
   );

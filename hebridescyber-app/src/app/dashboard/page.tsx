@@ -73,12 +73,23 @@ export default function DashboardPage() {
   }, []);
 
   const loadScans = useCallback(async () => {
+    // Join scan_results to pull the score into the list without a second query.
     const { data, error: fetchError } = await supabase
       .from("scans")
-      .select("id, target_url, status, created_at")
+      .select("id, target_url, status, created_at, scan_results(score)")
       .order("created_at", { ascending: false });
-    if (fetchError) setError(fetchError.message);
-    else setScans((data ?? []) as Scan[]);
+    if (fetchError) {
+      setError(fetchError.message);
+    } else {
+      const rows = (data ?? []).map((s: Record<string, unknown>) => ({
+        id: s.id,
+        target_url: s.target_url,
+        status: s.status,
+        created_at: s.created_at,
+        score: (s.scan_results as { score?: number | null }[] | null)?.[0]?.score ?? null,
+      }));
+      setScans(rows as Scan[]);
+    }
   }, []);
 
   useEffect(() => {
