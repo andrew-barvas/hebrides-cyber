@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   title: "Hebrides Cyber — Professional security for SaaS teams and growing businesses",
   description:
     "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in the Isle of Lewis.",
+  icons: {
+    icon: "/favicon.svg",
+  },
   openGraph: {
     siteName: "Hebrides Cyber",
     type: "website",
