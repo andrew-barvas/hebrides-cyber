@@ -15,13 +15,11 @@ export default function HomePage() {
             <span className="text-slatelight/40">$</span> whoami <span className="text-slatelight/40">&gt;</span> security-first
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold sm:text-5xl">
-            Hebrides Cyber — Developer-grade security for small businesses and
-            SaaS teams
+            Professional security for SaaS teams and growing businesses
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slatelight/80">
-            Find vulnerabilities before attackers do. Automated monthly checks,
-            clear developer fixes, and hands-on penetration testing — from the
-            Isle of Lewis.
+            Automated scanning. Real expertise. Clear fixes. Know your attack
+            surface and stay ahead of threats — from the Isle of Lewis.
           </p>
           <div className="mt-10 flex justify-center gap-4">
             <Link
