@@ -459,10 +459,9 @@ function QueueTab({ token }: { token: string }) {
 
   if (!data.configured) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        <p className="font-semibold">Queue not configured</p>
-        <p className="mt-1">{data.note}</p>
-        <p className="mt-3 text-xs">Set <code className="font-mono bg-amber-100 px-1 rounded">REDIS_URL</code> and run <code className="font-mono bg-amber-100 px-1 rounded">docker compose up</code> to enable the async queue.</p>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slatedark/60">
+        <p className="font-semibold text-slatedark/80">Queue not active</p>
+        <p className="mt-1">Redis is not configured — scans run synchronously. Set <code className="font-mono bg-slate-100 px-1 rounded">REDIS_URL</code> in environment settings to enable the async queue.</p>
       </div>
     );
   }
