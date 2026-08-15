@@ -4,6 +4,19 @@ import { marked } from "marked";
 import { supabase } from "@/lib/supabaseClient";
 
 export const revalidate = 3600;
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  try {
+    const { data } = await supabase
+      .from("blog_posts")
+      .select("slug")
+      .eq("status", "published");
+    return (data ?? []).map(({ slug }) => ({ slug }));
+  } catch {
+    return [];
+  }
+}
 
 type Post = {
   slug: string;
