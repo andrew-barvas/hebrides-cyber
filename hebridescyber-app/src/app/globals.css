@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Base theme stays light — the dashboard, forms, and most app pages rely
+   on text-slatedark/border-slate-200 for readability, and doing a full
+   site-wide dark-mode conversion would mean touching every one of those
+   usages. The "cyber" look instead lives in the marketing chrome (Header,
+   Footer, homepage) via the utility classes below + the cyberbg/cyberpanel/
+   neon tokens in tailwind.config.cjs — see README for the reasoning. */
+body {
+  @apply bg-slatelight text-slatedark;
+}
+
+/* Faint circuit-board grid, used on dark (cyberbg) sections only — see
+   homepage hero. Pure CSS, no image asset. */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(57, 255, 192, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57, 255, 192, 0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.text-glow {
+  text-shadow: 0 0 16px rgba(57, 255, 192, 0.55);
+}

@@ -1,0 +1,101 @@
+name: Scheduled Scans
+
+# Runs on a cron schedule and triggers run-scan for every target belonging
+# to an active subscription. The target list is fetched dynamically from
+# Supabase (via src/scripts/fetch-scheduled-targets.ts) rather than
+# hardcoded, so new customers don't require editing this file.
+#
+# Requires:
+#   AZURE_FUNCTIONS_URL          - base URL of the deployed run-scan function
+#   GITHUB_ACTIONS_TOKEN         - shared secret run-scan checks via X-Service-Token
+#                                   (see src/functions/run-scan/index.ts)
+#   SUPABASE_URL                 - to query subscriptions/monitored_targets
+#   SUPABASE_SERVICE_ROLE_KEY    - server-side only, never exposed to logs
+
+on:
+  schedule:
+    # Every day at 03:00 UTC. TODO: adjust cadence per plan tier once
+    # subscription plans differentiate scan frequency (weekly vs monthly) —
+    # e.g. split this into two workflows/crons keyed by plan.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: scheduled-scans
+  cancel-in-progress: false # don't cancel an in-flight scan run
+
+jobs:
+  fetch-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.fetch.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Fetch active monitored targets from Supabase
+        id: fetch
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx src/scripts/fetch-scheduled-targets.ts
+
+  run-scans:
+    needs: fetch-targets
+    if: ${{ needs.fetch-targets.outputs.matrix != '' && fromJson(needs.fetch-targets.outputs.matrix).include[0] != null }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3 # TODO: tune based on scanner capacity / rate limits in run-scan
+      matrix: ${{ fromJson(needs.fetch-targets.outputs.matrix) }}
+    steps:
+      - name: Create scan (step 1 of 2 — obtains proof token)
+        id: create
+        run: |
+          for attempt in 1 2 3; do
+            status=$(curl -s -o /tmp/create.json -w "%{http_code}" \
+              -X POST "${{ secrets.AZURE_FUNCTIONS_URL }}/api/run-scan" \
+              -H "Content-Type: application/json" \
+              -H "X-Service-Token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}" \
+              -d "{\"targetUrl\": \"${{ matrix.targetUrl }}\", \"owner\": \"${{ matrix.owner }}\"}")
+            if [ "$status" = "200" ]; then
+              cat /tmp/create.json
+              scan_id=$(jq -r '.scanId' /tmp/create.json)
+              proof_token=$(jq -r '.proofToken' /tmp/create.json)
+              echo "scan_id=$scan_id" >> "$GITHUB_OUTPUT"
+              echo "::add-mask::$proof_token"
+              echo "proof_token=$proof_token" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Create attempt $attempt failed with status $status, retrying..."
+            sleep 10
+          done
+          echo "All create attempts failed"
+          cat /tmp/create.json || true
+          exit 1
+
+      - name: Run scan (step 2 of 2 — proves ownership with token from step 1)
+        run: |
+          for attempt in 1 2 3; do
+            status=$(curl -s -o /tmp/run.json -w "%{http_code}" \
+              -X POST "${{ secrets.AZURE_FUNCTIONS_URL }}/api/run-scan" \
+              -H "Content-Type: application/json" \
+              -H "X-Service-Token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}" \
+              -H "X-Scan-Token: ${{ steps.create.outputs.proof_token }}" \
+              -d "{\"scanId\": \"${{ steps.create.outputs.scan_id }}\", \"owner\": \"${{ matrix.owner }}\"}")
+            if [ "$status" = "200" ]; then
+              echo "Scan succeeded for ${{ matrix.targetUrl }}"
+              cat /tmp/run.json
+              exit 0
+            fi
+            echo "Run attempt $attempt failed with status $status, retrying..."
+            sleep 10
+          done
+          echo "All run attempts failed for ${{ matrix.targetUrl }}"
+          cat /tmp/run.json || true
+          exit 1

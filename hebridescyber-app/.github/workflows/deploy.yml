@@ -1,0 +1,97 @@
+name: Deploy
+
+# Builds and deploys the Next.js site to Azure Static Web Apps, and the
+# Azure Functions app for run-scan / generate-report.
+#
+# Required GitHub Secrets (Settings > Secrets and variables > Actions):
+#   AZURE_STATIC_WEB_APPS_API_TOKEN   - from `az staticwebapp create` or the Portal
+#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE - from the Function App's "Get publish profile"
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+# (Server-only secrets like SUPABASE_SERVICE_ROLE_KEY belong in Azure Key
+# Vault / Function App settings, NOT as build-time GitHub Secrets for the
+# static site — see docs/security.md.)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-static-site:
+    runs-on: ubuntu-latest
+    name: Build and deploy Next.js site
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: hebridescyber-app
+        run: npx playwright install --with-deps chromium
+
+      - name: Run tests
+        working-directory: hebridescyber-app
+        # Deliberately NOT passing the real Supabase secrets here — the
+        # dashboard e2e test mocks auth against the fake project ref baked
+        # into playwright.config.ts's webServer defaults. Pointing this at
+        # the real project would just make the mocked-session test fail
+        # without actually testing anything more real (see TODO in
+        # tests/e2e/dashboard.spec.ts about replacing it with a real
+        # disposable test project + user).
+        run: npm run test
+
+      - name: Build
+        working-directory: hebridescyber-app
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # TODO: confirm output-location matches your chosen Next.js deploy
+      # strategy (static export vs. Azure Static Web Apps hybrid/managed
+      # Functions) — see next.config.mjs TODO.
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: "hebridescyber-app"
+          output_location: ".next"
+
+  deploy-functions:
+    runs-on: ubuntu-latest
+    name: Deploy Azure Functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # TODO: once src/functions/* is a proper Azure Functions project
+      # (with host.json, function.json per function, or the v4 model),
+      # build it here before deploying.
+      - name: Install function dependencies
+        working-directory: hebridescyber-app/src/functions
+        run: echo "TODO - npm ci once this is a real Functions project"
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: hebridescyber-functions
+          package: "hebridescyber-app/src/functions"
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
