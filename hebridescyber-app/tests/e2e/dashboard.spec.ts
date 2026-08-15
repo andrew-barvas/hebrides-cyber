@@ -1,16 +1,22 @@
 import { test, expect } from "@playwright/test";
 
-// In tests the webServer env always supplies the fake values from
-// playwright.config.ts (the real NEXT_PUBLIC_SUPABASE_URL is not passed
-// to `npm run test` in CI). The ref is "example-project", so Supabase JS
-// uses "sb-example-project-auth-token" as the localStorage key.
+// playwright.config.ts hardcodes NEXT_PUBLIC_SUPABASE_URL to the fake value
+// below so that the dev server ALWAYS uses "example-project" as the project
+// ref — regardless of what CI env vars are set. This makes tests hermetic.
 const FAKE_PROJECT_REF = "example-project";
 const STORAGE_KEY = `sb-${FAKE_PROJECT_REF}-auth-token`;
 
 test("unauthenticated dashboard prompts sign-in", async ({ page }) => {
+  // Block ALL Supabase requests so getSession() resolves immediately with null
+  // rather than hanging on a network call to the fake hostname in CI.
+  await page.route(`**/${FAKE_PROJECT_REF}.supabase.co/**`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({}) })
+  );
+
   await page.goto("/dashboard");
   // The page starts in a loading state while getSession() resolves; once it
   // resolves without a session it renders the "Sign in required" heading.
+  // expectTimeout in playwright.config.ts is 15 s to allow for async auth.
   await expect(page.getByRole("heading", { name: "Sign in required" })).toBeVisible();
 });
 
@@ -18,8 +24,7 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
   // Mock ALL requests to the fake Supabase project so no real network calls
   // happen. Supabase JS v2 validates sessions and calls MFA endpoints even
   // when reading from localStorage — without these mocks those calls go to
-  // example-project.supabase.co (which doesn't exist) and can cause
-  // getSession() to return null before the page renders.
+  // example-project.supabase.co (which doesn't exist) and can hang in CI.
   await page.route(`**/${FAKE_PROJECT_REF}.supabase.co/**`, (route) => {
     const url = route.request().url();
 
@@ -47,7 +52,6 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
     }
 
     if (url.includes("/auth/v1/factors")) {
-      // MFA factors — empty list means no MFA enrolled, no challenge redirect
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -55,8 +59,7 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
       });
     }
 
-    // All other auth/REST calls (token refresh, user lookup, etc.) — return
-    // a minimal success so they don't throw and block rendering.
+    // All other auth/REST calls (token refresh, user lookup, etc.)
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -65,12 +68,9 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
   });
 
   // Seed a fake-but-structurally-valid JWT session before any page script
-  // runs, so supabase.auth.getSession() resolves truthy without a real
-  // sign-in. Supabase JS v2 calls jwtDecode() locally before any network
-  // request — it throws AuthInvalidJwtError if the token isn't three
-  // dot-separated base64url parts, regardless of route mocking. We build a
-  // properly-shaped JWT here (invalid signature is fine; it's never verified
-  // client-side) using btoa which is available in browser context.
+  // runs. Supabase JS v2 calls jwtDecode() locally — the token must be three
+  // dot-separated base64url parts even though the signature is never verified
+  // client-side.
   await page.addInitScript(
     ({ key }) => {
       const toB64url = (s: string) =>
@@ -108,7 +108,7 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
 
   await page.goto("/dashboard");
 
-  // The main page heading when authenticated is "Dashboard".
+  // The main h1 when authenticated is "Dashboard".
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByText("https://example.com")).toBeVisible();
   await expect(page.getByText("completed")).toBeVisible();
