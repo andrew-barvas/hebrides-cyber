@@ -18,7 +18,8 @@ async function main() {
   console.log(`\nRunning local scan against: ${targetUrl}\n`);
 
   const results = await runAllChecks(targetUrl);
-  const { summary, findings } = summariseResults(results);
+  const { findings } = summariseResults(results);
+  const summary = `Score: ${scoreFromFindings(findings)}/100. Run in prod for AI summary.`;
   const score = scoreFromFindings(findings);
 
   console.log(JSON.stringify({ results, findings, summary, score }, null, 2));
