@@ -24,7 +24,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } from "../../lib/scanners";
-import { hostnameFromUrl } from "../../lib/ownership";
+import { hostnameFromUrl, validateNoSsrf } from "../../lib/ownership";
 import { checkRateLimit } from "../../lib/rateLimit";
 
 // TODO: replace with the Azure Functions v4 programming model types
@@ -127,6 +127,13 @@ export default async function runScan(req: HttpRequest): Promise<HttpResponseIni
       return { status: 400, jsonBody: { error: "targetUrl is required to create a scan" } };
     }
 
+    // Fail fast on SSRF before writing a DB row.
+    try {
+      await validateNoSsrf(targetUrl);
+    } catch (err) {
+      return { status: 400, jsonBody: { error: `Invalid target: ${(err as Error).message}` } };
+    }
+
     const proofToken = randomBytes(16).toString("hex");
     const { data: newScan, error: insertError } = await supabaseAdmin
       .from("scans")
@@ -184,12 +191,18 @@ export default async function runScan(req: HttpRequest): Promise<HttpResponseIni
     };
   }
 
+  // SSRF guard: resolve the target hostname and block private/reserved ranges
+  // so the scanner can't be used as a proxy to reach internal infrastructure.
+  try {
+    await validateNoSsrf(scan.target_url);
+  } catch (err) {
+    await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
+    return { status: 400, jsonBody: { error: `SSRF check failed: ${(err as Error).message}` } };
+  }
+
   await supabaseAdmin.from("scans").update({ status: "running", owner_verified: true }).eq("id", scanId);
 
-  // --- Scanner steps (see src/lib/scanners.ts for what's real vs. stubbed) -
-  // TODO: run each of these in an isolated, ephemeral container (e.g.
-  // Azure Container Instances) rather than inline in the Function, so a
-  // misbehaving scan can't affect the Function host or other scans.
+  // TODO: move to an async queue + isolated worker container — see docs/architecture.md.
   const results = await runAllChecks(scan.target_url);
   const { findings } = summariseResults(results);
   const summary = await generateAiSummary(results, findings);

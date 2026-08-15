@@ -2,6 +2,7 @@
 // certificate authority authorisation (CAA), and DNSSEC deployment signals.
 // Uses Node's built-in dns/promises — no external tools or API keys needed.
 import { resolveTxt, resolveCaa, resolve4, resolve6, resolveMx, resolve } from "node:dns/promises";
+import type { CaaRecord } from "node:dns";
 
 export type DnsResult =
   | {
@@ -107,7 +108,7 @@ type CaaAnalysis = {
   issues: string[];
 };
 
-function analyseCaa(caaRecords: { critical: number; issue: string; value: string }[]): CaaAnalysis {
+function analyseCaa(caaRecords: CaaRecord[]): CaaAnalysis {
   if (caaRecords.length === 0) {
     return {
       present: false,
@@ -116,10 +117,16 @@ function analyseCaa(caaRecords: { critical: number; issue: string; value: string
     };
   }
 
-  const records = caaRecords.map((r) => `${r.issue} "${r.value}"`);
+  const records: string[] = [];
+  for (const r of caaRecords) {
+    if (r.issue) records.push(`issue "${r.issue}"`);
+    if (r.issuewild) records.push(`issuewild "${r.issuewild}"`);
+    if (r.iodef) records.push(`iodef "${r.iodef}"`);
+  }
+
   const issues: string[] = [];
-  const hasIssuewild = caaRecords.some((r) => r.issue === "issuewild");
-  const hasIssue = caaRecords.some((r) => r.issue === "issue");
+  const hasIssue = caaRecords.some((r) => r.issue !== undefined);
+  const hasIssuewild = caaRecords.some((r) => r.issuewild !== undefined);
 
   if (!hasIssue && !hasIssuewild) {
     issues.push("CAA records exist but have no 'issue' or 'issuewild' entries");
