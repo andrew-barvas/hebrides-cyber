@@ -1,12 +1,16 @@
 import { test, expect } from "@playwright/test";
 
-// The "test project" URL configured in playwright.config.ts's webServer env.
+// In tests the webServer env always supplies the fake values from
+// playwright.config.ts (the real NEXT_PUBLIC_SUPABASE_URL is not passed
+// to `npm run test` in CI). The ref is "example-project", so Supabase JS
+// uses "sb-example-project-auth-token" as the localStorage key.
 const FAKE_PROJECT_REF = "example-project";
-// Supabase-js v2 default storage key format: `sb-<project-ref>-auth-token`.
 const STORAGE_KEY = `sb-${FAKE_PROJECT_REF}-auth-token`;
 
 test("unauthenticated dashboard prompts sign-in", async ({ page }) => {
   await page.goto("/dashboard");
+  // The page starts in a loading state while getSession() resolves; once it
+  // resolves without a session it renders the "Sign in required" heading.
   await expect(page.getByRole("heading", { name: "Sign in required" })).toBeVisible();
 });
 
@@ -104,7 +108,8 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
 
   await page.goto("/dashboard");
 
-  await expect(page.getByRole("heading", { name: "Your Scans" })).toBeVisible();
+  // The main page heading when authenticated is "Dashboard".
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByText("https://example.com")).toBeVisible();
   await expect(page.getByText("completed")).toBeVisible();
 });

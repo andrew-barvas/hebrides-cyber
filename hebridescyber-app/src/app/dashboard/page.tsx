@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -16,9 +16,32 @@ const PLAN_LABELS: Record<string, string> = {
   agency: "Agency — £75/mo",
 };
 
+// Isolated to its own component so Next.js 15+ Suspense requirement for
+// useSearchParams() is satisfied without wrapping the entire page.
+function CheckoutBanner() {
+  const searchParams = useSearchParams();
+  const result = searchParams?.get("checkout") ?? null;
+  if (!result) return null;
+  if (result === "success") {
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <strong>Subscription activated!</strong> Your first automated scan will run within 24 hours. Welcome aboard.
+      </div>
+    );
+  }
+  if (result === "cancelled") {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+        Checkout cancelled — your plan hasn&apos;t changed.{" "}
+        <Link href="/pricing" className="underline">View plans</Link>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState(false);
@@ -34,9 +57,6 @@ export default function DashboardPage() {
   const [targetUrl, setTargetUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
-
-  // Show a success banner when Stripe redirects back after checkout.
-  const checkoutResult = searchParams?.get("checkout") ?? null;
 
   const loadPlan = useCallback(async () => {
     const { data } = await supabase
@@ -177,18 +197,9 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-16 space-y-10">
-      {/* Post-checkout success banner */}
-      {checkoutResult === "success" && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          <strong>Subscription activated!</strong> Your first automated scan will run within 24 hours. Welcome aboard.
-        </div>
-      )}
-      {checkoutResult === "cancelled" && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-          Checkout cancelled — your plan hasn&apos;t changed.{" "}
-          <Link href="/pricing" className="underline">View plans</Link>
-        </div>
-      )}
+      <Suspense fallback={null}>
+        <CheckoutBanner />
+      </Suspense>
 
       {/* Header */}
       <div className="flex items-center justify-between">
