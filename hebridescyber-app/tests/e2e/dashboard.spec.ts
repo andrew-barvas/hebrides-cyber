@@ -3,11 +3,6 @@ import { test, expect } from "@playwright/test";
 // The "test project" URL configured in playwright.config.ts's webServer env.
 const FAKE_PROJECT_REF = "example-project";
 // Supabase-js v2 default storage key format: `sb-<project-ref>-auth-token`.
-// TODO: this is derived from an undocumented internal convention, not a
-// public API — if a future @supabase/supabase-js version changes it, this
-// mock will silently stop working (the test will just see "Sign in
-// required" instead of failing loudly). Prefer a real test user + magic
-// link flow against a disposable Supabase project once one exists in CI.
 const STORAGE_KEY = `sb-${FAKE_PROJECT_REF}-auth-token`;
 
 test("unauthenticated dashboard prompts sign-in", async ({ page }) => {
@@ -16,21 +11,54 @@ test("unauthenticated dashboard prompts sign-in", async ({ page }) => {
 });
 
 test("authenticated dashboard lists scans (mocked session + API)", async ({ page }) => {
-  // Mock the REST calls the dashboard makes via the Supabase JS client.
-  await page.route("**/rest/v1/scans*", (route) =>
-    route.fulfill({
+  // Mock ALL requests to the fake Supabase project so no real network calls
+  // happen. Supabase JS v2 validates sessions and calls MFA endpoints even
+  // when reading from localStorage — without these mocks those calls go to
+  // example-project.supabase.co (which doesn't exist) and can cause
+  // getSession() to return null before the page renders.
+  await page.route(`**/${FAKE_PROJECT_REF}.supabase.co/**`, (route) => {
+    const url = route.request().url();
+
+    if (url.includes("/rest/v1/scans")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            target_url: "https://example.com",
+            status: "completed",
+            created_at: new Date().toISOString(),
+          },
+        ]),
+      });
+    }
+
+    if (url.includes("/rest/v1/subscriptions")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(null),
+      });
+    }
+
+    if (url.includes("/auth/v1/factors")) {
+      // MFA factors — empty list means no MFA enrolled, no challenge redirect
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ totp: [], phone: [] }),
+      });
+    }
+
+    // All other auth/REST calls (token refresh, user lookup, etc.) — return
+    // a minimal success so they don't throw and block rendering.
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: "11111111-1111-1111-1111-111111111111",
-          target_url: "https://example.com",
-          status: "completed",
-          created_at: new Date().toISOString(),
-        },
-      ]),
-    })
-  );
+      body: JSON.stringify({}),
+    });
+  });
 
   // Seed a fake (but shaped-correctly) session before any page script runs,
   // so supabase.auth.getSession() resolves truthy without a real sign-in.
