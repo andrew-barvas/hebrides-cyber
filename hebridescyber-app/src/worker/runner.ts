@@ -10,6 +10,7 @@ import { runNuclei } from "./tools/nuclei";
 import { runZap } from "./tools/zap";
 import { runSqlmap } from "./tools/sqlmap";
 import { runNmap } from "./tools/nmap";
+import { sendSlackAlert } from "../lib/slack";
 import type { ScanJobData, ScanJobResult } from "../lib/queue";
 
 const supabaseAdmin = createClient(
@@ -103,6 +104,35 @@ export async function processScanJob(
 
   await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
   await job.updateProgress(100);
+
+  // Send Slack alert if the scan owner has a webhook configured.
+  const { data: scan } = await supabaseAdmin
+    .from("scans")
+    .select("owner")
+    .eq("id", scanId)
+    .maybeSingle();
+
+  if (scan?.owner) {
+    const { data: sub } = await supabaseAdmin
+      .from("subscriptions")
+      .select("slack_webhook_url")
+      .eq("owner", scan.owner)
+      .maybeSingle();
+
+    if (sub?.slack_webhook_url) {
+      const criticalCount = allFindings.filter((f) => f.severity === "critical").length;
+      const highCount = allFindings.filter((f) => f.severity === "high").length;
+      await sendSlackAlert(sub.slack_webhook_url, {
+        scanId,
+        targetUrl,
+        score,
+        findingsCount: allFindings.length,
+        criticalCount,
+        highCount,
+        dashboardUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com",
+      }).catch((err) => console.error("[runner] slack alert failed:", err.message));
+    }
+  }
 
   return { score, summary, findingsCount: allFindings.length };
 }

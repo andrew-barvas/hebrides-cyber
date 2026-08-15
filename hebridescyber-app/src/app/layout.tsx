@@ -18,9 +18,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hebrides Cyber — Developer-grade security",
+  title: "Hebrides Cyber — Professional security for SaaS teams and growing businesses",
   description:
-    "Security audits, CI/CD hardening, and automated Security Score monitoring for small businesses and SaaS teams. Based in the Isle of Lewis.",
+    "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in the Isle of Lewis.",
+  openGraph: {
+    siteName: "Hebrides Cyber",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

@@ -76,7 +76,12 @@ type BlogPost = {
   cover_image_url: string | null;
 };
 
-type BlogPostFull = BlogPost & { body: string; author_id: string };
+type BlogPostFull = BlogPost & {
+  body: string;
+  author_id: string;
+  meta_description: string | null;
+  og_image: string | null;
+};
 
 type AuditLog = {
   id: string;
@@ -645,36 +650,91 @@ function BlogEditor({
   const [body, setBody] = useState(post?.body ?? "");
   const [tags, setTags] = useState((post?.tags ?? []).join(", "));
   const [status, setStatus] = useState<"draft" | "published">(post?.status ?? "draft");
+  const [coverImageUrl, setCoverImageUrl] = useState(post?.cover_image_url ?? "");
+  const [metaDescription, setMetaDescription] = useState(post?.meta_description ?? "");
+  const [ogImage, setOgImage] = useState(post?.og_image ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slugError, setSlugError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
+  const [showSeo, setShowSeo] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const autoSlug = (t: string) =>
     t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
+  const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
+  const readMins = Math.max(1, Math.round(wordCount / 200));
+
+  // Warn before navigating away with unsaved changes.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const markDirty = () => setIsDirty(true);
+
+  // Validate slug uniqueness (debounced) — skip check when editing the same post.
+  useEffect(() => {
+    if (!slug || (post && slug === post.slug)) { setSlugError(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/blog/${slug}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) setSlugError(`Slug "${slug}" is already taken.`);
+        else setSlugError(null);
+      } catch { setSlugError(null); }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [slug, post, token]);
+
+  async function uploadImage(file: File) {
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiFetch<{ url: string }>("/api/admin/blog/upload-image", token, {
+        method: "POST",
+        body: JSON.stringify({ dataUrl, filename: file.name }),
+      });
+      setCoverImageUrl(res.url);
+      markDirty();
+    } catch (e) {
+      setError(`Image upload failed: ${(e as Error).message}`);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const save = async () => {
+    if (slugError) { setError("Fix the slug conflict before saving."); return; }
     setSaving(true);
     setError(null);
     try {
       const payload = {
-        title,
-        slug,
-        excerpt,
-        body,
+        title, slug, excerpt, body,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         status,
+        cover_image_url: coverImageUrl || null,
+        meta_description: metaDescription || null,
+        og_image: ogImage || null,
       };
       if (post) {
-        await apiFetch(`/api/admin/blog/${post.slug}`, token, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
+        await apiFetch(`/api/admin/blog/${post.slug}`, token, { method: "PATCH", body: JSON.stringify(payload) });
       } else {
-        await apiFetch("/api/admin/blog", token, {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await apiFetch("/api/admin/blog", token, { method: "POST", body: JSON.stringify(payload) });
       }
+      setIsDirty(false);
       onSave();
     } catch (e) {
       setError((e as Error).message);
@@ -685,19 +745,27 @@ function BlogEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button onClick={onCancel} className="text-sm text-slatedark/60 hover:text-slatedark">← Back</button>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => { if (!isDirty || confirm("Discard unsaved changes?")) onCancel(); }}
+          className="text-sm text-slatedark/60 hover:text-slatedark"
+        >
+          ← Back
+        </button>
         <h2 className="text-lg font-semibold text-atlantic">{post ? "Edit post" : "New post"}</h2>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => setPreview((v) => !v)}
-            className="rounded border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
-          >
+        {isDirty && <span className="text-xs text-amber-600">Unsaved changes</span>}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slatedark/40">{wordCount} words · {readMins} min read</span>
+          <button onClick={() => setShowSeo((v) => !v)} className="rounded border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50">
+            SEO {showSeo ? "▲" : "▼"}
+          </button>
+          <button onClick={() => setPreview((v) => !v)} className="rounded border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">
             {preview ? "Edit" : "Preview"}
           </button>
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as "draft" | "published")}
+            onChange={(e) => { setStatus(e.target.value as "draft" | "published"); markDirty(); }}
             className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
           >
             <option value="draft">Draft</option>
@@ -705,7 +773,7 @@ function BlogEditor({
           </select>
           <button
             onClick={save}
-            disabled={saving}
+            disabled={saving || !!slugError}
             className="rounded-lg bg-atlantic px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
@@ -715,14 +783,45 @@ function BlogEditor({
 
       {error && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
+      {/* SEO panel */}
+      {showSeo && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <h3 className="text-xs font-semibold text-slatedark/60 uppercase tracking-wide">SEO & Open Graph</h3>
+          <div>
+            <label className="mb-1 block text-xs text-slatedark/60">Meta description (155 chars max)</label>
+            <textarea
+              value={metaDescription}
+              onChange={(e) => { setMetaDescription(e.target.value); markDirty(); }}
+              rows={2}
+              maxLength={155}
+              placeholder="Override the excerpt for search engines…"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-atlantic focus:outline-none"
+            />
+            <p className="text-right text-xs text-slatedark/40">{metaDescription.length}/155</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slatedark/60">OG image URL (overrides cover image for social sharing)</label>
+            <input
+              type="url"
+              value={ogImage}
+              onChange={(e) => { setOgImage(e.target.value); markDirty(); }}
+              placeholder="https://…"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-atlantic focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
+
       {preview ? (
         <div className="prose prose-sm max-w-none rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {coverImageUrl && <img src={coverImageUrl} alt="" className="mb-6 w-full rounded-lg object-cover max-h-56" />}
           <h1>{title || "Untitled"}</h1>
-          <p className="lead">{excerpt}</p>
+          <p className="lead text-slatedark/70">{excerpt}</p>
           <div style={{ whiteSpace: "pre-wrap" }}>{body}</div>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3">
+          {/* Title */}
           <input
             type="text"
             placeholder="Post title"
@@ -730,37 +829,88 @@ function BlogEditor({
             onChange={(e) => {
               setTitle(e.target.value);
               if (!post) setSlug(autoSlug(e.target.value));
+              markDirty();
             }}
             className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-lg font-semibold focus:border-atlantic focus:outline-none"
           />
+
+          {/* Slug */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slatedark/50">Slug:</span>
+            <span className="text-xs text-slatedark/50 shrink-0">Slug:</span>
             <input
               type="text"
               value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              className="flex-1 rounded border border-slate-200 px-2 py-1 font-mono text-xs focus:border-atlantic focus:outline-none"
+              onChange={(e) => { setSlug(e.target.value.toLowerCase().replace(/\s/g, "-")); markDirty(); }}
+              className={`flex-1 rounded border px-2 py-1 font-mono text-xs focus:outline-none ${slugError ? "border-red-400 focus:border-red-400" : "border-slate-200 focus:border-atlantic"}`}
             />
+            {slugError && <span className="text-xs text-red-600">{slugError}</span>}
           </div>
+
+          {/* Cover image */}
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-slatedark/50">Cover image</span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="rounded bg-slate-100 px-2 py-0.5 text-xs hover:bg-slate-200 disabled:opacity-50"
+              >
+                {uploading ? "Uploading…" : "Upload"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); }}
+              />
+            </div>
+            {coverImageUrl ? (
+              <div className="relative inline-block">
+                <img src={coverImageUrl} alt="Cover" className="h-24 rounded-lg object-cover" />
+                <button
+                  onClick={() => { setCoverImageUrl(""); markDirty(); }}
+                  className="absolute -right-2 -top-2 rounded-full bg-white border border-slate-200 px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-50"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <input
+                type="url"
+                placeholder="Or paste a URL…"
+                value={coverImageUrl}
+                onChange={(e) => { setCoverImageUrl(e.target.value); markDirty(); }}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-atlantic focus:outline-none"
+              />
+            )}
+          </div>
+
+          {/* Excerpt */}
           <textarea
             placeholder="Short excerpt (shown on listing page)…"
             value={excerpt}
-            onChange={(e) => setExcerpt(e.target.value)}
+            onChange={(e) => { setExcerpt(e.target.value); markDirty(); }}
             rows={2}
             className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:border-atlantic focus:outline-none"
           />
+
+          {/* Body */}
           <textarea
             placeholder="Post body (Markdown supported)…"
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={20}
+            onChange={(e) => { setBody(e.target.value); markDirty(); }}
+            rows={22}
             className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 font-mono text-sm focus:border-atlantic focus:outline-none"
           />
+
+          {/* Tags */}
           <input
             type="text"
-            placeholder="Tags (comma-separated)"
+            placeholder="Tags (comma-separated: security, tls, headers)"
             value={tags}
-            onChange={(e) => setTags(e.target.value)}
+            onChange={(e) => { setTags(e.target.value); markDirty(); }}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-atlantic focus:outline-none"
           />
         </div>
