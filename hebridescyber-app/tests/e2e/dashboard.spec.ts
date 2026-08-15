@@ -60,12 +60,34 @@ test("authenticated dashboard lists scans (mocked session + API)", async ({ page
     });
   });
 
-  // Seed a fake (but shaped-correctly) session before any page script runs,
-  // so supabase.auth.getSession() resolves truthy without a real sign-in.
+  // Seed a fake-but-structurally-valid JWT session before any page script
+  // runs, so supabase.auth.getSession() resolves truthy without a real
+  // sign-in. Supabase JS v2 calls jwtDecode() locally before any network
+  // request — it throws AuthInvalidJwtError if the token isn't three
+  // dot-separated base64url parts, regardless of route mocking. We build a
+  // properly-shaped JWT here (invalid signature is fine; it's never verified
+  // client-side) using btoa which is available in browser context.
   await page.addInitScript(
     ({ key }) => {
+      const toB64url = (s: string) =>
+        btoa(s).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+      const header = toB64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+      const payload = toB64url(
+        JSON.stringify({
+          sub: "22222222-2222-2222-2222-222222222222",
+          email: "test-user@example.com",
+          exp: 9_999_999_999,
+          aud: "authenticated",
+          role: "authenticated",
+          aal: "aal1",
+          iss: "supabase",
+          session_id: "test-session-id",
+        })
+      );
+      const fakeJwt = `${header}.${payload}.fakesig`;
+
       const fakeSession = {
-        access_token: "fake-access-token",
+        access_token: fakeJwt,
         token_type: "bearer",
         expires_in: 3600,
         expires_at: Math.floor(Date.now() / 1000) + 3600,

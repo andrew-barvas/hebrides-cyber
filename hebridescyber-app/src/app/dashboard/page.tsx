@@ -74,7 +74,10 @@ export default function DashboardPage() {
       setAuthed(true);
       await Promise.all([loadScans(), loadPlan()]);
       setLoading(false);
-    })();
+    })().catch((err) => {
+      console.error("[dashboard] init error:", (err as Error).message);
+      setLoading(false);
+    });
   }, [router]);
 
   /**
