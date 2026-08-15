@@ -1012,11 +1012,30 @@ export default function AdminPage() {
       const s = await getSession();
       if (!s) { setAuthState("signed-out"); return; }
 
-      // Verify admin access by hitting a protected endpoint.
-      const res = await fetch("/api/admin/metrics", {
-        headers: { Authorization: `Bearer ${s.access_token}` },
-      });
+      // Verify admin access — 10s timeout so a misconfigured API route
+      // (e.g. missing SUPABASE_SERVICE_ROLE_KEY) doesn't spin forever.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/admin/metrics", {
+          signal: controller.signal,
+          headers: { Authorization: `Bearer ${s.access_token}` },
+        });
+      } catch {
+        setAuthState("unauthorized");
+        return;
+      } finally {
+        clearTimeout(timeout);
+      }
+
       if (res.status === 403) { setAuthState("unauthorized"); return; }
+      if (!res.ok) {
+        // 404 = API route not deployed; 500 = missing env vars.
+        // Either way, show a useful error rather than spinning.
+        setAuthState("unauthorized");
+        return;
+      }
 
       setSession(s);
       setAuthState("ready");
@@ -1040,9 +1059,15 @@ export default function AdminPage() {
     return (
       <div className="mx-auto max-w-md px-6 py-24 text-center">
         <h1 className="text-2xl font-bold text-atlantic">Admin access required</h1>
-        <p className="mt-4 text-sm text-slatedark/70">
-          Your account isn't marked as admin. Set <code className="font-mono bg-slate-100 px-1 rounded">is_admin = true</code> in Supabase.
-        </p>
+        <div className="mt-4 space-y-2 text-left text-sm text-slatedark/70">
+          <p>Could not verify admin access. Common causes:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>You&apos;re not signed in — <Link href="/login" className="underline">sign in first</Link></li>
+            <li>Your account doesn&apos;t have <code className="font-mono bg-slate-100 px-1 rounded">is_admin = true</code> in Supabase</li>
+            <li><code className="font-mono bg-slate-100 px-1 rounded">SUPABASE_URL</code> or <code className="font-mono bg-slate-100 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code> not set in Azure app settings</li>
+            <li>API routes not deployed yet — wait for CI to finish</li>
+          </ul>
+        </div>
         <Link href="/dashboard" className="mt-6 inline-block text-atlantic underline">Back to dashboard</Link>
       </div>
     );
