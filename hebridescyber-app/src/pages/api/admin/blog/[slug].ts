@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireAdmin, supabaseAdmin } from "../_auth";
+import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const adminId = await requireAdmin(req);

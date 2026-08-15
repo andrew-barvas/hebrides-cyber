@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireAdmin } from "./_auth";
+import { requireAdmin } from "@/lib/adminAuth";
 // BullMQ imports — dynamic so the page doesn't break if bullmq isn't installed yet.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let bullmqModule: any = null;
