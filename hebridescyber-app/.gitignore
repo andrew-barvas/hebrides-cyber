@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Env files — never commit real secrets. .env.example is the only one that belongs in git.
+.env
+.env.local
+.env.*.local
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Terraform
+azure/terraform/.terraform/
+azure/terraform/*.tfstate
+azure/terraform/*.tfstate.backup
+azure/terraform/.terraform.lock.hcl

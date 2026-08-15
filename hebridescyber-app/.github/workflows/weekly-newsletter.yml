@@ -1,0 +1,32 @@
+name: Weekly Newsletter
+
+# Publishes the weekly cybersecurity blog post (see src/lib/newsletter.ts
+# and src/functions/generate-newsletter). Grounded in real aggregate scan
+# data from the past 7 days, with an AI narrative write-up if Azure OpenAI
+# is configured, otherwise a deterministic templated post — either way, it
+# publishes something rather than silently skipping the week.
+#
+# Requires:
+#   AZURE_FUNCTIONS_URL   - base URL of the deployed Functions app
+#   GITHUB_ACTIONS_TOKEN  - shared secret sent as X-Service-Token
+
+on:
+  schedule:
+    # Every Monday at 07:00 UTC.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger generate-newsletter
+        run: |
+          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ secrets.AZURE_FUNCTIONS_URL }}/api/generate-newsletter" \
+            -H "X-Service-Token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}")
+          cat /tmp/response.json
+          if [ "$status" != "200" ]; then
+            echo "generate-newsletter failed with status $status"
+            exit 1
+          fi
