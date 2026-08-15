@@ -1,9 +1,6 @@
 name: Deploy
 
 # Builds and deploys the Next.js site to Azure Static Web Apps.
-# The Azure Functions app (run-scan, generate-report, etc.) is not yet
-# structured as a real Functions project — deploy-functions is intentionally
-# omitted until src/functions/* has host.json and the v4 model wired up.
 #
 # Required GitHub Secrets (Settings > Secrets and variables > Actions):
 #   AZURE_STATIC_WEB_APPS_API_TOKEN   - from `az staticwebapp create` or the Portal
@@ -43,18 +40,7 @@ jobs:
 
       - name: Run tests
         working-directory: hebridescyber-app
-        # Deliberately NOT passing the real Supabase secrets here — the
-        # dashboard e2e test mocks auth against the fake project ref baked
-        # into playwright.config.ts's webServer defaults.
         run: npm run test
-
-      - name: Build
-        working-directory: hebridescyber-app
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_AZURE_FUNCTIONS_URL: ${{ secrets.NEXT_PUBLIC_AZURE_FUNCTIONS_URL }}
-        run: npm run build
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
@@ -64,7 +50,11 @@ jobs:
           action: upload
           app_location: "hebridescyber-app"
           output_location: ".next"
-          # Skip Oryx's internal build — we already ran `npm run build` above.
-          # Without this, Oryx picks up the runner's system Node (24.x) which
-          # Azure SWA does not support (allowed: 18, 20, 22).
-          skip_app_build: true
+          # Let Oryx build the app — .nvmrc pins Node 20 so Oryx doesn't
+          # pick up the runner's system Node (previously 24.x, unsupported).
+          # Env vars are passed here so Oryx's build has the Supabase keys
+          # needed for generateStaticParams() at build time.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_AZURE_FUNCTIONS_URL: ${{ secrets.NEXT_PUBLIC_AZURE_FUNCTIONS_URL }}
