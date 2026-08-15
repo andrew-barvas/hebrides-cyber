@@ -55,6 +55,7 @@ jobs:
           # Env vars are passed here so Oryx's build has the Supabase keys
           # needed for generateStaticParams() at build time.
         env:
+          NODE_VERSION: '20'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_AZURE_FUNCTIONS_URL: ${{ secrets.NEXT_PUBLIC_AZURE_FUNCTIONS_URL }}
