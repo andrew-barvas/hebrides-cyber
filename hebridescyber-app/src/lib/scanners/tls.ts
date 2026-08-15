@@ -57,7 +57,7 @@ function parseHsts(value: string | null): HstsAnalysis {
 }
 
 function extractSANs(cert: ReturnType<TLSSocket["getPeerCertificate"]>): string[] {
-  const raw = (cert as Record<string, unknown>).subjectaltname as string | undefined;
+  const raw = (cert as unknown as Record<string, unknown>).subjectaltname as string | undefined;
   if (!raw) return [];
   return raw.split(",").map((s) => s.trim().replace(/^DNS:/, ""));
 }
@@ -95,27 +95,29 @@ export async function checkTls(targetUrl: string): Promise<TlsResult> {
         const daysOld =
           validFrom === "unknown" ? null : Math.round((Date.now() - new Date(validFrom).getTime()) / 86_400_000);
 
-        const subject = cert?.subject?.CN ?? cert?.subject?.O ?? "unknown";
-        const issuer = cert?.issuer?.O ?? cert?.issuer?.CN ?? "unknown";
+        // subject.CN can be an array when multiple values are present; take first.
+        const subjectRaw = cert?.subject?.CN ?? cert?.subject?.O;
+        const subject = Array.isArray(subjectRaw) ? (subjectRaw[0] ?? "unknown") : (subjectRaw ?? "unknown");
+        const issuerRaw = cert?.issuer?.O ?? cert?.issuer?.CN;
+        const issuer = Array.isArray(issuerRaw) ? (issuerRaw[0] ?? "unknown") : (issuerRaw ?? "unknown");
         const subjectAltNames = extractSANs(cert);
 
-        // A cert is self-signed if its issuer fingerprint matches its own fingerprint.
-        const selfSigned = Boolean(
-          cert && cert.fingerprint && cert.fingerprint === (cert as Record<string, unknown>).issuerCertificate
-            ? ((cert as Record<string, unknown>).issuerCertificate as Record<string, unknown>)?.fingerprint
-            : subject === issuer
-        );
+        // Heuristic: cert is self-signed when subject and issuer match.
+        const certAny = cert as unknown as Record<string, unknown>;
+        const issuerCert = certAny?.issuerCertificate as Record<string, unknown> | undefined;
+        const selfSigned = !!(cert?.fingerprint && issuerCert?.fingerprint === cert.fingerprint) || subject === issuer;
 
         const weakProtocol = protocol !== null && ["TLSv1", "TLSv1.1"].includes(protocol);
         const cipherName = cipherInfo?.name ?? "";
-        const weakCipher = WEAK_CIPHERS.has(cipherName) || WEAK_CIPHERS.has((cipherInfo as Record<string, unknown>)?.version as string ?? "");
+        // CipherNameAndProtocol.version is the protocol string, not a cipher weakness flag.
+        const weakCipher = Array.from(WEAK_CIPHERS).some((w) => cipherName.includes(w));
 
         resolve({
           status: "checked",
           isHttps: true,
           protocol,
           cipher: cipherName || null,
-          cipherBits: cipherInfo ? (cipherInfo as Record<string, unknown>).bits as number ?? null : null,
+          cipherBits: null, // getCipher() does not expose key bits; left for future tls.getCipherInfo()
           certificateExpiresAt: validTo,
           certificateIssuedAt: validFrom,
           daysUntilExpiry,

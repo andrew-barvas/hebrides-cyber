@@ -24,6 +24,7 @@ export default function ScanDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!params) return;
     (async () => {
       const { data, error: fetchError } = await supabase
         .from("scan_results")
@@ -34,8 +35,11 @@ export default function ScanDetailPage() {
       if (fetchError) setError(fetchError.message);
       setResult(data as ScanResult | null);
       setLoading(false);
-    })();
-  }, [params.id]);
+    })().catch((err) => {
+      setError((err as Error).message);
+      setLoading(false);
+    });
+  }, [params?.id]);
 
   if (loading) return <div className="px-6 py-16 text-center">Loading…</div>;
 
