@@ -66,12 +66,20 @@ export async function signOut() {
  * enrolled but hasn't completed the challenge yet this session.
  */
 export async function getMfaAssuranceLevel() {
-  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (error) {
-    console.error("[auth] getAuthenticatorAssuranceLevel error:", error.message);
+  // Supabase JS v2 can throw AuthInvalidJwtError synchronously when the
+  // stored access token is malformed — catch thrown errors as well as the
+  // { data, error } return path so callers always get a safe default.
+  try {
+    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (error) {
+      console.error("[auth] getAuthenticatorAssuranceLevel error:", error.message);
+      return { currentLevel: null, nextLevel: null };
+    }
+    return data;
+  } catch (err) {
+    console.error("[auth] getAuthenticatorAssuranceLevel threw:", (err as Error).message);
     return { currentLevel: null, nextLevel: null };
   }
-  return data;
 }
 
 export async function listMfaFactors() {
