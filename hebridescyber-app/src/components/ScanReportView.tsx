@@ -22,6 +22,7 @@ export type ViewFinding = {
   remediation?: string;
   checkId?: string;
   status?: DiffStatus;
+  cveIds?: string[];
 };
 
 export const SEVERITY_META: Record<Severity, { label: string; bg: string; text: string; dot: string; border: string }> = {
@@ -154,6 +155,22 @@ export function FindingCard({ finding }: { finding: ViewFinding }) {
       </div>
       <p className="font-medium text-cybertext text-sm">{finding.title}</p>
       {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
+
+      {finding.cveIds && finding.cveIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {finding.cveIds.map((cve) => (
+            <a
+              key={cve}
+              href={`https://nvd.nist.gov/vuln/detail/${cve}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-cybertext/60 hover:border-neon hover:text-neon transition-colors print:text-slate-500"
+            >
+              {cve} ↗
+            </a>
+          ))}
+        </div>
+      )}
 
       {finding.remediation && (
         // .remediation-details is force-expanded in print — see globals.css, so

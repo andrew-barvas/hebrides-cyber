@@ -70,7 +70,12 @@ about half of Part 1 of the brief is already shipped.
 - **Teams / roles** — `users` is flat, one owner per scan.
 - **Trend graphs** — per-scan New/Fixed diffing exists (see above); there's no
   chart of score-over-time yet.
-- **CVE references on findings** — only Shodan CVEs, nothing mapped per-check.
+- **CVE references beyond JS libraries** — done for vulnerable JS libraries
+  via a live OSV.dev lookup (see below); `fingerprint.ts`'s broader
+  `riskySoftware` (WordPress core, PHP, Apache) is still prose-only. Those
+  don't map cleanly to any single OSV ecosystem the way npm packages do, so
+  extending this further needs a different data source per software type, not
+  just widening the existing OSV call.
 - **CI/CD integration** — the API supports it (see `docs/API.md`'s CI/CD
   section for a working example), but there's no packaged GitHub Action a
   customer can just `uses:` — they'd copy the curl/jq example today.
@@ -133,7 +138,15 @@ makes the product developer-facing.
    `006_report_shares.sql`. No public RLS policy on `report_shares` — see the
    migration comment for why that would leak every customer's tokens.
 9. Teams and roles.
-10. CVE references per finding.
+10. ~~CVE references per finding.~~ **Done for JS libraries** —
+    `src/lib/scanners/osv.ts` queries OSV.dev live (npm ecosystem) for
+    vulnerable-library findings from `webapp.ts`, falling back to CVE ids
+    already named in the existing static `reason` text if OSV is unreachable.
+    Verified against the real OSV.dev API: lodash 4.17.15's hardcoded reason
+    names one CVE, the live lookup found six, including ones from 2025/2026
+    that couldn't have existed when the static table was written. Not
+    extended to `fingerprint.ts`'s broader `riskySoftware` — see the
+    correction above.
 11. Trend graphs.
 
 ### P2 — Depth and premium
