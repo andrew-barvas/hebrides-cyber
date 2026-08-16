@@ -42,6 +42,22 @@ export type Finding = {
    * existed deserialise without it — the report UI must tolerate its absence.
    */
   remediation?: string;
+  /**
+   * Stable identity for this finding, independent of the human-readable title
+   * (which often embeds a count or list that changes run to run — e.g.
+   * "Missing recommended headers (3)"). Format: "<module>.<check-name>" for a
+   * finding pushed unconditionally by one code location, or
+   * "<module>.<check-name>:<key>" for one pushed in a loop, where <key> is the
+   * loop's natural identifier (a cookie name, file path, port number, library
+   * name). This is what src/lib/findingsDiff.ts matches on to tell "new" from
+   * "unchanged" between two scans of the same target.
+   *
+   * Optional because scans stored before this field existed deserialise
+   * without it — those findings simply never match anything in a diff, which
+   * is the conservatively correct behaviour (we can't know if an untagged old
+   * finding is "the same" as a new tagged one).
+   */
+  checkId?: string;
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
@@ -119,22 +135,22 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- TLS ------------------------------------------------------------------
   if (results.tls.status === "checked" && !results.tls.isHttps) {
-    findings.push({ severity: "critical", title: "Site is not served over HTTPS", detail: "All traffic is unencrypted. Install a TLS certificate immediately.", remediation: FIX.NO_HTTPS });
+    findings.push({ checkId: "tls.no-https", severity: "critical", title: "Site is not served over HTTPS", detail: "All traffic is unencrypted. Install a TLS certificate immediately.", remediation: FIX.NO_HTTPS });
   }
   if (results.tls.status === "checked" && results.tls.isHttps) {
     if (results.tls.weakProtocol) {
-      findings.push({ severity: "high", title: `Weak TLS protocol (${results.tls.protocol})`, detail: "Disable TLS 1.0/1.1 on the server — require TLS 1.2+.", remediation: FIX.WEAK_TLS });
+      findings.push({ checkId: "tls.weak-protocol", severity: "high", title: `Weak TLS protocol (${results.tls.protocol})`, detail: "Disable TLS 1.0/1.1 on the server — require TLS 1.2+.", remediation: FIX.WEAK_TLS });
     }
     if ((results.tls.daysUntilExpiry ?? 999) < 21) {
-      findings.push({ severity: "high", title: "TLS certificate expiring soon", detail: `Certificate expires ${results.tls.certificateExpiresAt} — renew before it lapses.`, remediation: FIX.CERT_EXPIRING });
+      findings.push({ checkId: "tls.cert-expiring", severity: "high", title: "TLS certificate expiring soon", detail: `Certificate expires ${results.tls.certificateExpiresAt} — renew before it lapses.`, remediation: FIX.CERT_EXPIRING });
     }
     if (results.tls.selfSigned) {
-      findings.push({ severity: "high", title: "Self-signed TLS certificate", detail: "Browsers will show a scary warning. Obtain a certificate from a trusted CA (e.g. Let's Encrypt).", remediation: FIX.SELF_SIGNED });
+      findings.push({ checkId: "tls.self-signed", severity: "high", title: "Self-signed TLS certificate", detail: "Browsers will show a scary warning. Obtain a certificate from a trusted CA (e.g. Let's Encrypt).", remediation: FIX.SELF_SIGNED });
     }
     if (!results.tls.hsts.present) {
-      findings.push({ severity: "medium", title: "HSTS header missing", detail: "Without Strict-Transport-Security, browsers may connect over HTTP first. Add: max-age=31536000; includeSubDomains", remediation: FIX.HSTS_MISSING });
+      findings.push({ checkId: "tls.hsts-missing", severity: "medium", title: "HSTS header missing", detail: "Without Strict-Transport-Security, browsers may connect over HTTP first. Add: max-age=31536000; includeSubDomains", remediation: FIX.HSTS_MISSING });
     } else if (!results.tls.hsts.adequate) {
-      findings.push({ severity: "low", title: "HSTS max-age too short", detail: `Current max-age ${results.tls.hsts.maxAge}s is below the 180-day (15552000s) recommended minimum.`, remediation: FIX.HSTS_SHORT });
+      findings.push({ checkId: "tls.hsts-short", severity: "low", title: "HSTS max-age too short", detail: `Current max-age ${results.tls.hsts.maxAge}s is below the 180-day (15552000s) recommended minimum.`, remediation: FIX.HSTS_SHORT });
     }
   }
 
@@ -144,91 +160,93 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       .filter((h) => !h.present && ["strict-transport-security", "content-security-policy", "x-content-type-options"].includes(h.name))
       .map((h) => h.name);
     if (missingCritical.length > 0) {
-      findings.push({ severity: "high", title: `Missing critical security headers`, detail: missingCritical.join(", "), remediation: FIX.headerRemediation(missingCritical) });
+      findings.push({ checkId: "headers.missing-critical", severity: "high", title: `Missing critical security headers`, detail: missingCritical.join(", "), remediation: FIX.headerRemediation(missingCritical) });
     }
     const missingOthers = results.headers.owasp.headers
       .filter((h) => !h.present && !missingCritical.includes(h.name))
       .map((h) => h.name);
     if (missingOthers.length > 0) {
-      findings.push({ severity: "medium", title: `Missing recommended headers (${missingOthers.length})`, detail: missingOthers.join(", "), remediation: FIX.headerRemediation(missingOthers) });
+      findings.push({ checkId: "headers.missing-recommended", severity: "medium", title: `Missing recommended headers (${missingOthers.length})`, detail: missingOthers.join(", "), remediation: FIX.headerRemediation(missingOthers) });
     }
     if (results.headers.csp.grade === "F") {
-      findings.push({ severity: "high", title: "Content Security Policy absent or ineffective", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_MISSING });
+      findings.push({ checkId: "headers.csp-absent", severity: "high", title: "Content Security Policy absent or ineffective", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_MISSING });
     } else if (results.headers.csp.grade === "C") {
-      findings.push({ severity: "medium", title: "Weak Content Security Policy", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_WEAK });
+      findings.push({ checkId: "headers.csp-weak", severity: "medium", title: "Weak Content Security Policy", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_WEAK });
     }
     for (const cookie of results.headers.cookies) {
       if (cookie.issues.length > 0) {
-        findings.push({ severity: "medium", title: `Cookie "${cookie.name}" has insecure flags`, detail: cookie.issues.join("; "), remediation: FIX.COOKIE_FLAGS });
+        findings.push({ checkId: `headers.cookie-flags:${cookie.name}`, severity: "medium", title: `Cookie "${cookie.name}" has insecure flags`, detail: cookie.issues.join("; "), remediation: FIX.COOKIE_FLAGS });
       }
     }
     if (results.headers.cors.wildcardOrigin) {
-      findings.push({ severity: "high", title: "CORS wildcard origin", detail: "Access-Control-Allow-Origin: * allows any site to read cross-origin responses.", remediation: FIX.CORS_WILDCARD });
+      findings.push({ checkId: "headers.cors-wildcard", severity: "high", title: "CORS wildcard origin", detail: "Access-Control-Allow-Origin: * allows any site to read cross-origin responses.", remediation: FIX.CORS_WILDCARD });
     }
     const infoIssues = results.headers.infoDisclosure.issues;
     if (infoIssues.length > 0) {
-      findings.push({ severity: "low", title: "Headers reveal server technology details", detail: infoIssues.join("; "), remediation: FIX.INFO_DISCLOSURE });
+      findings.push({ checkId: "headers.info-disclosure", severity: "low", title: "Headers reveal server technology details", detail: infoIssues.join("; "), remediation: FIX.INFO_DISCLOSURE });
     }
   }
 
   // --- DNS ------------------------------------------------------------------
   if (results.dns.status === "checked") {
     if (!results.dns.spf.present) {
-      findings.push({ severity: "high", title: "No SPF record", detail: "Email from this domain can be spoofed. Add an SPF TXT record.", remediation: FIX.SPF_MISSING });
+      findings.push({ checkId: "dns.spf-missing", severity: "high", title: "No SPF record", detail: "Email from this domain can be spoofed. Add an SPF TXT record.", remediation: FIX.SPF_MISSING });
     } else if (results.dns.spf.issues.length > 0) {
-      findings.push({ severity: "medium", title: "SPF misconfiguration", detail: results.dns.spf.issues.join("; "), remediation: FIX.SPF_ISSUES });
+      findings.push({ checkId: "dns.spf-issues", severity: "medium", title: "SPF misconfiguration", detail: results.dns.spf.issues.join("; "), remediation: FIX.SPF_ISSUES });
     }
     if (!results.dns.dmarc.present) {
-      findings.push({ severity: "high", title: "No DMARC record", detail: "Without DMARC, email spoofing is undetected. Add a _dmarc TXT record.", remediation: FIX.DMARC_MISSING });
+      findings.push({ checkId: "dns.dmarc-missing", severity: "high", title: "No DMARC record", detail: "Without DMARC, email spoofing is undetected. Add a _dmarc TXT record.", remediation: FIX.DMARC_MISSING });
     } else if (results.dns.dmarc.policy === "none") {
-      findings.push({ severity: "medium", title: "DMARC policy is 'none' — no enforcement", detail: "Spoofed emails are not rejected. Upgrade to p=quarantine or p=reject.", remediation: FIX.DMARC_NONE });
+      findings.push({ checkId: "dns.dmarc-none", severity: "medium", title: "DMARC policy is 'none' — no enforcement", detail: "Spoofed emails are not rejected. Upgrade to p=quarantine or p=reject.", remediation: FIX.DMARC_NONE });
     }
     if (!results.dns.caa.present) {
-      findings.push({ severity: "low", title: "No CAA records", detail: "Any CA can issue certificates for this domain. Add CAA records to restrict to your provider.", remediation: FIX.CAA_MISSING });
+      findings.push({ checkId: "dns.caa-missing", severity: "low", title: "No CAA records", detail: "Any CA can issue certificates for this domain. Add CAA records to restrict to your provider.", remediation: FIX.CAA_MISSING });
     }
     if (!results.dns.dnssec.likelySigned) {
-      findings.push({ severity: "info", title: "DNSSEC not detected", detail: results.dns.dnssec.note, remediation: FIX.DNSSEC_MISSING });
+      findings.push({ checkId: "dns.dnssec-missing", severity: "info", title: "DNSSEC not detected", detail: results.dns.dnssec.note, remediation: FIX.DNSSEC_MISSING });
     }
   }
 
   // --- Exposure -------------------------------------------------------------
   if (results.exposure.status === "checked") {
     for (const file of results.exposure.exposed) {
-      findings.push({ severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE });
+      findings.push({ checkId: `exposure.exposed-file:${file.path}`, severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE });
     }
     if (!results.exposure.securityTxt) {
-      findings.push({ severity: "info", title: "No security.txt found", detail: "Add /.well-known/security.txt with a contact address so researchers can report vulnerabilities.", remediation: FIX.SECURITY_TXT_MISSING });
+      findings.push({ checkId: "exposure.no-security-txt", severity: "info", title: "No security.txt found", detail: "Add /.well-known/security.txt with a contact address so researchers can report vulnerabilities.", remediation: FIX.SECURITY_TXT_MISSING });
     }
   }
 
   // --- Fingerprint ----------------------------------------------------------
   if (results.fingerprint.status === "checked") {
     for (const risky of results.fingerprint.riskySoftware) {
-      findings.push({ severity: "high", title: `Outdated library: ${risky.name} ${risky.version}`, detail: risky.reason, remediation: FIX.OUTDATED_LIBRARY });
+      // Keyed by name only, not name+version: an upgrade should read as
+      // "fixed", not as an unrelated old finding plus a brand-new one.
+      findings.push({ checkId: `fingerprint.risky-library:${risky.name}`, severity: "high", title: `Outdated library: ${risky.name} ${risky.version}`, detail: risky.reason, remediation: FIX.OUTDATED_LIBRARY });
     }
     const techList = results.fingerprint.technologies.map((t) => `${t.name}${t.version ? ` ${t.version}` : ""}`).join(", ");
     if (techList) {
-      findings.push({ severity: "info", title: `Detected technologies: ${techList}`, detail: "Technology stack fingerprinted from headers and page source.", remediation: FIX.TECH_DETECTED });
+      findings.push({ checkId: "fingerprint.tech-detected", severity: "info", title: `Detected technologies: ${techList}`, detail: "Technology stack fingerprinted from headers and page source.", remediation: FIX.TECH_DETECTED });
     }
   }
 
   // --- Playwright -----------------------------------------------------------
   if (results.playwright.status === "checked") {
     if (!results.playwright.loadedOk) {
-      findings.push({ severity: "medium", title: "Page returned unhealthy HTTP status", detail: `Headless load returned status ${results.playwright.httpStatus}.`, remediation: FIX.UNHEALTHY_STATUS });
+      findings.push({ checkId: "playwright.unhealthy-status", severity: "medium", title: "Page returned unhealthy HTTP status", detail: `Headless load returned status ${results.playwright.httpStatus}.`, remediation: FIX.UNHEALTHY_STATUS });
     }
     if (results.playwright.mixedContentUrls.length > 0) {
-      findings.push({ severity: "high", title: "Mixed content detected", detail: `HTTP resources loaded on HTTPS page: ${results.playwright.mixedContentUrls.slice(0, 3).join(", ")}`, remediation: FIX.MIXED_CONTENT });
+      findings.push({ checkId: "playwright.mixed-content", severity: "high", title: "Mixed content detected", detail: `HTTP resources loaded on HTTPS page: ${results.playwright.mixedContentUrls.slice(0, 3).join(", ")}`, remediation: FIX.MIXED_CONTENT });
     }
     if (results.playwright.consoleErrors.length > 0) {
-      findings.push({ severity: "low", title: `${results.playwright.consoleErrors.length} browser console error(s)`, detail: "Review browser console output for broken scripts or failed requests.", remediation: FIX.CONSOLE_ERRORS });
+      findings.push({ checkId: "playwright.console-errors", severity: "low", title: `${results.playwright.consoleErrors.length} browser console error(s)`, detail: "Review browser console output for broken scripts or failed requests.", remediation: FIX.CONSOLE_ERRORS });
     }
   }
 
   // --- Ports ----------------------------------------------------------------
   if (results.ports.status === "checked" && results.ports.riskyPorts.length > 0) {
     for (const p of results.ports.riskyPorts) {
-      findings.push({ severity: p.risk as Finding["severity"], title: `Port ${p.port} (${p.service}) open`, detail: p.reason, remediation: FIX.OPEN_PORT });
+      findings.push({ checkId: `ports.risky-port:${p.port}`, severity: p.risk as Finding["severity"], title: `Port ${p.port} (${p.service}) open`, detail: p.reason, remediation: FIX.OPEN_PORT });
     }
   }
 
@@ -237,6 +255,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     const { shodan, subdomains } = results.recon;
     if (shodan && shodan.cves.length > 0) {
       findings.push({
+        checkId: "recon.shodan-cves",
         severity: "high",
         title: `${shodan.cves.length} CVE(s) associated with this IP (Shodan)`,
         detail: `Shodan InternetDB reports: ${shodan.cves.slice(0, 5).join(", ")}${shodan.cves.length > 5 ? ` (+${shodan.cves.length - 5} more)` : ""}`,
@@ -245,6 +264,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     }
     if (subdomains.length > 0) {
       findings.push({
+        checkId: "recon.subdomains-found",
         severity: "info",
         title: `${subdomains.length} subdomain(s) found via Certificate Transparency`,
         detail: `crt.sh enumerated: ${subdomains.slice(0, 5).map((s) => s.name).join(", ")}${subdomains.length > 5 ? ` (+${subdomains.length - 5} more)` : ""}`,
@@ -260,6 +280,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     // robots.txt interesting paths
     if (robots?.accessible && robots.interestingPaths.length > 0) {
       findings.push({
+        checkId: "webapp.robots-sensitive-paths",
         severity: "info",
         title: `robots.txt disallows ${robots.interestingPaths.length} sensitive path(s)`,
         detail: `Interesting disallowed paths: ${robots.interestingPaths.slice(0, 5).join(", ")}. These paths may be worth investigating manually.`,
@@ -270,6 +291,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     // Dangerous HTTP methods
     if (httpMethods.dangerousMethods.length > 0) {
       findings.push({
+        checkId: "webapp.dangerous-methods",
         severity: "medium",
         title: `Dangerous HTTP methods enabled: ${httpMethods.dangerousMethods.join(", ")}`,
         detail: `Server advertises ${httpMethods.allowHeader}. Methods like PUT/DELETE can enable unauthorised file modifications if not restricted.`,
@@ -280,6 +302,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     // Error page disclosure
     if (errorDisclosure.disclosesFramework) {
       findings.push({
+        checkId: "webapp.error-disclosure",
         severity: "low",
         title: "Error page reveals internal framework details",
         detail: `Detected: ${errorDisclosure.disclosedStrings.join("; ")}. Configure custom error pages to avoid information leakage.`,
@@ -291,6 +314,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (wordpress) {
       if (wordpress.xmlRpcEnabled) {
         findings.push({
+          checkId: "webapp.wp-xmlrpc",
           severity: "medium",
           title: "WordPress XML-RPC endpoint accessible (/xmlrpc.php)",
           detail: "XML-RPC enables brute-force attacks via multicall. Disable it unless required by a plugin.",
@@ -299,6 +323,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       }
       if (wordpress.userEnumerationPossible) {
         findings.push({
+          checkId: "webapp.wp-user-enum",
           severity: "medium",
           title: "WordPress user enumeration via REST API (/wp-json/wp/v2/users)",
           detail: `${wordpress.enumeratedUsers.length} user(s) exposed: ${wordpress.enumeratedUsers.join(", ")}. Disable the users endpoint or restrict with authentication.`,
@@ -307,6 +332,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       }
       if (wordpress.debugLogAccessible) {
         findings.push({
+          checkId: "webapp.wp-debug-log",
           severity: "high",
           title: "WordPress debug log publicly accessible (/wp-content/debug.log)",
           detail: "Debug logs may contain credentials, file paths, and stack traces. Remove or restrict access immediately.",
@@ -315,6 +341,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       }
       if (wordpress.readmeAccessible) {
         findings.push({
+          checkId: "webapp.wp-readme",
           severity: "low",
           title: "WordPress readme.html accessible (version disclosure)",
           detail: "readme.html reveals the WordPress version to attackers. Delete or block this file.",
@@ -323,6 +350,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       }
       if (wordpress.wpCronAccessible) {
         findings.push({
+          checkId: "webapp.wp-cron",
           severity: "info",
           title: "WordPress wp-cron.php is accessible",
           detail: "wp-cron.php can be used for DoS via repeated HTTP calls. Consider disabling it and using a real cron job.",
@@ -335,6 +363,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (corsReflected.reflectsOrigin) {
       if (corsReflected.credentialsAllowed) {
         findings.push({
+          checkId: "webapp.cors-reflected-creds",
           severity: "critical",
           title: "CORS reflects arbitrary Origin with credentials allowed",
           detail: `The server reflects Origin: ${corsReflected.testedOrigin} and sets Access-Control-Allow-Credentials: true. This allows cross-origin requests to read authenticated responses — a critical misconfiguration.`,
@@ -342,6 +371,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         });
       } else {
         findings.push({
+          checkId: "webapp.cors-reflected",
           severity: "high",
           title: "CORS reflects arbitrary Origin header",
           detail: `The server mirrors back any Origin header as Access-Control-Allow-Origin. Any attacker-controlled site can read cross-origin responses.`,
@@ -353,7 +383,10 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     // JS library vulnerabilities
     for (const lib of jsLibraries) {
       if (lib.isVulnerable) {
+        // Keyed by name only — see the identical rationale on
+        // fingerprint.risky-library above.
         findings.push({
+          checkId: `webapp.vulnerable-js-lib:${lib.name}`,
           severity: "medium",
           title: `Vulnerable JS library: ${lib.name} ${lib.version}`,
           detail: lib.reason,
@@ -364,7 +397,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   }
 
   if (findings.length === 0) {
-    findings.push({ severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });
+    findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });
   }
 
   const topTitles = findings.slice(0, 3).map((f) => f.title).join("; ");

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { diffFindings, type FindingsDiff, type DiffStatus } from "@/lib/findingsDiff";
 
 type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -13,7 +14,15 @@ type Finding = {
   detail: string;
   // Absent on scans stored before remediation text was added — always guard.
   remediation?: string;
+  // Absent on scans stored before finding identity existed — always guard.
+  // See the same field on scanners/index.ts's Finding for the full rationale.
+  checkId?: string;
 };
+
+const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+function sortBySeverity<T extends { severity: Severity }>(list: T[]): T[] {
+  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+}
 
 type ScanResult = {
   id: string;
@@ -135,13 +144,31 @@ function renderInline(text: string) {
   });
 }
 
-function FindingCard({ finding }: { finding: Finding }) {
+function FindingCard({ finding }: { finding: Finding & { status?: DiffStatus } }) {
   const meta = SEVERITY_META[finding.severity] ?? SEVERITY_META.info;
+
+  // A resolved finding is good news — de-emphasised rather than alarming,
+  // so it doesn't compete visually with the still-open findings above it.
+  if (finding.status === "fixed") {
+    return (
+      <div className="rounded-lg border border-cyberborder bg-cyberbg/40 p-4">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-sm text-neon">✓</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-cybertext/40">Fixed</span>
+        </div>
+        <p className="text-sm text-cybertext/50 line-through decoration-cybertext/30">{finding.title}</p>
+      </div>
+    );
+  }
+
   return (
     <div className={`rounded-lg border ${meta.border} ${meta.bg} p-4`}>
       <div className="mb-1 flex items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
         <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
+        {finding.status === "new" && (
+          <span className="rounded-full border border-neon/30 bg-neon/10 px-1.5 py-0.5 text-[10px] font-semibold text-neon">NEW</span>
+        )}
       </div>
       <p className="font-medium text-cybertext text-sm">{finding.title}</p>
       {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
@@ -177,11 +204,69 @@ function CheckRow({ label, pass, detail }: { label: string; pass: boolean | unde
   );
 }
 
+/**
+ * Finds the most recent completed scan of the same target that predates this
+ * one, and returns its findings — or null if none exists (first scan of this
+ * target) or the target's hostname can't be parsed.
+ *
+ * Matches by hostname rather than exact target_url: two scans of "the same"
+ * site aren't guaranteed byte-identical strings (protocol, trailing slash,
+ * case — target_url is stored raw, unnormalised, at scan-creation time).
+ *
+ * Fetches the 100 most recent completed scans across all of the user's
+ * targets and filters client-side, since there's no indexed hostname column
+ * to query against directly. Fine at today's scale; if a user regularly runs
+ * 100+ scans of other targets between two scans of the same one, the match
+ * will be missed and no previous scan can be found — worth revisiting with a
+ * proper indexed hostname/target column if that starts happening in practice.
+ */
+async function findPreviousFindings(
+  currentScanId: string,
+  currentTargetUrl: string,
+  currentCreatedAt: string
+): Promise<Finding[] | null> {
+  let hostname: string;
+  try {
+    hostname = new URL(currentTargetUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("id, target_url, created_at, scan_results(results)")
+    .eq("status", "completed")
+    .neq("id", currentScanId)
+    .lt("created_at", currentCreatedAt)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  for (const c of (candidates ?? []) as Array<{
+    id: string;
+    target_url: string;
+    scan_results: { results: { findings?: Finding[] } }[];
+  }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    const prevFindings = c.scan_results?.[0]?.results?.findings;
+    if (prevFindings) return prevFindings;
+  }
+
+  return null;
+}
+
 export default function ScanDetailPage() {
   const params = useParams<{ id: string }>();
   const [result, setResult] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [diff, setDiff] = useState<FindingsDiff | null>(null);
+  const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
 
   useEffect(() => {
     if (!params?.id) return;
@@ -199,6 +284,22 @@ export default function ScanDetailPage() {
       setLoading(false);
     });
   }, [params?.id]);
+
+  // Runs after the current scan loads, not alongside it — the previous-scan
+  // lookup needs this scan's target_url and created_at first, and failing to
+  // find a previous scan should never block rendering the current report.
+  useEffect(() => {
+    if (!result?.results?.target_url) return;
+    const currentFindings = (result.results.findings as Finding[] | undefined) ?? [];
+
+    findPreviousFindings(result.scan_id, result.results.target_url, result.created_at)
+      .then((previousFindings) => {
+        if (previousFindings) setDiff(diffFindings(currentFindings, previousFindings));
+      })
+      .catch(() => {
+        // Non-fatal — the report still renders fully without the New/Fixed filter.
+      });
+  }, [result]);
 
   if (loading) {
     return (
@@ -235,6 +336,24 @@ export default function ScanDetailPage() {
   const low = bySeverity("low");
   const info = bySeverity("info");
   const allOrdered = [...critical, ...high, ...medium, ...low, ...info];
+
+  // Tag each current finding with its diff status without disturbing the
+  // severity ordering above — diff.added/unchanged are re-derived copies, not
+  // the same array references, so matching happens by checkId.
+  const statusByCheckId = new Map<string, DiffStatus>();
+  if (diff) {
+    diff.added.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "new"));
+    diff.unchanged.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "unchanged"));
+  }
+  const taggedOrdered: (Finding & { status?: DiffStatus })[] = allOrdered.map((f) => ({
+    ...f,
+    status: f.checkId ? statusByCheckId.get(f.checkId) : undefined,
+  }));
+  const newOrdered = taggedOrdered.filter((f) => f.status === "new");
+  const fixedOrdered = diff ? sortBySeverity(diff.fixed) : [];
+
+  const visibleFindings: (Finding & { status?: DiffStatus })[] =
+    filter === "new" ? newOrdered : filter === "fixed" ? fixedOrdered : taggedOrdered;
 
   const targetUrl = result.results?.target_url ?? `Scan ${result.scan_id.slice(0, 8)}`;
   const checkedAt = result.results?.checked_at
@@ -354,12 +473,43 @@ export default function ScanDetailPage() {
           </div>
 
           {/* Findings */}
-          {allOrdered.length > 0 ? (
+          {allOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
             <div>
-              <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
-              <div className="space-y-3">
-                {allOrdered.map((f, i) => <FindingCard key={i} finding={f} />)}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
+                {diff && (
+                  <div className="no-print flex gap-2 text-xs">
+                    {([
+                      ["all", `All (${taggedOrdered.length})`],
+                      ["new", `New (${newOrdered.length})`],
+                      ["fixed", `Fixed (${fixedOrdered.length})`],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        onClick={() => setFilter(key)}
+                        className={`rounded-full border px-3 py-1 font-medium transition-colors ${
+                          filter === key
+                            ? "border-neon/40 bg-neon/10 text-neon"
+                            : "border-cyberborder text-cybertext/50 hover:border-cybertext/30 hover:text-cybertext/70"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+              {visibleFindings.length > 0 ? (
+                <div className="space-y-3">
+                  {visibleFindings.map((f, i) => <FindingCard key={f.checkId ?? i} finding={f} />)}
+                </div>
+              ) : (
+                <p className="text-sm text-cybertext/40">
+                  {filter === "new"
+                    ? "No new findings since your last scan of this target."
+                    : "No findings were fixed since your last scan of this target."}
+                </p>
+              )}
             </div>
           ) : (
             <div className="rounded-lg border border-neon/20 bg-neon/5 p-5 text-sm text-neon">
