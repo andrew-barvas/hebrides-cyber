@@ -51,8 +51,8 @@ export default function LoginPage() {
     <div className="bg-cyberbg min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <p className="font-mono text-xs text-neon mb-2" aria-hidden="true">$ ./login</p>
-        <h1 className="mb-2 text-2xl font-bold text-white">Sign in</h1>
-        <p className="mb-8 text-sm text-white/60">
+        <h1 className="mb-2 text-2xl font-bold text-cybertext">Sign in</h1>
+        <p className="mb-8 text-sm text-cybertext/60">
           {usePassword
             ? "Sign in with your password."
             : "No password needed — we'll email you a one-time link."}
@@ -70,7 +70,7 @@ export default function LoginPage() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
             />
             {usePassword && (
               <input
@@ -79,7 +79,7 @@ export default function LoginPage() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
               />
             )}
             {error && (
@@ -95,14 +95,14 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setUsePassword((v) => !v)}
-              className="w-full text-center text-xs text-white/40 hover:text-white/70 underline"
+              className="w-full text-center text-xs text-cybertext/40 hover:text-cybertext/70 underline"
             >
               {usePassword ? "Use a magic link instead" : "Have a password? Sign in with it"}
             </button>
           </form>
         )}
 
-        <p className="mt-10 text-center text-xs text-white/30">
+        <p className="mt-10 text-center text-xs text-cybertext/30">
           Demo accounts: run <code className="text-neon">npm run seed:users</code> then sign in with the
           printed credentials.
         </p>

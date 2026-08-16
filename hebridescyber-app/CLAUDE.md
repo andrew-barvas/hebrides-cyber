@@ -73,18 +73,33 @@ Set `ALLOW_DEV_TOKEN_VERIFICATION=false` in production to require real DNS/file 
 
 `src/lib/scanners/index.ts` wires all modules into `runAllChecks()` and `summariseResults()`. When adding a new check, export its result type from the module, add it to `ScanResults` in index.ts, and add finding entries in `summariseResults()`.
 
+Import the pipeline as `@/lib/scanners` (the directory). A single-file `src/lib/scanners.ts` used to sit alongside it and **shadowed the directory in module resolution**, so every entry point silently ran an old 4-check version. It has been deleted — do not recreate a file at that path.
+
+**Remediation text** lives in `src/lib/scanners/remediationText.ts` and is attached to each finding as `Finding.remediation` at the point the finding is created, where the check result is still in scope. The field is optional because scans stored before it existed deserialise without it, so any consumer must guard. Never re-derive which fix applies by string-matching a finding's title.
+
+**False positives.** `exposure.ts` fetches a random-slug URL alongside the site root to learn what a "not found" response looks like, masks the probed path out of both bodies, and discards any probe whose body matches that baseline. Without this, every SPA that returns its shell for unknown paths reports an exposed `.env`. Any new check that probes for a file must reuse `fetchBaseline`/`normaliseBody` rather than trusting a 200 status.
+
 ### Theme system
 
 Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark` to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`. Default is dark (cyber theme).
 
-**Cyber palette** (always use these, not raw hex):
-- `bg-cyberbg` / `bg-cyberpanel` — page and card backgrounds
-- `border-cyberborder` — borders on dark surfaces
-- `text-neon` / `bg-neon` — primary accent (#39FFC0); `shadow-glowsm` / `shadow-glow` for neon glow effects
-- `text-atlantic` / `bg-atlantic` — primary on light surfaces
-- `text-seafoam` / `bg-seafoam` — secondary accent on light surfaces
+**The cyber tokens are CSS variables, not fixed hex.** `tailwind.config.cjs` maps them to `rgb(var(--c-*) / <alpha-value>)`, and the `:root` / `.dark` blocks in `src/app/globals.css` hold the two palettes. This is what makes light mode work: any surface built from these tokens re-themes automatically, with no `dark:` variant on any of the ~700 usages.
 
-The dashboard, admin, and all auth pages are always-dark (no `dark:` variants needed). Marketing pages that support both themes use `dark:` prefix.
+| Token | Role | Light | Dark |
+|-------|------|-------|------|
+| `cyberbg` | page background | `#F6F7F9` | `#070B14` |
+| `cyberpanel` | card/panel background | `#FFFFFF` | `#0D1524` |
+| `cyberborder` | borders on panels | `#D6DCE4` | `#1C2940` |
+| `cybertext` | primary body text | `#2F3A44` | `#FFFFFF` |
+| `neon` | accent, links, glow | `#067A5B` | `#39FFC0` |
+
+Rules when adding UI:
+
+- **Never use `text-white` on a themed surface** — it cannot follow the theme and turns invisible in light mode. Use `text-cybertext`. `text-white` is correct only on a permanently dark background such as `bg-atlantic`.
+- Same for `bg-white/N` and `border-white/N` overlays — use `bg-cybertext/N`.
+- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`, `slatelight`) do not change between themes. Pair them with an explicit text colour rather than letting text inherit.
+- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode (the parity block in `globals.css`). Alpha tuned for white-on-black reads far too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
+- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled right down in light mode.
 
 ### Database schema
 

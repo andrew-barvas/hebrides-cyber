@@ -15,21 +15,31 @@ module.exports = {
         seafoam: "#7FD3C7",
         slatelight: "#F6F7F9",
         slatedark: "#2F3A44",
-        // "Cyber" accent set — used for the dark hero/header/footer chrome
-        // and marketing sections (Header, Footer, homepage). Deliberately
-        // NOT used as the base body theme — see globals.css comment about
-        // why the app/dashboard pages stay on the light palette above.
-        cyberbg: "#070B14", // near-black navy, hero/header/footer background
-        cyberpanel: "#0D1524", // slightly lighter panel bg for cards on cyberbg
-        cyberborder: "#1C2940", // subtle borders on dark panels
-        neon: "#39FFC0", // bright accent for glow effects, links, highlights
+        // "Cyber" semantic set — the app chrome (header, dashboard, admin,
+        // auth, scan reports) is built entirely from these five tokens.
+        //
+        // They resolve to CSS variables rather than fixed hex so a single
+        // :root / :root.dark block in globals.css re-themes every surface at
+        // once. Without this, light mode would require a `dark:` variant on
+        // all ~700 token usages, and any one that got missed would render
+        // white-on-white. See globals.css for the actual values.
+        //
+        // The `<alpha-value>` placeholder is what keeps opacity modifiers
+        // (bg-cyberpanel/50, text-neon/60) working.
+        cyberbg: "rgb(var(--c-bg) / <alpha-value>)", // page background
+        cyberpanel: "rgb(var(--c-panel) / <alpha-value>)", // card/panel background
+        cyberborder: "rgb(var(--c-border) / <alpha-value>)", // borders on panels
+        cybertext: "rgb(var(--c-text) / <alpha-value>)", // primary body text
+        neon: "rgb(var(--c-neon) / <alpha-value>)", // accent: links, highlights, glow
       },
       fontFamily: {
         mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       boxShadow: {
-        glow: "0 0 24px rgba(57, 255, 192, 0.35)",
-        glowsm: "0 0 12px rgba(57, 255, 192, 0.45)",
+        // Alpha is a variable too — a neon bloom reads as a glow on near-black
+        // but as a smudge on white, so light mode dials it right down.
+        glow: "0 0 24px rgb(var(--c-neon) / var(--c-glow, 0.35))",
+        glowsm: "0 0 12px rgb(var(--c-neon) / var(--c-glow-sm, 0.45))",
       },
     },
   },

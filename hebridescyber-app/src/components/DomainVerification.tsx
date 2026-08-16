@@ -65,11 +65,11 @@ export default function DomainVerification() {
 
   return (
     <details className="rounded-lg border border-cyberborder bg-cyberpanel">
-      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-white/80 hover:text-white transition-colors">
-        Verify domain ownership <span className="font-normal text-white/40">(recommended)</span>
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
+        Verify domain ownership <span className="font-normal text-cybertext/40">(recommended)</span>
       </summary>
       <div className="px-5 pb-5 pt-1 space-y-4">
-        <p className="text-sm text-white/60">
+        <p className="text-sm text-cybertext/60">
           Prove you control a domain via DNS or a file upload, so scans against
           it don&apos;t rely on the quick token-echo shortcut. Propagation can take
           a few minutes after adding the record.
@@ -82,7 +82,7 @@ export default function DomainVerification() {
             placeholder="https://your-site.com"
             value={targetUrl}
             onChange={(e) => setTargetUrl(e.target.value)}
-            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
           />
           <button
             disabled={busy}
@@ -96,12 +96,12 @@ export default function DomainVerification() {
 
         {instructions && (
           <div className="space-y-3 rounded-md border border-cyberborder bg-cyberbg p-4 text-sm">
-            <p className="font-medium text-white/80">Option A — DNS TXT record</p>
+            <p className="font-medium text-cybertext/80">Option A — DNS TXT record</p>
             <code className="block break-all rounded border border-cyberborder bg-cyberpanel p-2 text-xs text-neon">
               {instructions.dnsRecord.name} TXT &quot;{instructions.dnsRecord.value}&quot;
             </code>
-            <p className="font-medium text-white/80">Option B — upload a file</p>
-            <p className="text-white/60">
+            <p className="font-medium text-cybertext/80">Option B — upload a file</p>
+            <p className="text-cybertext/60">
               Put this at <code className="text-neon">{instructions.file.url}</code>:
             </p>
             <code className="block break-all rounded border border-cyberborder bg-cyberpanel p-2 text-xs text-neon">
@@ -111,7 +111,7 @@ export default function DomainVerification() {
             <button
               onClick={check}
               disabled={busy}
-              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-semibold text-white/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-semibold text-cybertext/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
             >
               {busy ? "Checking…" : "Check now"}
             </button>

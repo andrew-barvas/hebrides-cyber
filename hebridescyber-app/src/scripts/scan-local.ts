@@ -1,5 +1,5 @@
 // Local scanner test script — runs the same stub steps as run-scan
-// (shared via src/lib/scanners.ts), directly from the CLI against a target
+// (shared via src/lib/scanners/), directly from the CLI against a target
 // you own, with no Azure dependency. Useful for iterating on scanner logic
 // before wiring it into the Azure Function.
 //

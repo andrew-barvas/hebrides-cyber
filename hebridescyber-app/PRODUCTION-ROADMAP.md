@@ -4,7 +4,7 @@ Current state: working local MVP (marketing pages, dashboard UI with a
 functional "run a scan" form, Supabase schema, run-scan/generate-report
 Functions, Stripe webhook that writes to `subscriptions`, dynamic
 scheduled-scans workflow, and a Playwright e2e test suite). Nothing is
-deployed. Scanner logic (`src/lib/scanners.ts`) and the ownership
+deployed. Scanner logic (`src/lib/scanners/`) and the ownership
 verification flow are intentionally still stubs pending real
 implementation — see `docs/security.md`.
 

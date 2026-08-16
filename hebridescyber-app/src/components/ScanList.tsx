@@ -37,7 +37,7 @@ export default function ScanList({ scans, onDelete }: Props) {
   if (scans.length === 0) {
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6 text-center">
-        <p className="text-sm text-white/50">No scans yet. Enter a URL above and click <strong className="text-white/80">Run scan</strong>.</p>
+        <p className="text-sm text-cybertext/50">No scans yet. Enter a URL above and click <strong className="text-cybertext/80">Run scan</strong>.</p>
       </div>
     );
   }
@@ -45,16 +45,16 @@ export default function ScanList({ scans, onDelete }: Props) {
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
       <div className="px-5 py-3 border-b border-cyberborder">
-        <h2 className="font-mono text-xs text-white/40 uppercase tracking-wide">// recent scans</h2>
+        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent scans</h2>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-cyberborder text-left bg-cyberbg/50">
-              <th className="px-5 py-2.5 text-xs font-medium text-white/40">Target</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Score</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Status</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Date</th>
+              <th className="px-5 py-2.5 text-xs font-medium text-cybertext/40">Target</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Score</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Status</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Date</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -68,13 +68,13 @@ export default function ScanList({ scans, onDelete }: Props) {
                   {scan.score != null ? (
                     <ScoreBadge score={scan.score} />
                   ) : (
-                    <span className="text-xs text-white/20">—</span>
+                    <span className="text-xs text-cybertext/20">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={scan.status} />
                 </td>
-                <td className="px-4 py-3 text-xs text-white/40 whitespace-nowrap">
+                <td className="px-4 py-3 text-xs text-cybertext/40 whitespace-nowrap">
                   {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </td>
                 <td className="px-4 py-3">
@@ -87,11 +87,11 @@ export default function ScanList({ scans, onDelete }: Props) {
                         View report →
                       </Link>
                     ) : (
-                      <span className="text-xs text-white/20">—</span>
+                      <span className="text-xs text-cybertext/20">—</span>
                     )}
                     {onDelete && (
                       deletingId === scan.id ? (
-                        <span className="text-xs text-white/40">Deleting…</span>
+                        <span className="text-xs text-cybertext/40">Deleting…</span>
                       ) : confirmId === scan.id ? (
                         <span className="flex items-center gap-1.5">
                           <button
@@ -100,10 +100,10 @@ export default function ScanList({ scans, onDelete }: Props) {
                           >
                             Confirm
                           </button>
-                          <span className="text-white/20" aria-hidden="true">|</span>
+                          <span className="text-cybertext/20" aria-hidden="true">|</span>
                           <button
                             onClick={() => setConfirmId(null)}
-                            className="text-xs text-white/40 hover:text-white/70"
+                            className="text-xs text-cybertext/40 hover:text-cybertext/70"
                           >
                             Cancel
                           </button>
@@ -111,7 +111,7 @@ export default function ScanList({ scans, onDelete }: Props) {
                       ) : (
                         <button
                           onClick={() => handleDelete(scan.id)}
-                          className="text-xs text-white/30 hover:text-red-400 transition-colors"
+                          className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
                           title="Delete scan"
                         >
                           Delete
@@ -144,7 +144,7 @@ function ScoreBadge({ score }: { score: number }) {
 
 function StatusBadge({ status }: { status: Scan["status"] }) {
   const colours: Record<Scan["status"], string> = {
-    pending:   "bg-white/10 text-white/60",
+    pending:   "bg-cybertext/10 text-cybertext/60",
     running:   "bg-amber-400/10 text-amber-400",
     completed: "bg-neon/10 text-neon",
     failed:    "bg-red-400/10 text-red-400",

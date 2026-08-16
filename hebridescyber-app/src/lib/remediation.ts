@@ -70,8 +70,16 @@ questions.*
 }
 
 function suggestFixSnippet(finding: Finding): string {
-  if (finding.title.startsWith("Missing security headers")) {
-    const missing = finding.title.replace("Missing security headers: ", "").split(", ");
+  // Findings produced by summariseResults carry their own fix text, built with
+  // the full check result in scope. Prefer it over re-deriving anything here.
+  if (finding.remediation) return finding.remediation;
+
+  // Fallbacks below are for findings deserialised from scans stored before
+  // Finding.remediation existed.
+  if (finding.title.includes("security headers") || finding.title.includes("recommended headers")) {
+    // Header names live in `detail` ("x-frame-options, referrer-policy"),
+    // never in the title.
+    const missing = finding.detail.split(",").map((h) => h.trim()).filter(Boolean);
     const lines = missing.map((h) => HEADER_SNIPPETS[h.toLowerCase()] ?? h).join("\n");
     return [
       "**Raw headers to add:**",

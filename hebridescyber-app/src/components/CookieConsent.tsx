@@ -32,13 +32,16 @@ export default function CookieConsent() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-white p-4 text-sm shadow-lg sm:flex-row">
+    // Deliberately a fixed light surface in both themes, so it needs an
+    // explicit text colour — without it the buttons inherit the body colour,
+    // which is white in dark mode and vanishes against the white banner.
+    <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-white p-4 text-sm text-slatedark shadow-lg sm:flex-row">
       <p className="text-slatedark/80">
         We use analytics cookies to understand site usage. See our{" "}
         <a href="/privacy" className="underline">
           privacy policy
         </a>
-        . {/* TODO: /privacy doesn't exist yet — add a real privacy policy page before launch. */}
+        .
       </p>
       <div className="flex shrink-0 gap-2">
         <button onClick={() => choose("declined")} className="rounded-md border border-slate-300 px-4 py-2 font-medium hover:bg-slate-50">

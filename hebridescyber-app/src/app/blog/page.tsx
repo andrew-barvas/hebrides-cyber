@@ -53,10 +53,10 @@ export default async function BlogIndexPage({ searchParams }: Props) {
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
           <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-slatelight/60">$</span> cat security-weekly.log
+            <span className="text-cybertext/60">$</span> cat security-weekly.log
           </p>
-          <h1 className="text-4xl font-bold text-white">Security Weekly</h1>
-          <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
+          <h1 className="text-4xl font-bold text-cybertext">Security Weekly</h1>
+          <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
             Cybersecurity insights for small businesses and SaaS teams — grounded in
             real (anonymised) data from Hebrides Cyber scans.
           </p>
@@ -72,7 +72,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
               className={`rounded-full px-3 py-1 text-xs font-mono border transition-colors ${
                 !tag
                   ? "bg-neon text-cyberbg border-neon"
-                  : "border-cyberborder text-slatelight/60 hover:border-neon hover:text-neon"
+                  : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
               }`}
             >
               All
@@ -84,7 +84,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
                 className={`rounded-full px-3 py-1 text-xs font-mono border transition-colors ${
                   tag === t
                     ? "bg-neon text-cyberbg border-neon"
-                    : "border-cyberborder text-slatelight/60 hover:border-neon hover:text-neon"
+                    : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
                 }`}
               >
                 {t}
@@ -98,7 +98,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
         {error && <p className="mb-6 text-sm text-red-400">{error}</p>}
 
         {!error && posts.length === 0 && (
-          <p className="font-mono text-sm text-slatelight/50">
+          <p className="font-mono text-sm text-cybertext/50">
             {tag ? `No posts tagged "${tag}" yet.` : "// no posts yet — trigger the weekly-newsletter workflow to seed one."}
           </p>
         )}
@@ -118,17 +118,17 @@ export default async function BlogIndexPage({ searchParams }: Props) {
                 />
               )}
               <div className="min-w-0">
-                <p className="mb-1 font-mono text-xs text-slatelight/60">
+                <p className="mb-1 font-mono text-xs text-cybertext/60">
                   {new Date(post.published_at).toLocaleDateString("en-GB", {
                     day: "numeric",
                     month: "long",
                     year: "numeric",
                   })}
                 </p>
-                <h2 className="text-lg font-semibold text-white group-hover:text-neon transition-colors">
+                <h2 className="text-lg font-semibold text-cybertext group-hover:text-neon transition-colors">
                   {post.title}
                 </h2>
-                <p className="mt-1 text-sm text-slatelight/60 line-clamp-2">{post.excerpt}</p>
+                <p className="mt-1 text-sm text-cybertext/60 line-clamp-2">{post.excerpt}</p>
                 {(post.tags ?? []).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {post.tags.slice(0, 4).map((t) => (

@@ -113,12 +113,12 @@ function statusBadge(status: string) {
     pending:   "bg-amber-400/20 text-amber-400",
     failed:    "bg-red-400/20 text-red-400",
     published: "bg-neon/20 text-neon",
-    draft:     "bg-cyberborder text-white/60",
+    draft:     "bg-cyberborder text-cybertext/60",
     active:    "bg-seafoam/20 text-seafoam",
     waiting:   "bg-amber-400/20 text-amber-400",
   };
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-cyberborder text-white/60"}`}>
+    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-cyberborder text-cybertext/60"}`}>
       {status}
     </span>
   );
@@ -151,8 +151,8 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <p className="text-2xl font-bold text-neon">{value}</p>
-      <p className="mt-0.5 text-sm font-medium text-white/70">{label}</p>
-      {sub && <p className="mt-1 text-xs text-white/40">{sub}</p>}
+      <p className="mt-0.5 text-sm font-medium text-cybertext/70">{label}</p>
+      {sub && <p className="mt-1 text-xs text-cybertext/40">{sub}</p>}
     </div>
   );
 }
@@ -160,7 +160,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 function AdminInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
       {...props}
     />
   );
@@ -169,7 +169,7 @@ function AdminInput({ className = "", ...props }: React.InputHTMLAttributes<HTML
 function AdminTextarea({ className = "", ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
       {...props}
     />
   );
@@ -178,7 +178,7 @@ function AdminTextarea({ className = "", ...props }: React.TextareaHTMLAttribute
 function AdminSelect({ className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-white focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors ${className}`}
       {...props}
     />
   );
@@ -197,7 +197,7 @@ function OverviewTab({ token }: { token: string }) {
   }, [token]);
 
   if (err) return <p className="text-red-400 text-sm">{err}</p>;
-  if (!metrics) return <p className="text-white/40 text-sm font-mono">// loading…</p>;
+  if (!metrics) return <p className="text-cybertext/40 text-sm font-mono">// loading…</p>;
 
   return (
     <div className="space-y-8">
@@ -210,22 +210,22 @@ function OverviewTab({ token }: { token: string }) {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-          <h3 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// plans</h3>
+          <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// plans</h3>
           <div className="space-y-2">
             {metrics.planBreakdown.map((p) => (
               <div key={p.plan} className="flex items-center justify-between">
-                <span className="capitalize text-sm text-white/70">{p.plan}</span>
+                <span className="capitalize text-sm text-cybertext/70">{p.plan}</span>
                 <span className="text-sm font-medium text-neon">{p.count}</span>
               </div>
             ))}
             {metrics.planBreakdown.length === 0 && (
-              <p className="text-xs text-white/30">No active subscriptions</p>
+              <p className="text-xs text-cybertext/30">No active subscriptions</p>
             )}
           </div>
         </div>
 
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-          <h3 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// scan status</h3>
+          <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// scan status</h3>
           <div className="space-y-2">
             {Object.entries(metrics.scansByStatus).map(([status, count]) => (
               <div key={status} className="flex items-center justify-between">
@@ -238,10 +238,10 @@ function OverviewTab({ token }: { token: string }) {
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// recent signups</h3>
+        <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent signups</h3>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder text-left text-xs text-white/40">
+            <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
               <th className="pb-2 pr-4">Email</th>
               <th className="pb-2 pr-4">Company</th>
               <th className="pb-2">Joined</th>
@@ -250,9 +250,9 @@ function OverviewTab({ token }: { token: string }) {
           <tbody>
             {metrics.recentSignups.map((u) => (
               <tr key={u.id} className="border-b border-cyberborder/50">
-                <td className="py-1.5 pr-4 font-mono text-xs text-white">{u.email}</td>
-                <td className="py-1.5 pr-4 text-white/50">{u.company_name ?? "—"}</td>
-                <td className="py-1.5 text-white/40">{reltime(u.created_at)}</td>
+                <td className="py-1.5 pr-4 font-mono text-xs text-cybertext">{u.email}</td>
+                <td className="py-1.5 pr-4 text-cybertext/50">{u.company_name ?? "—"}</td>
+                <td className="py-1.5 text-cybertext/40">{reltime(u.created_at)}</td>
               </tr>
             ))}
           </tbody>
@@ -299,13 +299,13 @@ function CustomersTab({ token }: { token: string }) {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
         />
-        <span className="font-mono text-xs text-white/40">{total} customers</span>
+        <span className="font-mono text-xs text-cybertext/40">{total} customers</span>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-white/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Company</th>
               <th className="px-4 py-3">Plan</th>
@@ -316,23 +316,23 @@ function CustomersTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-white/30">// loading…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// loading…</td></tr>
             ) : customers.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-white/30">No customers found</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-cybertext/30">No customers found</td></tr>
             ) : (
               customers.map((c) => (
-                <tr key={c.id} className="border-b border-cyberborder/50 hover:bg-white/5 transition-colors">
+                <tr key={c.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
                   <td className="px-4 py-2.5 font-mono text-xs text-neon">
                     {c.email}
                     {c.is_admin && (
                       <span className="ml-1 rounded bg-neon/10 px-1 text-[10px] text-neon">admin</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-white/60">{c.company_name ?? "—"}</td>
-                  <td className="px-4 py-2.5 capitalize text-white/70">{c.plan ?? "none"}</td>
+                  <td className="px-4 py-2.5 text-cybertext/60">{c.company_name ?? "—"}</td>
+                  <td className="px-4 py-2.5 capitalize text-cybertext/70">{c.plan ?? "none"}</td>
                   <td className="px-4 py-2.5">{c.subscription_status ? statusBadge(c.subscription_status) : "—"}</td>
-                  <td className="px-4 py-2.5 text-white/70">{c.scan_count}</td>
-                  <td className="px-4 py-2.5 text-white/40">{reltime(c.created_at)}</td>
+                  <td className="px-4 py-2.5 text-cybertext/70">{c.scan_count}</td>
+                  <td className="px-4 py-2.5 text-cybertext/40">{reltime(c.created_at)}</td>
                 </tr>
               ))
             )}
@@ -342,9 +342,9 @@ function CustomersTab({ token }: { token: string }) {
 
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-          <span className="px-2 py-1 font-mono text-xs text-white/40">Page {page}</span>
-          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
     </div>
@@ -409,7 +409,7 @@ function ScansTab({ token }: { token: string }) {
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-white/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
               <th className="px-4 py-3">Target</th>
               <th className="px-4 py-3">Owner</th>
               <th className="px-4 py-3">Status</th>
@@ -420,16 +420,16 @@ function ScansTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-white/30">// loading…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// loading…</td></tr>
             ) : scans.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-white/30">No scans found</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-cybertext/30">No scans found</td></tr>
             ) : (
               scans.map((s) => (
-                <tr key={s.id} className="border-b border-cyberborder/50 hover:bg-white/5 transition-colors">
+                <tr key={s.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
                   <td className="px-4 py-2.5 font-mono text-xs max-w-48 truncate">
                     <a href={`/dashboard/scans/${s.id}`} className="text-neon hover:underline">{s.targetUrl}</a>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-white/50 max-w-36 truncate">{s.ownerEmail}</td>
+                  <td className="px-4 py-2.5 text-xs text-cybertext/50 max-w-36 truncate">{s.ownerEmail}</td>
                   <td className="px-4 py-2.5">{statusBadge(s.status)}</td>
                   <td className="px-4 py-2.5 text-sm font-medium font-mono">
                     {s.score !== null ? (
@@ -438,7 +438,7 @@ function ScansTab({ token }: { token: string }) {
                       </span>
                     ) : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-white/40">{reltime(s.createdAt)}</td>
+                  <td className="px-4 py-2.5 text-xs text-cybertext/40">{reltime(s.createdAt)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
                       {(s.status === "running" || s.status === "pending") && (
@@ -461,9 +461,9 @@ function ScansTab({ token }: { token: string }) {
       </div>
 
       <div className="flex justify-end gap-2">
-        <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-        <span className="px-2 py-1 font-mono text-xs text-white/40">Page {page}</span>
-        <button disabled={scans.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+        <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+        <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+        <button disabled={scans.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
       </div>
     </div>
   );
@@ -484,13 +484,13 @@ function QueueTab({ token }: { token: string }) {
     return () => clearInterval(iv);
   }, [load]);
 
-  if (!data) return <p className="font-mono text-sm text-white/30">// loading…</p>;
+  if (!data) return <p className="font-mono text-sm text-cybertext/30">// loading…</p>;
 
   if (!data.configured) {
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6">
-        <p className="font-semibold text-white/80">Queue not active</p>
-        <p className="mt-1 text-sm text-white/50">
+        <p className="font-semibold text-cybertext/80">Queue not active</p>
+        <p className="mt-1 text-sm text-cybertext/50">
           Redis is not configured — scans run synchronously. Set{" "}
           <code className="font-mono bg-cyberbg px-1 rounded text-neon">REDIS_URL</code>{" "}
           in environment settings to enable the async queue.
@@ -503,7 +503,7 @@ function QueueTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-6">
-      <p className="font-mono text-xs text-white/30">// auto-refreshes every 5 s</p>
+      <p className="font-mono text-xs text-cybertext/30">// auto-refreshes every 5 s</p>
 
       {stats && (
         <div className="grid grid-cols-5 gap-3">
@@ -520,14 +520,14 @@ function QueueTab({ token }: { token: string }) {
             if (list.length === 0) return null;
             return (
               <div key={state} className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
-                <div className="border-b border-cyberborder bg-cyberbg px-4 py-2.5 font-mono text-xs text-white/40 uppercase tracking-wide">
+                <div className="border-b border-cyberborder bg-cyberbg px-4 py-2.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">
                   {state} ({list.length})
                 </div>
                 {list.map((j) => (
                   <div key={j.id} className="flex items-center gap-4 border-b border-cyberborder/40 px-4 py-3 last:border-0">
                     <div className="flex-1 min-w-0">
                       <p className="truncate font-mono text-xs text-neon">{j.targetUrl}</p>
-                      <p className="text-xs text-white/40">scan: {j.scanId?.slice(0, 8)}…</p>
+                      <p className="text-xs text-cybertext/40">scan: {j.scanId?.slice(0, 8)}…</p>
                     </div>
                     {state === "active" && (
                       <div className="w-24">
@@ -537,10 +537,10 @@ function QueueTab({ token }: { token: string }) {
                             style={{ width: `${j.progress ?? 0}%` }}
                           />
                         </div>
-                        <p className="mt-0.5 text-right font-mono text-xs text-white/40">{j.progress ?? 0}%</p>
+                        <p className="mt-0.5 text-right font-mono text-xs text-cybertext/40">{j.progress ?? 0}%</p>
                       </div>
                     )}
-                    <p className="text-xs text-white/30 whitespace-nowrap">
+                    <p className="text-xs text-cybertext/30 whitespace-nowrap">
                       {j.addedAt ? reltime(j.addedAt) : ""}
                     </p>
                   </div>
@@ -625,20 +625,20 @@ function BlogTab({ token }: { token: string }) {
       </div>
 
       {loading ? (
-        <p className="font-mono text-sm text-white/30">// loading…</p>
+        <p className="font-mono text-sm text-cybertext/30">// loading…</p>
       ) : posts.length === 0 ? (
-        <p className="font-mono text-sm text-white/30">// no posts found</p>
+        <p className="font-mono text-sm text-cybertext/30">// no posts found</p>
       ) : (
         <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
           {posts.map((p) => (
-            <div key={p.id} className="flex items-start gap-4 border-b border-cyberborder/50 px-4 py-4 last:border-0 hover:bg-white/5 transition-colors">
+            <div key={p.id} className="flex items-start gap-4 border-b border-cyberborder/50 px-4 py-4 last:border-0 hover:bg-cybertext/5 transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-medium text-white">{p.title}</p>
+                  <p className="font-medium text-cybertext">{p.title}</p>
                   {statusBadge(p.status)}
                 </div>
-                <p className="mt-0.5 text-xs text-white/40 truncate">{p.excerpt || "No excerpt"}</p>
-                <div className="mt-1 flex items-center gap-2 font-mono text-xs text-white/30">
+                <p className="mt-0.5 text-xs text-cybertext/40 truncate">{p.excerpt || "No excerpt"}</p>
+                <div className="mt-1 flex items-center gap-2 font-mono text-xs text-cybertext/30">
                   <span>/{p.slug}</span>
                   <span>·</span>
                   <span>Updated {reltime(p.updated_at)}</span>
@@ -653,7 +653,7 @@ function BlogTab({ token }: { token: string }) {
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
-                <button onClick={() => openPost(p.slug)} className="rounded border border-cyberborder px-2.5 py-1 text-xs text-white/70 hover:border-neon hover:text-neon transition-colors">Edit</button>
+                <button onClick={() => openPost(p.slug)} className="rounded border border-cyberborder px-2.5 py-1 text-xs text-cybertext/70 hover:border-neon hover:text-neon transition-colors">Edit</button>
                 <button onClick={() => deletePost(p.slug)} className="rounded bg-red-400/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-400/20 transition-colors">Delete</button>
               </div>
             </div>
@@ -775,23 +775,23 @@ function BlogEditor({
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => { if (!isDirty || confirm("Discard unsaved changes?")) onCancel(); }}
-          className="font-mono text-sm text-white/50 hover:text-neon transition-colors"
+          className="font-mono text-sm text-cybertext/50 hover:text-neon transition-colors"
         >
           ← back
         </button>
-        <h2 className="text-lg font-semibold text-white">{post ? "Edit post" : "New post"}</h2>
+        <h2 className="text-lg font-semibold text-cybertext">{post ? "Edit post" : "New post"}</h2>
         {isDirty && <span className="font-mono text-xs text-amber-400">// unsaved changes</span>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs text-white/30">{wordCount} words · {readMins} min read</span>
+          <span className="font-mono text-xs text-cybertext/30">{wordCount} words · {readMins} min read</span>
           <button
             onClick={() => setShowSeo((v) => !v)}
-            className="rounded border border-cyberborder px-3 py-1.5 text-xs text-white/60 hover:border-neon hover:text-neon transition-colors"
+            className="rounded border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
           >
             SEO {showSeo ? "▲" : "▼"}
           </button>
           <button
             onClick={() => setPreview((v) => !v)}
-            className="rounded border border-cyberborder px-3 py-1.5 text-sm text-white/60 hover:border-neon hover:text-neon transition-colors"
+            className="rounded border border-cyberborder px-3 py-1.5 text-sm text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
           >
             {preview ? "Edit" : "Preview"}
           </button>
@@ -819,9 +819,9 @@ function BlogEditor({
       {/* SEO panel */}
       {showSeo && (
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4 space-y-3">
-          <h3 className="font-mono text-xs text-white/40 uppercase tracking-wide">// SEO & Open Graph</h3>
+          <h3 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// SEO & Open Graph</h3>
           <div>
-            <label className="mb-1 block font-mono text-xs text-white/40">Meta description (155 chars max)</label>
+            <label className="mb-1 block font-mono text-xs text-cybertext/40">Meta description (155 chars max)</label>
             <AdminTextarea
               value={metaDescription}
               onChange={(e) => { setMetaDescription(e.target.value); markDirty(); }}
@@ -830,10 +830,10 @@ function BlogEditor({
               placeholder="Override the excerpt for search engines…"
               className="w-full"
             />
-            <p className="text-right font-mono text-xs text-white/30">{metaDescription.length}/155</p>
+            <p className="text-right font-mono text-xs text-cybertext/30">{metaDescription.length}/155</p>
           </div>
           <div>
-            <label className="mb-1 block font-mono text-xs text-white/40">OG image URL (overrides cover image for social sharing)</label>
+            <label className="mb-1 block font-mono text-xs text-cybertext/40">OG image URL (overrides cover image for social sharing)</label>
             <AdminInput
               type="url"
               value={ogImage}
@@ -849,7 +849,7 @@ function BlogEditor({
         <div className="prose prose-sm prose-invert max-w-none rounded-xl border border-cyberborder bg-cyberpanel p-6 prose-headings:text-neon prose-a:text-neon prose-code:bg-cyberbg prose-code:text-neon">
           {coverImageUrl && <img src={coverImageUrl} alt="" className="mb-6 w-full rounded-lg object-cover max-h-56" />}
           <h1>{title || "Untitled"}</h1>
-          <p className="lead text-white/60">{excerpt}</p>
+          <p className="lead text-cybertext/60">{excerpt}</p>
           <div style={{ whiteSpace: "pre-wrap" }}>{body}</div>
         </div>
       ) : (
@@ -867,12 +867,12 @@ function BlogEditor({
           />
 
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-white/40 shrink-0">Slug:</span>
+            <span className="font-mono text-xs text-cybertext/40 shrink-0">Slug:</span>
             <input
               type="text"
               value={slug}
               onChange={(e) => { setSlug(e.target.value.toLowerCase().replace(/\s/g, "-")); markDirty(); }}
-              className={`flex-1 rounded border bg-cyberbg px-2 py-1 font-mono text-xs text-white focus:outline-none transition-colors ${
+              className={`flex-1 rounded border bg-cyberbg px-2 py-1 font-mono text-xs text-cybertext focus:outline-none transition-colors ${
                 slugError ? "border-red-400 focus:border-red-400" : "border-cyberborder focus:border-neon"
               }`}
             />
@@ -882,12 +882,12 @@ function BlogEditor({
           {/* Cover image */}
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-white/40">Cover image</span>
+              <span className="font-mono text-xs text-cybertext/40">Cover image</span>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="rounded border border-cyberborder px-2 py-0.5 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+                className="rounded border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
               >
                 {uploading ? "Uploading…" : "Upload"}
               </button>
@@ -987,13 +987,13 @@ function AuditTab({ token }: { token: string }) {
           value={actor}
           onChange={(e) => { setActor(e.target.value); setPage(1); }}
         />
-        <span className="font-mono text-xs text-white/40">{total} events</span>
+        <span className="font-mono text-xs text-cybertext/40">{total} events</span>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-white/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Actor</th>
               <th className="px-4 py-3">Action</th>
@@ -1002,14 +1002,14 @@ function AuditTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {logs.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center font-mono text-sm text-white/30">// no audit events found</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// no audit events found</td></tr>
             ) : (
               logs.map((l) => (
-                <tr key={l.id} className="border-b border-cyberborder/50 hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-2 font-mono text-xs text-white/40 whitespace-nowrap">{reltime(l.created_at)}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-white/70 max-w-40 truncate">{l.actor_email}</td>
+                <tr key={l.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
+                  <td className="px-4 py-2 font-mono text-xs text-cybertext/40 whitespace-nowrap">{reltime(l.created_at)}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-cybertext/70 max-w-40 truncate">{l.actor_email}</td>
                   <td className="px-4 py-2 font-mono text-xs text-neon">{l.action}</td>
-                  <td className="px-4 py-2 text-xs text-white/50">
+                  <td className="px-4 py-2 text-xs text-cybertext/50">
                     {l.resource_type}{l.resource_id ? ` · ${l.resource_id.slice(0, 8)}…` : ""}
                   </td>
                 </tr>
@@ -1021,9 +1021,9 @@ function AuditTab({ token }: { token: string }) {
 
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-          <span className="px-2 py-1 font-mono text-xs text-white/40">Page {page}</span>
-          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-white/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
     </div>
@@ -1056,12 +1056,12 @@ function ContactsTab({ token }: { token: string }) {
     } catch { /* best-effort */ }
   }
 
-  if (loading) return <p className="text-white/40 text-sm font-mono">// loading…</p>;
+  if (loading) return <p className="text-cybertext/40 text-sm font-mono">// loading…</p>;
   if (err) return <p className="text-red-400 text-sm">{err}</p>;
   if (enquiries.length === 0)
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-8 text-center">
-        <p className="text-white/40 text-sm">No contact enquiries yet.</p>
+        <p className="text-cybertext/40 text-sm">No contact enquiries yet.</p>
       </div>
     );
 
@@ -1070,7 +1070,7 @@ function ContactsTab({ token }: { token: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <p className="font-mono text-xs text-white/40">{enquiries.length} enquiries</p>
+        <p className="font-mono text-xs text-cybertext/40">{enquiries.length} enquiries</p>
         {unread > 0 && (
           <span className="rounded-full bg-neon/20 px-2 py-0.5 text-xs font-medium text-neon">
             {unread} unread
@@ -1091,13 +1091,13 @@ function ContactsTab({ token }: { token: string }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {!e.read && <span className="h-2 w-2 rounded-full bg-neon flex-shrink-0" />}
-                  <span className="font-medium text-white text-sm">{e.name}</span>
-                  <span className="font-mono text-xs text-white/40">{e.email}</span>
+                  <span className="font-medium text-cybertext text-sm">{e.name}</span>
+                  <span className="font-mono text-xs text-cybertext/40">{e.email}</span>
                 </div>
-                <p className="mt-1 text-xs text-white/50 truncate max-w-lg">{e.message}</p>
+                <p className="mt-1 text-xs text-cybertext/50 truncate max-w-lg">{e.message}</p>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className="text-xs text-white/30">{reltime(e.created_at)}</p>
+                <p className="text-xs text-cybertext/30">{reltime(e.created_at)}</p>
                 {e.url && (
                   <p className="mt-0.5 font-mono text-xs text-neon/60 truncate max-w-[160px]">{e.url}</p>
                 )}
@@ -1107,7 +1107,7 @@ function ContactsTab({ token }: { token: string }) {
             {expanded === e.id && (
               <div className="border-t border-cyberborder px-5 pb-5 pt-4 space-y-4">
                 <div className="rounded-lg bg-cyberbg border border-cyberborder p-4">
-                  <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{e.message}</p>
+                  <p className="text-sm text-cybertext/80 leading-relaxed whitespace-pre-wrap">{e.message}</p>
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs">
                   <a
@@ -1118,7 +1118,7 @@ function ContactsTab({ token }: { token: string }) {
                   </a>
                   <button
                     onClick={() => toggleRead(e.id, e.read)}
-                    className="rounded-md border border-cyberborder px-4 py-2 text-white/60 hover:border-neon hover:text-neon transition-colors"
+                    className="rounded-md border border-cyberborder px-4 py-2 text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
                   >
                     Mark as {e.read ? "unread" : "read"}
                   </button>
@@ -1127,7 +1127,7 @@ function ContactsTab({ token }: { token: string }) {
                       href={e.url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="rounded-md border border-cyberborder px-4 py-2 text-white/60 hover:border-neon hover:text-neon transition-colors"
+                      className="rounded-md border border-cyberborder px-4 py-2 text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
                     >
                       Visit site →
                     </a>
@@ -1179,7 +1179,7 @@ export default function AdminPage() {
   if (authState === "loading") {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-white/30">// authenticating…</p>
+        <p className="font-mono text-sm text-cybertext/30">// authenticating…</p>
       </div>
     );
   }
@@ -1189,7 +1189,7 @@ export default function AdminPage() {
       <div className="bg-cyberbg min-h-screen flex items-center justify-center px-6">
         <div className="text-center">
           <p className="mb-3 font-mono text-sm text-neon">// access denied</p>
-          <h1 className="text-2xl font-bold text-white">Sign in required</h1>
+          <h1 className="text-2xl font-bold text-cybertext">Sign in required</h1>
           <Link href="/login" className="mt-6 inline-block text-neon underline">Sign in →</Link>
         </div>
       </div>
@@ -1201,10 +1201,10 @@ export default function AdminPage() {
       <div className="bg-cyberbg min-h-screen flex items-center justify-center px-6">
         <div className="max-w-md">
           <p className="mb-3 font-mono text-sm text-red-400">// 403 forbidden</p>
-          <h1 className="text-2xl font-bold text-white">Admin access required</h1>
-          <div className="mt-4 space-y-2 text-sm text-white/60">
+          <h1 className="text-2xl font-bold text-cybertext">Admin access required</h1>
+          <div className="mt-4 space-y-2 text-sm text-cybertext/60">
             <p>Could not verify admin access. Common causes:</p>
-            <ul className="list-disc pl-5 space-y-1 text-white/50">
+            <ul className="list-disc pl-5 space-y-1 text-cybertext/50">
               <li>You&apos;re not signed in — <Link href="/login" className="text-neon underline">sign in first</Link></li>
               <li>Your account doesn&apos;t have <code className="font-mono bg-cyberpanel px-1 rounded text-neon">is_admin = true</code> in Supabase</li>
               <li><code className="font-mono bg-cyberpanel px-1 rounded text-neon">SUPABASE_SERVICE_ROLE_KEY</code> not set in Azure app settings</li>
@@ -1228,7 +1228,7 @@ export default function AdminPage() {
   ];
 
   return (
-    <div className="bg-cyberbg min-h-screen text-white">
+    <div className="bg-cyberbg min-h-screen text-cybertext">
       {/* Subtle grid overlay */}
       <div className="bg-grid pointer-events-none fixed inset-0 opacity-30" />
 
@@ -1237,9 +1237,9 @@ export default function AdminPage() {
         <div className="mb-6 flex items-baseline justify-between">
           <div>
             <p className="font-mono text-xs text-neon/50">$ sudo hebrides-cyber --admin</p>
-            <h1 className="text-2xl font-bold text-white">Admin</h1>
+            <h1 className="text-2xl font-bold text-cybertext">Admin</h1>
           </div>
-          <Link href="/dashboard" className="font-mono text-sm text-white/40 hover:text-neon transition-colors">← Dashboard</Link>
+          <Link href="/dashboard" className="font-mono text-sm text-cybertext/40 hover:text-neon transition-colors">← Dashboard</Link>
         </div>
 
         {/* Tabs */}
@@ -1251,7 +1251,7 @@ export default function AdminPage() {
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === t.key
                   ? "border-b-2 border-neon text-neon"
-                  : "text-white/40 hover:text-white"
+                  : "text-cybertext/40 hover:text-cybertext"
               }`}
             >
               {t.label}

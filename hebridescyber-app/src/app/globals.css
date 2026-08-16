@@ -6,23 +6,120 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Light mode (default): slate palette. Dark mode (dark class on <html>): cyber theme.
-   The toggle is managed by ThemeScript in layout.tsx + the toggle button in Header.tsx.
-   Default is dark (class added on first load unless the user has saved "light"). */
-body {
-  @apply bg-slatelight text-slatedark dark:bg-cyberbg dark:text-white;
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   The whole app chrome is built from five semantic colours (cyberbg,
+   cyberpanel, cyberborder, cybertext, neon) which Tailwind resolves to these
+   variables — see tailwind.config.cjs. Swapping the values here re-themes
+   every surface at once, so no component needs a `dark:` variant.
+
+   Values are space-separated RGB channels (not hex) because Tailwind wraps
+   them as rgb(var(--x) / <alpha-value>) to keep /50 opacity modifiers working.
+
+   :root is LIGHT. The `dark` class on <html> — set by ThemeScript in
+   layout.tsx, toggled in Header.tsx — switches to the cyber palette. Dark is
+   the default: the class is applied on first load unless the user saved
+   "light", so the cyber look is what a first-time visitor sees.
+   --------------------------------------------------------------------------- */
+:root {
+  --c-bg: 246 247 249; /* slatelight */
+  --c-panel: 255 255 255;
+  --c-border: 214 220 228;
+  --c-text: 47 58 68; /* slatedark */
+  --c-neon: 6 122 91; /* deep teal — neon green is unreadable on white */
+  --c-glow: 0.18;
+  --c-glow-sm: 0.22;
+  --c-grid: 11 61 91; /* atlantic, for the circuit-board grid */
+  --c-grid-alpha: 0.05;
 }
 
-/* Faint circuit-board grid used on dark hero sections — pure CSS, no image asset. */
+.dark {
+  --c-bg: 7 11 20; /* near-black navy */
+  --c-panel: 13 21 36;
+  --c-border: 28 41 64;
+  --c-text: 255 255 255;
+  --c-neon: 57 255 192;
+  --c-glow: 0.35;
+  --c-glow-sm: 0.45;
+  --c-grid: 57 255 192;
+  --c-grid-alpha: 0.08;
+}
+
+body {
+  @apply bg-cyberbg text-cybertext;
+}
+
+/* Opacity parity between themes.
+
+   The /30–/60 steps were chosen for white-on-near-black, where white/40 still
+   lands around 3.5:1. Flipped to dark-on-light the same alpha only reaches
+   ~2.2:1, so de-emphasised labels turn illegible in light mode. Rather than
+   rewrite every usage, nudge the alpha up for light mode only.
+
+   The :root:not(.dark) prefix outranks Tailwind's single-class utility, so
+   these win without !important. */
+:root:not(.dark) .text-cybertext\/20 {
+  color: rgb(var(--c-text) / 0.42);
+}
+:root:not(.dark) .text-cybertext\/30 {
+  color: rgb(var(--c-text) / 0.52);
+}
+:root:not(.dark) .text-cybertext\/40 {
+  color: rgb(var(--c-text) / 0.62);
+}
+:root:not(.dark) .text-cybertext\/50 {
+  color: rgb(var(--c-text) / 0.70);
+}
+:root:not(.dark) .text-cybertext\/60 {
+  color: rgb(var(--c-text) / 0.78);
+}
+
+/* Same treatment for the accent. Neon green on near-black tolerates being
+   faded right down; the light-mode deep teal does not — a 50% teal on #F6F7F9
+   only reaches 2.1:1, and these are used for list glyphs and captions. */
+:root:not(.dark) .text-neon\/20 {
+  color: rgb(var(--c-neon) / 0.5);
+}
+:root:not(.dark) .text-neon\/30 {
+  color: rgb(var(--c-neon) / 0.6);
+}
+:root:not(.dark) .text-neon\/40 {
+  color: rgb(var(--c-neon) / 0.7);
+}
+:root:not(.dark) .text-neon\/50 {
+  color: rgb(var(--c-neon) / 0.78);
+}
+:root:not(.dark) .text-neon\/60 {
+  color: rgb(var(--c-neon) / 0.85);
+}
+:root:not(.dark) .text-neon\/70,
+:root:not(.dark) .text-neon\/80 {
+  color: rgb(var(--c-neon) / 0.92);
+}
+
+/* Faint circuit-board grid on hero sections — pure CSS, no image asset. */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(57, 255, 192, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57, 255, 192, 0.08) 1px, transparent 1px);
+    linear-gradient(rgb(var(--c-grid) / var(--c-grid-alpha)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--c-grid) / var(--c-grid-alpha)) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
 .text-glow {
-  text-shadow: 0 0 16px rgba(57, 255, 192, 0.55);
+  text-shadow: 0 0 16px rgb(var(--c-neon) / var(--c-glow, 0.55));
+}
+
+/* Remediation steps collapse on screen to keep long reports scannable, but a
+   printed/PDF report must contain the fix instructions — force them open.
+   The UA stylesheet hides non-summary children of a closed <details>. */
+@media print {
+  .remediation-details > *:not(summary) {
+    display: block !important;
+  }
+  .remediation-details > summary {
+    display: none !important;
+  }
 }
 
 /* Prevent iOS Safari from zooming in on form-field focus (requires ≥16px) */

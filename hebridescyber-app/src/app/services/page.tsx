@@ -258,13 +258,13 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
               </span>
             )}
           </div>
-          <p className="mt-1.5 text-sm text-slatelight/70 leading-relaxed">{desc}</p>
+          <p className="mt-1.5 text-sm text-cybertext/70 leading-relaxed">{desc}</p>
         </div>
       </div>
 
       <ul className="mt-3 space-y-1.5 flex-1">
         {includes.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-xs text-slatelight/60">
+          <li key={item} className="flex items-start gap-2 text-xs text-cybertext/60">
             <span className="flex-shrink-0 mt-0.5 text-neon/50">›</span>
             <span>{item}</span>
           </li>
@@ -272,7 +272,7 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
       </ul>
 
       {meta && (
-        <p className="mt-4 pt-3 border-t border-cyberborder text-xs text-slatelight/60 font-mono">
+        <p className="mt-4 pt-3 border-t border-cyberborder text-xs text-cybertext/60 font-mono">
           ⏱ {meta}
         </p>
       )}
@@ -287,8 +287,8 @@ function Section({ label, title, subtitle, items }: { label: string; title: stri
         <span className="font-mono text-xs text-neon/60">{label}</span>
         <div className="h-px flex-1 bg-cyberborder" />
       </div>
-      <h2 className="mb-1 text-xl font-bold text-white">{title}</h2>
-      {subtitle && <p className="mb-5 text-sm text-slatelight/50">{subtitle}</p>}
+      <h2 className="mb-1 text-xl font-bold text-cybertext">{title}</h2>
+      {subtitle && <p className="mb-5 text-sm text-cybertext/50">{subtitle}</p>}
       <div className="grid gap-4 sm:grid-cols-2">
         {items.map((s) => <ServiceCard key={s.name} {...s} />)}
       </div>
@@ -298,28 +298,28 @@ function Section({ label, title, subtitle, items }: { label: string; title: stri
 
 export default function ServicesPage() {
   return (
-    <div className="bg-cyberbg min-h-screen text-white">
+    <div className="bg-cyberbg min-h-screen text-cybertext">
       {/* Hero */}
       <div className="relative overflow-hidden border-b border-cyberborder px-6 py-20 text-center">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative">
           <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-slatelight/60">$</span> ls ./services <span className="text-slatelight/60">|</span> grep --all
+            <span className="text-cybertext/60">$</span> ls ./services <span className="text-cybertext/60">|</span> grep --all
           </p>
           <h1 className="mx-auto max-w-2xl text-4xl font-bold sm:text-5xl">
             What we do
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
+          <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
             From an automated weekly Security Score to hands-on penetration testing and incident response —
             sized and priced for businesses that don&apos;t have a full-time security team.
           </p>
-          <p className="mt-3 text-sm text-slatelight/50">
+          <p className="mt-3 text-sm text-cybertext/50">
             Fixed rates on the{" "}
-            <Link href="/pricing" className="text-neon underline underline-offset-2 hover:text-white">
+            <Link href="/pricing" className="text-neon underline underline-offset-2 hover:text-cybertext">
               pricing page
             </Link>
             {" "}· bespoke quotes via{" "}
-            <Link href="/contact" className="text-neon underline underline-offset-2 hover:text-white">
+            <Link href="/contact" className="text-neon underline underline-offset-2 hover:text-cybertext">
               contact
             </Link>
           </p>
@@ -339,8 +339,8 @@ export default function ServicesPage() {
             ].map(({ step, title, body }) => (
               <div key={step} className="relative">
                 <div aria-hidden="true" className="mb-3 inline-block font-mono text-3xl font-bold text-neon/20">{step}</div>
-                <p className="mb-1 font-semibold text-white text-sm">{title}</p>
-                <p className="text-xs text-slatelight/60 leading-relaxed">{body}</p>
+                <p className="mb-1 font-semibold text-cybertext text-sm">{title}</p>
+                <p className="text-xs text-cybertext/60 leading-relaxed">{body}</p>
               </div>
             ))}
           </div>
@@ -384,10 +384,10 @@ export default function ServicesPage() {
         <div className="rounded-xl border border-neon/30 bg-cyberpanel p-8 text-center">
           <p className="mb-1 font-mono text-xs text-neon/60">// ready?</p>
           <h2 className="mb-2 text-2xl font-bold">Not sure where to start?</h2>
-          <p className="mb-6 text-slatelight/70">
+          <p className="mb-6 text-cybertext/70">
             Book a free Security Score scan — get a one-page report in 24 hours, no commitment.
             Or just{" "}
-            <Link href="/contact" className="text-neon underline hover:text-white">get in touch</Link>{" "}
+            <Link href="/contact" className="text-neon underline hover:text-cybertext">get in touch</Link>{" "}
             and we&apos;ll recommend the right starting point.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
@@ -399,7 +399,7 @@ export default function ServicesPage() {
             </Link>
             <Link
               href="/pricing"
-              className="rounded-md border border-white/20 px-6 py-2.5 text-sm font-semibold text-white hover:border-neon hover:text-neon"
+              className="rounded-md border border-cybertext/20 px-6 py-2.5 text-sm font-semibold text-cybertext hover:border-neon hover:text-neon"
             >
               View pricing
             </Link>

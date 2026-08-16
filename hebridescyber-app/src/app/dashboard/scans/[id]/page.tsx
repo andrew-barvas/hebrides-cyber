@@ -11,6 +11,8 @@ type Finding = {
   severity: Severity;
   title: string;
   detail: string;
+  // Absent on scans stored before remediation text was added — always guard.
+  remediation?: string;
 };
 
 type ScanResult = {
@@ -35,7 +37,7 @@ const SEVERITY_META: Record<Severity, { label: string; bg: string; text: string;
   high:     { label: "High",     bg: "bg-orange-400/10", text: "text-orange-400", dot: "bg-orange-400", border: "border-orange-400/20" },
   medium:   { label: "Medium",   bg: "bg-yellow-400/10", text: "text-yellow-400", dot: "bg-yellow-400", border: "border-yellow-400/20" },
   low:      { label: "Low",      bg: "bg-blue-400/10",   text: "text-blue-400",   dot: "bg-blue-400",   border: "border-blue-400/20" },
-  info:     { label: "Info",     bg: "bg-white/5",       text: "text-white/60",   dot: "bg-white/40",   border: "border-cyberborder" },
+  info:     { label: "Info",     bg: "bg-cybertext/5",       text: "text-cybertext/60",   dot: "bg-cybertext/40",   border: "border-cyberborder" },
 };
 
 function ScoreGauge({ score }: { score: number }) {
@@ -45,9 +47,92 @@ function ScoreGauge({ score }: { score: number }) {
   return (
     <div className={`inline-flex flex-col items-center justify-center rounded-full border-4 ${ring} h-28 w-28 flex-shrink-0`}>
       <span className={`text-4xl font-bold ${colour}`}>{score}</span>
-      <span className="text-xs text-white/40">/100 · {label}</span>
+      <span className="text-xs text-cybertext/40">/100 · {label}</span>
     </div>
   );
+}
+
+/**
+ * Renders the small Markdown subset used by remediation text: fenced code
+ * blocks, bullet lists, and inline `code` / **bold**. Deliberately not a full
+ * Markdown parser — the input is our own constants in
+ * src/lib/scanners/remediationText.ts, never user content.
+ */
+function RemediationBody({ markdown }: { markdown: string }) {
+  // Split on fences, keeping them: even indexes are prose, odd are code.
+  const segments = markdown.split(/```(?:[a-z]*)\n?/);
+
+  return (
+    <div className="space-y-3">
+      {segments.map((segment, i) => {
+        if (!segment.trim()) return null;
+
+        if (i % 2 === 1) {
+          return (
+            <pre
+              key={i}
+              className="overflow-x-auto rounded-md border border-cyberborder bg-cyberbg p-3 font-mono text-[11px] leading-relaxed text-neon print:border-slate-300 print:bg-slate-50 print:text-slate-800"
+            >
+              <code>{segment.replace(/\n$/, "")}</code>
+            </pre>
+          );
+        }
+
+        return (
+          <div key={i} className="space-y-2">
+            {segment
+              .split(/\n{2,}/)
+              .filter((block) => block.trim())
+              .map((block, j) => {
+                const lines = block.split("\n").filter((l) => l.trim());
+                const isList = lines.every((l) => /^\s*[-*\d]/.test(l));
+
+                if (isList) {
+                  return (
+                    <ul key={j} className="list-disc space-y-1 pl-5 text-xs leading-relaxed text-cybertext/70 print:text-slate-700">
+                      {lines.map((line, k) => (
+                        <li key={k}>{renderInline(line.replace(/^\s*(?:[-*]|\d+\.)\s*/, ""))}</li>
+                      ))}
+                    </ul>
+                  );
+                }
+
+                return (
+                  <p key={j} className="text-xs leading-relaxed text-cybertext/70 print:text-slate-700">
+                    {renderInline(block.replace(/\n/g, " "))}
+                  </p>
+                );
+              })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Handles **bold** and `code` spans within a line. */
+function renderInline(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-semibold text-cybertext/90 print:text-slate-900">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-cyberbg px-1 py-0.5 font-mono text-[11px] text-neon print:bg-slate-100 print:text-slate-800"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
@@ -58,8 +143,22 @@ function FindingCard({ finding }: { finding: Finding }) {
         <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
         <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
       </div>
-      <p className="font-medium text-white text-sm">{finding.title}</p>
-      {finding.detail && <p className="mt-1 text-xs text-white/60 leading-relaxed">{finding.detail}</p>}
+      <p className="font-medium text-cybertext text-sm">{finding.title}</p>
+      {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
+
+      {finding.remediation && (
+        // .remediation-details is force-expanded in print — see globals.css, so
+        // the PDF export always contains the fix steps.
+        <details className="group remediation-details mt-3">
+          <summary className="cursor-pointer list-none text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
+            <span className="inline-block transition-transform group-open:rotate-90">▸</span> How to fix
+          </summary>
+          <p className="hidden text-xs font-semibold text-slate-900 print:block">How to fix</p>
+          <div className="mt-3 border-l-2 border-cyberborder pl-3 print:border-slate-300">
+            <RemediationBody markdown={finding.remediation} />
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -71,8 +170,8 @@ function CheckRow({ label, pass, detail }: { label: string; pass: boolean | unde
         {pass ? "✓" : "✗"}
       </span>
       <div>
-        <p className="text-sm font-medium text-white/80">{label}</p>
-        <p className="text-xs text-white/40">{detail}</p>
+        <p className="text-sm font-medium text-cybertext/80">{label}</p>
+        <p className="text-xs text-cybertext/40">{detail}</p>
       </div>
     </div>
   );
@@ -104,7 +203,7 @@ export default function ScanDetailPage() {
   if (loading) {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-white/30">// loading scan report…</p>
+        <p className="font-mono text-sm text-cybertext/30">// loading scan report…</p>
       </div>
     );
   }
@@ -120,7 +219,7 @@ export default function ScanDetailPage() {
   if (!result) {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center text-center px-6">
-        <p className="text-sm text-white/50">
+        <p className="text-sm text-cybertext/50">
           No results yet — the scan may still be running.{" "}
           <Link href="/dashboard" className="text-neon underline">← Dashboard</Link>
         </p>
@@ -160,7 +259,7 @@ export default function ScanDetailPage() {
         @page { margin: 1.5cm; }
       `}</style>
 
-      <div className="bg-cyberbg min-h-screen text-white print:bg-white print:text-slate-800">
+      <div className="bg-cyberbg min-h-screen text-cybertext print:bg-white print:text-slate-800">
         <div className="bg-grid pointer-events-none fixed inset-0 opacity-20 print:hidden" />
 
         <div className="relative mx-auto max-w-3xl px-6 py-12 space-y-8 print:py-0 print:space-y-6">
@@ -168,19 +267,19 @@ export default function ScanDetailPage() {
           <div>
             <Link
               href="/dashboard"
-              className="no-print inline-block mb-3 font-mono text-xs text-white/40 hover:text-neon transition-colors"
+              className="no-print inline-block mb-3 font-mono text-xs text-cybertext/40 hover:text-neon transition-colors"
             >
               ← Back to dashboard
             </Link>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./report</p>
-                <h1 className="text-2xl font-bold text-white break-all print:text-slate-800">{targetUrl}</h1>
-                <p className="mt-1 text-sm text-white/40 print:text-slate-500">Security scan report · {checkedAt}</p>
+                <h1 className="text-2xl font-bold text-cybertext break-all print:text-slate-800">{targetUrl}</h1>
+                <p className="mt-1 text-sm text-cybertext/40 print:text-slate-500">Security scan report · {checkedAt}</p>
               </div>
               <button
                 onClick={() => window.print()}
-                className="no-print shrink-0 rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-white/60 hover:border-neon hover:text-neon transition-colors"
+                className="no-print shrink-0 rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
               >
                 ↓ Download PDF
               </button>
@@ -192,7 +291,7 @@ export default function ScanDetailPage() {
             {result.score !== null && <ScoreGauge score={result.score} />}
             <div>
               <p className="text-sm font-semibold text-neon mb-1 print:text-slate-800">Executive summary</p>
-              <p className="text-sm text-white/70 leading-relaxed print:text-slate-600">
+              <p className="text-sm text-cybertext/70 leading-relaxed print:text-slate-600">
                 {result.summary ?? "Scan complete. Review findings below."}
               </p>
               {findings.length > 0 && (
@@ -201,7 +300,7 @@ export default function ScanDetailPage() {
                   {high.length > 0 && <span className="rounded-full bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 text-orange-400 font-medium">{high.length} high</span>}
                   {medium.length > 0 && <span className="rounded-full bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 text-yellow-400 font-medium">{medium.length} medium</span>}
                   {low.length > 0 && <span className="rounded-full bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 text-blue-400 font-medium">{low.length} low</span>}
-                  {info.length > 0 && <span className="rounded-full bg-white/5 border border-cyberborder px-2 py-0.5 text-white/60 font-medium">{info.length} info</span>}
+                  {info.length > 0 && <span className="rounded-full bg-cybertext/5 border border-cyberborder px-2 py-0.5 text-cybertext/60 font-medium">{info.length} info</span>}
                 </div>
               )}
             </div>
@@ -209,7 +308,7 @@ export default function ScanDetailPage() {
 
           {/* Check breakdown */}
           <div>
-            <h2 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// check breakdown</h2>
+            <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// check breakdown</h2>
             <div className="grid gap-2 sm:grid-cols-2">
               {tls && (
                 <CheckRow
@@ -257,7 +356,7 @@ export default function ScanDetailPage() {
           {/* Findings */}
           {allOrdered.length > 0 ? (
             <div>
-              <h2 className="mb-4 font-mono text-xs text-white/40 uppercase tracking-wide">// findings</h2>
+              <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
               <div className="space-y-3">
                 {allOrdered.map((f, i) => <FindingCard key={i} finding={f} />)}
               </div>
@@ -273,13 +372,13 @@ export default function ScanDetailPage() {
             <div className="no-print rounded-lg border border-orange-400/30 bg-orange-400/10 p-4 text-sm text-orange-400">
               <strong>{critical.length + high.length} critical/high finding{(critical.length + high.length) !== 1 ? "s" : ""} found.</strong>{" "}
               Hebrides Cyber can open remediation PRs directly in your repository — contact us or{" "}
-              <Link href="/services" className="underline hover:text-white">see how it works</Link>.
+              <Link href="/services" className="underline hover:text-cybertext">see how it works</Link>.
             </div>
           )}
 
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
-            <p className="font-mono text-xs text-white/40 uppercase tracking-wide mb-3">// embed your score badge</p>
+            <p className="font-mono text-xs text-cybertext/40 uppercase tracking-wide mb-3">// embed your score badge</p>
             <code className="block break-all rounded border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
               {`<img src="https://hebridescyber.com/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}
             </code>

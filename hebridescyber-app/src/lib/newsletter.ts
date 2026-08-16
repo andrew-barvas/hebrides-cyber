@@ -1,7 +1,7 @@
 // Builds the weekly cybersecurity newsletter/blog post. Grounded in real
 // product data (aggregate finding counts across the past week's scans)
 // rather than generic AI filler — the same finding-severity vocabulary
-// used throughout src/lib/scanners.ts drives both the stats and, if Azure
+// used throughout src/lib/scanners/ drives both the stats and, if Azure
 // OpenAI is configured, the prompt for a narrative write-up around them.
 //
 // Falls back to a deterministic templated post (still built from the real

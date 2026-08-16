@@ -51,24 +51,24 @@ export default function ScansPage() {
   }
 
   return (
-    <div className="bg-cyberbg min-h-screen text-white">
+    <div className="bg-cyberbg min-h-screen text-cybertext">
       <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
       <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./scans --all</p>
-            <h1 className="text-2xl font-bold text-white sm:text-3xl">All Scans</h1>
+            <h1 className="text-2xl font-bold text-cybertext sm:text-3xl">All Scans</h1>
           </div>
           <Link
             href="/dashboard"
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-white/70 hover:border-neon hover:text-neon transition-colors"
+            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
           >
             ← Dashboard
           </Link>
         </div>
 
         {loading ? (
-          <p className="text-sm text-white/30 font-mono">// loading…</p>
+          <p className="text-sm text-cybertext/30 font-mono">// loading…</p>
         ) : (
           <>
             <ScanList scans={scans} />
@@ -77,7 +77,7 @@ export default function ScansPage() {
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="rounded-md border border-cyberborder px-6 py-2.5 text-sm text-white/60 hover:border-neon hover:text-neon disabled:opacity-40 transition-colors"
+                  className="rounded-md border border-cyberborder px-6 py-2.5 text-sm text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-40 transition-colors"
                 >
                   {loadingMore ? "Loading…" : "Load more"}
                 </button>
