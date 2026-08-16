@@ -11,15 +11,27 @@ Every "already built" claim below was verified against the tree.
 > identity + scan diffing (in a leaner form than originally sketched here: no
 > new `findings` table, findings are diffed directly from the existing
 > `scan_results` jsonb — see the correction on item 2), the REST API + API
-> keys, and webhooks on scan completion. The queue (item 4) turned out to be a
-> different problem than described: `src/worker/` already has a complete
-> BullMQ-based queue + worker with real nmap/nuclei/sqlmap/ZAP-active-scan
-> integrations — it was built and never connected (`enqueueScan()` has zero
-> callers, no `REDIS_URL` configured, no deployment target). "Add a queue" is
-> now a build-vs-wire-up decision, not a green-field build. `scheduled-scans.yml`
-> (item 5) does exist — it's at the repo root's `.github/workflows/`, one
-> level up from this app directory, which is why it read as "missing" in an
-> earlier pass that checked from the wrong directory.
+> keys, and webhooks on scan completion. Shareable report links (P1 item 8)
+> are also built. The queue (item 4) turned out to be a different problem
+> than described: `src/worker/` already has a complete BullMQ-based queue +
+> worker with real nmap/nuclei/sqlmap/ZAP-active-scan integrations — it was
+> built and never connected (`enqueueScan()` has zero callers, no `REDIS_URL`
+> configured, no deployment target). `scheduled-scans.yml` (item 5) does
+> exist — it's at the repo root's `.github/workflows/`, one level up from
+> this app directory, which is why it read as "missing" in an earlier pass
+> that checked from the wrong directory.
+>
+> **Hosting constraint (confirmed with the site owner, 16 Aug): this app runs
+> on Azure's free tier — Static Web Apps + Consumption-plan Functions — with
+> no Redis and no container host.** This rules out wiring up the orphaned
+> BullMQ worker without a separate decision to take on that cost. It also
+> rules out the nmap/nuclei/sqlmap/ZAP tool suite on the *current*
+> architecture regardless of the queue question — those need a long-lived
+> container with installed binaries, which Consumption Functions and Static
+> Web Apps cannot provide at all (no shell access, no custom image, 5–10 min
+> execution cap). Don't propose wiring up `src/worker/` or the extended tool
+> suite as a "just build it" item — it requires new paid infrastructure and
+> needs the site owner's explicit go-ahead first.
 
 ---
 
@@ -51,13 +63,13 @@ about half of Part 1 of the brief is already shipped.
 | Public REST API + API keys | `src/pages/api/v1/*`, `src/pages/api/keys.ts`, `src/lib/apiAuth.ts` |
 | Finding identity + scan-to-scan diff | `Finding.checkId` in `src/lib/scanners/index.ts`, `src/lib/findingsDiff.ts` |
 | Webhooks on scan completion | `src/lib/webhooks.ts`, `src/pages/api/webhooks.ts` |
+| Shareable report links | `src/pages/api/reports/[token].ts`, `src/app/share/[token]/page.tsx`, migration `006_report_shares.sql` |
 
 ### Genuinely missing
 
 - **Teams / roles** — `users` is flat, one owner per scan.
 - **Trend graphs** — per-scan New/Fixed diffing exists (see above); there's no
   chart of score-over-time yet.
-- **Shareable report links** — reports are owner-only, no public token.
 - **CVE references on findings** — only Shodan CVEs, nothing mapped per-check.
 - **CI/CD integration** — the API supports it (see `docs/API.md`'s CI/CD
   section for a working example), but there's no packaged GitHub Action a
@@ -114,7 +126,12 @@ makes the product developer-facing.
 7. GitHub Action + CI examples. `docs/API.md` has a working curl/jq example a
    customer can paste into a workflow today — a packaged `uses:`-able Action
    (a separate repo, per the sketch below) is what's left.
-8. Shareable report links.
+8. ~~Shareable report links.~~ **Done** — `src/pages/api/reports/[token].ts`
+   (public, no auth — token is the credential, same trust model as the
+   existing badge route), `src/pages/api/scans/[id]/shares.ts` (session-only
+   management), `src/app/share/[token]/page.tsx`, migration
+   `006_report_shares.sql`. No public RLS policy on `report_shares` — see the
+   migration comment for why that would leak every customer's tokens.
 9. Teams and roles.
 10. CVE references per finding.
 11. Trend graphs.
@@ -250,7 +267,7 @@ import { createHash } from "node:crypto";
  */
 export function fingerprintFinding(checkId: string, target: string, key = ""): string {
   return createHash("sha256")
-    .update(`${checkId} ${target} ${key}`)
+    .update(`${checkId} ${target} ${key}`)
     .digest("hex")
     .slice(0, 32);
 }
