@@ -26,6 +26,8 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } from "../../lib/scanners";
 import { hostnameFromUrl, validateNoSsrf } from "../../lib/ownership";
 import { checkRateLimit } from "../../lib/rateLimit";
+import { buildScanReport, findPreviousFindings } from "../../lib/scanReport";
+import { dispatchScanCompletedWebhooks } from "../../lib/webhooks";
 
 // TODO: replace with the Azure Functions v4 programming model types
 // (`@azure/functions`) once this is wired into a real Functions project.
@@ -220,7 +222,21 @@ export default async function runScan(req: HttpRequest): Promise<HttpResponseIni
     return { status: 500, jsonBody: { error: resultsError.message } };
   }
 
+  const completedAt = new Date().toISOString();
   await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
+
+  // This is the real production scan-trigger path (the dashboard's "Run
+  // scan" button), so it's the one that matters most for webhook delivery —
+  // unlike src/pages/api/v1/scans.ts, a slow/dead customer endpoint here
+  // can't fail an API response since nothing is waiting on this HTTP call in
+  // the same way a CI job would be.
+  const previous = await findPreviousFindings(supabaseAdmin, scan.owner, scanId, scan.target_url, completedAt);
+  const report = buildScanReport(
+    { id: scanId, owner: scan.owner, target_url: scan.target_url, status: "completed", created_at: completedAt },
+    { results: { findings }, summary, score, created_at: completedAt },
+    previous
+  );
+  await dispatchScanCompletedWebhooks(supabaseAdmin, scan.owner, report);
 
   return { status: 200, jsonBody: { ok: true, scanId, status: "completed", score, summary } };
 }

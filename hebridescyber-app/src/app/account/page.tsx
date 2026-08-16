@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import ApiKeys from "@/components/ApiKeys";
+import Webhooks from "@/components/Webhooks";
 import TwoFactor from "@/components/TwoFactor";
 
 type Plan = "none" | "basic" | "pro" | "agency";
@@ -153,6 +154,9 @@ export default function AccountPage() {
 
         {/* API keys */}
         {token && <ApiKeys token={token} />}
+
+        {/* Webhooks */}
+        {token && <Webhooks token={token} />}
 
         {/* Security */}
         <TwoFactor />

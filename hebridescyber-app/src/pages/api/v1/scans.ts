@@ -10,6 +10,8 @@ import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } 
 import { validateNoSsrf, hostnameFromUrl } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { buildScanReport, findPreviousFindings } from "@/lib/scanReport";
+import { dispatchScanCompletedWebhooks } from "@/lib/webhooks";
 
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
@@ -109,6 +111,7 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     const { findings } = summariseResults(results);
     const score = scoreFromFindings(findings);
     const summary = await generateAiSummary(results, findings);
+    const completedAt = new Date().toISOString();
 
     const { error: insertErr } = await supabaseAdmin
       .from("scan_results")
@@ -118,26 +121,21 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
 
     await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scan.id);
 
-    const counts = findings.reduce<Record<string, number>>((acc, f) => {
-      acc[f.severity] = (acc[f.severity] ?? 0) + 1;
-      return acc;
-    }, {});
+    const previous = await findPreviousFindings(supabaseAdmin, ownerId, scan.id, targetUrl, completedAt);
+    const report = buildScanReport(
+      { id: scan.id, owner: ownerId, target_url: targetUrl, status: "completed", created_at: completedAt },
+      { results: { findings }, summary, score, created_at: completedAt },
+      previous
+    );
 
-    return res.status(201).json({
-      scan_id: scan.id,
-      target_url: targetUrl,
-      status: "completed",
-      score,
-      summary,
-      counts,
-      findings: findings.map((f) => ({
-        check_id: f.checkId ?? null,
-        severity: f.severity,
-        title: f.title,
-        detail: f.detail,
-        remediation: f.remediation ?? null,
-      })),
-    });
+    // Awaited (not fire-and-forget): a serverless function can be torn down
+    // the moment the response is sent, which would silently kill an
+    // un-awaited delivery mid-flight. dispatchScanCompletedWebhooks never
+    // throws, so this can't turn a successful scan into a failed response —
+    // worst case it adds a few seconds for a slow/dead customer endpoint.
+    await dispatchScanCompletedWebhooks(supabaseAdmin, ownerId, report);
+
+    return res.status(201).json(report);
   } catch (err) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scan.id);
     return res.status(500).json({ error: `Scan failed: ${(err as Error).message}`, scan_id: scan.id });

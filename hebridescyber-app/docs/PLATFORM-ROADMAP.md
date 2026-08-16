@@ -7,6 +7,20 @@ faster than any of them.
 Written against the codebase as it actually stands, not a greenfield design.
 Every "already built" claim below was verified against the tree.
 
+> **Status update (16 Aug):** P0 items 2, 3, and 6 below are now built — finding
+> identity + scan diffing (in a leaner form than originally sketched here: no
+> new `findings` table, findings are diffed directly from the existing
+> `scan_results` jsonb — see the correction on item 2), the REST API + API
+> keys, and webhooks on scan completion. The queue (item 4) turned out to be a
+> different problem than described: `src/worker/` already has a complete
+> BullMQ-based queue + worker with real nmap/nuclei/sqlmap/ZAP-active-scan
+> integrations — it was built and never connected (`enqueueScan()` has zero
+> callers, no `REDIS_URL` configured, no deployment target). "Add a queue" is
+> now a build-vs-wire-up decision, not a green-field build. `scheduled-scans.yml`
+> (item 5) does exist — it's at the repo root's `.github/workflows/`, one
+> level up from this app directory, which is why it read as "missing" in an
+> earlier pass that checked from the wrong directory.
+
 ---
 
 ## 0. Where we actually are
@@ -34,23 +48,29 @@ about half of Part 1 of the brief is already shipped.
 | Ownership verification (DNS + file) | `src/lib/ownership.ts` |
 | Admin panel | `src/app/admin` |
 | Remediation PRs | `src/functions/generate-fix-pr` |
+| Public REST API + API keys | `src/pages/api/v1/*`, `src/pages/api/keys.ts`, `src/lib/apiAuth.ts` |
+| Finding identity + scan-to-scan diff | `Finding.checkId` in `src/lib/scanners/index.ts`, `src/lib/findingsDiff.ts` |
+| Webhooks on scan completion | `src/lib/webhooks.ts`, `src/pages/api/webhooks.ts` |
 
 ### Genuinely missing
 
-- **Public REST API + API keys** — nothing exists. This is the single biggest
-  gap for a "developer-friendly" positioning.
-- **Webhooks** on scan completion (Slack notify exists; generic webhooks don't).
 - **Teams / roles** — `users` is flat, one owner per scan.
-- **Historical comparison & trend graphs** — every scan is an island; no diffing.
+- **Trend graphs** — per-scan New/Fixed diffing exists (see above); there's no
+  chart of score-over-time yet.
 - **Shareable report links** — reports are owner-only, no public token.
 - **CVE references on findings** — only Shodan CVEs, nothing mapped per-check.
-- **CI/CD integration** — no GitHub Action, no example pipelines.
-- **Scheduled scans** — `CLAUDE.md` documents `.github/workflows/scheduled-scans.yml`,
-  **but that file does not exist**. `monitored_targets` is populated with nothing
-  consuming it. This is a documentation/reality mismatch to fix early.
+- **CI/CD integration** — the API supports it (see `docs/API.md`'s CI/CD
+  section for a working example), but there's no packaged GitHub Action a
+  customer can just `uses:` — they'd copy the curl/jq example today.
+- **A live job queue** — `src/worker/` already contains a complete one
+  (BullMQ + Redis + real nmap/nuclei/sqlmap/ZAP integrations), it's just not
+  connected to anything (see the status note above). Needs a decision — wire
+  it up (new infra: Redis + a long-lived container host) or build the
+  simpler Postgres `SKIP LOCKED` design from §4 below instead (no new infra,
+  but doesn't inherit the extended tool suite already sitting in
+  `src/worker/tools/`).
 - **Cloud misconfig** (S3 / Azure blob), **directory enumeration**, **CMS beyond
   WordPress** (Joomla, Drupal), **malware / dark-web checks**.
-- **Queueing** — `run-scan` executes inline; a slow target blocks the request.
 
 ---
 
@@ -67,19 +87,33 @@ makes the product developer-facing.
 1. **Close the false-positive class properly.** Done for exposure (catch-all
    baseline + body masking). Apply the same treatment to directory enumeration
    *before* shipping it — it has identical failure modes.
-2. **Scan history + diffing.** Cheapest high-value feature; the data is already
-   in `scan_results`.
-3. **REST API + API keys.** Unlocks CI/CD, the GitHub Action, and the whole
-   developer story.
-4. **Job queue.** Required before scans get heavier; also fixes the inline
-   timeout risk.
-5. **Create the missing `scheduled-scans.yml`** so `monitored_targets` does
-   something.
+2. ~~**Scan history + diffing.**~~ **Done**, leaner than sketched below —
+   findings carry a `checkId` (`src/lib/scanners/index.ts`), and
+   `src/lib/findingsDiff.ts` diffs two scans' findings directly from the
+   existing `scan_results.results.findings` jsonb. No new `findings` table
+   was needed for this; §2's relational schema is only worth building once
+   something needs a cross-scan/cross-customer *query* over findings (trend
+   graphs, CVE search) rather than a two-scan comparison.
+3. ~~**REST API + API keys.**~~ **Done** — `src/pages/api/v1/scans*.ts`,
+   `src/lib/apiAuth.ts`, `src/lib/apiKeys.ts`, migration `004_api_keys.sql`.
+4. **Job queue.** Still open — see the status note above: this is now a
+   wire-up-vs-rebuild decision, not new work from scratch.
+5. ~~**Create the missing `scheduled-scans.yml`**~~ — it already existed, at
+   the repo root, not missing. It had a real bug though (Node 20 CI runner
+   lacking a native WebSocket global, which `@supabase/supabase-js` needs even
+   for non-realtime calls) — fixed.
 
 ### P1 — Platform features
 
-6. Webhooks on completion.
-7. GitHub Action + CI examples.
+6. ~~Webhooks on completion.~~ **Done** — `src/lib/webhooks.ts`,
+   `src/pages/api/webhooks.ts`, `src/components/Webhooks.tsx`. Fires from all
+   three scan-completion points (the real Azure Function path, `/api/v1/scans`,
+   and the orphaned worker for parity). No queue existed to build proper
+   backoff-and-retry on, so delivery is inline: one attempt, one retry after
+   ~2s, then recorded as failed; auto-disabled after 20 consecutive failures.
+7. GitHub Action + CI examples. `docs/API.md` has a working curl/jq example a
+   customer can paste into a workflow today — a packaged `uses:`-able Action
+   (a separate repo, per the sketch below) is what's left.
 8. Shareable report links.
 9. Teams and roles.
 10. CVE references per finding.

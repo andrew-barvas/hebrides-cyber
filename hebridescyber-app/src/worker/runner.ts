@@ -12,6 +12,8 @@ import { runSqlmap } from "./tools/sqlmap";
 import { runNmap } from "./tools/nmap";
 import { sendSlackAlert } from "../lib/slack";
 import type { ScanJobData, ScanJobResult } from "../lib/queue";
+import { buildScanReport, findPreviousFindings } from "../lib/scanReport";
+import { dispatchScanCompletedWebhooks } from "../lib/webhooks";
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL ?? "",
@@ -102,6 +104,7 @@ export async function processScanJob(
     score,
   });
 
+  const completedAt = new Date().toISOString();
   await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
   await job.updateProgress(100);
 
@@ -132,6 +135,18 @@ export async function processScanJob(
         dashboardUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com",
       }).catch((err) => console.error("[runner] slack alert failed:", err.message));
     }
+
+    // This worker isn't wired to anything today (nothing calls enqueueScan()
+    // yet — see docs/PLATFORM-ROADMAP.md), but dispatching here too costs
+    // nothing and means webhooks work immediately if/when it is connected,
+    // rather than needing a second change to add them.
+    const previous = await findPreviousFindings(supabaseAdmin, scan.owner, scanId, targetUrl, completedAt);
+    const report = buildScanReport(
+      { id: scanId, owner: scan.owner, target_url: targetUrl, status: "completed", created_at: completedAt },
+      { results: { findings: allFindings }, summary, score, created_at: completedAt },
+      previous
+    );
+    await dispatchScanCompletedWebhooks(supabaseAdmin, scan.owner, report);
   }
 
   return { score, summary, findingsCount: allFindings.length };
