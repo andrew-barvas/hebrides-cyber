@@ -68,6 +68,13 @@ about half of Part 1 of the brief is already shipped.
 | Packaged GitHub Action | `action/` at the repo root — `uses: andrew-barvas/hebrides-cyber/action@master` |
 | Teams (view-only sharing) | migration `007_teams.sql`, `src/pages/api/team.ts`, `src/pages/api/team/members.ts`, `src/components/TeamSection.tsx` |
 | Score trend chart | `src/components/ScoreTrend.tsx` on the scan report page |
+| Directory listing (autoindex) detection | `src/lib/scanners/directoryListing.ts`, reuses `src/lib/scanners/httpProbe.ts`'s baseline/masking |
+| Cloud storage misconfig (S3 / Azure Blob / GCS public listing) | `src/lib/scanners/cloudMisconfig.ts` — tests only buckets the target's own page source references |
+| Joomla / Drupal deep scan | `checkJoomla` / `checkDrupal` in `src/lib/scanners/webapp.ts`, gated on `fingerprint.ts` detection |
+| "What we check" technical page | `src/app/what-we-check/page.tsx`, linked from nav + services page |
+| Continuous monitoring change alerts (Slack) | `sendSlackAlert` wired into `src/functions/run-scan/index.ts`, gated on Pro/Agency plan + `new_finding_count > 0` — was built but never called from the live path before |
+| AI-tailored remediation (on-demand, per-finding) | `src/lib/aiRemediation.ts`, `src/pages/api/scans/[id]/ai-fix.ts`, "✨ Get an AI-tailored fix" button in `ScanReportView.tsx` — reuses the same Azure OpenAI wiring as `generateAiSummary`, no new env vars |
+| Job queue (free-tier) | `sql/migrations/008_scan_jobs.sql` (`claim_scan_job()` SKIP LOCKED RPC), `src/scripts/enqueue-scheduled-scans.ts`, `src/scripts/run-queued-scan-jobs.ts` — GitHub Actions shards as ephemeral workers, Postgres as the queue, no Redis/long-lived container. Scopes only the scheduled-monitoring path today; the dashboard's synchronous "Run scan" button still calls `run-scan` directly (see §4) |
 
 ### Genuinely missing
 
@@ -77,15 +84,14 @@ about half of Part 1 of the brief is already shipped.
   don't map cleanly to any single OSV ecosystem the way npm packages do, so
   extending this further needs a different data source per software type, not
   just widening the existing OSV call.
-- **A live job queue** — `src/worker/` already contains a complete one
-  (BullMQ + Redis + real nmap/nuclei/sqlmap/ZAP integrations), it's just not
-  connected to anything (see the status note above). Needs a decision — wire
-  it up (new infra: Redis + a long-lived container host) or build the
-  simpler Postgres `SKIP LOCKED` design from §4 below instead (no new infra,
-  but doesn't inherit the extended tool suite already sitting in
-  `src/worker/tools/`).
-- **Cloud misconfig** (S3 / Azure blob), **directory enumeration**, **CMS beyond
-  WordPress** (Joomla, Drupal), **malware / dark-web checks**.
+- **Malware / dark-web checks** (buy-not-build — see §7).
+
+The `src/worker/` BullMQ+Redis worker is now genuinely dead code, not a
+"needs a decision" item — the Postgres `SKIP LOCKED` design got built instead
+(§4), so nothing will ever enqueue to `src/worker/`'s queue. It's the one
+remaining place `nmap`/`nuclei`/`sqlmap`/real `ZAP` integrations exist, so
+it's kept around as a reference for wiring those into the GitHub Actions
+worker rather than deleted outright — see §4.
 
 ---
 
@@ -99,9 +105,10 @@ Rationale: an API on top of a scanner that reports phantom findings just
 distributes the phantoms faster. Correctness first, then the API surface that
 makes the product developer-facing.
 
-1. **Close the false-positive class properly.** Done for exposure (catch-all
-   baseline + body masking). Apply the same treatment to directory enumeration
-   *before* shipping it — it has identical failure modes.
+1. ~~**Close the false-positive class properly.**~~ **Done** — catch-all
+   baseline + body masking, now shared via `src/lib/scanners/httpProbe.ts`
+   between exposure and directory listing detection (identical failure modes,
+   same fix).
 2. ~~**Scan history + diffing.**~~ **Done**, leaner than sketched below —
    findings carry a `checkId` (`src/lib/scanners/index.ts`), and
    `src/lib/findingsDiff.ts` diffs two scans' findings directly from the
@@ -111,8 +118,8 @@ makes the product developer-facing.
    graphs, CVE search) rather than a two-scan comparison.
 3. ~~**REST API + API keys.**~~ **Done** — `src/pages/api/v1/scans*.ts`,
    `src/lib/apiAuth.ts`, `src/lib/apiKeys.ts`, migration `004_api_keys.sql`.
-4. **Job queue.** Still open — see the status note above: this is now a
-   wire-up-vs-rebuild decision, not new work from scratch.
+4. ~~**Job queue.**~~ **Done** — see §4. Postgres `SKIP LOCKED` +
+   GitHub Actions worker shards, not the BullMQ/Redis path.
 5. ~~**Create the missing `scheduled-scans.yml`**~~ — it already existed, at
    the repo root, not missing. It had a real bug though (Node 20 CI runner
    lacking a native WebSocket global, which `@supabase/supabase-js` needs even
@@ -169,10 +176,23 @@ makes the product developer-facing.
 
 ### P2 — Depth and premium
 
-12. Directory enumeration, cloud misconfig, Joomla/Drupal.
-13. Continuous monitoring with change alerts.
-14. AI remediation (extend existing Azure OpenAI wiring).
-15. Malware / dark-web (both are buy-not-build — see §7).
+12. ~~Directory enumeration, cloud misconfig, Joomla/Drupal.~~ **Done** —
+    `src/lib/scanners/directoryListing.ts`, `src/lib/scanners/cloudMisconfig.ts`,
+    `checkJoomla`/`checkDrupal` in `src/lib/scanners/webapp.ts`.
+13. ~~Continuous monitoring with change alerts.~~ **Done** — scheduled scanning
+    already existed (`.github/workflows/scheduled-scans.yml`); what was
+    missing was the alert. `sendSlackAlert` existed too, but was only ever
+    called from the disconnected `src/worker/runner.ts` — wired into the live
+    `run-scan` path instead, gated on Pro/Agency plan and on
+    `new_finding_count > 0` so nightly runs with nothing new don't spam the
+    channel.
+14. ~~AI remediation.~~ **Done** — `src/lib/aiRemediation.ts`. On-demand
+    per-finding, not automatic per scan (cost/latency) — a button on the scan
+    report calls `POST /api/scans/{id}/ai-fix`, which sends the finding plus
+    the detected tech stack (`fingerprint.ts`) to Azure OpenAI for a
+    stack-specific fix, distinct from the static `remediationText.ts` content
+    and from `generate-fix-pr`'s templated PRs.
+15. Malware / dark-web (buy-not-build — see §7).
 
 ---
 
@@ -444,60 +464,56 @@ CI runners share IPs:
 
 ---
 
-## 4. Queue and async pipeline
+## 4. Queue and async pipeline — done, scoped to scheduled scans
 
-`run-scan` currently runs every check inline. Directory enumeration and active
-scanning will blow past HTTP timeouts, so the queue is a prerequisite for P2,
-not an optimisation.
+Postgres-as-queue, worked by ephemeral GitHub Actions runners instead of a
+long-lived container or Redis — the free-tier-compatible option this section
+used to just sketch. Built:
 
-Postgres-as-queue is the right call at this scale — no new infrastructure, and
-`FOR UPDATE SKIP LOCKED` gives safe concurrent claiming:
+- `sql/migrations/008_scan_jobs.sql` — `scan_jobs` table plus a
+  `claim_scan_job(worker_id)` RPC that does the atomic
+  `SELECT ... FOR UPDATE SKIP LOCKED` + claim in one plpgsql function, since
+  PostgREST can't express locking clauses through the normal query builder.
+- `src/scripts/enqueue-scheduled-scans.ts` — inserts one `scan_jobs` row per
+  monitored target with an active subscription *and* a real, on-file domain
+  verification (skips unverified targets rather than relying on `run-scan`'s
+  own gate to reject them later, since the worker now runs scans directly
+  rather than calling that Function).
+- `src/scripts/run-queued-scan-jobs.ts` — the worker. Loops
+  `claim_scan_job()` until the queue is empty or its own bounded budget
+  (`MAX_JOBS_PER_RUN`, `TIME_BUDGET_MS`) runs out; re-checks SSRF and domain
+  verification per job (defense in depth — a job can sit queued for a
+  while); runs each one via `src/lib/scanExecution.ts`'s `executeScan()`.
+- `src/lib/scanExecution.ts` — extracted from `run-scan`'s step-2 body so
+  both the synchronous dashboard path and the queued path share one
+  implementation of "run the checks, write results, fire webhooks/Slack
+  alert" rather than two that can drift. Split into two phases internally:
+  a try/catch that can mark the scan `failed` (the checks + persisting
+  results), and a separate try/catch for post-completion notifications
+  (webhook dispatch, Slack alert) that logs but never flips an
+  already-`completed` scan back to `failed` if, say, the findings-diff
+  lookup hits a transient network error.
+- `.github/workflows/scheduled-scans.yml` — `enqueue` job then a fixed
+  3-shard `work` matrix, each shard running the worker script. Scales by
+  adding shards, not by widening a per-target matrix the way the old
+  curl-based version did.
 
-```sql
--- Claim one job atomically. SKIP LOCKED lets N workers poll the same table
--- without blocking each other or double-claiming.
-update public.scan_jobs
-set status = 'running', locked_by = $1, locked_at = now(), attempts = attempts + 1
-where id = (
-  select id from public.scan_jobs
-  where status = 'queued'
-  order by priority desc, created_at
-  for update skip locked
-  limit 1
-)
-returning *;
-```
+**Scope**: this only replaces the *scheduled monitoring* path. The
+dashboard's synchronous "Run scan" button still calls `run-scan` directly —
+every check that exists today already runs fine within the Function's
+timeout that way, so there was no forcing reason to change that UX (instant →
+"queued, check back") as part of this. Revisit once either (a) real
+active-scanning tools (`src/worker/tools/`'s nmap/nuclei/sqlmap/ZAP) get
+wired in — those need a real OS process and a runtime long enough that even
+the synchronous path would want to hand off to the queue — or (b) scan volume
+on the interactive path itself becomes a problem, neither of which is true
+yet.
 
-Worker loop (extends the existing `src/worker/runner.ts`):
-
-```ts
-async function processOne(workerId: string): Promise<boolean> {
-  const job = await claimJob(workerId);
-  if (!job) return false;
-
-  try {
-    const results = await runAllChecks(job.target_url);
-    const { findings } = summariseResults(results);
-    const score = scoreFromFindings(findings);
-    const summary = await generateAiSummary(results, findings);
-
-    await persistResults(job.scan_id, results, findings, score, summary);
-    await markDone(job.id);
-    await dispatchWebhooks(job.scan_id, "scan.completed");
-  } catch (err) {
-    // Retry with backoff; give up after max_attempts and surface the error.
-    const fatal = job.attempts >= job.max_attempts;
-    await markFailed(job.id, (err as Error).message, fatal);
-    if (fatal) await dispatchWebhooks(job.scan_id, "scan.failed");
-  }
-  return true;
-}
-```
-
-Per-check isolation matters as much as job-level retry. `runAllChecks` already
-uses `Promise.all`, which fails the whole batch if one check throws. Move to
-`Promise.allSettled` and record per-check status so one dead third-party API
-(Shodan, crt.sh) cannot void an entire scan.
+Per-check isolation is still worth doing separately: `runAllChecks` uses
+`Promise.all`, which fails the whole batch if one check throws. Moving to
+`Promise.allSettled` with per-check status recorded would stop one dead
+third-party API (Shodan, crt.sh) from voiding an entire scan — orthogonal to
+the queue, not solved by it.
 
 ---
 
@@ -611,66 +627,56 @@ first run red-lights every existing pipeline and teams disable the check that
 day. Gate on `status === "new"` from the diff — which is why finding
 fingerprints are P0.
 
-### The missing scheduled-scans workflow
+### Scheduled scans — done, now queue-backed
 
-`.github/workflows/scheduled-scans.yml` — referenced in `CLAUDE.md` but absent:
-
-```yaml
-name: Scheduled Scans
-on:
-  schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npx tsx src/scripts/fetch-scheduled-targets.ts
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          AZURE_FUNCTIONS_URL: ${{ secrets.AZURE_FUNCTIONS_URL }}
-          GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_ACTIONS_TOKEN }}
-```
-
-Once the queue lands this becomes "enqueue jobs", not "run scans", and stops
-being bounded by Action runtime limits.
+`.github/workflows/scheduled-scans.yml` exists and now enqueues rather than
+running scans directly — see §4 for the full design
+(`enqueue-scheduled-scans.ts` / `run-queued-scan-jobs.ts` /
+`scan_jobs`/`claim_scan_job()`). No longer bounded by a single Action's
+runtime the way the earlier curl-per-target version was, since a backlog
+just rolls over to the next scheduled run instead of one job trying to get
+through every target before it times out.
 
 ---
 
 ## 7. Additional scanners
 
-### Directory enumeration — build with care
+### Directory listing (autoindex) detection — done
 
-Highest false-positive risk in the whole product. Reuse the exposure module's
-baseline machinery rather than writing a second, weaker version:
+`src/lib/scanners/directoryListing.ts`. Highest false-positive risk in the
+whole product, so it reuses the exposure module's baseline machinery rather
+than a second, weaker version — extracted into `src/lib/scanners/httpProbe.ts`
+so both checks share one proven implementation:
 
-- Establish a known-404 body baseline first (`fetchBaseline`).
-- Mask the probed path before comparing (`normaliseBody`).
-- Cap concurrency (≤10) and respect `Retry-After`.
-- Skip the check entirely if the origin 200s for random paths *and* bodies are
-  non-deterministic — better to report "inconclusive" than to guess.
+- Known-404 body baseline first (`fetchBaseline`), path masked before
+  comparing (`normaliseBody`), catch-all bodies rejected (`isCatchAllBody`).
+- Scoped narrowly to genuine autoindex pages — requires both an
+  `Index of /...` title/heading *and* a "Parent Directory" link, not just any
+  200 on a common directory path. A page that merely 200s at `/uploads/`
+  (an upload form, say) is not flagged.
+- Probes a curated list of commonly-autoindexed paths (`/uploads/`,
+  `/backup/`, `/logs/`, etc.) rather than a brute-force wordlist.
 
-### Cloud misconfiguration
+### Cloud misconfiguration — done
 
-```ts
-// Detect bucket references in page source, then test each for public listing.
-const BUCKET_PATTERNS = [
-  /https?:\/\/([a-z0-9.-]+)\.s3[.-]([a-z0-9-]+)?\.?amazonaws\.com/gi,
-  /https?:\/\/s3[.-]([a-z0-9-]+)\.amazonaws\.com\/([a-z0-9.-]+)/gi,
-  /https?:\/\/([a-z0-9]+)\.blob\.core\.windows\.net\/([a-z0-9-]+)/gi,
-  /https?:\/\/storage\.googleapis\.com\/([a-z0-9._-]+)/gi,
-];
-```
+`src/lib/scanners/cloudMisconfig.ts`. Extracts S3/Azure Blob/GCS references
+from the target's own page source, then tests only those specific
+buckets/containers for public listing (a real `GET` against the bucket's list
+endpoint, checking for `<ListBucketResult>`/`<EnumerationResults>` in the
+response — not just a reachability probe). Deliberately never enumerates
+candidate bucket names — that would be scanning third-party infrastructure the
+customer doesn't own, out of scope for an authorised single-target scan.
+Candidate extraction is capped at 15 per scan to bound worst-case request
+volume against that third-party infrastructure.
 
-Only ever test for **public listing/read of buckets the target site itself
-references**. Do not enumerate candidate bucket names — that is scanning
-third-party infrastructure the customer does not own.
+### CMS beyond WordPress — done
+
+`checkJoomla`/`checkDrupal` in `src/lib/scanners/webapp.ts`, gated the same
+way `checkWordPress` already was — only runs when `fingerprint.ts` detected
+the CMS. Joomla: version disclosure via the administrator manifest, installer
+leftover files (`htaccess.txt`/`web.config.txt`). Drupal: version disclosure
+via `CHANGELOG.txt`, `update.php` reachability, public JSON:API, and whether
+the uid 1 superuser profile is publicly viewable.
 
 ### CVE references
 

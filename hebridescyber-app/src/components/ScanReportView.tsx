@@ -11,6 +11,7 @@
 // jsonb, which the public share API (src/lib/scanReport.ts's ScanReport) never
 // includes — only score/summary/counts/findings. The public view is a reduced
 // view by design, not a 1:1 mirror of the owner's dashboard.
+import { useState } from "react";
 import type { DiffStatus } from "@/lib/findingsDiff";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -127,7 +128,78 @@ function renderInline(text: string) {
   });
 }
 
-export function FindingCard({ finding }: { finding: ViewFinding }) {
+/**
+ * On-demand "AI-tailored fix" — a separate, explicit fetch from the static
+ * remediation already rendered above it, since the static text is free
+ * (baked into src/lib/scanners/remediationText.ts) while this calls Azure
+ * OpenAI per click. Only rendered when the caller supplies scanId+token
+ * (the authenticated dashboard), never on the public share page — see
+ * src/pages/api/scans/[id]/ai-fix.ts, which requires the scan owner's
+ * credentials anyway, so this is belt-and-suspenders rather than the only
+ * guard.
+ */
+function AiTailoredFix({ scanId, token, checkId }: { scanId: string; token: string; checkId: string }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [guidance, setGuidance] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function request() {
+    setStatus("loading");
+    setError(null);
+    try {
+      const res = await fetch(`/api/scans/${scanId}/ai-fix`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ checkId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not generate AI-tailored fix");
+      setGuidance(body.guidance);
+      setStatus("done");
+    } catch (err) {
+      setError((err as Error).message);
+      setStatus("error");
+    }
+  }
+
+  if (status === "idle") {
+    return (
+      <button
+        onClick={request}
+        className="mt-3 text-xs font-semibold text-neon hover:text-neon/80 print:hidden"
+      >
+        ✨ Get an AI-tailored fix for your stack
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-l-2 border-neon/30 pl-3 print:hidden">
+      <p className="mb-2 text-xs font-semibold text-neon">✨ AI-tailored fix</p>
+      {status === "loading" && <p className="text-xs text-cybertext/40">Generating…</p>}
+      {status === "error" && (
+        <div>
+          <p className="text-xs text-red-400">{error}</p>
+          <button onClick={request} className="mt-1 text-xs font-medium text-neon hover:underline">
+            Try again
+          </button>
+        </div>
+      )}
+      {status === "done" && guidance && <RemediationBody markdown={guidance} />}
+    </div>
+  );
+}
+
+export function FindingCard({
+  finding,
+  scanId,
+  token,
+}: {
+  finding: ViewFinding;
+  /** Owner-only — omit on the public share page. Enables the AI-tailored-fix button. */
+  scanId?: string;
+  token?: string;
+}) {
   const meta = SEVERITY_META[finding.severity] ?? SEVERITY_META.info;
 
   // A resolved finding is good news — de-emphasised rather than alarming, so
@@ -183,6 +255,9 @@ export function FindingCard({ finding }: { finding: ViewFinding }) {
           <div className="mt-3 border-l-2 border-cyberborder pl-3 print:border-slate-300">
             <RemediationBody markdown={finding.remediation} />
           </div>
+          {scanId && token && finding.checkId && (
+            <AiTailoredFix scanId={scanId} token={token} checkId={finding.checkId} />
+          )}
         </details>
       )}
     </div>

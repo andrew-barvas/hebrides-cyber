@@ -403,7 +403,14 @@ export default function ScanDetailPage() {
               </div>
               {visibleFindings.length > 0 ? (
                 <div className="space-y-3">
-                  {visibleFindings.map((f, i) => <FindingCard key={f.checkId ?? i} finding={f} />)}
+                  {visibleFindings.map((f, i) => (
+                    <FindingCard
+                      key={f.checkId ?? i}
+                      finding={f}
+                      scanId={result.scan_id}
+                      token={sessionToken ?? undefined}
+                    />
+                  ))}
                 </div>
               ) : (
                 <p className="text-sm text-cybertext/40">

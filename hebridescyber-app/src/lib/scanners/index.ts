@@ -5,6 +5,8 @@ import { checkTls, type TlsResult } from "./tls";
 import { checkHeaders, type HeadersResult } from "./headers";
 import { checkDns, type DnsResult } from "./dns";
 import { checkExposure, type ExposureResult } from "./exposure";
+import { checkDirectoryListing, type DirectoryListingResult } from "./directoryListing";
+import { checkCloudMisconfig, type CloudMisconfigResult } from "./cloudMisconfig";
 import { checkFingerprint, type FingerprintResult } from "./fingerprint";
 import { checkOpenPorts, type PortsResult } from "./ports";
 import { checkPlaywrightPageLoad, type PlaywrightResult } from "./playwright";
@@ -14,7 +16,8 @@ import * as FIX from "./remediationText";
 
 export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
-  PortsResult, PlaywrightResult, ReconResult, WebAppResult,
+  PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
+  CloudMisconfigResult,
 };
 
 export type ScanResults = {
@@ -24,6 +27,8 @@ export type ScanResults = {
   headers: HeadersResult;
   dns: DnsResult;
   exposure: ExposureResult;
+  directoryListing: DirectoryListingResult;
+  cloudMisconfig: CloudMisconfigResult;
   fingerprint: FingerprintResult;
   ports: PortsResult;
   playwright: PlaywrightResult;
@@ -100,24 +105,30 @@ async function checkZap(targetUrl: string): Promise<ZapResult> {
  * and ZAP (async server-side) run after.
  */
 export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
-  const [tls, headers, dns, exposure, fingerprint, ports, recon] = await Promise.all([
-    checkTls(targetUrl),
-    checkHeaders(targetUrl),
-    checkDns(targetUrl),
-    checkExposure(targetUrl),
-    checkFingerprint(targetUrl),
-    checkOpenPorts(targetUrl),
-    checkRecon(targetUrl),
-  ]);
+  const [tls, headers, dns, exposure, directoryListing, cloudMisconfig, fingerprint, ports, recon] =
+    await Promise.all([
+      checkTls(targetUrl),
+      checkHeaders(targetUrl),
+      checkDns(targetUrl),
+      checkExposure(targetUrl),
+      checkDirectoryListing(targetUrl),
+      checkCloudMisconfig(targetUrl),
+      checkFingerprint(targetUrl),
+      checkOpenPorts(targetUrl),
+      checkRecon(targetUrl),
+    ]);
 
-  // WordPress deep scan only runs if fingerprint detected WordPress
-  const isWordPress =
-    fingerprint.status === "checked" &&
-    fingerprint.technologies.some((t) => t.name === "WordPress");
+  // CMS deep scans only run for the CMS fingerprint.ts actually detected.
+  const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
+  const cms = {
+    isWordPress: detectedTechs.some((t) => t.name === "WordPress"),
+    isJoomla: detectedTechs.some((t) => t.name === "Joomla"),
+    isDrupal: detectedTechs.some((t) => t.name === "Drupal"),
+  };
 
   const [playwright, webapp, zap] = await Promise.all([
     checkPlaywrightPageLoad(targetUrl),
-    checkWebApp(targetUrl, isWordPress),
+    checkWebApp(targetUrl, cms),
     checkZap(targetUrl),
   ]);
 
@@ -128,6 +139,8 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     headers,
     dns,
     exposure,
+    directoryListing,
+    cloudMisconfig,
     fingerprint,
     ports,
     playwright,
@@ -226,6 +239,40 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     }
   }
 
+  // --- Directory listing ------------------------------------------------------
+  if (results.directoryListing.status === "checked") {
+    for (const dir of results.directoryListing.listings) {
+      findings.push({
+        checkId: `directory-listing.open-directory:${dir.path}`,
+        severity: "medium",
+        title: `Directory listing enabled at ${dir.path}`,
+        detail:
+          dir.fileCount !== null
+            ? `Autoindex is on — approximately ${dir.fileCount} entr${dir.fileCount === 1 ? "y" : "ies"} browsable without authentication.`
+            : "Autoindex is on — the directory's contents are browsable without authentication.",
+        remediation: FIX.DIRECTORY_LISTING,
+      });
+    }
+  }
+
+  // --- Cloud misconfiguration -------------------------------------------------
+  if (results.cloudMisconfig.status === "checked") {
+    for (const bucket of results.cloudMisconfig.publicBuckets) {
+      const providerLabel =
+        bucket.provider === "s3" ? "S3 bucket" : bucket.provider === "azure-blob" ? "Azure Blob container" : "GCS bucket";
+      findings.push({
+        checkId: `cloud-misconfig.public-bucket:${bucket.provider}:${bucket.identifier}`,
+        severity: "high",
+        title: `Publicly listable ${providerLabel}: ${bucket.identifier}`,
+        detail:
+          bucket.objectCount !== null
+            ? `Anyone can list its contents — approximately ${bucket.objectCount} object(s) enumerable at ${bucket.url}.`
+            : `Anyone can list its contents at ${bucket.url}.`,
+        remediation: FIX.CLOUD_STORAGE_PUBLIC,
+      });
+    }
+  }
+
   // --- Fingerprint ----------------------------------------------------------
   if (results.fingerprint.status === "checked") {
     for (const risky of results.fingerprint.riskySoftware) {
@@ -284,7 +331,8 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- Web App (robots / methods / disclosure / WP / CORS / JS libs) --------
   if (results.webapp.status === "checked") {
-    const { robots, httpMethods, errorDisclosure, wordpress, corsReflected, jsLibraries } = results.webapp;
+    const { robots, httpMethods, errorDisclosure, wordpress, joomla, drupal, corsReflected, jsLibraries } =
+      results.webapp;
 
     // robots.txt interesting paths
     if (robots?.accessible && robots.interestingPaths.length > 0) {
@@ -364,6 +412,73 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           title: "WordPress wp-cron.php is accessible",
           detail: "wp-cron.php can be used for DoS via repeated HTTP calls. Consider disabling it and using a real cron job.",
           remediation: FIX.WP_CRON,
+        });
+      }
+    }
+
+    // Joomla findings
+    if (joomla) {
+      if (joomla.version) {
+        findings.push({
+          checkId: "webapp.joomla-version-disclosed",
+          severity: "low",
+          title: `Joomla version disclosed: ${joomla.version}`,
+          detail:
+            "The exact Joomla core version is readable from the administrator manifest, which lets an attacker pick a matching exploit.",
+          remediation: FIX.JOOMLA_VERSION_DISCLOSED,
+        });
+      }
+      if (joomla.installFilesPresent) {
+        findings.push({
+          checkId: "webapp.joomla-install-files",
+          severity: "low",
+          title: "Joomla installer leftover files present (htaccess.txt / web.config.txt)",
+          detail:
+            "These ship with Joomla core and should be renamed or removed after install — their presence usually means the install was never hardened.",
+          remediation: FIX.JOOMLA_INSTALL_FILES,
+        });
+      }
+    }
+
+    // Drupal findings
+    if (drupal) {
+      if (drupal.version) {
+        findings.push({
+          checkId: "webapp.drupal-version-disclosed",
+          severity: "low",
+          title: `Drupal version disclosed: ${drupal.version}`,
+          detail: "CHANGELOG.txt reveals the exact core version, which lets an attacker pick a matching exploit.",
+          remediation: FIX.DRUPAL_VERSION_DISCLOSED,
+        });
+      }
+      if (drupal.updatePhpAccessible) {
+        findings.push({
+          checkId: "webapp.drupal-update-php",
+          severity: "medium",
+          title: "Drupal update.php is publicly accessible",
+          detail:
+            "update.php should be restricted to trusted operators — it has historically been a vector for both information disclosure and denial-of-service.",
+          remediation: FIX.DRUPAL_UPDATE_PHP,
+        });
+      }
+      if (drupal.jsonApiExposed) {
+        findings.push({
+          checkId: "webapp.drupal-jsonapi-exposed",
+          severity: "info",
+          title: "Drupal JSON:API is publicly enabled",
+          detail:
+            "The default JSON:API endpoint responds without authentication. Confirm this is intentional and that no sensitive content types are exposed through it.",
+          remediation: FIX.DRUPAL_JSONAPI_EXPOSED,
+        });
+      }
+      if (drupal.uid1ProfileAccessible) {
+        findings.push({
+          checkId: "webapp.drupal-uid1-enumerable",
+          severity: "low",
+          title: "Drupal user profile /user/1 is publicly viewable",
+          detail:
+            "uid 1 is Drupal's built-in superuser account. A public profile page at this URL helps an attacker confirm the admin account exists ahead of a credential attack.",
+          remediation: FIX.DRUPAL_UID1_ENUMERABLE,
         });
       }
     }

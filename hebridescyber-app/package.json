@@ -12,8 +12,9 @@
     "lint": "eslint .",
     "test": "playwright test",
     "scan:local": "tsx src/scripts/scan-local.ts",
-    "fetch:scheduled-targets": "tsx src/scripts/fetch-scheduled-targets.ts",
-    "seed:users": "tsx src/scripts/seed-users.ts"
+    "seed:users": "tsx src/scripts/seed-users.ts",
+    "queue:enqueue-scheduled-scans": "tsx src/scripts/enqueue-scheduled-scans.ts",
+    "queue:run-worker": "tsx src/scripts/run-queued-scan-jobs.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",

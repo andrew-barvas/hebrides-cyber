@@ -7,6 +7,7 @@
 // function that drives this) and referenced by src/functions/run-scan.
 
 import { resolveTxt, resolve4, resolve6 } from "node:dns/promises";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ---- SSRF protection -------------------------------------------------------
 // Resolves the target hostname and blocks private/loopback ranges before any
@@ -98,6 +99,37 @@ export const WELL_KNOWN_PATH = "/.well-known/hebridescyber-verify.txt";
 /** Extracts a bare hostname from a URL string, e.g. "https://x.com/a" -> "x.com". */
 export function hostnameFromUrl(targetUrl: string): string {
   return new URL(targetUrl).hostname;
+}
+
+/**
+ * Whether `ownerId` has a completed, real (DNS/file) verification on file for
+ * `targetUrl`'s hostname — the persisted `verifications.verified_at` flag,
+ * not a fresh live re-check. Shared by run-scan's isOwnershipVerified (which
+ * also has a dev-only proof-token fallback this doesn't need) and the
+ * scheduled-scan queue's enqueue/worker scripts, which have no interactive
+ * token exchange to fall back to and must only ever enqueue/run scans against
+ * a domain the owner has actually proven they control.
+ */
+export async function isDomainVerified(
+  supabaseAdmin: SupabaseClient,
+  ownerId: string,
+  targetUrl: string
+): Promise<boolean> {
+  let domain: string;
+  try {
+    domain = hostnameFromUrl(targetUrl);
+  } catch {
+    return false;
+  }
+
+  const { data } = await supabaseAdmin
+    .from("verifications")
+    .select("verified_at")
+    .eq("owner", ownerId)
+    .eq("domain", domain)
+    .maybeSingle();
+
+  return Boolean(data?.verified_at);
 }
 
 /**

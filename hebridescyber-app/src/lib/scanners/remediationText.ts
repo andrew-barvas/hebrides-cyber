@@ -324,6 +324,29 @@ requests to the path.
 **3. Prevent recurrence.** Add the path to \`.gitignore\` and your deploy
 ignore-file, and re-scan to confirm it now returns 404.`;
 
+export const DIRECTORY_LISTING = `Turn off autoindexing so this directory's contents can't be browsed without
+knowing individual file names — any file inside is currently listed and
+one click away, including ones never meant to be linked from the site.
+
+**nginx:**
+\`\`\`nginx
+location /uploads/ { autoindex off; }
+\`\`\`
+
+**Apache:**
+\`\`\`apache
+<Directory "/var/www/html/uploads">
+  Options -Indexes
+</Directory>
+\`\`\`
+
+Or add an empty \`index.html\` to the directory, which most servers prefer over
+generating a listing.
+
+**2. Check what was exposed.** Review the listing for anything that shouldn't
+be public — backups, exports, old versions of uploaded files — and remove or
+relocate it. Treat anything sensitive as compromised and rotate accordingly.`;
+
 export const SECURITY_TXT_MISSING = `Publish \`/.well-known/security.txt\` so researchers know where to report
 vulnerabilities instead of disclosing them publicly:
 
@@ -478,6 +501,101 @@ rm /var/www/html/readme.html /var/www/html/license.txt
 
 WordPress recreates it on upgrade — remove it again as a post-deploy step, or
 block it in your server config.`;
+
+export const JOOMLA_VERSION_DISCLOSED = `Restrict access to the administrator manifest so the core version can't be
+read remotely:
+
+\`\`\`apache
+<Files "joomla.xml">
+  Require all denied
+</Files>
+\`\`\`
+
+This doesn't replace patching — keep Joomla core updated regardless — but it
+removes the easiest way for an automated scanner to pick a matching exploit
+for your exact version.`;
+
+export const JOOMLA_INSTALL_FILES = `Remove or rename the leftover installer files:
+
+\`\`\`bash
+rm htaccess.txt web.config.txt
+\`\`\`
+
+\`htaccess.txt\` is meant to be renamed to \`.htaccess\` (Apache) as part of
+hardening the install; \`web.config.txt\` is its IIS equivalent. Their presence
+in the default state usually means the site was never hardened after install —
+worth a full configuration review, not just deleting these two files.`;
+
+export const DRUPAL_VERSION_DISCLOSED = `Block CHANGELOG.txt and core/CHANGELOG.txt so the exact core version can't be
+read remotely:
+
+\`\`\`nginx
+location ~ /(CHANGELOG|core/CHANGELOG)\\.txt$ { deny all; return 404; }
+\`\`\`
+
+Keep Drupal core patched regardless — this only removes the easiest way to
+pick a matching exploit for your exact version.`;
+
+export const DRUPAL_UPDATE_PHP = `Restrict update.php to trusted IPs or require authentication at the web
+server, on top of Drupal's own \`update_free_access\` setting (confirm it's
+\`FALSE\` in \`settings.php\`):
+
+\`\`\`nginx
+location = /update.php {
+  allow 203.0.113.0/24;
+  deny all;
+}
+\`\`\`
+
+Only re-open it when you're actually about to run an update, then close it
+again.`;
+
+export const DRUPAL_JSONAPI_EXPOSED = `Confirm this is intentional. If nothing consumes the public JSON:API, disable
+the module:
+
+\`\`\`bash
+drush pm:uninstall jsonapi
+\`\`\`
+
+If it's needed, restrict which resource types and fields are exposed via
+JSON:API's resource-type configuration, and check per-entity access controls —
+the endpoint inherits normal Drupal permissions, so exposure here usually means
+a permission was set more broadly than intended.`;
+
+export const DRUPAL_UID1_ENUMERABLE = `Restrict anonymous access to user profile pages, or at minimum to uid 1
+specifically, in **Configuration → People → Permissions** (\`View user
+information\` for the Anonymous role). Consider also renaming the uid 1
+account away from an obvious username — many Drupal hardening guides recommend
+creating a separate named admin account and disabling uid 1's direct login.`;
+
+export const CLOUD_STORAGE_PUBLIC = `Remove public list access from the bucket/container. Anyone who finds the URL
+can currently browse its full contents.
+
+**S3:** Block public access at the bucket (or account) level unless a specific
+prefix genuinely needs to be public:
+
+\`\`\`bash
+aws s3api put-public-access-block --bucket BUCKET_NAME \\
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+\`\`\`
+
+**Azure Blob:** Set the container's public access level to **Private**:
+
+\`\`\`bash
+az storage container set-permission --name CONTAINER_NAME --public-access off
+\`\`\`
+
+**GCS:** Remove \`allUsers\`/\`allAuthenticatedUsers\` from the bucket's IAM
+bindings:
+
+\`\`\`bash
+gsutil iam ch -d allUsers gs://BUCKET_NAME
+\`\`\`
+
+Then check what was listed — if any of it was meant to be private, treat it as
+exposed and rotate/replace accordingly. If genuinely public assets (product
+images, downloads) need serving, put them behind a CDN or signed-URL flow
+instead of a fully public, listable bucket.`;
 
 export const WP_CRON = `\`wp-cron.php\` runs on visitor requests and can be called repeatedly by anyone,
 making it a cheap denial-of-service lever.
