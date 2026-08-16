@@ -105,6 +105,99 @@ to compare against — check `compared_to_previous_scan` before relying on it.
 
 ---
 
+## Webhooks
+
+Get a signed `POST` when a scan completes, instead of polling
+`GET /api/v1/scans/{id}`. Register one from **Account → Webhooks** — this is
+the one part of the API that isn't itself an API-key-authenticated endpoint,
+since minting a webhook is a write to your account, gated to a logged-in
+session the same way creating an API key is.
+
+### Payload
+
+```json
+{
+  "event": "scan.completed",
+  "sent_at": "2026-08-16T14:02:11.000Z",
+  "data": { "...": "the exact same shape GET /api/v1/scans/{id} returns" }
+}
+```
+
+`data` is a full scan report — same fields, same `new`/`unchanged`/`null`
+finding-status semantics documented above. One event type exists today:
+`scan.completed`.
+
+### Verifying the signature
+
+Every request carries an `hc-signature` header:
+
+```
+hc-signature: t=1755349331,v1=8f3a1c2e9b7d4f6a1c8e2b9d4f7a1c8e2b9d4f7a1c8e2b9d4f7a1c8e2b9d4f7a
+```
+
+`t` is a Unix timestamp (seconds); `v1` is `HMAC-SHA256(secret, "{t}.{raw body}")`,
+hex-encoded. Verify using the **raw, unparsed** request body — signing a
+re-serialized JSON object will not match, since key order/whitespace can
+differ from what was actually sent.
+
+**Node.js:**
+
+```js
+const crypto = require("node:crypto");
+
+function verify(secret, rawBody, header, toleranceSeconds = 300) {
+  const match = /^t=(\d+),v1=([0-9a-f]+)$/.exec(header);
+  if (!match) return false;
+  const [, tsStr, providedSig] = match;
+  const timestamp = Number(tsStr);
+  if (Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) return false;
+
+  const expected = crypto.createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  const a = Buffer.from(expected);
+  const b = Buffer.from(providedSig);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+**Python:**
+
+```python
+import hmac, hashlib, time, re
+
+def verify(secret: str, raw_body: bytes, header: str, tolerance_seconds: int = 300) -> bool:
+    match = re.match(r"^t=(\d+),v1=([0-9a-f]+)$", header)
+    if not match:
+        return False
+    timestamp, provided_sig = int(match[1]), match[2]
+    if abs(time.time() - timestamp) > tolerance_seconds:
+        return False
+
+    expected = hmac.new(
+        secret.encode(), f"{timestamp}.".encode() + raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, provided_sig)
+```
+
+Checking the timestamp matters as much as checking the signature — without it,
+a captured request/signature pair could be replayed indefinitely. Reject
+anything older than a few minutes.
+
+### Delivery and failure handling
+
+- Your endpoint must be `https://` and return a `2xx` status within 8 seconds.
+- On failure, one retry follows after ~2 seconds. There is no queue behind
+  this — a delivery either succeeds within that single retry or it's recorded
+  as failed and the scan request that triggered it moves on regardless.
+- After 20 consecutive failed deliveries, the webhook is automatically
+  disabled (visible in **Account → Webhooks**) rather than retried forever
+  against a dead or mistyped endpoint. Re-registering with a working URL
+  starts the failure count fresh.
+
+---
+
 ## CI/CD
 
 ### Fail a build only on *new* findings

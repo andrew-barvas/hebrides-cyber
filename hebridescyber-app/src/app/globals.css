@@ -98,6 +98,38 @@ body {
   color: rgb(var(--c-neon) / 0.92);
 }
 
+/* Severity/status colour parity between themes.
+
+   Tailwind's -400 shades (red-400, orange-400, yellow-400, blue-400,
+   amber-400) are used as text throughout the severity badges (scan report,
+   ScanList score/status badges) and webhook delivery status. They're tuned to
+   read on a near-black background — on the light background they fall well
+   short of 3:1 (red-400 ~2.9:1, yellow-400 ~1.6:1, measured against #F6F7F9),
+   including at full opacity, not just the faded /80 steps.
+
+   Swap to the -700 shade in light mode, solid, which clears 4.5:1 for all
+   five with margin. This overrides the /80 variants too, rather than
+   preserving that softened look in light mode — full opacity reads better
+   against a light ground and there's no dark-mode-style "glow" reason to keep
+   it partial here. */
+:root:not(.dark) .text-red-400,
+:root:not(.dark) .text-red-400\/80 {
+  color: rgb(185 28 28);
+}
+:root:not(.dark) .text-orange-400 {
+  color: rgb(194 65 12);
+}
+:root:not(.dark) .text-yellow-400 {
+  color: rgb(161 98 7);
+}
+:root:not(.dark) .text-blue-400 {
+  color: rgb(29 78 216);
+}
+:root:not(.dark) .text-amber-400,
+:root:not(.dark) .text-amber-400\/80 {
+  color: rgb(180 83 9);
+}
+
 /* Faint circuit-board grid on hero sections — pure CSS, no image asset. */
 .bg-grid {
   background-image:
