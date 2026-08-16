@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import ApiKeys from "@/components/ApiKeys";
 import Webhooks from "@/components/Webhooks";
+import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
 
 type Plan = "none" | "basic" | "pro" | "agency";
@@ -20,6 +21,7 @@ const PLAN_LABELS: Record<string, string> = {
 export default function AccountPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<Plan>("none");
   const [planStatus, setPlanStatus] = useState<string | null>(null);
@@ -32,6 +34,7 @@ export default function AccountPage() {
     if (!session) return;
 
     setEmail(session.user.email ?? null);
+    setUserId(session.user.id);
     setToken(session.access_token);
 
     const { data } = await supabase
@@ -157,6 +160,9 @@ export default function AccountPage() {
 
         {/* Webhooks */}
         {token && <Webhooks token={token} />}
+
+        {/* Team */}
+        {token && userId && <TeamSection token={token} currentUserId={userId} />}
 
         {/* Security */}
         <TwoFactor />

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getSession } from "@/lib/auth";
 import Link from "next/link";
 import ScanList, { Scan } from "@/components/ScanList";
 
@@ -13,20 +14,36 @@ export default function ScansPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  async function fetchScans(from: number, append: boolean) {
+  async function fetchScans(from: number, append: boolean, currentUserId: string) {
     const { data } = await supabase
       .from("scans")
-      .select("id, target_url, status, created_at, scan_results(score)")
+      .select("id, target_url, status, created_at, owner, scan_results(score)")
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
 
-    const rows = (data ?? []).map((s: Record<string, unknown>) => ({
+    const page = (data ?? []) as Array<{
+      id: string; target_url: string; status: Scan["status"]; created_at: string;
+      owner: string; scan_results: { score?: number | null }[] | null;
+    }>;
+
+    // Team membership (Account -> Team) can put someone else's scans in this
+    // list — resolve their email so the row says whose it is.
+    const otherOwnerIds = [...new Set(page.filter((r) => r.owner !== currentUserId).map((r) => r.owner))];
+    const emailByOwner = new Map<string, string>();
+    if (otherOwnerIds.length > 0) {
+      const { data: profiles } = await supabase.from("users").select("id, email").in("id", otherOwnerIds);
+      for (const p of profiles ?? []) emailByOwner.set(p.id, p.email);
+    }
+
+    const rows = page.map((s) => ({
       id: s.id,
       target_url: s.target_url,
       status: s.status,
       created_at: s.created_at,
-      score: (s.scan_results as { score?: number | null }[] | null)?.[0]?.score ?? null,
+      score: s.scan_results?.[0]?.score ?? null,
+      sharedByEmail: s.owner !== currentUserId ? emailByOwner.get(s.owner) ?? null : null,
     })) as Scan[];
 
     if (append) {
@@ -39,13 +56,19 @@ export default function ScansPage() {
   }
 
   useEffect(() => {
-    fetchScans(0, false).finally(() => setLoading(false));
+    (async () => {
+      const session = await getSession();
+      if (!session) return;
+      setUserId(session.user.id);
+      await fetchScans(0, false, session.user.id);
+    })().finally(() => setLoading(false));
   }, []);
 
   async function loadMore() {
+    if (!userId) return;
     setLoadingMore(true);
     const next = offset + PAGE_SIZE;
-    await fetchScans(next, true);
+    await fetchScans(next, true, userId);
     setOffset(next);
     setLoadingMore(false);
   }

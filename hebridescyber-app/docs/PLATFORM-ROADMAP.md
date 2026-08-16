@@ -66,12 +66,11 @@ about half of Part 1 of the brief is already shipped.
 | Shareable report links | `src/pages/api/reports/[token].ts`, `src/app/share/[token]/page.tsx`, migration `006_report_shares.sql` |
 | CVE references (JS libraries) | `src/lib/scanners/osv.ts`, live OSV.dev lookup |
 | Packaged GitHub Action | `action/` at the repo root — `uses: andrew-barvas/hebrides-cyber/action@master` |
+| Teams (view-only sharing) | migration `007_teams.sql`, `src/pages/api/team.ts`, `src/pages/api/team/members.ts`, `src/components/TeamSection.tsx` |
+| Score trend chart | `src/components/ScoreTrend.tsx` on the scan report page |
 
 ### Genuinely missing
 
-- **Teams / roles** — `users` is flat, one owner per scan.
-- **Trend graphs** — per-scan New/Fixed diffing exists (see above); there's no
-  chart of score-over-time yet.
 - **CVE references beyond JS libraries** — done for vulnerable JS libraries
   via a live OSV.dev lookup (see below); `fingerprint.ts`'s broader
   `riskySoftware` (WordPress core, PHP, Apache) is still prose-only. Those
@@ -140,7 +139,18 @@ makes the product developer-facing.
    management), `src/app/share/[token]/page.tsx`, migration
    `006_report_shares.sql`. No public RLS policy on `report_shares` — see the
    migration comment for why that would leak every customer's tokens.
-9. Teams and roles.
+9. ~~Teams and roles.~~ **Done, scoped to view-only sharing** — migration
+   `007_teams.sql` adds `teams`/`team_members` and extends the existing
+   `scans`/`scan_results`/`monitored_targets` SELECT policies with an OR
+   clause for team members, rather than changing anything about how those
+   rows get created — every scan-creation code path still inserts
+   `owner: callerId` exactly as before. Two roles: `admin` (can invite/remove
+   `member`-role users) and `member` (read-only). Neither can create scans,
+   see billing, or touch API keys/webhooks/share links — those all stay
+   owner-only. Real permission checks in `src/pages/api/team/members.ts`
+   (owner > admin > member > self-only-leave), not just RLS. Inviting adds an
+   *existing* Hebrides Cyber user by email — no invite-token/email-sending
+   flow, deliberately, to avoid building that infrastructure for a v1.
 10. ~~CVE references per finding.~~ **Done for JS libraries** —
     `src/lib/scanners/osv.ts` queries OSV.dev live (npm ecosystem) for
     vulnerable-library findings from `webapp.ts`, falling back to CVE ids
@@ -150,7 +160,12 @@ makes the product developer-facing.
     that couldn't have existed when the static table was written. Not
     extended to `fingerprint.ts`'s broader `riskySoftware` — see the
     correction above.
-11. Trend graphs.
+11. ~~Trend graphs.~~ **Done** — `src/components/ScoreTrend.tsx`, a hand-
+    rolled SVG line (not a charting library — one line, 0-100 fixed scale,
+    not worth a dependency), on the scan report page. Reuses the same
+    hostname-matching pattern as the finding diff to find every past scan of
+    the target. In-app dashboard only — no `GET /api/v1/targets/{host}/trend`
+    endpoint yet, since nothing asked for programmatic access to this.
 
 ### P2 — Depth and premium
 

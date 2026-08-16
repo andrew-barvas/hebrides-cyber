@@ -8,6 +8,7 @@ import { getSession } from "@/lib/auth";
 import { diffFindings, type FindingsDiff, type DiffStatus } from "@/lib/findingsDiff";
 import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, type Severity, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
+import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 
 type Finding = ViewFinding;
 
@@ -89,6 +90,56 @@ async function findPreviousFindings(
   return null;
 }
 
+/**
+ * Score history for every completed scan of the same target (by hostname,
+ * same reasoning as findPreviousFindings above), oldest first, including the
+ * current scan itself so the trend line ends at "now." Capped at 20 points —
+ * a trend line, not a full audit log.
+ */
+async function findScoreHistory(
+  currentScanId: string,
+  currentTargetUrl: string,
+  currentScore: number | null,
+  currentCreatedAt: string
+): Promise<ScorePoint[]> {
+  let hostname: string;
+  try {
+    hostname = new URL(currentTargetUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("id, target_url, created_at, scan_results(score, created_at)")
+    .eq("status", "completed")
+    .neq("id", currentScanId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const points: ScorePoint[] = [];
+  for (const c of (candidates ?? []) as Array<{
+    target_url: string;
+    scan_results: { score: number | null; created_at: string }[];
+  }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    const result = c.scan_results?.[0];
+    if (result?.score == null) continue;
+    points.push({ date: result.created_at, score: result.score });
+    if (points.length >= 19) break; // + the current scan = 20
+  }
+
+  if (currentScore !== null) points.push({ date: currentCreatedAt, score: currentScore });
+
+  return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
 export default function ScanDetailPage() {
   const params = useParams<{ id: string }>();
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -97,6 +148,7 @@ export default function ScanDetailPage() {
   const [diff, setDiff] = useState<FindingsDiff | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
 
   useEffect(() => {
     getSession().then((session) => setSessionToken(session?.access_token ?? null));
@@ -132,6 +184,15 @@ export default function ScanDetailPage() {
       })
       .catch(() => {
         // Non-fatal — the report still renders fully without the New/Fixed filter.
+      });
+  }, [result]);
+
+  useEffect(() => {
+    if (!result?.results?.target_url) return;
+    findScoreHistory(result.scan_id, result.results.target_url, result.score, result.created_at)
+      .then(setScoreHistory)
+      .catch(() => {
+        // Non-fatal — the report still renders fully without the trend chart.
       });
   }, [result]);
 
@@ -258,6 +319,13 @@ export default function ScanDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Score trend */}
+          {scoreHistory.length >= 2 && (
+            <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
+              <ScoreTrend points={scoreHistory} />
+            </div>
+          )}
 
           {/* Check breakdown */}
           <div>
