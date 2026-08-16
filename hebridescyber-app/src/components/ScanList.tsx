@@ -9,6 +9,10 @@ export type Scan = {
   status: "pending" | "running" | "completed" | "failed";
   created_at: string;
   score?: number | null;
+  // Set only when this scan belongs to a team owner other than the current
+  // viewer — see the "Team" section in Account. Own scans leave this unset
+  // rather than showing "shared by you", which would just be noise.
+  sharedByEmail?: string | null;
 };
 
 type Props = {
@@ -68,6 +72,11 @@ export default function ScanList({ scans, onDelete }: Props) {
                     table wider than its container. */}
                 <td className="px-5 py-3 font-mono text-xs text-neon/80 break-all min-w-[220px]">
                   {scan.target_url}
+                  {scan.sharedByEmail && (
+                    <span className="mt-0.5 block font-sans text-[10px] font-normal text-cybertext/40">
+                      shared by {scan.sharedByEmail}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {scan.score != null ? (

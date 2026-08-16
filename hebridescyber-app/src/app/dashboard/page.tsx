@@ -70,23 +70,42 @@ export default function DashboardPage() {
     setSlackWebhookUrl(data?.slack_webhook_url ?? "");
   }, []);
 
-  const loadScans = useCallback(async () => {
+  const loadScans = useCallback(async (currentUserId: string) => {
     const { data, error: fetchError } = await supabase
       .from("scans")
-      .select("id, target_url, status, created_at, scan_results(score)")
+      .select("id, target_url, status, created_at, owner, scan_results(score)")
       .order("created_at", { ascending: false });
     if (fetchError) {
       setError(fetchError.message);
-    } else {
-      const rows = (data ?? []).map((s: Record<string, unknown>) => ({
+      return;
+    }
+
+    const rows = (data ?? []) as Array<{
+      id: string; target_url: string; status: Scan["status"]; created_at: string;
+      owner: string; scan_results: { score?: number | null }[] | null;
+    }>;
+
+    // Team membership (see Account -> Team) can make this list include scans
+    // owned by someone else — look up their email so the row can say whose
+    // it is, rather than the ambiguous mix reading like it's all the
+    // viewer's own scans.
+    const otherOwnerIds = [...new Set(rows.filter((r) => r.owner !== currentUserId).map((r) => r.owner))];
+    const emailByOwner = new Map<string, string>();
+    if (otherOwnerIds.length > 0) {
+      const { data: profiles } = await supabase.from("users").select("id, email").in("id", otherOwnerIds);
+      for (const p of profiles ?? []) emailByOwner.set(p.id, p.email);
+    }
+
+    setScans(
+      rows.map((s) => ({
         id: s.id,
         target_url: s.target_url,
         status: s.status,
         created_at: s.created_at,
-        score: (s.scan_results as { score?: number | null }[] | null)?.[0]?.score ?? null,
-      }));
-      setScans(rows as Scan[]);
-    }
+        score: s.scan_results?.[0]?.score ?? null,
+        sharedByEmail: s.owner !== currentUserId ? emailByOwner.get(s.owner) ?? null : null,
+      })) as Scan[]
+    );
   }, []);
 
   useEffect(() => {
@@ -96,7 +115,7 @@ export default function DashboardPage() {
       const { currentLevel, nextLevel } = await getMfaAssuranceLevel();
       if (nextLevel && currentLevel !== nextLevel) { router.replace("/login/mfa-challenge"); return; }
       setAuthed(true);
-      await Promise.all([loadScans(), loadPlan()]);
+      await Promise.all([loadScans(session.user.id), loadPlan()]);
       setLoading(false);
     })().catch((err) => {
       console.error("[dashboard] init error:", (err as Error).message);
@@ -150,7 +169,7 @@ export default function DashboardPage() {
 
       setScanMessage(`Scan complete — score ${runBody.score}/100.`);
       setTargetUrl("");
-      await loadScans();
+      await loadScans(session.user.id);
     } catch (err) {
       setError((err as Error).message);
     } finally {
