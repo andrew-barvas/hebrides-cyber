@@ -12,6 +12,7 @@ type ApiFinding = {
   detail: string;
   remediation: string | null;
   status: "new" | "unchanged" | null;
+  cve_ids?: string[];
 };
 
 type ApiReport = {
@@ -74,6 +75,7 @@ export default function SharedReportPage() {
       remediation: f.remediation ?? undefined,
       checkId: f.check_id ?? undefined,
       status: f.status ?? undefined,
+      cveIds: f.cve_ids,
     })),
     ...(report.fixed_findings ?? []).map((f) => ({
       severity: f.severity,

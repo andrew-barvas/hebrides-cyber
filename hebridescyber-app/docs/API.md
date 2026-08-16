@@ -103,6 +103,14 @@ to compare against — check `compared_to_previous_scan` before relying on it.
 **Treat `compared_to_previous_scan: false` as "can't tell what's new", not as
 "nothing is new."**
 
+Vulnerable-JS-library findings additionally carry `cve_ids` — real CVE
+identifiers looked up live from [OSV.dev](https://osv.dev) against the
+detected package name and version. `[]` means the library was checked and
+nothing is currently known against it; the field is absent entirely on
+finding types that don't get a CVE lookup at all (only outdated JS libraries
+are checked today — see `src/lib/scanners/osv.ts` for why that's scoped
+narrower than every finding type).
+
 ---
 
 ## Webhooks

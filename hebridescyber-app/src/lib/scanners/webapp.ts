@@ -1,6 +1,7 @@
 // Web application checks: robots.txt, HTTP methods, error page disclosure,
 // WordPress deep scan (if detected), CORS reflected-origin, JS library versions.
 // All checks are passive/safe read-only probes — no exploit code.
+import { npmPackageNameFor, lookupNpmCveIds, extractCveIdsFromText } from "./osv";
 
 export type WebAppResult =
   | {
@@ -52,6 +53,12 @@ export type JsLibraryFinding = {
   version: string;
   isVulnerable: boolean;
   reason: string;
+  // Populated for vulnerable libraries only. Best-effort: a live OSV.dev
+  // lookup first, falling back to whatever CVE ids are already named in
+  // `reason` if OSV is unreachable or has nothing for this exact version.
+  // See src/lib/scanners/osv.ts for why this covers JS libraries specifically
+  // and not every risky-software finding in the scanner suite.
+  cveIds?: string[];
 };
 
 // ── Robots.txt ────────────────────────────────────────────────────────────────
@@ -334,6 +341,19 @@ async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> 
         reason: vuln ? pattern.reason : `${pattern.name} ${version} appears to be a current version`,
       });
     }
+
+    // CVE enrichment, in parallel, only for libraries actually flagged —
+    // no point spending a network round-trip confirming a current version
+    // has no known issues.
+    await Promise.all(
+      findings.map(async (finding) => {
+        if (!finding.isVulnerable) return;
+
+        const npmName = npmPackageNameFor(finding.name);
+        const liveIds = npmName ? await lookupNpmCveIds(npmName, finding.version) : [];
+        finding.cveIds = liveIds.length > 0 ? liveIds : extractCveIdsFromText(finding.reason);
+      })
+    );
 
     return findings;
   } catch {

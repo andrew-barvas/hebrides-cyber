@@ -27,6 +27,10 @@ export type ScanReport = {
     detail: string;
     remediation: string | null;
     status: "new" | "unchanged" | null;
+    // Real CVE ids, when known — populated for vulnerable-JS-library findings
+    // only today. [] means "checked, none known"; omitted entirely from a
+    // finding type that was never checked (see Finding.cveIds in scanners).
+    cve_ids?: string[];
   }>;
   fixed_findings?: Array<{ check_id: string | null; severity: string; title: string }>;
 };
@@ -119,6 +123,7 @@ export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFi
       detail: f.detail,
       remediation: f.remediation ?? null,
       status: f.checkId ? statusByCheckId.get(f.checkId) ?? null : null,
+      cve_ids: f.cveIds,
     })),
     fixed_findings: diff
       ? diff.fixed.map((f) => ({ check_id: f.checkId ?? null, severity: f.severity, title: f.title }))

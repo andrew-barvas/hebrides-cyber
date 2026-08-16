@@ -58,6 +58,15 @@ export type Finding = {
    * finding is "the same" as a new tagged one).
    */
   checkId?: string;
+  /**
+   * Real CVE identifiers for this finding, when known. Only populated for
+   * vulnerable-JS-library findings today (src/lib/scanners/webapp.ts, via
+   * src/lib/scanners/osv.ts) — see that module for why this isn't attempted
+   * for every finding type. Absent (not empty array) when no CVE lookup was
+   * even attempted for this finding, so a consumer can distinguish "we
+   * checked and found nothing" from "we never checked" if that ever matters.
+   */
+  cveIds?: string[];
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
@@ -391,6 +400,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           title: `Vulnerable JS library: ${lib.name} ${lib.version}`,
           detail: lib.reason,
           remediation: FIX.OUTDATED_LIBRARY,
+          cveIds: lib.cveIds,
         });
       }
     }
