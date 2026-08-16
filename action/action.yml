@@ -1,0 +1,38 @@
+name: "Hebrides Cyber Security Scan"
+description: >-
+  Run a Hebrides Cyber security scan and optionally fail the build when a new
+  critical/high finding is introduced, without flagging the existing backlog.
+author: "Hebrides Cyber"
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  api-key:
+    description: "Hebrides Cyber API key (Authorization: Bearer). Create one in Account -> API Keys."
+    required: true
+  target-url:
+    description: "URL to scan. Must already be a verified domain on your account."
+    required: true
+  fail-on:
+    description: "Fail the step if a NEW finding at or above this severity is introduced: critical | high | medium | low | none."
+    required: false
+    default: "high"
+  api-base-url:
+    description: "Base URL of the Hebrides Cyber API. Override only for a self-hosted or staging instance."
+    required: false
+    default: "https://hebridescyber.com"
+
+outputs:
+  score:
+    description: "Security score, 0-100."
+  new-finding-count:
+    description: "Number of findings newly introduced since the previous scan of this target. Empty if this was the first scan (no baseline to compare against)."
+  compared-to-previous-scan:
+    description: "\"true\" if a previous scan of this target existed to compare against, \"false\" for a first scan."
+  report-url:
+    description: "Link to the full report in the Hebrides Cyber dashboard."
+
+runs:
+  using: "node20"
+  main: "index.js"

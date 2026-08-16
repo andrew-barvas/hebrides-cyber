@@ -64,6 +64,8 @@ about half of Part 1 of the brief is already shipped.
 | Finding identity + scan-to-scan diff | `Finding.checkId` in `src/lib/scanners/index.ts`, `src/lib/findingsDiff.ts` |
 | Webhooks on scan completion | `src/lib/webhooks.ts`, `src/pages/api/webhooks.ts` |
 | Shareable report links | `src/pages/api/reports/[token].ts`, `src/app/share/[token]/page.tsx`, migration `006_report_shares.sql` |
+| CVE references (JS libraries) | `src/lib/scanners/osv.ts`, live OSV.dev lookup |
+| Packaged GitHub Action | `action/` at the repo root — `uses: andrew-barvas/hebrides-cyber/action@master` |
 
 ### Genuinely missing
 
@@ -76,9 +78,6 @@ about half of Part 1 of the brief is already shipped.
   don't map cleanly to any single OSV ecosystem the way npm packages do, so
   extending this further needs a different data source per software type, not
   just widening the existing OSV call.
-- **CI/CD integration** — the API supports it (see `docs/API.md`'s CI/CD
-  section for a working example), but there's no packaged GitHub Action a
-  customer can just `uses:` — they'd copy the curl/jq example today.
 - **A live job queue** — `src/worker/` already contains a complete one
   (BullMQ + Redis + real nmap/nuclei/sqlmap/ZAP integrations), it's just not
   connected to anything (see the status note above). Needs a decision — wire
@@ -128,9 +127,13 @@ makes the product developer-facing.
    and the orphaned worker for parity). No queue existed to build proper
    backoff-and-retry on, so delivery is inline: one attempt, one retry after
    ~2s, then recorded as failed; auto-disabled after 20 consecutive failures.
-7. GitHub Action + CI examples. `docs/API.md` has a working curl/jq example a
-   customer can paste into a workflow today — a packaged `uses:`-able Action
-   (a separate repo, per the sketch below) is what's left.
+7. ~~GitHub Action + CI examples.~~ **Done** — `action/` at the true repo
+   root (not a separate repo, per the sketch below; `uses:` supports a path
+   within the same repo), dependency-free Node 20 (`action/index.js`, no
+   `node_modules`). Implements the new-findings-only gate: `POST /api/v1/scans`
+   already returns the full diff-tagged report in one call, so the action
+   doesn't need the two-call polling shape the curl/jq example uses. `docs/API.md`
+   keeps the raw curl/jq version too, for non-GitHub CI.
 8. ~~Shareable report links.~~ **Done** — `src/pages/api/reports/[token].ts`
    (public, no auth — token is the credential, same trust model as the
    existing badge route), `src/pages/api/scans/[id]/shares.ts` (session-only

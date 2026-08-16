@@ -208,11 +208,54 @@ anything older than a few minutes.
 
 ## CI/CD
 
-### Fail a build only on *new* findings
+### GitHub Actions
 
-This is the important pattern. Gating on *total* findings red-lines every
-pipeline on its first run and the check gets disabled the same day. Gate on
-what this change introduced instead.
+Use the packaged action rather than the raw curl/jq below — it already
+implements the new-findings-only gate:
+
+```yaml
+name: Security
+on:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: andrew-barvas/hebrides-cyber/action@master
+        id: scan
+        with:
+          api-key: ${{ secrets.HEBRIDES_CYBER_API_KEY }}
+          target-url: https://staging.example.com
+          fail-on: high
+
+      - name: Comment score on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Security score: **${{ steps.scan.outputs.score }}/100** — [full report](${{ steps.scan.outputs.report-url }})`
+            })
+```
+
+See [`action/README.md`](../../action/README.md) for the full input/output
+reference. It's a single dependency-free Node 20 script (`action/index.js`) —
+nothing to `npm install` before it runs.
+
+### Doing it yourself (any CI system)
+
+The pattern below is what the packaged action does internally — useful if
+you're not on GitHub Actions, or want to see exactly what it's doing.
+
+**Fail a build only on *new* findings.** This is the important pattern.
+Gating on *total* findings red-lines every pipeline on its first run and the
+check gets disabled the same day. Gate on what this change introduced instead.
 
 ```yaml
 name: Security
