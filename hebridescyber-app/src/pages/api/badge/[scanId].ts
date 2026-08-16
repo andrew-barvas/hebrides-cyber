@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Embeddable Security Score badge: <img src="/api/badge/<scanId>.svg">.
 // Uses the service role key deliberately — this is a *public* badge by
@@ -7,7 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 // site as a trust signal), so it intentionally bypasses the RLS that
 // normally restricts scan_results to their owner. Only the score and
 // target hostname are exposed, never the raw findings.
-const supabaseAdmin = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
 
 function colorForScore(score: number): string {
   if (score >= 90) return "#16a34a"; // green
@@ -47,8 +46,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let score: number | null = null;
   if (scanId) {
-    const { data } = await supabaseAdmin.from("scan_results").select("score").eq("scan_id", scanId).maybeSingle();
-    score = data?.score ?? null;
+    // This is embedded as a live <img> on customer sites, so any failure —
+    // including supabaseAdmin's lazy client failing to construct — must fall
+    // through to the "no data" badge below, never a broken-image 500.
+    try {
+      const { data } = await supabaseAdmin.from("scan_results").select("score").eq("scan_id", scanId).maybeSingle();
+      score = data?.score ?? null;
+    } catch {
+      score = null;
+    }
   }
 
   res.setHeader("Content-Type", "image/svg+xml");

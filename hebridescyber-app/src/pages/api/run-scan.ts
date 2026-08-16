@@ -1,14 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } from "@/lib/scanners";
 import { validateNoSsrf, hostnameFromUrl } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL ?? "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-);
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const serviceToken = process.env.GITHUB_ACTIONS_TOKEN ?? "";
 const allowDevToken = (process.env.ALLOW_DEV_TOKEN_VERIFICATION ?? "true") === "true";
@@ -62,6 +57,20 @@ async function isOwnershipVerified(
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  // supabaseAdmin is constructed lazily on first property access — a missing
+  // SUPABASE_URL/SERVICE_ROLE_KEY throws on the first call below rather than
+  // at import. The whole body is wrapped so that (and any other unexpected
+  // failure) becomes a clean JSON 500 instead of an unhandled exception —
+  // every specific status code below still returns normally, since `return`
+  // inside `try` isn't intercepted by `catch`.
+  try {
+    return await handleScan(req, res);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
+}
+
+async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   const caller = await resolveCaller(req);
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization" });
 

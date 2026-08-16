@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Service-role-backed admin API — deliberately NOT just a client-side
 // Supabase query, because RLS on `users`/`subscriptions`/`scans` only lets
@@ -7,8 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 // everyone's, which means going through a server-side check of the
 // caller's own `is_admin` flag before using the service role key to
 // bypass RLS. Never do this bypass client-side.
-
-const supabaseAdmin = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
@@ -21,21 +19,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: "Missing Authorization Bearer token" });
   }
 
-  const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(
-    authHeader.slice("Bearer ".length)
-  );
-  if (callerError || !callerData.user) {
+  // supabaseAdmin is constructed lazily on first property access — a missing
+  // SUPABASE_URL/SERVICE_ROLE_KEY throws here rather than at import, so it's
+  // caught and returned as a clean 401 instead of an unhandled 500.
+  try {
+    const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(
+      authHeader.slice("Bearer ".length)
+    );
+    if (callerError || !callerData.user) {
+      return res.status(401).json({ error: "Invalid session" });
+    }
+
+    const { data: callerProfile } = await supabaseAdmin
+      .from("users")
+      .select("is_admin")
+      .eq("id", callerData.user.id)
+      .maybeSingle();
+
+    if (!callerProfile?.is_admin) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+  } catch {
     return res.status(401).json({ error: "Invalid session" });
-  }
-
-  const { data: callerProfile } = await supabaseAdmin
-    .from("users")
-    .select("is_admin")
-    .eq("id", callerData.user.id)
-    .maybeSingle();
-
-  if (!callerProfile?.is_admin) {
-    return res.status(403).json({ error: "Admin access required" });
   }
 
   // TODO: this is three round-trips merged in JS rather than one SQL join

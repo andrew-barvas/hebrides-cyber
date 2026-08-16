@@ -1,31 +1,33 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { buffer } from "node:stream/consumers";
-import { createClient } from "@supabase/supabase-js";
+import { getStripe } from "@/lib/stripeClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const config = {
   api: { bodyParser: false },
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
-  apiVersion: "2024-06-20",
-});
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL ?? "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-);
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function isAlreadyProcessed(eventId: string): Promise<boolean> {
-  const { data } = await supabaseAdmin
-    .from("audit_logs")
-    .select("id")
-    .eq("resource_id", eventId)
-    .eq("resource_type", "stripe_event")
-    .maybeSingle();
-  return !!data;
+  // Every downstream write in this handler is an upsert/update keyed on a
+  // stable id, so processing an event twice is harmless — but silently
+  // dropping one isn't. If this check itself fails (including supabaseAdmin's
+  // lazy client failing to construct), fail open: treat it as unprocessed and
+  // let the handler run rather than crashing this request unhandled.
+  try {
+    const { data } = await supabaseAdmin
+      .from("audit_logs")
+      .select("id")
+      .eq("resource_id", eventId)
+      .eq("resource_type", "stripe_event")
+      .maybeSingle();
+    return !!data;
+  } catch (err) {
+    console.error("[stripe webhook] idempotency check failed, proceeding anyway:", err);
+    return false;
+  }
 }
 
 async function markProcessed(eventId: string, action: string) {
@@ -86,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!sig || !process.env.STRIPE_WEBHOOK_SECRET) {
       throw new Error("Missing Stripe signature or webhook secret");
     }
-    event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = getStripe().webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error("[stripe webhook] signature verification failed:", err);
     return res.status(400).send(`Webhook Error: ${(err as Error).message}`);
@@ -110,7 +112,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let stripeSubscriptionId: string | null = null;
         if (typeof session.subscription === "string") {
           stripeSubscriptionId = session.subscription;
-          const sub = await stripe.subscriptions.retrieve(session.subscription);
+          const sub = await getStripe().subscriptions.retrieve(session.subscription);
           currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString();
         }
 
