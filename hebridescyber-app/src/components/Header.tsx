@@ -29,7 +29,7 @@ function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex items-center justify-center w-10 h-10 rounded-md border border-cyberborder text-slatelight/70 hover:text-neon hover:border-neon/50 transition-colors font-mono text-sm"
+      className="flex items-center justify-center w-10 h-10 rounded-md border border-cyberborder text-cybertext/70 hover:text-neon hover:border-neon/50 transition-colors font-mono text-sm"
       title={dark ? "Light mode" : "Dark mode"}
     >
       {dark ? "☀" : "◑"}
@@ -86,12 +86,12 @@ export default function Header() {
   ];
 
   return (
-    <header className="border-b border-cyberborder bg-cyberbg text-slatelight" ref={drawerRef}>
+    <header className="border-b border-cyberborder bg-cyberbg text-cybertext" ref={drawerRef}>
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         {/* Logo */}
         <Link
           href="/"
-          className="font-mono text-base font-bold tracking-tight text-white sm:text-lg"
+          className="font-mono text-base font-bold tracking-tight text-cybertext sm:text-lg"
         >
           <span className="text-neon" aria-hidden="true">&gt;</span>{" "}
           Hebrides<span className="text-neon" aria-hidden="true">_</span>Cyber
@@ -100,7 +100,7 @@ export default function Header() {
         {/* Desktop nav */}
         <nav
           aria-label="Main navigation"
-          className="hidden md:flex items-center gap-5 text-sm font-medium text-slatelight/80"
+          className="hidden md:flex items-center gap-5 text-sm font-medium text-cybertext/80"
         >
           {navItems.map(({ href, label }) => (
             <Link key={href} href={href} className="py-1 hover:text-neon transition-colors">
@@ -113,12 +113,12 @@ export default function Header() {
             </Link>
           )}
           {authed && (
-            <Link href="/account/security" className="py-1 text-slatelight/60 hover:text-neon transition-colors">
+            <Link href="/account/security" className="py-1 text-cybertext/60 hover:text-neon transition-colors">
               2FA
             </Link>
           )}
           {isAdmin && (
-            <Link href="/admin" className="py-1 text-slatelight/60 hover:text-neon transition-colors">
+            <Link href="/admin" className="py-1 text-cybertext/60 hover:text-neon transition-colors">
               Admin
             </Link>
           )}
@@ -133,7 +133,7 @@ export default function Header() {
           {authed === true && (
             <button
               onClick={handleSignOut}
-              className="py-1 text-slatelight/60 hover:text-neon transition-colors"
+              className="py-1 text-cybertext/60 hover:text-neon transition-colors"
             >
               Sign out
             </button>
@@ -149,7 +149,7 @@ export default function Header() {
             aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={menuOpen}
             aria-controls="mobile-nav"
-            className="flex items-center justify-center w-10 h-10 rounded-md border border-cyberborder text-slatelight/70 hover:text-neon hover:border-neon/50 transition-colors font-mono text-base"
+            className="flex items-center justify-center w-10 h-10 rounded-md border border-cyberborder text-cybertext/70 hover:text-neon hover:border-neon/50 transition-colors font-mono text-base"
           >
             {menuOpen ? "✕" : "☰"}
           </button>
@@ -168,7 +168,7 @@ export default function Header() {
               <Link
                 key={href}
                 href={href}
-                className="flex items-center px-2 py-3.5 text-base font-medium text-slatelight/80 hover:text-neon border-b border-cyberborder/50 last:border-0 transition-colors"
+                className="flex items-center px-2 py-3.5 text-base font-medium text-cybertext/80 hover:text-neon border-b border-cyberborder/50 last:border-0 transition-colors"
               >
                 {label}
               </Link>
@@ -176,7 +176,7 @@ export default function Header() {
             {authed && (
               <Link
                 href="/dashboard"
-                className="flex items-center px-2 py-3.5 text-base font-medium text-slatelight/80 hover:text-neon border-b border-cyberborder/50 transition-colors"
+                className="flex items-center px-2 py-3.5 text-base font-medium text-cybertext/80 hover:text-neon border-b border-cyberborder/50 transition-colors"
               >
                 Dashboard
               </Link>
@@ -184,7 +184,7 @@ export default function Header() {
             {authed && (
               <Link
                 href="/account/security"
-                className="flex items-center px-2 py-3.5 text-base font-medium text-slatelight/60 hover:text-neon border-b border-cyberborder/50 transition-colors"
+                className="flex items-center px-2 py-3.5 text-base font-medium text-cybertext/60 hover:text-neon border-b border-cyberborder/50 transition-colors"
               >
                 Two-factor auth
               </Link>
@@ -192,7 +192,7 @@ export default function Header() {
             {isAdmin && (
               <Link
                 href="/admin"
-                className="flex items-center px-2 py-3.5 text-base font-medium text-slatelight/60 hover:text-neon border-b border-cyberborder/50 transition-colors"
+                className="flex items-center px-2 py-3.5 text-base font-medium text-cybertext/60 hover:text-neon border-b border-cyberborder/50 transition-colors"
               >
                 Admin
               </Link>
@@ -210,7 +210,7 @@ export default function Header() {
             {authed === true && (
               <button
                 onClick={handleSignOut}
-                className="flex w-full items-center px-2 py-3.5 text-base font-medium text-slatelight/60 hover:text-neon transition-colors"
+                className="flex w-full items-center px-2 py-3.5 text-base font-medium text-cybertext/60 hover:text-neon transition-colors"
               >
                 Sign out
               </button>

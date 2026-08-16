@@ -14,7 +14,7 @@ branding, and the business plan this app implements.
 This is a working local MVP with real functionality behind most of it, not
 just marketing copy describing services:
 
-- **Real scanning** — `src/lib/scanners.ts` does live TLS/certificate
+- **Real scanning** — `src/lib/scanners/` does live TLS/certificate
   inspection, HTTP security header checks, passive tech fingerprinting,
   a real headless Chromium page load (Playwright), Nmap port scanning
   (if installed), and OWASP ZAP integration (if a ZAP daemon is
@@ -90,7 +90,7 @@ npm run scan:local -- https://example.com
 ```
 
 This runs the same stubbed steps as the `run-scan` Azure Function (shared
-via `src/lib/scanners.ts`), but locally with no Azure dependency — useful
+via `src/lib/scanners/`), but locally with no Azure dependency — useful
 for iterating on scanner logic. Prints JSON + a 0-100 score to the console.
 Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SCAN_OWNER_ID` to also
 persist the run to your Supabase project (handy for seeding test data).
@@ -176,7 +176,7 @@ curl "$AZURE_FUNCTIONS_URL/api/generate-report?scan_id=<scanId>" -o report.pdf
 - **Add a new marketing page:** create a folder under `src/app/<name>/` with
   a `page.tsx`, and add a link in `src/components/Header.tsx`.
 - **Add a new scanner check:** add a `checkXyz()` function to
-  `src/lib/scanners.ts`, call it from `runAllChecks()`, and fold its
+  `src/lib/scanners/`, call it from `runAllChecks()`, and fold its
   findings into `summariseResults()`. Both `run-scan` and
   `npm run scan:local` pick it up automatically since they share this
   module.

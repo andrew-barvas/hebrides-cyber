@@ -103,7 +103,7 @@ export default async function BlogPostPage({ params }: Props) {
         <div className="relative mx-auto max-w-3xl">
           <Link
             href="/blog"
-            className="mb-6 inline-flex items-center gap-1.5 font-mono text-xs text-slatedark/70 hover:text-atlantic dark:text-white/60 dark:hover:text-neon transition-colors"
+            className="mb-6 inline-flex items-center gap-1.5 font-mono text-xs text-slatedark/70 hover:text-atlantic dark:text-cybertext/60 dark:hover:text-neon transition-colors"
           >
             ← back to Security Weekly
           </Link>
@@ -123,11 +123,11 @@ export default async function BlogPostPage({ params }: Props) {
             </div>
           )}
 
-          <h1 className="text-3xl font-bold leading-tight text-slatedark dark:text-white sm:text-4xl">
+          <h1 className="text-3xl font-bold leading-tight text-slatedark dark:text-cybertext sm:text-4xl">
             {post.title}
           </h1>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 font-mono text-xs text-slatedark/70 dark:text-white/60">
+          <div className="mt-4 flex flex-wrap items-center gap-3 font-mono text-xs text-slatedark/70 dark:text-cybertext/60">
             <span>
               {new Date(post.published_at).toLocaleDateString("en-GB", {
                 day: "numeric",
@@ -135,12 +135,12 @@ export default async function BlogPostPage({ params }: Props) {
                 year: "numeric",
               })}
             </span>
-            <span className="text-slatedark/30 dark:text-white/20">·</span>
+            <span className="text-slatedark/30 dark:text-cybertext/20">·</span>
             <span>{mins} min read</span>
           </div>
 
           {post.excerpt && (
-            <p className="mt-5 text-base leading-relaxed text-slatedark/70 dark:text-white/60">
+            <p className="mt-5 text-base leading-relaxed text-slatedark/70 dark:text-cybertext/60">
               {post.excerpt}
             </p>
           )}
@@ -167,16 +167,16 @@ export default async function BlogPostPage({ params }: Props) {
             "dark:prose-invert",
             "prose-headings:text-atlantic dark:prose-headings:text-neon",
             "prose-a:text-atlantic dark:prose-a:text-neon prose-a:no-underline hover:prose-a:underline",
-            "prose-strong:text-slatedark dark:prose-strong:text-white",
+            "prose-strong:text-slatedark dark:prose-strong:text-cybertext",
             "prose-code:rounded prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm",
             "prose-code:bg-slate-100 prose-code:text-atlantic dark:prose-code:bg-cyberpanel dark:prose-code:text-neon",
             "prose-pre:bg-slate-100 prose-pre:border prose-pre:border-slate-200",
             "dark:prose-pre:bg-cyberpanel dark:prose-pre:border-cyberborder",
             "prose-blockquote:border-l-atlantic dark:prose-blockquote:border-l-neon",
-            "prose-blockquote:text-slatedark/70 dark:prose-blockquote:text-white/60",
+            "prose-blockquote:text-slatedark/70 dark:prose-blockquote:text-cybertext/60",
             "prose-hr:border-slate-200 dark:prose-hr:border-cyberborder",
-            "prose-th:text-slatedark dark:prose-th:text-white",
-            "prose-td:text-slatedark/80 dark:prose-td:text-white/70",
+            "prose-th:text-slatedark dark:prose-th:text-cybertext",
+            "prose-td:text-slatedark/80 dark:prose-td:text-cybertext/70",
           ].join(" ")}
           dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -188,7 +188,7 @@ export default async function BlogPostPage({ params }: Props) {
               <Link
                 key={tag}
                 href={`/blog?tag=${encodeURIComponent(tag)}`}
-                className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-1 font-mono text-xs text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-white/50 dark:hover:border-neon dark:hover:text-neon transition-colors"
+                className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-1 font-mono text-xs text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-cybertext/50 dark:hover:border-neon dark:hover:text-neon transition-colors"
               >
                 {tag}
               </Link>
@@ -198,13 +198,13 @@ export default async function BlogPostPage({ params }: Props) {
 
         {/* CTA */}
         <div className="mt-10 rounded-xl border border-slate-200 dark:border-cyberborder bg-white dark:bg-cyberpanel p-6">
-          <p className="font-mono text-xs text-slatedark/50 dark:text-white/40 mb-1">
-            <span className="text-slatedark/30 dark:text-white/20">$</span> ./get-your-score
+          <p className="font-mono text-xs text-slatedark/50 dark:text-cybertext/40 mb-1">
+            <span className="text-slatedark/30 dark:text-cybertext/20">$</span> ./get-your-score
           </p>
-          <p className="text-sm font-semibold text-slatedark dark:text-white">
+          <p className="text-sm font-semibold text-slatedark dark:text-cybertext">
             Get a free Security Score for your site
           </p>
-          <p className="mt-1 text-xs text-slatedark/60 dark:text-white/50">
+          <p className="mt-1 text-xs text-slatedark/60 dark:text-cybertext/50">
             Automated TLS, headers, DNS, and exposure checks — results in under a minute.
           </p>
           <Link

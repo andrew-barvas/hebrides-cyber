@@ -4,17 +4,17 @@ export default function HomePage() {
   return (
     <div>
       {/* Hero */}
-      <section className="relative overflow-hidden bg-cyberbg px-6 py-28 text-center text-white">
+      <section className="relative overflow-hidden bg-cyberbg px-6 py-28 text-center text-cybertext">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
           <p className="mb-4 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-slatelight/60">$</span> whoami{" "}
-            <span className="text-slatelight/60">&gt;</span> security-first
+            <span className="text-cybertext/60">$</span> whoami{" "}
+            <span className="text-cybertext/60">&gt;</span> security-first
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold sm:text-5xl">
             Professional security for SaaS teams and growing businesses
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-slatelight/80">
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-cybertext/80">
             Automated scanning. Real expertise. Clear fixes. Know your attack
             surface and stay ahead of threats — from the Isle of Lewis.
           </p>
@@ -27,7 +27,7 @@ export default function HomePage() {
             </Link>
             <Link
               href="/pricing"
-              className="rounded-md border border-white/30 px-6 py-3 font-semibold text-white hover:border-neon hover:text-neon transition-colors"
+              className="rounded-md border border-cybertext/30 px-6 py-3 font-semibold text-cybertext hover:border-neon hover:text-neon transition-colors"
             >
               View services &amp; pricing
             </Link>
@@ -56,7 +56,7 @@ export default function HomePage() {
 
       {/* Services */}
       <section className="bg-white dark:bg-cyberpanel px-6 py-16">
-        <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold text-slatedark dark:text-white">
+        <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold text-slatedark dark:text-cybertext">
           Core Services
         </h2>
         <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -86,7 +86,7 @@ export default function HomePage() {
       <Testimonials />
 
       {/* CTA footer */}
-      <section className="relative overflow-hidden bg-cyberbg px-6 py-16 text-center text-white">
+      <section className="relative overflow-hidden bg-cyberbg px-6 py-16 text-center text-cybertext">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative">
           <h2 className="text-2xl font-bold">
@@ -108,7 +108,7 @@ function Card({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-lg border border-slate-200 dark:border-cyberborder p-6 shadow-sm transition hover:border-atlantic/40 dark:hover:border-neon/40 hover:shadow-md bg-white dark:bg-cyberpanel">
       <h3 className="mb-2 font-mono text-lg font-semibold text-atlantic dark:text-neon">{title}</h3>
-      <p className="text-sm text-slatedark/80 dark:text-slatelight/70" dangerouslySetInnerHTML={{ __html: body }} />
+      <p className="text-sm text-slatedark/80 dark:text-cybertext/70" dangerouslySetInnerHTML={{ __html: body }} />
     </div>
   );
 }
@@ -138,11 +138,11 @@ const testimonials = [
 
 function Testimonials() {
   return (
-    <section className="bg-cyberpanel px-6 py-16 text-white">
+    <section className="bg-cyberpanel px-6 py-16 text-cybertext">
       <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold">
         What early customers say
       </h2>
-      <p className="mx-auto -mt-6 mb-10 max-w-2xl text-center text-xs text-slatelight/60">
+      <p className="mx-auto -mt-6 mb-10 max-w-2xl text-center text-xs text-cybertext/60">
         Sample quotes from early engagements.
       </p>
       <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2">
@@ -152,8 +152,8 @@ function Testimonials() {
             className="rounded-lg border border-cyberborder bg-cyberbg p-6 transition hover:border-neon/50 hover:shadow-glowsm"
           >
             <p className="mb-4 font-mono text-2xl text-neon" aria-hidden="true">&ldquo;</p>
-            <p className="text-sm text-slatelight/80">{t.quote}</p>
-            <p className="mt-4 font-mono text-xs text-slatelight/60">{t.role}</p>
+            <p className="text-sm text-cybertext/80">{t.quote}</p>
+            <p className="mt-4 font-mono text-xs text-cybertext/60">{t.role}</p>
           </div>
         ))}
       </div>

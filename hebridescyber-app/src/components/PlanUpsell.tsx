@@ -37,7 +37,7 @@ export default function PlanUpsell({ plan }: { plan: Plan }) {
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neon/20 bg-neon/5 p-4">
       <div>
         <p className="font-mono text-xs font-semibold uppercase tracking-wide text-neon/60">{copy.label}</p>
-        <p className="mt-1 text-sm text-white/70">{copy.message}</p>
+        <p className="mt-1 text-sm text-cybertext/70">{copy.message}</p>
       </div>
       <Link
         href={copy.href}

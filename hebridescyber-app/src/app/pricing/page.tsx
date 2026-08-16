@@ -57,10 +57,10 @@ export default function PricingPage() {
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
           <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-slatelight/60">$</span> pricing.list()
+            <span className="text-cybertext/60">$</span> pricing.list()
           </p>
-          <h1 className="text-4xl font-bold text-white">Pricing</h1>
-          <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
+          <h1 className="text-4xl font-bold text-cybertext">Pricing</h1>
+          <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
             Transparent pricing for predictable security. Choose a one-off audit
             or a monthly plan for continuous protection.
           </p>
@@ -69,7 +69,7 @@ export default function PricingPage() {
 
       <div className="mx-auto max-w-5xl px-6 pb-20 pt-12">
         {/* One-off audits */}
-        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/70">
+        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-cybertext/70">
           One-off audits
         </h2>
         <div className="mb-14 grid gap-5 sm:grid-cols-3">
@@ -78,9 +78,9 @@ export default function PricingPage() {
               key={p.name}
               className="flex flex-col rounded-xl border border-cyberborder bg-cyberpanel p-6"
             >
-              <h3 className="text-base font-semibold text-white">{p.name}</h3>
+              <h3 className="text-base font-semibold text-cybertext">{p.name}</h3>
               <p className="my-3 font-mono text-3xl font-bold text-neon">{p.price}</p>
-              <p className="flex-1 text-sm text-slatelight/60">{p.desc}</p>
+              <p className="flex-1 text-sm text-cybertext/60">{p.desc}</p>
               <Link
                 href="/contact"
                 className="mt-5 rounded-md border border-neon px-4 py-2 text-center text-sm font-semibold text-neon hover:bg-neon hover:text-cyberbg transition-colors"
@@ -92,7 +92,7 @@ export default function PricingPage() {
         </div>
 
         {/* Monthly subscriptions */}
-        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/70">
+        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-cybertext/70">
           Monthly subscriptions — Security Score
         </h2>
         {error && <p className="mb-5 text-sm text-red-400">{error}</p>}
@@ -111,9 +111,9 @@ export default function PricingPage() {
                   Most popular
                 </span>
               )}
-              <h3 className="text-base font-semibold text-white">{p.name}</h3>
+              <h3 className="text-base font-semibold text-cybertext">{p.name}</h3>
               <p className="my-3 font-mono text-3xl font-bold text-neon">{p.price}</p>
-              <p className="flex-1 text-sm text-slatelight/60">{p.desc}</p>
+              <p className="flex-1 text-sm text-cybertext/60">{p.desc}</p>
               <button
                 onClick={() => subscribe(p.id)}
                 disabled={loadingPlan === p.id}
@@ -129,7 +129,7 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <p className="mt-6 font-mono text-xs text-slatelight/60">
+        <p className="mt-6 font-mono text-xs text-cybertext/60">
           Not signed in?{" "}
           <Link href="/login" className="text-neon hover:underline">
             Sign in

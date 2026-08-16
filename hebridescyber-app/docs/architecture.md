@@ -17,7 +17,7 @@
    against `monitored_targets`), authenticating as a trusted service via
    `X-Service-Token` instead of a user session.
 4. `run-scan` runs the scanner steps (currently deterministic stubs — see
-   `src/lib/scanners.ts`), and writes results + a 0-100 score to
+   `src/lib/scanners/`), and writes results + a 0-100 score to
    `scan_results` using the Supabase **service role** key (bypasses RLS).
 5. `summariseResults()` (destined for a real Azure OpenAI call) generates
    a plain-English executive summary from the findings.

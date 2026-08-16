@@ -49,8 +49,8 @@ export default function MonitoredTargets() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-0.5 font-mono text-xs text-white/40 uppercase tracking-wide">// monitored sites (agency)</h2>
-      <p className="mb-4 text-xs text-white/50">
+      <h2 className="mb-0.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// monitored sites (agency)</h2>
+      <p className="mb-4 text-xs text-cybertext/50">
         Scanned automatically every night — see .github/workflows/scheduled-scans.yml.
       </p>
 
@@ -61,7 +61,7 @@ export default function MonitoredTargets() {
           placeholder="https://client-site.com"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
         />
         <button
           type="submit"
@@ -74,9 +74,9 @@ export default function MonitoredTargets() {
       {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-white/40">Loading…</p>
+        <p className="text-sm text-cybertext/40">Loading…</p>
       ) : targets.length === 0 ? (
-        <p className="text-sm text-white/40">No monitored sites yet — add one above.</p>
+        <p className="text-sm text-cybertext/40">No monitored sites yet — add one above.</p>
       ) : (
         <ul className="divide-y divide-cyberborder text-sm">
           {targets.map((t) => (
@@ -84,7 +84,7 @@ export default function MonitoredTargets() {
               <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
               <button
                 onClick={() => removeTarget(t.id)}
-                className="text-xs text-white/30 hover:text-red-400 transition-colors"
+                className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
               >
                 Remove
               </button>

@@ -191,7 +191,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-white/30">// loading…</p>
+        <p className="font-mono text-sm text-cybertext/30">// loading…</p>
       </div>
     );
   }
@@ -200,14 +200,14 @@ export default function DashboardPage() {
     return (
       <div className="bg-cyberbg min-h-screen flex flex-col items-center justify-center px-6 text-center">
         <p className="mb-3 font-mono text-sm text-neon">// auth required</p>
-        <h1 className="text-2xl font-bold text-white">Sign in required</h1>
+        <h1 className="text-2xl font-bold text-cybertext">Sign in required</h1>
         <Link href="/login" className="mt-6 inline-block text-neon underline">Sign in →</Link>
       </div>
     );
   }
 
   return (
-    <div className="bg-cyberbg min-h-screen text-white">
+    <div className="bg-cyberbg min-h-screen text-cybertext">
       <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
 
       <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-8">
@@ -219,11 +219,11 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./dashboard</p>
-            <h1 className="text-2xl font-bold text-white sm:text-3xl">Dashboard</h1>
+            <h1 className="text-2xl font-bold text-cybertext sm:text-3xl">Dashboard</h1>
           </div>
           <Link
             href="/dashboard/scans"
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-white/70 hover:border-neon hover:text-neon transition-colors"
+            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
           >
             All scans →
           </Link>
@@ -234,7 +234,7 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-xs text-white/40 uppercase tracking-wide">Current plan</p>
+                <p className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">Current plan</p>
                 <p className="mt-0.5 text-lg font-bold text-neon">{PLAN_LABELS[plan] ?? plan}</p>
                 {planStatus === "past_due" && (
                   <p className="mt-1 text-xs text-red-400">Payment failed — update your card to avoid losing access.</p>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
               <button
                 onClick={openBillingPortal}
                 disabled={portalLoading}
-                className="rounded-lg border border-cyberborder px-4 py-2 text-sm font-medium text-white/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+                className="rounded-lg border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
               >
                 {portalLoading ? "Opening…" : "Manage billing"}
               </button>
@@ -267,7 +267,7 @@ export default function DashboardPage() {
 
         {/* Run a scan */}
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-          <h2 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// run a scan</h2>
+          <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// run a scan</h2>
           <form onSubmit={startScan} className="flex flex-col gap-2 sm:flex-row">
             <input
               type="url"
@@ -275,7 +275,7 @@ export default function DashboardPage() {
               placeholder="https://your-site.com"
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
-              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
             />
             <button
               type="submit"
@@ -285,7 +285,7 @@ export default function DashboardPage() {
               {submitting ? "Scanning…" : "Run scan"}
             </button>
           </form>
-          <p className="mt-2 text-xs text-white/40">
+          <p className="mt-2 text-xs text-cybertext/40">
             Only scan sites you own or are authorised to test.
           </p>
           {scanMessage && <p className="mt-2 text-sm text-neon">{scanMessage}</p>}
@@ -298,14 +298,14 @@ export default function DashboardPage() {
         {/* Slack alerts — Pro/Agency only */}
         {(plan === "pro" || plan === "agency") && (
           <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-            <h2 className="mb-1 font-mono text-xs text-white/40 uppercase tracking-wide">// slack alerts</h2>
-            <p className="mb-3 text-xs text-white/60">
+            <h2 className="mb-1 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// slack alerts</h2>
+            <p className="mb-3 text-xs text-cybertext/60">
               Post scan results to a Slack channel. Paste your{" "}
               <a
                 href="https://api.slack.com/messaging/webhooks"
                 target="_blank"
                 rel="noreferrer"
-                className="text-neon underline hover:text-white"
+                className="text-neon underline hover:text-cybertext"
               >
                 incoming webhook URL
               </a>{" "}
@@ -317,12 +317,12 @@ export default function DashboardPage() {
                 placeholder="https://hooks.slack.com/services/…"
                 value={slackWebhookUrl}
                 onChange={(e) => setSlackWebhookUrl(e.target.value)}
-                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
               />
               <button
                 type="submit"
                 disabled={slackSaving}
-                className="rounded-md border border-cyberborder px-4 py-2.5 text-sm text-white/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+                className="rounded-md border border-cyberborder px-4 py-2.5 text-sm text-cybertext/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
               >
                 {slackSaving ? "Saving…" : "Save"}
               </button>

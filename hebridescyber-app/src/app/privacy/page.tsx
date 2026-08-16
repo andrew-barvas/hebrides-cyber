@@ -19,18 +19,18 @@ export default function PrivacyPage() {
       <div className="relative mx-auto max-w-3xl px-6 py-16">
         <Link
           href="/"
-          className="mb-8 inline-block font-mono text-xs text-slatedark/50 hover:text-atlantic dark:text-white/40 dark:hover:text-neon transition-colors"
+          className="mb-8 inline-block font-mono text-xs text-slatedark/50 hover:text-atlantic dark:text-cybertext/40 dark:hover:text-neon transition-colors"
         >
           ← Back to home
         </Link>
 
         <div className="mb-10">
           <p className="font-mono text-xs text-neon mb-2" aria-hidden="true">// privacy-policy.md</p>
-          <h1 className="text-3xl font-bold text-slatedark dark:text-white">Privacy Policy</h1>
-          <p className="mt-2 text-sm text-slatedark/50 dark:text-white/40">Last updated: {LAST_UPDATED}</p>
+          <h1 className="text-3xl font-bold text-slatedark dark:text-cybertext">Privacy Policy</h1>
+          <p className="mt-2 text-sm text-slatedark/50 dark:text-cybertext/40">Last updated: {LAST_UPDATED}</p>
         </div>
 
-        <div className="prose prose-slate max-w-none dark:prose-invert dark:prose-headings:text-neon dark:prose-a:text-neon dark:prose-strong:text-white dark:prose-code:text-neon dark:prose-code:bg-cyberpanel">
+        <div className="prose prose-slate max-w-none dark:prose-invert dark:prose-headings:text-neon dark:prose-a:text-neon dark:prose-strong:text-cybertext dark:prose-code:text-neon dark:prose-code:bg-cyberpanel">
           <h2>1. Who we are</h2>
           <p>
             {COMPANY} (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) provides automated security scanning,

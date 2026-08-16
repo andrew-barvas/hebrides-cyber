@@ -11,7 +11,9 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/fetch-scheduled-targets.ts
 
 import { createClient } from "@supabase/supabase-js";
+import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import { appendFileSync } from "node:fs";
+import ws from "ws";
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -22,7 +24,19 @@ async function main() {
     process.exit(1);
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+  // This script only does REST (.from().select()) calls and never subscribes
+  // to a realtime channel — but createClient() constructs a RealtimeClient
+  // unconditionally, which throws at construction time on Node 20 CI runners
+  // that lack a native WebSocket global. Supplying the `ws` package as the
+  // transport (Supabase's own documented workaround for Node < 22) avoids
+  // the crash without changing the pinned Node version for the whole workflow.
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    // ws's bundled types don't structurally match WebSocketLikeConstructor
+    // (its `address` param is typed wider than the interface expects) even
+    // though it satisfies the interface at runtime — a known mismatch
+    // between the two packages' type definitions, not a real incompatibility.
+    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
+  });
 
   const { data: activeSubs, error: subsError } = await supabaseAdmin
     .from("subscriptions")

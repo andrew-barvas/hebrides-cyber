@@ -34,8 +34,8 @@ export default function ContactPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-cyberbg px-6 text-center">
         <p className="mb-4 font-mono text-sm text-neon" aria-hidden="true">// message received</p>
-        <h1 className="text-2xl font-bold text-white">Thanks!</h1>
-        <p className="mt-4 max-w-sm text-slatelight/70">
+        <h1 className="text-2xl font-bold text-cybertext">Thanks!</h1>
+        <p className="mt-4 max-w-sm text-cybertext/70">
           We&apos;ll be in touch within 24 hours to arrange your free Security Score scan.
         </p>
       </div>
@@ -49,10 +49,10 @@ export default function ContactPage() {
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
           <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-slatelight/60">$</span> ./contact --get-started
+            <span className="text-cybertext/60">$</span> ./contact --get-started
           </p>
-          <h1 className="text-4xl font-bold text-white">Get in touch</h1>
-          <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
+          <h1 className="text-4xl font-bold text-cybertext">Get in touch</h1>
+          <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
             Tell us about your site or app and we&apos;ll get back to you with next steps and a free Security Score scan.
           </p>
         </div>
@@ -65,7 +65,7 @@ export default function ContactPage() {
             <Field label="Email" name="email" type="email" required />
             <Field label="Website / App URL" name="url" type="url" placeholder="https://your-site.com" />
             <div>
-              <label htmlFor="message" className="mb-1.5 block font-mono text-xs text-slatelight/60 uppercase tracking-wider">
+              <label htmlFor="message" className="mb-1.5 block font-mono text-xs text-cybertext/60 uppercase tracking-wider">
                 Message
               </label>
               <textarea
@@ -74,7 +74,7 @@ export default function ContactPage() {
                 rows={5}
                 required
                 minLength={10}
-                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-white placeholder-slatelight/30 focus:border-neon focus:outline-none transition-colors"
+                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                 placeholder="Tell us about your setup…"
               />
             </div>
@@ -102,7 +102,7 @@ export default function ContactPage() {
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-cyberborder bg-cyberpanel p-4">
               <p className="font-mono text-sm font-bold text-neon">{value}</p>
-              <p className="mt-0.5 text-xs text-slatelight/50">{label}</p>
+              <p className="mt-0.5 text-xs text-cybertext/50">{label}</p>
             </div>
           ))}
         </div>
@@ -126,7 +126,7 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={name} className="mb-1.5 block font-mono text-xs text-slatelight/60 uppercase tracking-wider">
+      <label htmlFor={name} className="mb-1.5 block font-mono text-xs text-cybertext/60 uppercase tracking-wider">
         {label}
       </label>
       <input
@@ -135,7 +135,7 @@ function Field({
         type={type}
         required={required}
         placeholder={placeholder}
-        className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-white placeholder-slatelight/30 focus:border-neon focus:outline-none transition-colors"
+        className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
       />
     </div>
   );
