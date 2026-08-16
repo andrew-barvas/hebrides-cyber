@@ -16,24 +16,22 @@ const PLAN_LABELS: Record<string, string> = {
   agency: "Agency — £75/mo",
 };
 
-// Isolated to its own component so Next.js 15+ Suspense requirement for
-// useSearchParams() is satisfied without wrapping the entire page.
 function CheckoutBanner() {
   const searchParams = useSearchParams();
   const result = searchParams?.get("checkout") ?? null;
   if (!result) return null;
   if (result === "success") {
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+      <div className="rounded-lg border border-neon/30 bg-neon/10 p-4 text-sm text-neon">
         <strong>Subscription activated!</strong> Your first automated scan will run within 24 hours. Welcome aboard.
       </div>
     );
   }
   if (result === "cancelled") {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+      <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-400">
         Checkout cancelled — your plan hasn&apos;t changed.{" "}
-        <Link href="/pricing" className="underline">View plans</Link>
+        <Link href="/pricing" className="underline text-neon">View plans</Link>
       </div>
     );
   }
@@ -73,7 +71,6 @@ export default function DashboardPage() {
   }, []);
 
   const loadScans = useCallback(async () => {
-    // Join scan_results to pull the score into the list without a second query.
     const { data, error: fetchError } = await supabase
       .from("scans")
       .select("id, target_url, status, created_at, scan_results(score)")
@@ -95,16 +92,9 @@ export default function DashboardPage() {
   useEffect(() => {
     (async () => {
       const session = await getSession();
-      if (!session) {
-        setAuthed(false);
-        setLoading(false);
-        return;
-      }
+      if (!session) { setAuthed(false); setLoading(false); return; }
       const { currentLevel, nextLevel } = await getMfaAssuranceLevel();
-      if (nextLevel && currentLevel !== nextLevel) {
-        router.replace("/login/mfa-challenge");
-        return;
-      }
+      if (nextLevel && currentLevel !== nextLevel) { router.replace("/login/mfa-challenge"); return; }
       setAuthed(true);
       await Promise.all([loadScans(), loadPlan()]);
       setLoading(false);
@@ -113,6 +103,13 @@ export default function DashboardPage() {
       setLoading(false);
     });
   }, [router, loadScans, loadPlan]);
+
+  async function deleteScan(scanId: string) {
+    await supabase.from("scan_results").delete().eq("scan_id", scanId);
+    const { error } = await supabase.from("scans").delete().eq("id", scanId);
+    if (error) throw new Error(error.message);
+    setScans((prev) => prev.filter((s) => s.id !== scanId));
+  }
 
   async function startScan(e: React.FormEvent) {
     e.preventDefault();
@@ -128,11 +125,7 @@ export default function DashboardPage() {
     }
 
     const session = await getSession();
-    if (!session) {
-      setError("Session expired — please sign in again.");
-      setSubmitting(false);
-      return;
-    }
+    if (!session) { setError("Session expired — please sign in again."); setSubmitting(false); return; }
 
     try {
       const createRes = await fetch(`${functionsUrl}/api/run-scan`, {
@@ -195,127 +188,149 @@ export default function DashboardPage() {
     setSlackMessage(updateError ? updateError.message : "Saved — alerts will post to this channel when scans complete.");
   }
 
-  if (loading) return <div className="px-6 py-16 text-center text-sm text-slatedark/40">Loading…</div>;
+  if (loading) {
+    return (
+      <div className="bg-cyberbg min-h-screen flex items-center justify-center">
+        <p className="font-mono text-sm text-white/30">// loading…</p>
+      </div>
+    );
+  }
 
   if (!authed) {
     return (
-      <div className="mx-auto max-w-md px-6 py-24 text-center">
-        <h1 className="text-2xl font-bold text-atlantic">Sign in required</h1>
-        <Link href="/login" className="mt-6 inline-block text-atlantic underline">Sign in</Link>
+      <div className="bg-cyberbg min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <p className="mb-3 font-mono text-sm text-neon">// auth required</p>
+        <h1 className="text-2xl font-bold text-white">Sign in required</h1>
+        <Link href="/login" className="mt-6 inline-block text-neon underline">Sign in →</Link>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-16 space-y-10">
-      <Suspense fallback={null}>
-        <CheckoutBanner />
-      </Suspense>
+    <div className="bg-cyberbg min-h-screen text-white">
+      <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-atlantic">Dashboard</h1>
-        <Link href="/dashboard/scans" className="rounded-md bg-atlantic px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-          All scans
-        </Link>
-      </div>
+      <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-8">
+        <Suspense fallback={null}>
+          <CheckoutBanner />
+        </Suspense>
 
-      {/* Subscription status */}
-      {plan !== "none" && (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-slatedark/50 uppercase tracking-wide">Current plan</p>
-              <p className="mt-0.5 text-lg font-bold text-atlantic">{PLAN_LABELS[plan] ?? plan}</p>
-              {planStatus === "past_due" && (
-                <p className="mt-1 text-xs text-red-600">Payment failed — update your card to avoid losing access.</p>
-              )}
-            </div>
-            <button
-              onClick={openBillingPortal}
-              disabled={portalLoading}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium hover:border-atlantic hover:text-atlantic disabled:opacity-50"
-            >
-              {portalLoading ? "Opening…" : "Manage billing"}
-            </button>
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./dashboard</p>
+            <h1 className="text-2xl font-bold text-white sm:text-3xl">Dashboard</h1>
           </div>
-        </div>
-      )}
-
-      {planStatus === "past_due" && plan === "none" && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Your last payment failed.{" "}
-          <button onClick={openBillingPortal} className="underline">Update billing</button>{" "}
-          to restore your plan.
-        </div>
-      )}
-
-      <PlanUpsell plan={plan} />
-
-      {plan === "agency" && <MonitoredTargets />}
-
-      <DomainVerification />
-
-      {/* Run a scan */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slatedark/70">Run a scan</h2>
-        <form onSubmit={startScan} className="flex gap-2">
-          <input
-            type="url"
-            required
-            placeholder="https://your-site.com"
-            value={targetUrl}
-            onChange={(e) => setTargetUrl(e.target.value)}
-            className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-atlantic focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-md bg-seafoam px-4 py-2 text-sm font-semibold text-slatedark hover:opacity-90 disabled:opacity-50"
+          <Link
+            href="/dashboard/scans"
+            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-white/70 hover:border-neon hover:text-neon transition-colors"
           >
-            {submitting ? "Scanning…" : "Run scan"}
-          </button>
-        </form>
-        <p className="mt-2 text-xs text-slatedark/40">
-          Only scan sites you own or are authorised to test.
-        </p>
-        {scanMessage && <p className="mt-2 text-sm text-emerald-700">{scanMessage}</p>}
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      </div>
+            All scans →
+          </Link>
+        </div>
 
-      {/* Scan history */}
-      <ScanList scans={scans} />
+        {/* Subscription status */}
+        {plan !== "none" && (
+          <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-mono text-xs text-white/40 uppercase tracking-wide">Current plan</p>
+                <p className="mt-0.5 text-lg font-bold text-neon">{PLAN_LABELS[plan] ?? plan}</p>
+                {planStatus === "past_due" && (
+                  <p className="mt-1 text-xs text-red-400">Payment failed — update your card to avoid losing access.</p>
+                )}
+              </div>
+              <button
+                onClick={openBillingPortal}
+                disabled={portalLoading}
+                className="rounded-lg border border-cyberborder px-4 py-2 text-sm font-medium text-white/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+              >
+                {portalLoading ? "Opening…" : "Manage billing"}
+              </button>
+            </div>
+          </div>
+        )}
 
-      {/* Slack alerts — Pro/Agency only */}
-      {(plan === "pro" || plan === "agency") && (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-1 text-sm font-semibold text-slatedark">Slack alerts</h2>
-          <p className="mb-3 text-xs text-slatedark/60">
-            Post scan results to a Slack channel. Paste your{" "}
-            <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="underline">
-              incoming webhook URL
-            </a>{" "}
-            below.
-          </p>
-          <form onSubmit={saveSlackWebhook} className="flex gap-2">
+        {planStatus === "past_due" && plan === "none" && (
+          <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
+            Your last payment failed.{" "}
+            <button onClick={openBillingPortal} className="underline hover:text-red-300">Update billing</button>{" "}
+            to restore your plan.
+          </div>
+        )}
+
+        <PlanUpsell plan={plan} />
+
+        {plan === "agency" && <MonitoredTargets />}
+
+        <DomainVerification />
+
+        {/* Run a scan */}
+        <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+          <h2 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// run a scan</h2>
+          <form onSubmit={startScan} className="flex flex-col gap-2 sm:flex-row">
             <input
               type="url"
-              placeholder="https://hooks.slack.com/services/…"
-              value={slackWebhookUrl}
-              onChange={(e) => setSlackWebhookUrl(e.target.value)}
-              className="flex-1 rounded-md border border-slate-200 px-3 py-2 font-mono text-xs focus:border-atlantic focus:outline-none"
+              required
+              placeholder="https://your-site.com"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
             />
             <button
               type="submit"
-              disabled={slackSaving}
-              className="rounded-md border border-slate-200 px-4 py-2 text-sm hover:border-atlantic disabled:opacity-50"
+              disabled={submitting}
+              className="rounded-md bg-neon px-5 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 shadow-glowsm transition-opacity"
             >
-              {slackSaving ? "Saving…" : "Save"}
+              {submitting ? "Scanning…" : "Run scan"}
             </button>
           </form>
-          {slackMessage && <p className="mt-2 text-xs text-emerald-700">{slackMessage}</p>}
+          <p className="mt-2 text-xs text-white/40">
+            Only scan sites you own or are authorised to test.
+          </p>
+          {scanMessage && <p className="mt-2 text-sm text-neon">{scanMessage}</p>}
+          {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
         </div>
-      )}
+
+        {/* Scan history */}
+        <ScanList scans={scans} onDelete={deleteScan} />
+
+        {/* Slack alerts — Pro/Agency only */}
+        {(plan === "pro" || plan === "agency") && (
+          <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+            <h2 className="mb-1 font-mono text-xs text-white/40 uppercase tracking-wide">// slack alerts</h2>
+            <p className="mb-3 text-xs text-white/60">
+              Post scan results to a Slack channel. Paste your{" "}
+              <a
+                href="https://api.slack.com/messaging/webhooks"
+                target="_blank"
+                rel="noreferrer"
+                className="text-neon underline hover:text-white"
+              >
+                incoming webhook URL
+              </a>{" "}
+              below.
+            </p>
+            <form onSubmit={saveSlackWebhook} className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                placeholder="https://hooks.slack.com/services/…"
+                value={slackWebhookUrl}
+                onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              />
+              <button
+                type="submit"
+                disabled={slackSaving}
+                className="rounded-md border border-cyberborder px-4 py-2.5 text-sm text-white/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+              >
+                {slackSaving ? "Saving…" : "Save"}
+              </button>
+            </form>
+            {slackMessage && <p className="mt-2 text-xs text-neon">{slackMessage}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

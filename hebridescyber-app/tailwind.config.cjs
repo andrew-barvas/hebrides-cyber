@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class', // dark class on <html> = cyber dark theme (see layout.tsx ThemeScript)
   content: [
     "./src/app/**/*.{ts,tsx}",
     "./src/pages/**/*.{ts,tsx}",

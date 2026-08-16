@@ -52,8 +52,8 @@ export default async function BlogIndexPage({ searchParams }: Props) {
       <section className="relative overflow-hidden bg-cyberbg px-6 py-20 text-center">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
-          <p className="mb-3 font-mono text-sm text-neon">
-            <span className="text-slatelight/40">$</span> cat security-weekly.log
+          <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
+            <span className="text-slatelight/60">$</span> cat security-weekly.log
           </p>
           <h1 className="text-4xl font-bold text-white">Security Weekly</h1>
           <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
@@ -118,7 +118,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
                 />
               )}
               <div className="min-w-0">
-                <p className="mb-1 font-mono text-xs text-slatelight/40">
+                <p className="mb-1 font-mono text-xs text-slatelight/60">
                   {new Date(post.published_at).toLocaleDateString("en-GB", {
                     day: "numeric",
                     month: "long",

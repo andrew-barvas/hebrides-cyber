@@ -7,14 +7,12 @@ import Footer from "@/components/Footer";
 import CookieConsent from "@/components/CookieConsent";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 
-// Self-hosted via next/font (downloaded at build time, no external request
-// at runtime — no third-party font CDN to add to a CSP later). Exposed as
-// a CSS variable and wired to the `font-mono` Tailwind utility in
-// tailwind.config.cjs, used for the "terminal" accents in the cyber theme.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-mono",
+  display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {
@@ -30,13 +28,34 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+// Runs before React hydrates — reads saved preference from localStorage and
+// applies the `dark` class to <html> immediately, preventing a flash of the
+// wrong theme. Default is dark (cyber theme) unless the user has saved "light".
+const ThemeScript = () => (
+  <script
+    dangerouslySetInnerHTML={{
+      __html: `(function(){
+  try {
+    var t = localStorage.getItem('hc-theme');
+    if (t === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
+  } catch(e) {
+    document.documentElement.classList.add('dark');
+  }
+})();`,
+    }}
+  />
+);
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={jetbrainsMono.variable}>
+      <head>
+        <ThemeScript />
+      </head>
       <body className="flex min-h-screen flex-col">
         <Suspense fallback={null}>
           <GoogleAnalytics />

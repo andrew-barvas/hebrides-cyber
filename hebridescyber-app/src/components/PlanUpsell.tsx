@@ -4,10 +4,6 @@ import Link from "next/link";
 
 export type Plan = "none" | "basic" | "pro" | "agency";
 
-// Bespoke "what's next" card per plan tier — the dashboard's upsell path.
-// Deliberately always suggests the *next* tier up (or a one-off add-on for
-// the top tier) rather than a generic "upgrade now" banner, since a
-// concrete next step converts better than a vague one.
 const COPY: Record<Plan, { label: string; message: string; cta: string; href: string }> = {
   none: {
     label: "No active plan",
@@ -38,14 +34,14 @@ const COPY: Record<Plan, { label: string; message: string; cta: string; href: st
 export default function PlanUpsell({ plan }: { plan: Plan }) {
   const copy = COPY[plan];
   return (
-    <div className="mb-8 flex items-center justify-between rounded-lg border border-seafoam/40 bg-seafoam/10 p-4">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neon/20 bg-neon/5 p-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-atlantic/70">{copy.label}</p>
-        <p className="mt-1 text-sm text-slatedark/80">{copy.message}</p>
+        <p className="font-mono text-xs font-semibold uppercase tracking-wide text-neon/60">{copy.label}</p>
+        <p className="mt-1 text-sm text-white/70">{copy.message}</p>
       </div>
       <Link
         href={copy.href}
-        className="ml-4 shrink-0 rounded-md bg-atlantic px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+        className="shrink-0 rounded-md bg-neon px-4 py-2 text-sm font-semibold text-cyberbg hover:opacity-90 shadow-glowsm transition-opacity"
       >
         {copy.cta}
       </Link>

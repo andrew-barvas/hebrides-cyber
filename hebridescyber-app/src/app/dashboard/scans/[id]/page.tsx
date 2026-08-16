@@ -30,22 +30,22 @@ type ScanResult = {
   created_at: string;
 };
 
-const SEVERITY_META: Record<Severity, { label: string; bg: string; text: string; dot: string; printBg: string }> = {
-  critical: { label: "Critical", bg: "bg-red-50",    text: "text-red-800",    dot: "bg-red-500",    printBg: "#fef2f2" },
-  high:     { label: "High",     bg: "bg-orange-50", text: "text-orange-800", dot: "bg-orange-400", printBg: "#fff7ed" },
-  medium:   { label: "Medium",   bg: "bg-yellow-50", text: "text-yellow-800", dot: "bg-yellow-400", printBg: "#fefce8" },
-  low:      { label: "Low",      bg: "bg-blue-50",   text: "text-blue-800",   dot: "bg-blue-400",   printBg: "#eff6ff" },
-  info:     { label: "Info",     bg: "bg-slate-50",  text: "text-slate-700",  dot: "bg-slate-400",  printBg: "#f8fafc" },
+const SEVERITY_META: Record<Severity, { label: string; bg: string; text: string; dot: string; border: string }> = {
+  critical: { label: "Critical", bg: "bg-red-400/10",    text: "text-red-400",    dot: "bg-red-400",    border: "border-red-400/20" },
+  high:     { label: "High",     bg: "bg-orange-400/10", text: "text-orange-400", dot: "bg-orange-400", border: "border-orange-400/20" },
+  medium:   { label: "Medium",   bg: "bg-yellow-400/10", text: "text-yellow-400", dot: "bg-yellow-400", border: "border-yellow-400/20" },
+  low:      { label: "Low",      bg: "bg-blue-400/10",   text: "text-blue-400",   dot: "bg-blue-400",   border: "border-blue-400/20" },
+  info:     { label: "Info",     bg: "bg-white/5",       text: "text-white/60",   dot: "bg-white/40",   border: "border-cyberborder" },
 };
 
 function ScoreGauge({ score }: { score: number }) {
-  const colour = score >= 80 ? "text-green-600" : score >= 60 ? "text-yellow-600" : score >= 40 ? "text-orange-600" : "text-red-600";
-  const ring   = score >= 80 ? "border-green-400" : score >= 60 ? "border-yellow-400" : score >= 40 ? "border-orange-400" : "border-red-400";
+  const colour = score >= 80 ? "text-neon" : score >= 60 ? "text-yellow-400" : score >= 40 ? "text-orange-400" : "text-red-400";
+  const ring   = score >= 80 ? "border-neon" : score >= 60 ? "border-yellow-400" : score >= 40 ? "border-orange-400" : "border-red-400";
   const label  = score >= 80 ? "Good" : score >= 60 ? "Fair" : score >= 40 ? "Poor" : "Critical";
   return (
     <div className={`inline-flex flex-col items-center justify-center rounded-full border-4 ${ring} h-28 w-28 flex-shrink-0`}>
       <span className={`text-4xl font-bold ${colour}`}>{score}</span>
-      <span className="text-xs text-slate-400">/100 · {label}</span>
+      <span className="text-xs text-white/40">/100 · {label}</span>
     </div>
   );
 }
@@ -53,26 +53,26 @@ function ScoreGauge({ score }: { score: number }) {
 function FindingCard({ finding }: { finding: Finding }) {
   const meta = SEVERITY_META[finding.severity] ?? SEVERITY_META.info;
   return (
-    <div className={`rounded-lg border border-slate-200 ${meta.bg} p-4`}>
+    <div className={`rounded-lg border ${meta.border} ${meta.bg} p-4`}>
       <div className="mb-1 flex items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
         <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
       </div>
-      <p className="font-medium text-slate-800 text-sm">{finding.title}</p>
-      {finding.detail && <p className="mt-1 text-xs text-slate-600 leading-relaxed">{finding.detail}</p>}
+      <p className="font-medium text-white text-sm">{finding.title}</p>
+      {finding.detail && <p className="mt-1 text-xs text-white/60 leading-relaxed">{finding.detail}</p>}
     </div>
   );
 }
 
 function CheckRow({ label, pass, detail }: { label: string; pass: boolean | undefined; detail: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3">
-      <span className={`mt-0.5 flex-shrink-0 text-sm font-bold ${pass ? "text-green-600" : "text-red-500"}`}>
+    <div className="flex items-start gap-3 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
+      <span className={`mt-0.5 flex-shrink-0 text-sm font-bold ${pass ? "text-neon" : "text-red-400"}`}>
         {pass ? "✓" : "✗"}
       </span>
       <div>
-        <p className="text-sm font-medium text-slate-700">{label}</p>
-        <p className="text-xs text-slate-400">{detail}</p>
+        <p className="text-sm font-medium text-white/80">{label}</p>
+        <p className="text-xs text-white/40">{detail}</p>
       </div>
     </div>
   );
@@ -101,13 +101,29 @@ export default function ScanDetailPage() {
     });
   }, [params?.id]);
 
-  if (loading) return <div className="px-6 py-16 text-center text-sm text-slate-400">Loading scan report…</div>;
-  if (error)   return <div className="px-6 py-16 text-center text-sm text-red-600">{error}</div>;
+  if (loading) {
+    return (
+      <div className="bg-cyberbg min-h-screen flex items-center justify-center">
+        <p className="font-mono text-sm text-white/30">// loading scan report…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-cyberbg min-h-screen flex items-center justify-center">
+        <p className="text-sm text-red-400">{error}</p>
+      </div>
+    );
+  }
+
   if (!result) {
     return (
-      <div className="px-6 py-16 text-center text-sm text-slate-500">
-        No results yet — the scan may still be running.{" "}
-        <Link href="/dashboard" className="underline">← Dashboard</Link>
+      <div className="bg-cyberbg min-h-screen flex items-center justify-center text-center px-6">
+        <p className="text-sm text-white/50">
+          No results yet — the scan may still be running.{" "}
+          <Link href="/dashboard" className="text-neon underline">← Dashboard</Link>
+        </p>
       </div>
     );
   }
@@ -133,138 +149,147 @@ export default function ScanDetailPage() {
 
   return (
     <>
-      {/* Print-only styles — keeps the PDF clean and readable */}
+      {/* Print styles — keep PDF light-on-white */}
       <style>{`
         @media print {
           body { font-family: system-ui, sans-serif; color: #1e293b; background: #fff; }
           .no-print { display: none !important; }
           .page-break-before { page-break-before: always; }
           a { color: inherit; text-decoration: none; }
-          .print-border { border: 1px solid #e2e8f0; border-radius: 8px; }
         }
         @page { margin: 1.5cm; }
       `}</style>
 
-      <div className="mx-auto max-w-3xl px-6 py-12 space-y-8 print:py-0 print:space-y-6">
-        {/* Header — visible on screen and in print */}
-        <div>
-          <Link href="/dashboard" className="no-print text-xs text-slate-400 hover:text-atlantic">← Back to dashboard</Link>
-          <div className="mt-2 flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-atlantic break-all">{targetUrl}</h1>
-              <p className="mt-1 text-sm text-slate-400">Security scan report · {checkedAt}</p>
-            </div>
-            <button
-              onClick={() => window.print()}
-              className="no-print flex-shrink-0 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-atlantic hover:text-atlantic"
+      <div className="bg-cyberbg min-h-screen text-white print:bg-white print:text-slate-800">
+        <div className="bg-grid pointer-events-none fixed inset-0 opacity-20 print:hidden" />
+
+        <div className="relative mx-auto max-w-3xl px-6 py-12 space-y-8 print:py-0 print:space-y-6">
+          {/* Header */}
+          <div>
+            <Link
+              href="/dashboard"
+              className="no-print inline-block mb-3 font-mono text-xs text-white/40 hover:text-neon transition-colors"
             >
-              ↓ Download PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Score + summary */}
-        <div className="flex flex-col items-start gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
-          {result.score !== null && <ScoreGauge score={result.score} />}
-          <div>
-            <p className="text-sm font-semibold text-atlantic mb-1">Executive summary</p>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              {result.summary ?? "Scan complete. Review findings below."}
-            </p>
-            {findings.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                {critical.length > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700 font-medium">{critical.length} critical</span>}
-                {high.length > 0 && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-700 font-medium">{high.length} high</span>}
-                {medium.length > 0 && <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-yellow-700 font-medium">{medium.length} medium</span>}
-                {low.length > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700 font-medium">{low.length} low</span>}
-                {info.length > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600 font-medium">{info.length} info</span>}
+              ← Back to dashboard
+            </Link>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./report</p>
+                <h1 className="text-2xl font-bold text-white break-all print:text-slate-800">{targetUrl}</h1>
+                <p className="mt-1 text-sm text-white/40 print:text-slate-500">Security scan report · {checkedAt}</p>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Check breakdown */}
-        <div>
-          <h2 className="mb-3 text-sm font-semibold text-atlantic">Check breakdown</h2>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {tls && (
-              <CheckRow
-                label="TLS / HTTPS"
-                pass={tls.valid !== false && (tls.daysUntilExpiry ?? 999) > 0}
-                detail={[
-                  tls.grade ? `Grade ${tls.grade}` : null,
-                  tls.daysUntilExpiry != null ? `${tls.daysUntilExpiry} days until expiry` : null,
-                  tls.issues?.length ? tls.issues.join(", ") : "No issues",
-                ].filter(Boolean).join(" · ")}
-              />
-            )}
-            {headers && (
-              <CheckRow
-                label="Security headers"
-                pass={(headers.missing?.length ?? 0) === 0}
-                detail={
-                  (headers.missing?.length ?? 0) === 0
-                    ? "All required headers present"
-                    : `Missing: ${headers.missing?.join(", ")}`
-                }
-              />
-            )}
-            {dns && (
-              <CheckRow
-                label="Email authentication"
-                pass={dns.spf && dns.dmarc}
-                detail={`SPF ${dns.spf ? "✓" : "missing"} · DMARC ${dns.dmarc ? "✓" : "missing"}`}
-              />
-            )}
-            {exposure && (
-              <CheckRow
-                label="Exposed sensitive paths"
-                pass={(exposure.exposedPaths?.length ?? 0) === 0}
-                detail={
-                  (exposure.exposedPaths?.length ?? 0) === 0
-                    ? "No sensitive files exposed"
-                    : `Exposed: ${exposure.exposedPaths?.join(", ")}`
-                }
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Findings */}
-        {allOrdered.length > 0 ? (
-          <div>
-            <h2 className="mb-4 text-lg font-semibold text-atlantic">Findings</h2>
-            <div className="space-y-3">
-              {allOrdered.map((f, i) => <FindingCard key={i} finding={f} />)}
+              <button
+                onClick={() => window.print()}
+                className="no-print shrink-0 rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-white/60 hover:border-neon hover:text-neon transition-colors"
+              >
+                ↓ Download PDF
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-5 text-sm text-green-800">
-            No significant findings detected. TLS, headers, DNS authentication, and common exposure paths all checked out.
+
+          {/* Score + summary */}
+          <div className="flex flex-col items-start gap-6 rounded-xl border border-cyberborder bg-cyberpanel p-6 sm:flex-row sm:items-center print:border-slate-200 print:bg-white">
+            {result.score !== null && <ScoreGauge score={result.score} />}
+            <div>
+              <p className="text-sm font-semibold text-neon mb-1 print:text-slate-800">Executive summary</p>
+              <p className="text-sm text-white/70 leading-relaxed print:text-slate-600">
+                {result.summary ?? "Scan complete. Review findings below."}
+              </p>
+              {findings.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  {critical.length > 0 && <span className="rounded-full bg-red-400/10 border border-red-400/20 px-2 py-0.5 text-red-400 font-medium">{critical.length} critical</span>}
+                  {high.length > 0 && <span className="rounded-full bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 text-orange-400 font-medium">{high.length} high</span>}
+                  {medium.length > 0 && <span className="rounded-full bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 text-yellow-400 font-medium">{medium.length} medium</span>}
+                  {low.length > 0 && <span className="rounded-full bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 text-blue-400 font-medium">{low.length} low</span>}
+                  {info.length > 0 && <span className="rounded-full bg-white/5 border border-cyberborder px-2 py-0.5 text-white/60 font-medium">{info.length} info</span>}
+                </div>
+              )}
+            </div>
           </div>
-        )}
 
-        {/* Remediation note */}
-        {(critical.length + high.length) > 0 && (
-          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800 no-print">
-            <strong>{critical.length + high.length} critical/high finding{(critical.length + high.length) !== 1 ? "s" : ""} found.</strong>{" "}
-            Hebrides Cyber can open remediation PRs directly in your repository — contact us or{" "}
-            <Link href="/services" className="underline">see how it works</Link>.
+          {/* Check breakdown */}
+          <div>
+            <h2 className="mb-3 font-mono text-xs text-white/40 uppercase tracking-wide">// check breakdown</h2>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {tls && (
+                <CheckRow
+                  label="TLS / HTTPS"
+                  pass={tls.valid !== false && (tls.daysUntilExpiry ?? 999) > 0}
+                  detail={[
+                    tls.grade ? `Grade ${tls.grade}` : null,
+                    tls.daysUntilExpiry != null ? `${tls.daysUntilExpiry} days until expiry` : null,
+                    tls.issues?.length ? tls.issues.join(", ") : "No issues",
+                  ].filter(Boolean).join(" · ")}
+                />
+              )}
+              {headers && (
+                <CheckRow
+                  label="Security headers"
+                  pass={(headers.missing?.length ?? 0) === 0}
+                  detail={
+                    (headers.missing?.length ?? 0) === 0
+                      ? "All required headers present"
+                      : `Missing: ${headers.missing?.join(", ")}`
+                  }
+                />
+              )}
+              {dns && (
+                <CheckRow
+                  label="Email authentication"
+                  pass={dns.spf && dns.dmarc}
+                  detail={`SPF ${dns.spf ? "✓" : "missing"} · DMARC ${dns.dmarc ? "✓" : "missing"}`}
+                />
+              )}
+              {exposure && (
+                <CheckRow
+                  label="Exposed sensitive paths"
+                  pass={(exposure.exposedPaths?.length ?? 0) === 0}
+                  detail={
+                    (exposure.exposedPaths?.length ?? 0) === 0
+                      ? "No sensitive files exposed"
+                      : `Exposed: ${exposure.exposedPaths?.join(", ")}`
+                  }
+                />
+              )}
+            </div>
           </div>
-        )}
 
-        {/* Footer for print */}
-        <div className="hidden print:block mt-8 pt-4 border-t border-slate-200 text-xs text-slate-400 text-center">
-          <p>Generated by Hebrides Cyber Security Score · hebridescyber.com · {checkedAt}</p>
-          <p className="mt-1">This report should be treated as confidential. Findings represent a point-in-time snapshot and should be verified before remediation.</p>
-        </div>
+          {/* Findings */}
+          {allOrdered.length > 0 ? (
+            <div>
+              <h2 className="mb-4 font-mono text-xs text-white/40 uppercase tracking-wide">// findings</h2>
+              <div className="space-y-3">
+                {allOrdered.map((f, i) => <FindingCard key={i} finding={f} />)}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-neon/20 bg-neon/5 p-5 text-sm text-neon">
+              No significant findings detected. TLS, headers, DNS authentication, and common exposure paths all checked out.
+            </div>
+          )}
 
-        {/* Embed badge — screen only */}
-        <div className="no-print rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-medium text-atlantic mb-2">Embed your score badge</p>
-          <code className="block break-all rounded bg-white border border-slate-200 p-2 text-xs text-slate-600">
-            {`<img src="https://hebridescyber.com/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}
-          </code>
+          {/* Remediation prompt */}
+          {(critical.length + high.length) > 0 && (
+            <div className="no-print rounded-lg border border-orange-400/30 bg-orange-400/10 p-4 text-sm text-orange-400">
+              <strong>{critical.length + high.length} critical/high finding{(critical.length + high.length) !== 1 ? "s" : ""} found.</strong>{" "}
+              Hebrides Cyber can open remediation PRs directly in your repository — contact us or{" "}
+              <Link href="/services" className="underline hover:text-white">see how it works</Link>.
+            </div>
+          )}
+
+          {/* Score badge embed */}
+          <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
+            <p className="font-mono text-xs text-white/40 uppercase tracking-wide mb-3">// embed your score badge</p>
+            <code className="block break-all rounded border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
+              {`<img src="https://hebridescyber.com/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}
+            </code>
+          </div>
+
+          {/* Print footer */}
+          <div className="hidden print:block mt-8 pt-4 border-t border-slate-200 text-xs text-slate-400 text-center">
+            <p>Generated by Hebrides Cyber Security Score · hebridescyber.com · {checkedAt}</p>
+            <p className="mt-1">This report is confidential. Findings represent a point-in-time snapshot and should be verified before remediation.</p>
+          </div>
         </div>
       </div>
     </>

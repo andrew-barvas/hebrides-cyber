@@ -124,14 +124,12 @@ export async function checkDnsTxt(domain: string, token: string): Promise<boolea
 /**
  * Checks whether https://<domain>/.well-known/hebridescyber-verify.txt
  * exists and its (trimmed) body matches `token` exactly.
- *
- * TODO: add a timeout (AbortController) tuned for slow customer hosting,
- * and consider following one redirect max to avoid SSRF via open redirects.
  */
 export async function checkFileVerification(domain: string, token: string): Promise<boolean> {
   try {
     const res = await fetch(`https://${domain}${WELL_KNOWN_PATH}`, {
-      redirect: "manual", // don't blindly follow redirects — see TODO above
+      redirect: "manual", // don't follow redirects — avoids SSRF via open redirects
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return false;
     const body = await res.text();
