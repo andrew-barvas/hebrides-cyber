@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 export type Scan = {
@@ -10,75 +11,130 @@ export type Scan = {
   score?: number | null;
 };
 
-export default function ScanList({ scans }: { scans: Scan[] }) {
+type Props = {
+  scans: Scan[];
+  onDelete?: (id: string) => Promise<void>;
+};
+
+export default function ScanList({ scans, onDelete }: Props) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDelete(id: string) {
+    if (confirmId !== id) {
+      setConfirmId(id);
+      return;
+    }
+    setDeletingId(id);
+    setConfirmId(null);
+    try {
+      await onDelete?.(id);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (scans.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-        <p className="text-sm text-slate-500">No scans yet. Enter a URL above and click <strong>Run scan</strong>.</p>
+      <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6 text-center">
+        <p className="text-sm text-white/50">No scans yet. Enter a URL above and click <strong className="text-white/80">Run scan</strong>.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100">
-        <h2 className="text-sm font-semibold text-atlantic">Recent scans</h2>
+    <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
+      <div className="px-5 py-3 border-b border-cyberborder">
+        <h2 className="font-mono text-xs text-white/40 uppercase tracking-wide">// recent scans</h2>
       </div>
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-slate-100 text-left bg-slate-50">
-            <th className="px-5 py-2.5 text-xs font-medium text-slate-500">Target</th>
-            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Score</th>
-            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Status</th>
-            <th className="px-4 py-2.5 text-xs font-medium text-slate-500">Date</th>
-            <th className="px-4 py-2.5" />
-          </tr>
-        </thead>
-        <tbody>
-          {scans.map((scan) => (
-            <tr key={scan.id} className="border-b border-slate-100 last:border-0">
-              <td className="px-5 py-3 font-mono text-xs text-atlantic max-w-[180px] truncate">
-                {scan.target_url}
-              </td>
-              <td className="px-4 py-3">
-                {scan.score != null ? (
-                  <ScoreBadge score={scan.score} />
-                ) : (
-                  <span className="text-xs text-slate-300">—</span>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                <StatusBadge status={scan.status} />
-              </td>
-              <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-              </td>
-              <td className="px-4 py-3 text-right">
-                {scan.status === "completed" ? (
-                  <Link
-                    href={`/dashboard/scans/${scan.id}`}
-                    className="text-xs font-medium text-atlantic hover:underline"
-                  >
-                    View report →
-                  </Link>
-                ) : (
-                  <span className="text-xs text-slate-300">—</span>
-                )}
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-cyberborder text-left bg-cyberbg/50">
+              <th className="px-5 py-2.5 text-xs font-medium text-white/40">Target</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Score</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Status</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-white/40">Date</th>
+              <th className="px-4 py-2.5" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {scans.map((scan) => (
+              <tr key={scan.id} className="border-b border-cyberborder/50 last:border-0 hover:bg-cyberbg/30 transition-colors">
+                <td className="px-5 py-3 font-mono text-xs text-neon/80 max-w-[180px] truncate">
+                  {scan.target_url}
+                </td>
+                <td className="px-4 py-3">
+                  {scan.score != null ? (
+                    <ScoreBadge score={scan.score} />
+                  ) : (
+                    <span className="text-xs text-white/20">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={scan.status} />
+                </td>
+                <td className="px-4 py-3 text-xs text-white/40 whitespace-nowrap">
+                  {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-3">
+                    {scan.status === "completed" ? (
+                      <Link
+                        href={`/dashboard/scans/${scan.id}`}
+                        className="text-xs font-medium text-neon hover:underline whitespace-nowrap"
+                      >
+                        View report →
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-white/20">—</span>
+                    )}
+                    {onDelete && (
+                      deletingId === scan.id ? (
+                        <span className="text-xs text-white/40">Deleting…</span>
+                      ) : confirmId === scan.id ? (
+                        <span className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleDelete(scan.id)}
+                            className="text-xs font-medium text-red-400 hover:underline"
+                          >
+                            Confirm
+                          </button>
+                          <span className="text-white/20" aria-hidden="true">|</span>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            className="text-xs text-white/40 hover:text-white/70"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleDelete(scan.id)}
+                          className="text-xs text-white/30 hover:text-red-400 transition-colors"
+                          title="Delete scan"
+                        >
+                          Delete
+                        </button>
+                      )
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 function ScoreBadge({ score }: { score: number }) {
   const colour =
-    score >= 80 ? "text-green-700 bg-green-50 border-green-200"
-    : score >= 60 ? "text-yellow-700 bg-yellow-50 border-yellow-200"
-    : score >= 40 ? "text-orange-700 bg-orange-50 border-orange-200"
-    : "text-red-700 bg-red-50 border-red-200";
+    score >= 80 ? "text-neon border-neon/30 bg-neon/10"
+    : score >= 60 ? "text-yellow-400 border-yellow-400/30 bg-yellow-400/10"
+    : score >= 40 ? "text-orange-400 border-orange-400/30 bg-orange-400/10"
+    : "text-red-400 border-red-400/30 bg-red-400/10";
   return (
     <span className={`inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${colour}`}>
       {score}/100
@@ -88,10 +144,10 @@ function ScoreBadge({ score }: { score: number }) {
 
 function StatusBadge({ status }: { status: Scan["status"] }) {
   const colours: Record<Scan["status"], string> = {
-    pending:   "bg-slate-100 text-slate-600",
-    running:   "bg-amber-100 text-amber-700",
-    completed: "bg-green-100 text-green-700",
-    failed:    "bg-red-100 text-red-700",
+    pending:   "bg-white/10 text-white/60",
+    running:   "bg-amber-400/10 text-amber-400",
+    completed: "bg-neon/10 text-neon",
+    failed:    "bg-red-400/10 text-red-400",
   };
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colours[status]}`}>

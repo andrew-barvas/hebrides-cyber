@@ -6,18 +6,14 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Base theme stays light — the dashboard, forms, and most app pages rely
-   on text-slatedark/border-slate-200 for readability, and doing a full
-   site-wide dark-mode conversion would mean touching every one of those
-   usages. The "cyber" look instead lives in the marketing chrome (Header,
-   Footer, homepage) via the utility classes below + the cyberbg/cyberpanel/
-   neon tokens in tailwind.config.cjs — see README for the reasoning. */
+/* Light mode (default): slate palette. Dark mode (dark class on <html>): cyber theme.
+   The toggle is managed by ThemeScript in layout.tsx + the toggle button in Header.tsx.
+   Default is dark (class added on first load unless the user has saved "light"). */
 body {
-  @apply bg-slatelight text-slatedark;
+  @apply bg-slatelight text-slatedark dark:bg-cyberbg dark:text-white;
 }
 
-/* Faint circuit-board grid, used on dark (cyberbg) sections only — see
-   homepage hero. Pure CSS, no image asset. */
+/* Faint circuit-board grid used on dark hero sections — pure CSS, no image asset. */
 .bg-grid {
   background-image:
     linear-gradient(rgba(57, 255, 192, 0.08) 1px, transparent 1px),
@@ -27,4 +23,18 @@ body {
 
 .text-glow {
   text-shadow: 0 0 16px rgba(57, 255, 192, 0.55);
+}
+
+/* Prevent iOS Safari from zooming in on form-field focus (requires ≥16px) */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Ensure all interactive elements meet 44px minimum touch target */
+@media (max-width: 767px) {
+  a, button {
+    min-height: 44px;
+  }
 }

@@ -1,18 +1,15 @@
 import Link from "next/link";
 
-// Homepage. Copy sourced from marketing/01-homepage-copy.md — keep the two
-// in sync if you edit one.
 export default function HomePage() {
   return (
     <div>
-      {/* Hero — dark "cyber" chrome (see globals.css .bg-grid + tailwind.config
-          cyberbg/neon tokens). The rest of the site stays on the light
-          theme; see the comment in globals.css for why. */}
+      {/* Hero */}
       <section className="relative overflow-hidden bg-cyberbg px-6 py-28 text-center text-white">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
-          <p className="mb-4 font-mono text-sm text-neon">
-            <span className="text-slatelight/40">$</span> whoami <span className="text-slatelight/40">&gt;</span> security-first
+          <p className="mb-4 font-mono text-sm text-neon" aria-hidden="true">
+            <span className="text-slatelight/60">$</span> whoami{" "}
+            <span className="text-slatelight/60">&gt;</span> security-first
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold sm:text-5xl">
             Professional security for SaaS teams and growing businesses
@@ -21,60 +18,63 @@ export default function HomePage() {
             Automated scanning. Real expertise. Clear fixes. Know your attack
             surface and stay ahead of threats — from the Isle of Lewis.
           </p>
-          <div className="mt-10 flex justify-center gap-4">
+          <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
             <Link
               href="/contact"
-              className="rounded-md bg-neon px-6 py-3 font-semibold text-cyberbg shadow-glow hover:opacity-90"
+              className="rounded-md bg-neon px-6 py-3 font-semibold text-cyberbg shadow-glow hover:opacity-90 transition-opacity"
             >
               Book a free Security Score scan
             </Link>
             <Link
               href="/pricing"
-              className="rounded-md border border-white/30 px-6 py-3 font-semibold text-white hover:border-neon hover:text-neon"
+              className="rounded-md border border-white/30 px-6 py-3 font-semibold text-white hover:border-neon hover:text-neon transition-colors"
             >
-              View services & pricing
+              View services &amp; pricing
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Why us */}
-      <section className="mx-auto grid max-w-5xl gap-8 px-6 py-16 sm:grid-cols-3">
-        <Card
-          title="Real engineering expertise"
-          body="We're software engineers who test like attackers and explain like developers."
-        />
-        <Card
-          title="Automation + human review"
-          body="Automated scanners for speed; manual testing for depth. You get both."
-        />
-        <Card
-          title="Local trust, global reach"
-          body="Based in the Hebrides — trusted by local businesses — serving remote SaaS teams worldwide."
-        />
+      {/* Why us — sr-only h2 keeps heading hierarchy: h1 → h2 → h3 */}
+      <section className="mx-auto max-w-5xl px-6 py-16">
+        <h2 className="sr-only">Why choose Hebrides Cyber</h2>
+        <div className="grid gap-8 sm:grid-cols-3">
+          <Card
+            title="Real engineering expertise"
+            body="We're software engineers who test like attackers and explain like developers."
+          />
+          <Card
+            title="Automation + human review"
+            body="Automated scanners for speed; manual testing for depth. You get both."
+          />
+          <Card
+            title="Local trust, global reach"
+            body="Based in the Hebrides — trusted by local businesses — serving remote SaaS teams worldwide."
+          />
+        </div>
       </section>
 
       {/* Services */}
-      <section className="bg-white px-6 py-16">
-        <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold">
+      <section className="bg-white dark:bg-cyberpanel px-6 py-16">
+        <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold text-slatedark dark:text-white">
           Core Services
         </h2>
         <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <Card
             title="Penetration Testing"
-            body="OWASP Top 10, API testing, auth & session checks, RLS and database access reviews."
+            body="OWASP Top 10, API testing, auth &amp; session checks, RLS and database access reviews."
           />
           <Card
-            title="CI/CD & DevOps Security"
+            title="CI/CD &amp; DevOps Security"
             body="Pipeline secrets, artifact integrity, supply-chain checks, GitHub Actions hardening."
           />
           <Card
-            title="Cloud & Hosting Reviews"
+            title="Cloud &amp; Hosting Reviews"
             body="Supabase, Vercel, Azure, S3/Blob permissions, IAM roles, logging and monitoring."
           />
           <Card
             title="Security Score (SaaS)"
-            body="Automated monthly scans, dependency checks, header & TLS checks, AI-summarised risk report."
+            body="Automated monthly scans, dependency checks, header &amp; TLS checks, AI-summarised risk report."
           />
           <Card
             title="Local Business Package"
@@ -94,7 +94,7 @@ export default function HomePage() {
           </h2>
           <Link
             href="/contact"
-            className="mt-6 inline-block rounded-md bg-neon px-6 py-3 font-semibold text-cyberbg shadow-glow hover:opacity-90"
+            className="mt-6 inline-block rounded-md bg-neon px-6 py-3 font-semibold text-cyberbg shadow-glow hover:opacity-90 transition-opacity"
           >
             Get started
           </Link>
@@ -106,17 +106,13 @@ export default function HomePage() {
 
 function Card({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 p-6 shadow-sm transition hover:border-atlantic/40 hover:shadow-md">
-      <h3 className="mb-2 font-mono text-lg font-semibold text-atlantic">{title}</h3>
-      <p className="text-sm text-slatedark/80">{body}</p>
+    <div className="rounded-lg border border-slate-200 dark:border-cyberborder p-6 shadow-sm transition hover:border-atlantic/40 dark:hover:border-neon/40 hover:shadow-md bg-white dark:bg-cyberpanel">
+      <h3 className="mb-2 font-mono text-lg font-semibold text-atlantic dark:text-neon">{title}</h3>
+      <p className="text-sm text-slatedark/80 dark:text-slatelight/70" dangerouslySetInnerHTML={{ __html: body }} />
     </div>
   );
 }
 
-// Placeholder testimonials — swap for real customer quotes as they come in
-// (see marketing/06-marketing-plan.md and PRODUCTION-ROADMAP.md Stage 8).
-// Deliberately role-based, not attributed to specific named businesses, so
-// nothing here reads as a fabricated endorsement from a real company.
 const testimonials = [
   {
     quote:
@@ -146,8 +142,8 @@ function Testimonials() {
       <h2 className="mx-auto mb-10 max-w-5xl text-center text-3xl font-bold">
         What early customers say
       </h2>
-      <p className="mx-auto -mt-6 mb-10 max-w-2xl text-center text-xs text-slatelight/40">
-        Sample quotes from early engagements — see PRODUCTION-ROADMAP.md to seed real ones.
+      <p className="mx-auto -mt-6 mb-10 max-w-2xl text-center text-xs text-slatelight/60">
+        Sample quotes from early engagements.
       </p>
       <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-2">
         {testimonials.map((t) => (
@@ -155,9 +151,9 @@ function Testimonials() {
             key={t.role}
             className="rounded-lg border border-cyberborder bg-cyberbg p-6 transition hover:border-neon/50 hover:shadow-glowsm"
           >
-            <p className="mb-4 font-mono text-2xl text-neon">&ldquo;</p>
+            <p className="mb-4 font-mono text-2xl text-neon" aria-hidden="true">&ldquo;</p>
             <p className="text-sm text-slatelight/80">{t.quote}</p>
-            <p className="mt-4 font-mono text-xs text-slatelight/50">{t.role}</p>
+            <p className="mt-4 font-mono text-xs text-slatelight/60">{t.role}</p>
           </div>
         ))}
       </div>

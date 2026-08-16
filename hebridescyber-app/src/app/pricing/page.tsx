@@ -56,8 +56,8 @@ export default function PricingPage() {
       <section className="relative overflow-hidden bg-cyberbg px-6 py-20 text-center">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-60" />
         <div className="relative">
-          <p className="mb-3 font-mono text-sm text-neon">
-            <span className="text-slatelight/40">$</span> pricing.list()
+          <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
+            <span className="text-slatelight/60">$</span> pricing.list()
           </p>
           <h1 className="text-4xl font-bold text-white">Pricing</h1>
           <p className="mx-auto mt-4 max-w-xl text-slatelight/70">
@@ -69,8 +69,8 @@ export default function PricingPage() {
 
       <div className="mx-auto max-w-5xl px-6 pb-20 pt-12">
         {/* One-off audits */}
-        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/50">
-          // one-off audits
+        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/70">
+          One-off audits
         </h2>
         <div className="mb-14 grid gap-5 sm:grid-cols-3">
           {oneOff.map((p) => (
@@ -92,8 +92,8 @@ export default function PricingPage() {
         </div>
 
         {/* Monthly subscriptions */}
-        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/50">
-          // monthly subscriptions — security score
+        <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-slatelight/70">
+          Monthly subscriptions — Security Score
         </h2>
         {error && <p className="mb-5 text-sm text-red-400">{error}</p>}
         <div className="grid gap-5 sm:grid-cols-3">
@@ -129,10 +129,10 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <p className="mt-6 font-mono text-xs text-slatelight/40">
-          // not signed in?{" "}
+        <p className="mt-6 font-mono text-xs text-slatelight/60">
+          Not signed in?{" "}
           <Link href="/login" className="text-neon hover:underline">
-            sign in
+            Sign in
           </Link>{" "}
           first, then come back to subscribe.
         </p>

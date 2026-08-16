@@ -11,10 +11,6 @@ type StartResponse = {
   file: { url: string; contents: string };
 };
 
-// Drives the real DNS TXT / file ownership check (src/lib/ownership.ts via
-// src/functions/verify-ownership). This is the stronger alternative to the
-// dev-only X-Scan-Token echo the quick "Run scan" form on the dashboard
-// still falls back to — see docs/security.md.
 export default function DomainVerification() {
   const [targetUrl, setTargetUrl] = useState("");
   const [instructions, setInstructions] = useState<StartResponse | null>(null);
@@ -68,56 +64,63 @@ export default function DomainVerification() {
   }
 
   return (
-    <details className="mb-10 rounded-lg border border-slate-200 p-4">
-      <summary className="cursor-pointer text-sm font-semibold text-atlantic">
-        Verify domain ownership (recommended)
+    <details className="rounded-lg border border-cyberborder bg-cyberpanel">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-white/80 hover:text-white transition-colors">
+        Verify domain ownership <span className="font-normal text-white/40">(recommended)</span>
       </summary>
-      <p className="mt-3 text-sm text-slatedark/70">
-        Prove you control a domain via DNS or a file upload, so scans against
-        it don't rely on the quick token-echo shortcut. Propagation can take
-        a few minutes after adding the record.
-      </p>
+      <div className="px-5 pb-5 pt-1 space-y-4">
+        <p className="text-sm text-white/60">
+          Prove you control a domain via DNS or a file upload, so scans against
+          it don&apos;t rely on the quick token-echo shortcut. Propagation can take
+          a few minutes after adding the record.
+        </p>
 
-      <form onSubmit={start} className="mt-4 flex gap-2">
-        <input
-          type="url"
-          required
-          placeholder="https://your-site.com"
-          value={targetUrl}
-          onChange={(e) => setTargetUrl(e.target.value)}
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-        <button disabled={busy} className="rounded-md bg-atlantic px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
-          Get instructions
-        </button>
-      </form>
-
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-      {instructions && (
-        <div className="mt-4 space-y-3 rounded-md bg-slate-50 p-4 text-sm">
-          <p className="font-medium">Option A — DNS TXT record</p>
-          <code className="block break-all rounded bg-slatedark p-2 text-xs text-slatelight">
-            {instructions.dnsRecord.name} TXT "{instructions.dnsRecord.value}"
-          </code>
-          <p className="font-medium">Option B — upload a file</p>
-          <p>
-            Put this at <code>{instructions.file.url}</code>:
-          </p>
-          <code className="block break-all rounded bg-slatedark p-2 text-xs text-slatelight">{instructions.file.contents}</code>
-
+        <form onSubmit={start} className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="url"
+            required
+            placeholder="https://your-site.com"
+            value={targetUrl}
+            onChange={(e) => setTargetUrl(e.target.value)}
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+          />
           <button
-            onClick={check}
             disabled={busy}
-            className="mt-2 rounded-md bg-seafoam px-4 py-2 text-sm font-semibold text-slatedark hover:opacity-90 disabled:opacity-50"
+            className="rounded-md bg-neon px-4 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 shadow-glowsm transition-opacity"
           >
-            {busy ? "Checking…" : "Check now"}
+            Get instructions
           </button>
+        </form>
 
-          {verified === true && <p className="text-green-700">Verified ✓ — this domain no longer needs the dev token fallback.</p>}
-          {verified === false && <p className="text-amber-700">Not verified yet — DNS changes can take a while to propagate.</p>}
-        </div>
-      )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {instructions && (
+          <div className="space-y-3 rounded-md border border-cyberborder bg-cyberbg p-4 text-sm">
+            <p className="font-medium text-white/80">Option A — DNS TXT record</p>
+            <code className="block break-all rounded border border-cyberborder bg-cyberpanel p-2 text-xs text-neon">
+              {instructions.dnsRecord.name} TXT &quot;{instructions.dnsRecord.value}&quot;
+            </code>
+            <p className="font-medium text-white/80">Option B — upload a file</p>
+            <p className="text-white/60">
+              Put this at <code className="text-neon">{instructions.file.url}</code>:
+            </p>
+            <code className="block break-all rounded border border-cyberborder bg-cyberpanel p-2 text-xs text-neon">
+              {instructions.file.contents}
+            </code>
+
+            <button
+              onClick={check}
+              disabled={busy}
+              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-semibold text-white/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+            >
+              {busy ? "Checking…" : "Check now"}
+            </button>
+
+            {verified === true && <p className="text-neon">Verified ✓ — this domain no longer needs the dev token fallback.</p>}
+            {verified === false && <p className="text-amber-400">Not verified yet — DNS changes can take a while to propagate.</p>}
+          </div>
+        )}
+      </div>
     </details>
   );
 }

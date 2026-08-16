@@ -8,8 +8,13 @@ import { checkExposure, type ExposureResult } from "./exposure";
 import { checkFingerprint, type FingerprintResult } from "./fingerprint";
 import { checkOpenPorts, type PortsResult } from "./ports";
 import { checkPlaywrightPageLoad, type PlaywrightResult } from "./playwright";
+import { checkRecon, type ReconResult } from "./recon";
+import { checkWebApp, type WebAppResult } from "./webapp";
 
-export type { TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult, PortsResult, PlaywrightResult };
+export type {
+  TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
+  PortsResult, PlaywrightResult, ReconResult, WebAppResult,
+};
 
 export type ScanResults = {
   target_url: string;
@@ -21,6 +26,8 @@ export type ScanResults = {
   fingerprint: FingerprintResult;
   ports: PortsResult;
   playwright: PlaywrightResult;
+  recon: ReconResult;
+  webapp: WebAppResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -62,17 +69,26 @@ async function checkZap(targetUrl: string): Promise<ZapResult> {
  * and ZAP (async server-side) run after.
  */
 export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
-  const [tls, headers, dns, exposure, fingerprint, ports] = await Promise.all([
+  const [tls, headers, dns, exposure, fingerprint, ports, recon] = await Promise.all([
     checkTls(targetUrl),
     checkHeaders(targetUrl),
     checkDns(targetUrl),
     checkExposure(targetUrl),
     checkFingerprint(targetUrl),
     checkOpenPorts(targetUrl),
+    checkRecon(targetUrl),
   ]);
 
-  const playwright = await checkPlaywrightPageLoad(targetUrl);
-  const zap = await checkZap(targetUrl);
+  // WordPress deep scan only runs if fingerprint detected WordPress
+  const isWordPress =
+    fingerprint.status === "checked" &&
+    fingerprint.technologies.some((t) => t.name === "WordPress");
+
+  const [playwright, webapp, zap] = await Promise.all([
+    checkPlaywrightPageLoad(targetUrl),
+    checkWebApp(targetUrl, isWordPress),
+    checkZap(targetUrl),
+  ]);
 
   return {
     target_url: targetUrl,
@@ -84,6 +100,8 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     fingerprint,
     ports,
     playwright,
+    recon,
+    webapp,
     zap,
   };
 }
@@ -205,6 +223,124 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   if (results.ports.status === "checked" && results.ports.riskyPorts.length > 0) {
     for (const p of results.ports.riskyPorts) {
       findings.push({ severity: p.risk as Finding["severity"], title: `Port ${p.port} (${p.service}) open`, detail: p.reason });
+    }
+  }
+
+  // --- Recon ----------------------------------------------------------------
+  if (results.recon.status === "checked") {
+    const { shodan, subdomains } = results.recon;
+    if (shodan && shodan.cves.length > 0) {
+      findings.push({
+        severity: "high",
+        title: `${shodan.cves.length} CVE(s) associated with this IP (Shodan)`,
+        detail: `Shodan InternetDB reports: ${shodan.cves.slice(0, 5).join(", ")}${shodan.cves.length > 5 ? ` (+${shodan.cves.length - 5} more)` : ""}`,
+      });
+    }
+    if (subdomains.length > 0) {
+      findings.push({
+        severity: "info",
+        title: `${subdomains.length} subdomain(s) found via Certificate Transparency`,
+        detail: `crt.sh enumerated: ${subdomains.slice(0, 5).map((s) => s.name).join(", ")}${subdomains.length > 5 ? ` (+${subdomains.length - 5} more)` : ""}`,
+      });
+    }
+  }
+
+  // --- Web App (robots / methods / disclosure / WP / CORS / JS libs) --------
+  if (results.webapp.status === "checked") {
+    const { robots, httpMethods, errorDisclosure, wordpress, corsReflected, jsLibraries } = results.webapp;
+
+    // robots.txt interesting paths
+    if (robots?.accessible && robots.interestingPaths.length > 0) {
+      findings.push({
+        severity: "info",
+        title: `robots.txt disallows ${robots.interestingPaths.length} sensitive path(s)`,
+        detail: `Interesting disallowed paths: ${robots.interestingPaths.slice(0, 5).join(", ")}. These paths may be worth investigating manually.`,
+      });
+    }
+
+    // Dangerous HTTP methods
+    if (httpMethods.dangerousMethods.length > 0) {
+      findings.push({
+        severity: "medium",
+        title: `Dangerous HTTP methods enabled: ${httpMethods.dangerousMethods.join(", ")}`,
+        detail: `Server advertises ${httpMethods.allowHeader}. Methods like PUT/DELETE can enable unauthorised file modifications if not restricted.`,
+      });
+    }
+
+    // Error page disclosure
+    if (errorDisclosure.disclosesFramework) {
+      findings.push({
+        severity: "low",
+        title: "Error page reveals internal framework details",
+        detail: `Detected: ${errorDisclosure.disclosedStrings.join("; ")}. Configure custom error pages to avoid information leakage.`,
+      });
+    }
+
+    // WordPress findings
+    if (wordpress) {
+      if (wordpress.xmlRpcEnabled) {
+        findings.push({
+          severity: "medium",
+          title: "WordPress XML-RPC endpoint accessible (/xmlrpc.php)",
+          detail: "XML-RPC enables brute-force attacks via multicall. Disable it unless required by a plugin.",
+        });
+      }
+      if (wordpress.userEnumerationPossible) {
+        findings.push({
+          severity: "medium",
+          title: "WordPress user enumeration via REST API (/wp-json/wp/v2/users)",
+          detail: `${wordpress.enumeratedUsers.length} user(s) exposed: ${wordpress.enumeratedUsers.join(", ")}. Disable the users endpoint or restrict with authentication.`,
+        });
+      }
+      if (wordpress.debugLogAccessible) {
+        findings.push({
+          severity: "high",
+          title: "WordPress debug log publicly accessible (/wp-content/debug.log)",
+          detail: "Debug logs may contain credentials, file paths, and stack traces. Remove or restrict access immediately.",
+        });
+      }
+      if (wordpress.readmeAccessible) {
+        findings.push({
+          severity: "low",
+          title: "WordPress readme.html accessible (version disclosure)",
+          detail: "readme.html reveals the WordPress version to attackers. Delete or block this file.",
+        });
+      }
+      if (wordpress.wpCronAccessible) {
+        findings.push({
+          severity: "info",
+          title: "WordPress wp-cron.php is accessible",
+          detail: "wp-cron.php can be used for DoS via repeated HTTP calls. Consider disabling it and using a real cron job.",
+        });
+      }
+    }
+
+    // CORS reflected-origin
+    if (corsReflected.reflectsOrigin) {
+      if (corsReflected.credentialsAllowed) {
+        findings.push({
+          severity: "critical",
+          title: "CORS reflects arbitrary Origin with credentials allowed",
+          detail: `The server reflects Origin: ${corsReflected.testedOrigin} and sets Access-Control-Allow-Credentials: true. This allows cross-origin requests to read authenticated responses — a critical misconfiguration.`,
+        });
+      } else {
+        findings.push({
+          severity: "high",
+          title: "CORS reflects arbitrary Origin header",
+          detail: `The server mirrors back any Origin header as Access-Control-Allow-Origin. Any attacker-controlled site can read cross-origin responses.`,
+        });
+      }
+    }
+
+    // JS library vulnerabilities
+    for (const lib of jsLibraries) {
+      if (lib.isVulnerable) {
+        findings.push({
+          severity: "medium",
+          title: `Vulnerable JS library: ${lib.name} ${lib.version}`,
+          detail: lib.reason,
+        });
+      }
     }
   }
 

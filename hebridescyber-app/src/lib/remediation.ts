@@ -33,7 +33,10 @@ module.exports = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // TODO: tailor Content-Security-Policy to your actual script/style sources —
           // a too-strict CSP will silently break the page.
-          { key: "Content-Security-Policy", value: "default-src 'self'" },
+          // Tailor each directive to your actual origins — this starter blocks
+          // all third-party scripts/styles by default. Add your CDN, analytics,
+          // and payment script origins before enabling in production.
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" },
         ],
       },
     ];

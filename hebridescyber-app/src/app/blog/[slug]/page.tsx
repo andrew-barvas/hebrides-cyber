@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { supabase } from "@/lib/supabaseClient";
@@ -43,7 +44,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       .eq("status", "published")
       .maybeSingle();
     post = data as Post | null;
-  } catch { /* silent — notFound() handles missing post below */ }
+  } catch { /* notFound() handles this below */ }
 
   if (!post) return { title: "Post not found — Hebrides Cyber" };
 
@@ -95,54 +96,125 @@ export default async function BlogPostPage({ params }: Props) {
   const mins = readingTime(post.body);
 
   return (
-    <article className="mx-auto max-w-3xl px-6 py-16">
-      {/* Cover image */}
-      {post.cover_image_url && (
-        <img
-          src={post.cover_image_url}
-          alt={post.title}
-          className="mb-8 w-full rounded-xl object-cover max-h-72"
-        />
-      )}
-
-      {/* Meta row */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-slatedark/50">
-        <span>{new Date(post.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</span>
-        <span>·</span>
-        <span>{mins} min read</span>
-        {(post.tags ?? []).map((tag) => (
-          <a
-            key={tag}
-            href={`/blog?tag=${encodeURIComponent(tag)}`}
-            className="rounded bg-slate-100 px-2 py-0.5 hover:bg-atlantic/10 hover:text-atlantic"
+    <div className="bg-slatelight dark:bg-cyberbg min-h-screen">
+      {/* Hero strip */}
+      <div className="relative overflow-hidden bg-slatelight dark:bg-cyberbg px-6 pt-14 pb-10">
+        <div className="bg-grid pointer-events-none absolute inset-0 opacity-0 dark:opacity-50" />
+        <div className="relative mx-auto max-w-3xl">
+          <Link
+            href="/blog"
+            className="mb-6 inline-flex items-center gap-1.5 font-mono text-xs text-slatedark/70 hover:text-atlantic dark:text-white/60 dark:hover:text-neon transition-colors"
           >
-            {tag}
-          </a>
-        ))}
+            ← back to Security Weekly
+          </Link>
+
+          {/* Tags */}
+          {(post.tags ?? []).length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {post.tags.map((tag) => (
+                <Link
+                  key={tag}
+                  href={`/blog?tag=${encodeURIComponent(tag)}`}
+                  className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-0.5 font-mono text-[10px] text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-neon/70 dark:hover:border-neon dark:hover:text-neon transition-colors"
+                >
+                  {tag}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <h1 className="text-3xl font-bold leading-tight text-slatedark dark:text-white sm:text-4xl">
+            {post.title}
+          </h1>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 font-mono text-xs text-slatedark/70 dark:text-white/60">
+            <span>
+              {new Date(post.published_at).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+            <span className="text-slatedark/30 dark:text-white/20">·</span>
+            <span>{mins} min read</span>
+          </div>
+
+          {post.excerpt && (
+            <p className="mt-5 text-base leading-relaxed text-slatedark/70 dark:text-white/60">
+              {post.excerpt}
+            </p>
+          )}
+        </div>
       </div>
 
-      <h1 className="mb-8 text-3xl font-bold text-atlantic leading-tight">{post.title}</h1>
-
-      {/* Body */}
-      <div
-        className="prose prose-slate max-w-none prose-headings:text-atlantic prose-a:text-atlantic prose-code:bg-slate-100 prose-code:px-1 prose-code:rounded"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-
-      {/* Tags footer */}
-      {(post.tags ?? []).length > 0 && (
-        <div className="mt-12 flex flex-wrap gap-2 border-t border-slate-100 pt-6">
-          {post.tags.map((tag) => (
-            <a
-              key={tag}
-              href={`/blog?tag=${encodeURIComponent(tag)}`}
-              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slatedark/70 hover:border-atlantic hover:text-atlantic"
-            >
-              {tag}
-            </a>
-          ))}
+      {/* Cover image */}
+      {post.cover_image_url && (
+        <div className="mx-auto max-w-3xl px-6 pb-6">
+          <img
+            src={post.cover_image_url}
+            alt={post.title}
+            className="w-full rounded-xl object-cover max-h-72 border border-slate-200 dark:border-cyberborder"
+          />
         </div>
       )}
-    </article>
+
+      {/* Body */}
+      <div className="mx-auto max-w-3xl px-6 pb-20">
+        <div
+          className={[
+            "prose prose-slate max-w-none",
+            // Dark mode prose overrides
+            "dark:prose-invert",
+            "prose-headings:text-atlantic dark:prose-headings:text-neon",
+            "prose-a:text-atlantic dark:prose-a:text-neon prose-a:no-underline hover:prose-a:underline",
+            "prose-strong:text-slatedark dark:prose-strong:text-white",
+            "prose-code:rounded prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm",
+            "prose-code:bg-slate-100 prose-code:text-atlantic dark:prose-code:bg-cyberpanel dark:prose-code:text-neon",
+            "prose-pre:bg-slate-100 prose-pre:border prose-pre:border-slate-200",
+            "dark:prose-pre:bg-cyberpanel dark:prose-pre:border-cyberborder",
+            "prose-blockquote:border-l-atlantic dark:prose-blockquote:border-l-neon",
+            "prose-blockquote:text-slatedark/70 dark:prose-blockquote:text-white/60",
+            "prose-hr:border-slate-200 dark:prose-hr:border-cyberborder",
+            "prose-th:text-slatedark dark:prose-th:text-white",
+            "prose-td:text-slatedark/80 dark:prose-td:text-white/70",
+          ].join(" ")}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+
+        {/* Footer tags */}
+        {(post.tags ?? []).length > 0 && (
+          <div className="mt-12 flex flex-wrap gap-2 border-t border-slate-200 dark:border-cyberborder pt-6">
+            {post.tags.map((tag) => (
+              <Link
+                key={tag}
+                href={`/blog?tag=${encodeURIComponent(tag)}`}
+                className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-1 font-mono text-xs text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-white/50 dark:hover:border-neon dark:hover:text-neon transition-colors"
+              >
+                {tag}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* CTA */}
+        <div className="mt-10 rounded-xl border border-slate-200 dark:border-cyberborder bg-white dark:bg-cyberpanel p-6">
+          <p className="font-mono text-xs text-slatedark/50 dark:text-white/40 mb-1">
+            <span className="text-slatedark/30 dark:text-white/20">$</span> ./get-your-score
+          </p>
+          <p className="text-sm font-semibold text-slatedark dark:text-white">
+            Get a free Security Score for your site
+          </p>
+          <p className="mt-1 text-xs text-slatedark/60 dark:text-white/50">
+            Automated TLS, headers, DNS, and exposure checks — results in under a minute.
+          </p>
+          <Link
+            href="/contact"
+            className="mt-4 inline-block rounded-md bg-atlantic dark:bg-neon px-4 py-2 text-sm font-semibold text-white dark:text-cyberbg hover:opacity-90 transition-opacity"
+          >
+            Request a free scan
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -272,7 +272,7 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
       </ul>
 
       {meta && (
-        <p className="mt-4 pt-3 border-t border-cyberborder text-xs text-slatelight/40 font-mono">
+        <p className="mt-4 pt-3 border-t border-cyberborder text-xs text-slatelight/60 font-mono">
           ⏱ {meta}
         </p>
       )}
@@ -283,7 +283,7 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
 function Section({ label, title, subtitle, items }: { label: string; title: string; subtitle?: string; items: Service[] }) {
   return (
     <section className="mb-16">
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-5 flex items-center gap-3" aria-hidden="true">
         <span className="font-mono text-xs text-neon/60">{label}</span>
         <div className="h-px flex-1 bg-cyberborder" />
       </div>
@@ -303,8 +303,8 @@ export default function ServicesPage() {
       <div className="relative overflow-hidden border-b border-cyberborder px-6 py-20 text-center">
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative">
-          <p className="mb-3 font-mono text-sm text-neon">
-            <span className="text-slatelight/30">$</span> ls ./services <span className="text-slatelight/30">|</span> grep --all
+          <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
+            <span className="text-slatelight/60">$</span> ls ./services <span className="text-slatelight/60">|</span> grep --all
           </p>
           <h1 className="mx-auto max-w-2xl text-4xl font-bold sm:text-5xl">
             What we do
@@ -329,7 +329,8 @@ export default function ServicesPage() {
       {/* How it works — three steps */}
       <div className="border-b border-cyberborder bg-cyberpanel/30 px-6 py-10">
         <div className="mx-auto max-w-4xl">
-          <p className="mb-6 font-mono text-xs text-neon/60 text-center">// how it works</p>
+          <h2 className="sr-only">How it works</h2>
+          <p className="mb-6 font-mono text-xs text-neon/60 text-center" aria-hidden="true">// how it works</p>
           <div className="grid gap-6 sm:grid-cols-3 text-center">
             {[
               { step: "01", title: "Book a free scan", body: "Run our automated Security Score against your site. Get a one-page report in 24 hours, no commitment." },
@@ -337,8 +338,8 @@ export default function ServicesPage() {
               { step: "03", title: "We fix it or you do", body: "Ongoing monitoring keeps the score up. Or we can open PRs and fix findings directly in your codebase." },
             ].map(({ step, title, body }) => (
               <div key={step} className="relative">
-                <div className="mb-3 inline-block font-mono text-3xl font-bold text-neon/20">{step}</div>
-                <h3 className="mb-1 font-semibold text-white text-sm">{title}</h3>
+                <div aria-hidden="true" className="mb-3 inline-block font-mono text-3xl font-bold text-neon/20">{step}</div>
+                <p className="mb-1 font-semibold text-white text-sm">{title}</p>
                 <p className="text-xs text-slatelight/60 leading-relaxed">{body}</p>
               </div>
             ))}

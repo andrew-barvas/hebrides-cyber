@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession, signInWithGoogle, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
+import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
 
-// Passwordless magic link is the primary flow (see src/lib/auth.ts for
-// why), with Google OAuth and password sign-in as alternatives. Password
-// sign-in exists mainly so the seeded demo accounts
-// (src/scripts/seed-users.ts — admin + basic/pro/agency/no-plan
-// customers) are actually usable without inbox access; real customers
-// aren't required to set one.
+// Magic link is the primary sign-in flow. Password sign-in is available so
+// the seeded demo accounts (admin, basic/pro/agency/no-plan customers from
+// `npm run seed:users`) are usable without inbox access.
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -36,7 +33,7 @@ export default function LoginPage() {
       if (signInError) {
         setError(signInError.message);
       } else {
-        router.replace("/dashboard"); // dashboard itself handles the MFA-challenge redirect if needed
+        router.replace("/dashboard");
       }
       return;
     }
@@ -51,72 +48,65 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-sm px-6 py-24">
-      <h1 className="mb-2 text-2xl font-bold text-atlantic">Sign in</h1>
-      <p className="mb-8 text-sm text-slatedark/80">
-        {usePassword ? "Sign in with a password." : "No password needed — we'll email you a one-time link."}
-      </p>
-
-      {sent ? (
-        <p className="rounded-md bg-seafoam/20 p-4 text-sm text-slatedark">
-          Check <strong>{email}</strong> for a sign-in link. You can close this tab.
+    <div className="bg-cyberbg min-h-screen flex items-center justify-center px-6">
+      <div className="w-full max-w-sm">
+        <p className="font-mono text-xs text-neon mb-2" aria-hidden="true">$ ./login</p>
+        <h1 className="mb-2 text-2xl font-bold text-white">Sign in</h1>
+        <p className="mb-8 text-sm text-white/60">
+          {usePassword
+            ? "Sign in with your password."
+            : "No password needed — we'll email you a one-time link."}
         </p>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-          {usePassword && (
+
+        {sent ? (
+          <div className="rounded-lg border border-neon/20 bg-neon/10 p-4 text-sm text-neon">
+            Check <strong>{email}</strong> for a sign-in link. You can close this tab.
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
             <input
-              type="password"
+              type="email"
               required
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
             />
-          )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-md bg-atlantic px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {submitting ? "Signing in…" : usePassword ? "Sign in" : "Send magic link"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsePassword((v) => !v)}
-            className="w-full text-center text-xs text-slatedark/60 underline"
-          >
-            {usePassword ? "Use a magic link instead" : "Have a password? Sign in with it instead"}
-          </button>
-        </form>
-      )}
+            {usePassword && (
+              <input
+                type="password"
+                required
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              />
+            )}
+            {error && (
+              <p role="alert" className="text-sm text-red-400">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-md bg-neon px-4 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 shadow-glowsm transition-opacity"
+            >
+              {submitting ? "Signing in…" : usePassword ? "Sign in" : "Send magic link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setUsePassword((v) => !v)}
+              className="w-full text-center text-xs text-white/40 hover:text-white/70 underline"
+            >
+              {usePassword ? "Use a magic link instead" : "Have a password? Sign in with it"}
+            </button>
+          </form>
+        )}
 
-      <div className="my-6 flex items-center gap-3 text-xs text-slatedark/50">
-        <div className="h-px flex-1 bg-slate-200" />
-        or
-        <div className="h-px flex-1 bg-slate-200" />
+        <p className="mt-10 text-center text-xs text-white/30">
+          Demo accounts: run <code className="text-neon">npm run seed:users</code> then sign in with the
+          printed credentials.
+        </p>
       </div>
-
-      <button
-        onClick={() => signInWithGoogle()}
-        className="w-full rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-      >
-        Continue with Google
-      </button>
-      {/* TODO: enable the Google provider in the Supabase Dashboard before this works. */}
-
-      <p className="mt-8 text-center text-xs text-slatedark/40">
-        Demo accounts: run <code>npm run seed:users</code> then sign in with password using the
-        credentials it prints (admin, and basic/pro/agency/no-plan customers).
-      </p>
     </div>
   );
 }
