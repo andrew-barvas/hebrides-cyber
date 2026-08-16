@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { getStripe } from "@/lib/stripeClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Creates a real Stripe Checkout Session for one of the three
 // subscription plans. Called by src/app/pricing/page.tsx. The webhook
@@ -10,9 +10,6 @@ import { createClient } from "@supabase/supabase-js";
 // TODO: STRIPE_PRICE_BASIC/PRO/AGENCY must be real Price IDs from the
 // Stripe Dashboard (Products > select product > copy the price's API ID,
 // looks like "price_1AbC..."). This will 500 until they're set.
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", { apiVersion: "2024-06-20" });
-const supabaseAdmin = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
 
 const PRICE_IDS: Record<"basic" | "pro" | "agency", string | undefined> = {
   basic: process.env.STRIPE_PRICE_BASIC,
@@ -30,8 +27,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Missing Authorization Bearer token" });
   }
-  const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(authHeader.slice("Bearer ".length));
-  if (authError || !userData.user) {
+
+  let userData: Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>["data"];
+  try {
+    // Both supabaseAdmin and getStripe() construct lazily — a missing env var
+    // throws here rather than at import, so it's caught below instead of
+    // crashing with an unhandled 500.
+    const result = await supabaseAdmin.auth.getUser(authHeader.slice("Bearer ".length));
+    if (result.error || !result.data.user) return res.status(401).json({ error: "Invalid session" });
+    userData = result.data;
+  } catch {
     return res.status(401).json({ error: "Invalid session" });
   }
 
@@ -46,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       // Ties the Checkout Session back to the Supabase user — the webhook

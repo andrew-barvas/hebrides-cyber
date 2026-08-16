@@ -1,10 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -23,15 +18,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  const { error: insertError } = await supabaseAdmin.from("contact_enquiries").insert({
-    name: name.trim(),
-    email: email.trim().toLowerCase(),
-    url: typeof url === "string" && url.trim() ? url.trim() : null,
-    message: message.trim(),
-  });
+  // supabaseAdmin's client is constructed lazily on first access, so a
+  // missing SUPABASE_URL/SERVICE_ROLE_KEY throws here rather than at import —
+  // caught below and folded into the same "failed to save" response used for
+  // an ordinary insert error, rather than an unhandled 500.
+  try {
+    const { error: insertError } = await supabaseAdmin.from("contact_enquiries").insert({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      url: typeof url === "string" && url.trim() ? url.trim() : null,
+      message: message.trim(),
+    });
 
-  if (insertError) {
-    console.error("[contact] insert error:", insertError.message);
+    if (insertError) throw new Error(insertError.message);
+  } catch (err) {
+    console.error("[contact] insert error:", (err as Error).message);
     return res.status(500).json({ error: "Failed to save your message — please try again." });
   }
 
