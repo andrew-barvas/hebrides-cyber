@@ -113,8 +113,8 @@ export default function Header() {
             </Link>
           )}
           {authed && (
-            <Link href="/account/security" className="py-1 text-cybertext/60 hover:text-neon transition-colors">
-              2FA
+            <Link href="/account" className="py-1 text-cybertext/60 hover:text-neon transition-colors">
+              Account
             </Link>
           )}
           {isAdmin && (
@@ -183,10 +183,10 @@ export default function Header() {
             )}
             {authed && (
               <Link
-                href="/account/security"
+                href="/account"
                 className="flex items-center px-2 py-3.5 text-base font-medium text-cybertext/60 hover:text-neon border-b border-cyberborder/50 transition-colors"
               >
-                Two-factor auth
+                My account
               </Link>
             )}
             {isAdmin && (
