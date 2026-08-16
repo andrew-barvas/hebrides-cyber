@@ -61,7 +61,12 @@ export default function ScanList({ scans, onDelete }: Props) {
           <tbody>
             {scans.map((scan) => (
               <tr key={scan.id} className="border-b border-cyberborder/50 last:border-0 hover:bg-cyberbg/30 transition-colors">
-                <td className="px-5 py-3 font-mono text-xs text-neon/80 max-w-[180px] truncate">
+                {/* Wraps rather than truncating — the full URL is the row's
+                    primary identifier, and two scans of the same site often
+                    differ only in the path. break-all so a long URL with no
+                    natural break points still wraps instead of forcing the
+                    table wider than its container. */}
+                <td className="px-5 py-3 font-mono text-xs text-neon/80 break-all min-w-[220px]">
                   {scan.target_url}
                 </td>
                 <td className="px-4 py-3">
