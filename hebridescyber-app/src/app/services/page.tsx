@@ -318,6 +318,10 @@ export default function ServicesPage() {
             <Link href="/pricing" className="text-neon underline underline-offset-2 hover:text-cybertext">
               pricing page
             </Link>
+            {" "}· full technical check list on{" "}
+            <Link href="/what-we-check" className="text-neon underline underline-offset-2 hover:text-cybertext">
+              what we check
+            </Link>
             {" "}· bespoke quotes via{" "}
             <Link href="/contact" className="text-neon underline underline-offset-2 hover:text-cybertext">
               contact

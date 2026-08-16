@@ -6,12 +6,11 @@
 // point the scanner at a host its owner hasn't proven they control, and
 // there's no interactive step in CI to complete a challenge.
 import type { NextApiRequest, NextApiResponse } from "next";
-import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } from "@/lib/scanners";
 import { validateNoSsrf, hostnameFromUrl } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
-import { buildScanReport, findPreviousFindings } from "@/lib/scanReport";
-import { dispatchScanCompletedWebhooks } from "@/lib/webhooks";
+import { executeScan } from "@/lib/scanExecution";
+import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
@@ -67,6 +66,10 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     return res.status(429).json({ error: "Rate limit exceeded", retry_after_seconds: limit.retryAfterSeconds });
   }
 
+  if (await isFreeTierExhausted(supabaseAdmin, ownerId)) {
+    return res.status(402).json({ error: FREE_TIER_EXHAUSTED_MESSAGE, code: "free_tier_exhausted" });
+  }
+
   try {
     await validateNoSsrf(targetUrl);
   } catch (err) {
@@ -106,38 +109,17 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     return res.status(500).json({ error: createErr?.message ?? "Failed to create scan" });
   }
 
-  try {
-    const results = await runAllChecks(targetUrl);
-    const { findings } = summariseResults(results);
-    const score = scoreFromFindings(findings);
-    const summary = await generateAiSummary(results, findings);
-    const completedAt = new Date().toISOString();
-
-    const { error: insertErr } = await supabaseAdmin
-      .from("scan_results")
-      .insert({ scan_id: scan.id, results: { ...results, findings }, summary, score });
-
-    if (insertErr) throw new Error(insertErr.message);
-
-    await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scan.id);
-
-    const previous = await findPreviousFindings(supabaseAdmin, ownerId, scan.id, targetUrl, completedAt);
-    const report = buildScanReport(
-      { id: scan.id, owner: ownerId, target_url: targetUrl, status: "completed", created_at: completedAt },
-      { results: { findings }, summary, score, created_at: completedAt },
-      previous
-    );
-
-    // Awaited (not fire-and-forget): a serverless function can be torn down
-    // the moment the response is sent, which would silently kill an
-    // un-awaited delivery mid-flight. dispatchScanCompletedWebhooks never
-    // throws, so this can't turn a successful scan into a failed response —
-    // worst case it adds a few seconds for a slow/dead customer endpoint.
-    await dispatchScanCompletedWebhooks(supabaseAdmin, ownerId, report);
-
-    return res.status(201).json(report);
-  } catch (err) {
-    await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scan.id);
-    return res.status(500).json({ error: `Scan failed: ${(err as Error).message}`, scan_id: scan.id });
+  // Same executeScan() the dashboard's run-scan Function and the scheduled
+  // queue's workers use — one implementation of "run the checks, persist,
+  // notify" rather than a third copy that can drift (this used to duplicate
+  // it inline, including never sending the Slack change-alert other paths
+  // get). Awaited, not fire-and-forget: a serverless function can be torn
+  // down the moment the response is sent, which would silently kill an
+  // un-awaited webhook delivery mid-flight.
+  const outcome = await executeScan(supabaseAdmin, scan.id, ownerId, targetUrl);
+  if (!outcome.ok) {
+    return res.status(500).json({ error: `Scan failed: ${outcome.error}`, scan_id: scan.id });
   }
+
+  return res.status(201).json(outcome.report);
 }

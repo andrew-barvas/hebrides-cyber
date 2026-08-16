@@ -10,10 +10,14 @@ export type WebAppResult =
       httpMethods: HttpMethodsData;
       errorDisclosure: ErrorDisclosureData;
       wordpress: WordPressData | null;
+      joomla: JoomlaData | null;
+      drupal: DrupalData | null;
       corsReflected: CorsReflectedData;
       jsLibraries: JsLibraryFinding[];
     }
   | { status: "error"; note: string };
+
+export type CmsFlags = { isWordPress: boolean; isJoomla: boolean; isDrupal: boolean };
 
 export type RobotsData = {
   accessible: boolean;
@@ -40,6 +44,25 @@ export type WordPressData = {
   readmeAccessible: boolean;
   wpCronAccessible: boolean;
   enumeratedUsers: string[];
+};
+
+export type JoomlaData = {
+  // From the administrator manifest — null if unreadable or version absent.
+  version: string | null;
+  // htaccess.txt / web.config.txt: shipped by Joomla core, meant to be
+  // renamed after install. Left in place, they're a signal the install was
+  // never hardened — not a vulnerability in themselves.
+  installFilesPresent: boolean;
+};
+
+export type DrupalData = {
+  // From CHANGELOG.txt — null if unreadable or version absent.
+  version: string | null;
+  updatePhpAccessible: boolean;
+  jsonApiExposed: boolean;
+  // uid 1 is Drupal's built-in superuser account — a public profile page
+  // there confirms the admin account exists and is reachable by URL.
+  uid1ProfileAccessible: boolean;
 };
 
 export type CorsReflectedData = {
@@ -215,6 +238,59 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
   };
 }
 
+// ── Joomla deep scan ───────────────────────────────────────────────────────────
+
+async function checkJoomla(origin: string): Promise<JoomlaData> {
+  const [manifestRes, htaccessTxt, webConfigTxt] = await Promise.all([
+    fetch(`${origin}/administrator/manifests/files/joomla.xml`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    probePath(`${origin}/htaccess.txt`),
+    probePath(`${origin}/web.config.txt`),
+  ]);
+
+  let version: string | null = null;
+  if (manifestRes?.ok) {
+    const body = await manifestRes.text().catch(() => "");
+    const m = body.match(/<version>([\d.]+)<\/version>/i);
+    if (m) version = m[1];
+  }
+
+  return { version, installFilesPresent: htaccessTxt || webConfigTxt };
+}
+
+// ── Drupal deep scan ────────────────────────────────────────────────────────────
+
+async function checkDrupal(origin: string): Promise<DrupalData> {
+  const [changelogRoot, changelogCore, updatePhp, jsonApiRes, uid1Res] = await Promise.all([
+    fetch(`${origin}/CHANGELOG.txt`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    fetch(`${origin}/core/CHANGELOG.txt`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    probePath(`${origin}/update.php`),
+    fetch(`${origin}/jsonapi`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    fetch(`${origin}/user/1`, { redirect: "manual", signal: AbortSignal.timeout(6_000) }).catch(() => null),
+  ]);
+
+  let version: string | null = null;
+  for (const res of [changelogRoot, changelogCore]) {
+    if (!res?.ok) continue;
+    const body = await res.text().catch(() => "");
+    const m = body.match(/Drupal (\d+\.\d+(?:\.\d+)?),/i);
+    if (m) {
+      version = m[1];
+      break;
+    }
+  }
+
+  const jsonApiExposed = Boolean(
+    jsonApiRes?.ok && (jsonApiRes.headers.get("content-type") ?? "").includes("vnd.api+json")
+  );
+
+  return {
+    version,
+    updatePhpAccessible: updatePhp,
+    jsonApiExposed,
+    uid1ProfileAccessible: uid1Res?.status === 200,
+  };
+}
+
 // ── CORS reflected-origin test ────────────────────────────────────────────────
 
 const TEST_ORIGIN = "https://evil.example.com";
@@ -363,10 +439,7 @@ async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> 
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function checkWebApp(
-  targetUrl: string,
-  isWordPress: boolean
-): Promise<WebAppResult> {
+export async function checkWebApp(targetUrl: string, cms: CmsFlags): Promise<WebAppResult> {
   try {
     const origin = new URL(targetUrl).origin;
 
@@ -379,7 +452,11 @@ export async function checkWebApp(
         checkJsLibraries(targetUrl),
       ]);
 
-    const wordpress = isWordPress ? await checkWordPress(origin) : null;
+    const [wordpress, joomla, drupal] = await Promise.all([
+      cms.isWordPress ? checkWordPress(origin) : Promise.resolve(null),
+      cms.isJoomla ? checkJoomla(origin) : Promise.resolve(null),
+      cms.isDrupal ? checkDrupal(origin) : Promise.resolve(null),
+    ]);
 
     return {
       status: "checked",
@@ -387,6 +464,8 @@ export async function checkWebApp(
       httpMethods,
       errorDisclosure,
       wordpress,
+      joomla,
+      drupal,
       corsReflected,
       jsLibraries,
     };

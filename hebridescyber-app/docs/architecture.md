@@ -11,11 +11,14 @@
    b. Then with `{ scanId }` and an `X-Scan-Token` header set to that
       token — the Function checks the token matches (`verifyOwnership()`),
       then actually runs the scan.
-3. Alternatively, `scheduled-scans.yml` triggers the same two-call flow on
-   a cron, for every `{ owner, targetUrl }` pair returned by
-   `src/scripts/fetch-scheduled-targets.ts` (active subscriptions joined
-   against `monitored_targets`), authenticating as a trusted service via
-   `X-Service-Token` instead of a user session.
+3. Alternatively, `scheduled-scans.yml` runs on a cron through a queue
+   instead of calling `run-scan` directly: `src/scripts/enqueue-scheduled-scans.ts`
+   inserts one `scan_jobs` row (see `sql/migrations/008_scan_jobs.sql`) per
+   verified target belonging to an active subscription, then a matrix of
+   ephemeral worker shards each run `src/scripts/run-queued-scan-jobs.ts`,
+   claiming jobs via the `claim_scan_job()` `SKIP LOCKED` RPC and executing
+   them with `src/lib/scanExecution.ts`'s `executeScan()` — the same function
+   `run-scan` itself calls, so scan behaviour is identical either way.
 4. `run-scan` runs the scanner steps (currently deterministic stubs — see
    `src/lib/scanners/`), and writes results + a 0-100 score to
    `scan_results` using the Supabase **service role** key (bypasses RLS).
@@ -54,17 +57,21 @@
   but heavy scanners (ZAP, Playwright) will need either a higher-tier plan
   or delegation to Azure Container Instances to avoid Function timeout
   limits (default 5–10 minutes depending on plan).
-- `scheduled-scans.yml` fetches its target list dynamically (`fetch-targets`
-  job runs `src/scripts/fetch-scheduled-targets.ts` against the
-  `subscriptions`/`monitored_targets` tables), so it scales past a handful
-  of manually-added clients without editing the workflow. It still runs
-  every target through a plain GitHub Actions matrix, capped at
-  `max-parallel: 3` — move to a real queue (below) once that cap becomes a
-  bottleneck.
-- As scan volume grows, consider a queue (Azure Storage Queues or Service
-  Bus) between the trigger and the actual scan execution, so bursts of
-  scheduled scans don't overwhelm the Function App or get rate-limited by
-  target sites.
+- `scheduled-scans.yml` enqueues into `scan_jobs` (a Postgres table, no new
+  infra — Supabase is already provisioned) and works it with a small,
+  fixed-size matrix of GitHub Actions worker shards, each claiming jobs via
+  `SELECT ... FOR UPDATE SKIP LOCKED`. This scales by adding shards to the
+  matrix, not by widening a per-target curl matrix, and avoids Redis/BullMQ
+  or a long-lived container — neither of which Azure Static Web Apps or
+  Consumption-plan Functions can run anyway. Each worker run is bounded
+  (`MAX_JOBS_PER_RUN` / `TIME_BUDGET_MS` in `run-queued-scan-jobs.ts`), so a
+  backlog just rolls over to the next scheduled run rather than one Actions
+  job running unbounded.
+- The same queue is also the intended home for the real nmap/nuclei/sqlmap/
+  ZAP tool suite in `src/worker/tools/` (currently unwired — see
+  `docs/PLATFORM-ROADMAP.md`): a GitHub Actions runner can `apt-get install`
+  and exec real tools, which neither Static Web Apps nor Consumption
+  Functions can.
 - PDF report generation via Playwright is CPU/memory heavy — if this
   becomes a bottleneck, move it to a dedicated container job rather than
   running it inline in a Function.

@@ -54,6 +54,51 @@ create table if not exists public.team_members (
 create index if not exists team_members_user_idx on public.team_members (user_id);
 
 -- ---------------------------------------------------------------------------
+-- caller_team_ids(): breaks the RLS recursion below
+-- ---------------------------------------------------------------------------
+-- teams' policy needs to check team_members, and team_members' own policy
+-- needs to check team_members again (to see the rest of the roster, not just
+-- the caller's own row) — a raw correlated subquery in either case re-enters
+-- RLS on team_members, which re-evaluates the same policy, which re-enters
+-- RLS again: "infinite recursion detected in policy for relation ...".
+-- SECURITY DEFINER runs this function as its owner, which is exempt from RLS
+-- (table owners bypass RLS by default), so the lookup inside it doesn't
+-- re-trigger team_members' policies. Both recursive policies below call this
+-- instead of querying team_members directly.
+create or replace function public.caller_team_ids()
+returns setof uuid
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select team_id from public.team_members where user_id = auth.uid();
+$$;
+
+grant execute on function public.caller_team_ids() to authenticated;
+
+-- Same reason as caller_team_ids(): team_members' "team owner can view
+-- members" policy needs to check teams.owner_id, and a raw subquery on teams
+-- from within a team_members policy is the other half of the same cycle —
+-- teams' own policy (below) already needs to check team_members. Routing
+-- this specific lookup through a SECURITY DEFINER function too means neither
+-- table's policies ever perform a plain (RLS-subject) query against the
+-- other; every cross-table check happens inside a function that bypasses RLS
+-- entirely, so there is no path left for the two tables' policies to
+-- re-trigger each other.
+create or replace function public.is_caller_team_owner(check_team_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (select 1 from public.teams where teams.id = check_team_id and teams.owner_id = auth.uid());
+$$;
+
+grant execute on function public.is_caller_team_owner(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- RLS: teams
 -- ---------------------------------------------------------------------------
 alter table public.teams enable row level security;
@@ -66,7 +111,7 @@ create policy "Users can view their own team"
 drop policy if exists "Team members can view the team they belong to" on public.teams;
 create policy "Team members can view the team they belong to"
   on public.teams for select
-  using (exists (select 1 from public.team_members where team_members.team_id = teams.id and team_members.user_id = auth.uid()));
+  using (id in (select public.caller_team_ids()));
 
 -- Inserts/deletes happen server-side only (src/pages/api/team.ts), using the
 -- service role — so a "create team" request can validate the one-team-per-
@@ -81,12 +126,12 @@ alter table public.team_members enable row level security;
 drop policy if exists "Team owner can view their team's members" on public.team_members;
 create policy "Team owner can view their team's members"
   on public.team_members for select
-  using (exists (select 1 from public.teams where teams.id = team_members.team_id and teams.owner_id = auth.uid()));
+  using (public.is_caller_team_owner(team_members.team_id));
 
 drop policy if exists "Members can view their own team's member list" on public.team_members;
 create policy "Members can view their own team's member list"
   on public.team_members for select
-  using (user_id = auth.uid() or team_id in (select team_id from public.team_members where user_id = auth.uid()));
+  using (user_id = auth.uid() or team_id in (select public.caller_team_ids()));
 
 -- Inserts/updates/deletes (invite, change role, remove) happen server-side
 -- only, via src/pages/api/team/members.ts, using the service role — so an
