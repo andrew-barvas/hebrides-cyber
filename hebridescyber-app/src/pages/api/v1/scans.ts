@@ -6,7 +6,7 @@
 // point the scanner at a host its owner hasn't proven they control, and
 // there's no interactive step in CI to complete a challenge.
 import type { NextApiRequest, NextApiResponse } from "next";
-import { validateNoSsrf, hostnameFromUrl } from "@/lib/ownership";
+import { validateNoSsrf, hostnameFromUrl, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { executeScan } from "@/lib/scanExecution";
@@ -77,7 +77,8 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
   }
 
   // Ownership must already be verified — see the file header for why the
-  // interactive proof-token path isn't available to API callers.
+  // interactive proof-token path isn't available to API callers. (Admins
+  // bypass this — see isDomainVerified.)
   let domain: string;
   try {
     domain = hostnameFromUrl(targetUrl);
@@ -85,14 +86,7 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     return res.status(400).json({ error: "Could not parse hostname from target_url" });
   }
 
-  const { data: verification } = await supabaseAdmin
-    .from("verifications")
-    .select("verified_at")
-    .eq("owner", ownerId)
-    .eq("domain", domain)
-    .maybeSingle();
-
-  if (!verification?.verified_at) {
+  if (!(await isDomainVerified(supabaseAdmin, ownerId, targetUrl))) {
     return res.status(403).json({
       error: `Domain "${domain}" is not verified for this account. Verify it in the dashboard before scanning it via the API.`,
       domain,

@@ -105,16 +105,25 @@ export function hostnameFromUrl(targetUrl: string): string {
  * Whether `ownerId` has a completed, real (DNS/file) verification on file for
  * `targetUrl`'s hostname — the persisted `verifications.verified_at` flag,
  * not a fresh live re-check. Shared by run-scan's isOwnershipVerified (which
- * also has a dev-only proof-token fallback this doesn't need) and the
- * scheduled-scan queue's enqueue/worker scripts, which have no interactive
- * token exchange to fall back to and must only ever enqueue/run scans against
- * a domain the owner has actually proven they control.
+ * also has a dev-only proof-token fallback this doesn't need), the public API
+ * (src/pages/api/v1/scans.ts), and the scheduled-scan queue's enqueue/worker
+ * scripts, which have no interactive token exchange to fall back to and must
+ * only ever enqueue/run scans against a domain the owner has actually proven
+ * they control.
+ *
+ * Admins bypass this entirely — same reasoning and same `users.is_admin`
+ * flag as isFreeTierExhausted (src/lib/freeTier.ts): they need to test
+ * scans against arbitrary targets without going through the DNS/file
+ * verification dance every time.
  */
 export async function isDomainVerified(
   supabaseAdmin: SupabaseClient,
   ownerId: string,
   targetUrl: string
 ): Promise<boolean> {
+  const { data: user } = await supabaseAdmin.from("users").select("is_admin").eq("id", ownerId).maybeSingle();
+  if (user?.is_admin) return true;
+
   let domain: string;
   try {
     domain = hostnameFromUrl(targetUrl);
