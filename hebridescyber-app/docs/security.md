@@ -25,19 +25,21 @@ Sample verification token flow:
 
 **Current state:** this is now implemented for real. `src/lib/ownership.ts`
 does an actual DNS TXT lookup (`node:dns/promises`) and an actual fetch of
-`/.well-known/hebridescyber-verify.txt`, driven by the
-`verify-ownership` Function (`action: "start"` issues a token + instructions,
-`action: "check"` performs the lookup and marks the `verifications` row
-verified). `run-scan` checks that table first.
+`/.well-known/hebridescyber-verify.txt`, driven by
+`POST /api/verify-ownership` (`action: "start"` issues a token +
+instructions, `action: "check"` performs the lookup and marks the
+`verifications` row verified). `/api/run-scan` checks that table first, via
+`isDomainVerified()` — which also exempts admin accounts (`users.is_admin`)
+from needing verification at all, same as it exempts them from the
+free-tier scan cap.
 
-A weaker fallback still exists alongside it: if no verified row is found,
-and `ALLOW_DEV_TOKEN_VERIFICATION` is `true` (the default), `run-scan`
+A weaker fallback still exists alongside it, off by default: if no verified
+row is found and `ALLOW_DEV_TOKEN_VERIFICATION=true` is set, `/api/run-scan`
 accepts the `X-Scan-Token` echoed back from scan creation instead — this
 only proves the caller is the authenticated account that requested the
-scan, not that they control the target's DNS/hosting. It exists so the
-dashboard's quick self-service flow works without every user completing
-DNS/file verification first. **Set `ALLOW_DEV_TOKEN_VERIFICATION=false`**
-once you want every scan to require real verification.
+scan, not that they control the target's DNS/hosting. **Only ever set this
+for local dev.** On a real deployment, leave it unset (or `false`) so every
+scan requires real verification.
 
 ## Consent for Intrusive Scans
 
@@ -58,23 +60,36 @@ Suggested legal consent template (have a solicitor review before use):
 
 ## Isolation of Heavy Scanners
 
-Run ZAP, dependency scanners, and headless browser sessions in **ephemeral
-containers** (Azure Container Instances or similar), not inline in a
-long-lived process:
+**Done, via ephemeral GitHub Actions runners rather than Azure Container
+Instances** (ACA/ACI were considered and rejected — see
+`docs/PLATFORM-ROADMAP.md`'s "17 Aug" note — since GitHub Actions already
+gives fresh, destroyed-after-each-run compute for free, and installing
+real tools per run avoids maintaining a second infra surface). ZAP, nmap,
+nuclei, and sqlmap only ever run inside
+`.github/workflows/scheduled-scans.yml`'s `work` job
+(`runExtendedTools: true` on `executeScan()`), never inline in an
+interactive request:
 
-- Strict egress rules — only allow outbound traffic to the specific target
-  being scanned, nothing else.
-- Destroy the container after each scan; never reuse across customers.
-- Set hard timeouts and resource limits so a hung scan can't run forever
-  or starve other work.
+- Each job's tools are installed fresh into that run's disposable runner
+  VM and torn down when the job ends — no state or binaries persist
+  between runs or across customers.
+- Each job is bounded (`MAX_JOBS_PER_RUN`/`TIME_BUDGET_MS` in
+  `src/scripts/run-queued-scan-jobs.ts`), so a hung scan can't run forever
+  or starve the rest of the queue.
+- **Not yet done:** strict egress rules limiting outbound traffic to only
+  the specific target being scanned. GitHub-hosted runners have general
+  internet egress by default — revisit if that becomes a real concern
+  (e.g. via self-hosted runners with a locked-down network policy).
 
 ## Secrets Handling
 
-- Use **Azure Key Vault** for all production secrets (Supabase service
-  role key, Stripe secret key, Azure OpenAI key, storage connection
-  strings). Reference them from Function app settings via Key Vault
-  references — never paste raw values into `local.settings.json`,
-  Terraform files, or GitHub Actions YAML.
+- Set production secrets (Supabase service role key, Stripe secret key,
+  Azure OpenAI key, `GITHUB_PAT`, storage connection strings) as **Static
+  Web App application settings** — `az staticwebapp appsettings set` or the
+  Portal. Never paste raw values into `.env.local`, Terraform files, or
+  GitHub Actions YAML (the `GITHUB_ACTIONS_TOKEN`/`SUPABASE_*` GitHub
+  Secrets used directly inside CI jobs — see `README.md` — are the
+  intentional exception).
 - `.env.example` in this repo lists required variable names only — no
   real values are ever committed.
 - Rotate the Supabase service role key and Stripe keys periodically and
@@ -92,16 +107,19 @@ long-lived process:
 
 ## Rate Limiting & Concurrency
 
-- `run-scan` has an **in-memory token bucket** (`rateLimitBuckets` in
-  `src/functions/run-scan/index.ts`, 10 requests/hour per caller by
-  default) — this is only there so the shape of the check exists. It
-  resets whenever the Function instance recycles and doesn't share state
-  across concurrently-running instances, so it must NOT be relied on as
-  the real control before the endpoint is exposed publicly. Replace with
-  Azure Cache for Redis or a Supabase table + row locking, and consider
-  tiering the limit by subscription plan (free vs. paid).
-- Cap concurrent scans per customer and globally, so a burst of scheduled
-  scans (see `scheduled-scans.yml`) can't overwhelm the Function App or
-  get target sites to block your IP range.
-- Consider a queue between scan requests and execution once volume grows
-  past what direct HTTP-triggered Functions can handle smoothly.
+- `run-scan` uses `src/lib/rateLimit.ts` — a real, shared-state limiter via
+  Upstash Redis's REST API (`UPSTASH_REDIS_REST_URL`/`TOKEN`, 10
+  requests/hour per caller) when those are set. **Without them it falls
+  back to an in-memory bucket that resets on instance recycling and
+  doesn't share state across concurrently-running instances — set the
+  Upstash env vars before relying on this in production.**
+- Separately, free-tier accounts (no active subscription) are capped at
+  **one scan, ever** (`src/lib/freeTier.ts`'s `isFreeTierExhausted`) —
+  admins exempt. This bounds worst-case cost exposure from a single free
+  account independently of the hourly rate limit.
+- A burst of scheduled scans can't overwhelm anything Function-App-shaped
+  anymore: `.github/workflows/scheduled-scans.yml` runs through a
+  Postgres-backed queue (`sql/migrations/008_scan_jobs.sql`), worked by a
+  fixed, bounded set of GitHub Actions shards (`src/scripts/run-queued-scan-jobs.ts`,
+  itself capped per run by `MAX_JOBS_PER_RUN`/`TIME_BUDGET_MS`) rather than
+  one HTTP call per target — see `docs/PLATFORM-ROADMAP.md` §4.

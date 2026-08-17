@@ -24,7 +24,7 @@ async function main() {
 
   console.log(JSON.stringify({ results, findings, summary, score }, null, 2));
   console.log(`\nScore: ${score}/100`);
-  console.log("\nDone. This uses the same stub scanner functions as src/functions/run-scan/index.ts.\n");
+  console.log("\nDone. This uses the same scanner functions as src/pages/api/run-scan.ts.\n");
 
   await maybeWriteToSupabase(targetUrl, results, findings, summary, score);
 }

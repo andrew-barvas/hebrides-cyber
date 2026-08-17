@@ -1,59 +1,57 @@
-// Azure Function (HTTP trigger): generate-report
+// GET /api/generate-report?scan_id=... — renders the scan's findings as HTML
+// and converts to PDF with Playwright. Two response modes:
+//   - AZURE_STORAGE_CONNECTION_STRING set -> upload to Blob Storage, return
+//     a short-lived (1h) SAS URL instead of the binary.
+//   - Not set (local dev) -> return the PDF bytes directly.
 //
-// Fetches scan results from Supabase, renders an HTML report, and converts
-// it to PDF with Playwright. Uses safe temp file handling: everything
-// happens in the OS temp dir under a unique subfolder, and the folder is
-// removed in a `finally` block regardless of success/failure.
-//
-// Two response modes:
-//   - AZURE_STORAGE_CONNECTION_STRING is set → upload the PDF to Blob
-//     Storage and return a short-lived SAS URL (does not hold the binary
-//     in the HTTP response).
-//   - Not set (local dev) → return the PDF bytes directly with
-//     Content-Type: application/pdf.
-
-import { createClient } from "@supabase/supabase-js";
-import { chromium } from "playwright"; // TODO: add "playwright" to package.json when wiring this up in the real Functions app
+// Rebuilt as a Next.js API route alongside run-scan — see that file's header
+// for why. Fixed a real gap while porting: the original standalone Function
+// (src/functions/generate-report) had NO auth check at all — any caller who
+// knew or guessed a scan_id could download any customer's full report,
+// findings included. This version requires the caller to own the scan (or
+// be an admin), matching every other scan-scoped route in this codebase.
+import type { NextApiRequest, NextApiResponse } from "next";
+import { chromium } from "playwright";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 
-type HttpRequest = { query: { scan_id?: string } };
-type HttpResponseInit = { status: number; body?: Buffer; headers?: Record<string, string>; jsonBody?: unknown };
-
-const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 const storageConnectionString = process.env.AZURE_STORAGE_CONNECTION_STRING ?? "";
 
-export default async function generateReport(req: HttpRequest): Promise<HttpResponseInit> {
-  const scanId = req.query.scan_id;
-  if (!scanId) {
-    return { status: 400, jsonBody: { error: "scan_id query param is required" } };
-  }
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+
+  const caller = await authenticateApiRequest(req);
+  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+
+  const scanId = req.query.scan_id as string | undefined;
+  if (!scanId) return res.status(400).json({ error: "scan_id query param is required" });
 
   const { data: scanResult, error } = await supabaseAdmin
     .from("scan_results")
-    .select("*, scans(target_url, created_at)")
+    .select("*, scans(owner, target_url, created_at)")
     .eq("scan_id", scanId)
     .maybeSingle();
 
-  if (error || !scanResult) {
-    return { status: 404, jsonBody: { error: error?.message ?? "Scan result not found" } };
+  if (error || !scanResult) return res.status(404).json({ error: error?.message ?? "Scan result not found" });
+
+  const owner = (scanResult.scans as { owner?: string } | null)?.owner;
+  if (owner !== caller.ownerId) {
+    const { data: user } = await supabaseAdmin.from("users").select("is_admin").eq("id", caller.ownerId).maybeSingle();
+    if (!user?.is_admin) return res.status(403).json({ error: "You do not own this scan" });
   }
 
   const html = renderReportHtml(scanResult);
 
-  // --- Safe temp file handling -----------------------------------------
-  // Create a unique temp directory per invocation so concurrent requests
-  // never collide, and always clean up afterwards.
+  // Unique temp directory per invocation so concurrent requests never
+  // collide, cleaned up in `finally` regardless of success/failure.
   const tempDir = await mkdtemp(path.join(tmpdir(), "hebridescyber-report-"));
   const pdfPath = path.join(tempDir, `report-${scanId}.pdf`);
 
   try {
-    // TODO: in production, run Playwright in a container with no network
-    // egress beyond what's needed to render local HTML, to avoid SSRF risk
-    // from the report template.
+    // TODO: in production, run Playwright with no network egress beyond what's
+    // needed to render local HTML, to avoid SSRF risk from the report template.
     const browser = await chromium.launch();
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
@@ -64,19 +62,13 @@ export default async function generateReport(req: HttpRequest): Promise<HttpResp
 
     if (storageConnectionString) {
       const url = await uploadToBlobStorage(pdfBuffer, `report-${scanId}.pdf`);
-      return { status: 200, jsonBody: { url, expiresInSeconds: 3600 } };
+      return res.status(200).json({ url, expiresInSeconds: 3600 });
     }
 
-    return {
-      status: 200,
-      body: pdfBuffer,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="hebridescyber-report-${scanId}.pdf"`,
-      },
-    };
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="hebridescyber-report-${scanId}.pdf"`);
+    return res.status(200).send(pdfBuffer);
   } finally {
-    // Always clean up the temp directory, even if PDF generation failed.
     await rm(tempDir, { recursive: true, force: true });
   }
 }
@@ -87,9 +79,8 @@ export default async function generateReport(req: HttpRequest): Promise<HttpResp
  *
  * TODO: retention (see docs/security.md — 90-day default) is not enforced
  * here — add a lifecycle management policy on the storage account (or a
- * scheduled cleanup Function) rather than relying on this code path to
- * delete old reports. SAS expiry of 1 hour is a conservative default;
- * revisit if customers need to share report links for longer.
+ * scheduled cleanup job) rather than relying on this code path to delete old
+ * reports.
  */
 async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise<string> {
   const { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } =
@@ -118,7 +109,7 @@ async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise
       containerName: "reports",
       blobName,
       permissions: BlobSASPermissions.parse("r"),
-      expiresOn: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      expiresOn: new Date(Date.now() + 60 * 60 * 1000),
     },
     credential
   ).toString();
@@ -126,13 +117,11 @@ async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise
   return `${blockBlob.url}?${sas}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function renderReportHtml(scanResult: Record<string, any>): string {
-  // Minimal inline template. See marketing/04-security-score-template.md
-  // for the full report structure this should eventually match (executive
+  // Minimal inline template. See marketing/04-security-score-template.md for
+  // the full report structure this should eventually match (executive
   // summary, top 5 findings, risk breakdown, action plan, appendix).
-  // TODO: extract this into a proper templating approach (e.g. a .html
-  // file with placeholders, or a small JSX-to-string renderer) once the
-  // report format is finalised.
   const targetUrl = scanResult.scans?.target_url ?? "unknown";
   const summary: string = scanResult.summary ?? scanResult.results?.ai_summary ?? "No summary available.";
   const score: number | undefined = scanResult.score;

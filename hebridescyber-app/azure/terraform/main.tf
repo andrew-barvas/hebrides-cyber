@@ -5,6 +5,16 @@
 # TODOs, set up a remote state backend (e.g. an Azure Storage container)
 # before running this against a real subscription, and review with
 # `terraform plan` before `apply`.
+#
+# Only one deployed surface now: the Static Web App runs the whole
+# application (marketing site, dashboard, and every /api/* route, including
+# what used to be a separate Functions app for run-scan/verify-ownership/
+# generate-report/generate-fix-pr/generate-newsletter — see
+# src/pages/api/run-scan.ts's header comment for why that was consolidated).
+# No Function App, Function App Service Plan, or Key Vault-for-Function-App
+# access policy needed as a result — secrets live in GitHub Secrets (for
+# build-time vars, see deploy.yml) or the Static Web App's own application
+# settings, matching what's actually deployed today.
 
 terraform {
   required_providers {
@@ -41,7 +51,8 @@ resource "azurerm_resource_group" "main" {
   location = var.location
 }
 
-# Storage account backing the Function App + used for temp report files.
+# Used for temp report generation and (optionally) uploaded PDF storage —
+# see AZURE_STORAGE_CONNECTION_STRING in src/pages/api/generate-report.ts.
 resource "azurerm_storage_account" "main" {
   name                     = "hebridescyberstorage" # TODO: must be globally unique, lowercase, no dashes
   resource_group_name      = azurerm_resource_group.main.name
@@ -50,73 +61,17 @@ resource "azurerm_storage_account" "main" {
   account_replication_type = "LRS"
 }
 
-# Consumption-plan Function App for run-scan / generate-report.
-resource "azurerm_service_plan" "functions" {
-  name                = "hebridescyber-functions-plan"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  os_type             = "Linux"
-  sku_name            = "Y1" # Consumption plan
-}
-
-resource "azurerm_linux_function_app" "main" {
-  name                       = "hebridescyber-functions" # TODO: must be globally unique
-  resource_group_name        = azurerm_resource_group.main.name
-  location                   = azurerm_resource_group.main.location
-  storage_account_name       = azurerm_storage_account.main.name
-  storage_account_access_key = azurerm_storage_account.main.primary_access_key
-  service_plan_id            = azurerm_service_plan.functions.id
-
-  site_config {
-    application_stack {
-      node_version = "20"
-    }
-  }
-
-  # TODO: set app_settings for SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-  # AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, etc. via Key Vault references
-  # rather than plain values here — never commit real secrets to this file.
-  app_settings = {
-    "TODO_SET_VIA_KEY_VAULT_REFERENCE" = "see docs/security.md"
-  }
-
-  identity {
-    type = "SystemAssigned" # used to grant Key Vault access below
-  }
-}
-
-# Key Vault for production secrets.
-resource "azurerm_key_vault" "main" {
-  name                = "hebridescyber-kv" # TODO: must be globally unique
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"
-}
-
-data "azurerm_client_config" "current" {}
-
-resource "azurerm_key_vault_access_policy" "function_app" {
-  key_vault_id = azurerm_key_vault.main.id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_linux_function_app.main.identity[0].principal_id
-
-  secret_permissions = ["Get", "List"]
-}
-
-# Static Web App for the Next.js marketing site + dashboard.
+# Static Web App for the Next.js app — marketing site, dashboard, and every
+# API route (Oryx auto-deploys App Router pages + Pages API routes as
+# managed Functions behind the CDN; see deploy.yml).
 # TODO: azurerm_static_site does not support all Static Web Apps features
 # (e.g. GitHub integration is usually set up via `az staticwebapp create`
 # or the Portal instead). See azure/cli-scripts/provision.sh for that path.
 resource "azurerm_static_site" "main" {
-  name                = "hebridescyber-app"
-  resource_group_name = azurerm_resource_group.main.name
+  name                 = "hebridescyber-app"
+  resource_group_name  = azurerm_resource_group.main.name
   location             = var.location
-  sku_tier            = "Free" # TODO: upgrade to Standard for custom domains + more bandwidth
-}
-
-output "function_app_url" {
-  value = "https://${azurerm_linux_function_app.main.default_hostname}"
+  sku_tier             = "Free" # TODO: upgrade to Standard for custom domains + more bandwidth
 }
 
 output "static_web_app_url" {

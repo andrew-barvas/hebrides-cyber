@@ -1,5 +1,5 @@
 // Turns scan findings into concrete, copy-pasteable fix content. Used by
-// src/functions/generate-fix-pr to build the file a remediation PR adds.
+// src/pages/api/generate-fix-pr.ts to build the file a remediation PR adds.
 //
 // Deliberately produces a *recommendations* file rather than silently
 // rewriting the customer's actual source files (next.config.js, nginx

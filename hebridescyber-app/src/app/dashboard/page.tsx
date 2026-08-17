@@ -136,18 +136,11 @@ export default function DashboardPage() {
     setScanMessage(null);
     setError(null);
 
-    const functionsUrl = process.env.NEXT_PUBLIC_AZURE_FUNCTIONS_URL;
-    if (!functionsUrl) {
-      setError("NEXT_PUBLIC_AZURE_FUNCTIONS_URL is not configured — see .env.example.");
-      setSubmitting(false);
-      return;
-    }
-
     const session = await getSession();
     if (!session) { setError("Session expired — please sign in again."); setSubmitting(false); return; }
 
     try {
-      const createRes = await fetch(`${functionsUrl}/api/run-scan`, {
+      const createRes = await fetch("/api/run-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ targetUrl }),
@@ -155,7 +148,7 @@ export default function DashboardPage() {
       const createBody = await createRes.json();
       if (!createRes.ok) throw new Error(createBody.error ?? `run-scan create failed (${createRes.status})`);
 
-      const runRes = await fetch(`${functionsUrl}/api/run-scan`, {
+      const runRes = await fetch("/api/run-scan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

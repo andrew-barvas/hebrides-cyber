@@ -43,6 +43,33 @@ Every "already built" claim below was verified against the tree.
 > do for £0. Revisit ACA specifically if tool-version reproducibility or
 > IP/isolation hygiene (active-scan payloads currently originate from
 > GitHub's shared, well-known IP ranges) becomes a real concern.
+>
+> **Found and fixed (17 Aug): the scan pipeline had no working deployment.**
+> While checking whether `run-scan` was actually live, found that the
+> standalone `src/functions/` Azure Functions app (`run-scan`,
+> `verify-ownership`, `generate-report`, `generate-fix-pr`,
+> `generate-newsletter`) was never deployable in the first place — no
+> `host.json`, no Functions-specific `package.json`, no real
+> `@azure/functions` registration, just plain TS modules with a hand-rolled
+> `HttpRequest`/`HttpResponseInit` stub. The Azure resource
+> (`hebrides-cyber-fn`) existed and was running, but had zero functions
+> deployed to it. Separately, `src/pages/api/run-scan.ts` turned out to
+> already exist as an independent, drifted duplicate of the same logic
+> (missing the free-tier cap, admin bypass, shared `executeScan()`, and
+> everything else built around those this session) — an earlier build
+> attempt that got superseded and never deleted.
+>
+> **Fix: consolidated everything onto `src/pages/api/*`.** All five
+> functions rebuilt/ported as Next.js API routes, deployed via the same
+> `deploy.yml`/Azure Static Web Apps pipeline already proven to work — no
+> second Azure resource, no second deploy pipeline. `src/functions/` and
+> the now-unneeded Function App provisioning (Terraform, `provision.sh`)
+> deleted/trimmed. Also fixed while porting: `generate-report` had **no
+> auth check at all** — any caller who knew or guessed a `scan_id` could
+> download any customer's full report. Now requires scan ownership (or
+> admin). And: `ALLOW_DEV_TOKEN_VERIFICATION` now defaults to `false` (real
+> domain verification required) instead of `true` — the dashboard's
+> "Verify domain ownership" section is no longer just "(recommended)".
 
 ---
 

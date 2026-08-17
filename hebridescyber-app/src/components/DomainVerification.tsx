@@ -19,13 +19,12 @@ export default function DomainVerification() {
   const [error, setError] = useState<string | null>(null);
 
   async function callVerifyOwnership(action: "start" | "check") {
-    const functionsUrl = process.env.NEXT_PUBLIC_AZURE_FUNCTIONS_URL;
     const session = await getSession();
-    if (!functionsUrl || !session) {
-      setError("Not configured or not signed in.");
+    if (!session) {
+      setError("Not signed in.");
       return null;
     }
-    const res = await fetch(`${functionsUrl}/api/verify-ownership`, {
+    const res = await fetch("/api/verify-ownership", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ action, targetUrl }),
@@ -64,15 +63,16 @@ export default function DomainVerification() {
   }
 
   return (
-    <details className="rounded-lg border border-cyberborder bg-cyberpanel">
+    <details open className="rounded-lg border border-cyberborder bg-cyberpanel">
       <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
-        Verify domain ownership <span className="font-normal text-cybertext/40">(recommended)</span>
+        Verify domain ownership <span className="font-normal text-cybertext/40">(required before scanning)</span>
       </summary>
       <div className="px-5 pb-5 pt-1 space-y-4">
         <p className="text-sm text-cybertext/60">
-          Prove you control a domain via DNS or a file upload, so scans against
-          it don&apos;t rely on the quick token-echo shortcut. Propagation can take
-          a few minutes after adding the record.
+          Prove you control a domain via DNS or a file upload before scanning
+          it — this confirms you&apos;re authorised to test it, not just that
+          you&apos;re logged in. Propagation can take a few minutes after
+          adding the record.
         </p>
 
         <form onSubmit={start} className="flex flex-col gap-2 sm:flex-row">

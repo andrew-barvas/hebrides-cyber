@@ -1,34 +1,27 @@
-// Azure Function (HTTP trigger): generate-fix-pr
-//
-// The "fix it" half of the product, scoped responsibly: turns a scan's
-// findings into a real GitHub pull request adding a concrete
-// SECURITY-FIXES.md with copy-pasteable snippets (src/lib/remediation.ts),
-// rather than silently rewriting the customer's live config. A human still
-// reviews and merges — that's the point, not a limitation.
+// POST /api/generate-fix-pr — the "fix it" half of the product, scoped
+// responsibly: turns a scan's findings into a real GitHub pull request
+// adding a concrete SECURITY-FIXES.md with copy-pasteable snippets
+// (src/lib/remediation.ts), rather than silently rewriting the customer's
+// live config. A human still reviews and merges — that's the point, not a
+// limitation.
 //
 // Requires GITHUB_PAT (a fine-grained personal access token, or a GitHub
 // App installation token — see TODO below) with contents:write and
 // pull-requests:write on whichever repos it's used against. The customer
 // must add the Hebrides Cyber bot account/App as a collaborator first.
 //
-// TODO: a shared PAT across all customers is a real blast-radius risk if
-// it leaks — before onboarding real customers, replace this with a GitHub
-// App (per-installation tokens, scoped to only the repos each customer
+// TODO: a shared PAT across all customers is a real blast-radius risk if it
+// leaks — before onboarding real customers, replace this with a GitHub App
+// (per-installation tokens, scoped to only the repos each customer
 // explicitly installs it on) rather than one long-lived PAT for everyone.
+//
+// Rebuilt as a Next.js API route alongside run-scan — see that file's header
+// for why.
+import type { NextApiRequest, NextApiResponse } from "next";
+import { buildRemediationMarkdown } from "@/lib/remediation";
+import type { Finding } from "@/lib/scanners";
+import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 
-import { createClient } from "@supabase/supabase-js";
-import { buildRemediationMarkdown } from "../../lib/remediation";
-import type { Finding } from "../../lib/scanners";
-
-type HttpRequest = {
-  headers: Record<string, string | undefined>;
-  body: { scanId?: string; githubRepo?: string; baseBranch?: string };
-};
-type HttpResponseInit = { status: number; jsonBody: unknown };
-
-const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 const githubPat = process.env.GITHUB_PAT ?? "";
 const githubApi = "https://api.github.com";
 
@@ -40,68 +33,50 @@ function ghHeaders() {
   };
 }
 
-export default async function generateFixPr(req: HttpRequest): Promise<HttpResponseInit> {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
   if (!githubPat) {
-    return { status: 501, jsonBody: { error: "GITHUB_PAT is not configured on this Function — see .env.example." } };
+    return res.status(501).json({ error: "GITHUB_PAT is not configured on this deployment — see .env.example." });
   }
 
-  const authHeader = req.headers["authorization"];
-  if (!authHeader?.startsWith("Bearer ")) {
-    return { status: 401, jsonBody: { error: "Missing Authorization Bearer token" } };
-  }
-  const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(
-    authHeader.slice("Bearer ".length)
-  );
-  if (authError || !userData.user) {
-    return { status: 401, jsonBody: { error: "Invalid session" } };
+  const caller = await authenticateApiRequest(req);
+  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  if (caller.via !== "session") {
+    return res.status(403).json({ error: "Remediation PRs can only be requested from a logged-in session, not with an API key." });
   }
 
-  const { scanId, githubRepo, baseBranch = "main" } = req.body;
-  if (!scanId || !githubRepo) {
-    return { status: 400, jsonBody: { error: "scanId and githubRepo ('owner/repo') are required" } };
-  }
-  if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
-    return { status: 400, jsonBody: { error: "githubRepo must look like 'owner/repo'" } };
-  }
+  const { scanId, githubRepo, baseBranch = "main" } = req.body as { scanId?: string; githubRepo?: string; baseBranch?: string };
+  if (!scanId || !githubRepo) return res.status(400).json({ error: "scanId and githubRepo ('owner/repo') are required" });
+  if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) return res.status(400).json({ error: "githubRepo must look like 'owner/repo'" });
 
   const { data: scan, error: scanError } = await supabaseAdmin
     .from("scans")
     .select("id, owner, target_url")
     .eq("id", scanId)
     .maybeSingle();
-  if (scanError || !scan) {
-    return { status: 404, jsonBody: { error: "Scan not found" } };
-  }
-  if (scan.owner !== userData.user.id) {
-    return { status: 403, jsonBody: { error: "You do not own this scan" } };
-  }
+  if (scanError || !scan) return res.status(404).json({ error: "Scan not found" });
+  if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "You do not own this scan" });
 
   const { data: result, error: resultError } = await supabaseAdmin
     .from("scan_results")
     .select("results, score")
     .eq("scan_id", scanId)
     .maybeSingle();
-  if (resultError || !result) {
-    return { status: 404, jsonBody: { error: "No results for this scan yet" } };
-  }
+  if (resultError || !result) return res.status(404).json({ error: "No results for this scan yet" });
 
   const findings = ((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[];
   const markdown = buildRemediationMarkdown(scan.target_url, findings, result.score ?? null);
 
   try {
     const prUrl = await openRemediationPr(githubRepo, baseBranch, scanId, markdown);
-    return { status: 200, jsonBody: { ok: true, prUrl } };
+    return res.status(200).json({ ok: true, prUrl });
   } catch (err) {
-    return { status: 502, jsonBody: { error: `GitHub API error: ${(err as Error).message}` } };
+    return res.status(502).json({ error: `GitHub API error: ${(err as Error).message}` });
   }
 }
 
-async function openRemediationPr(
-  repo: string,
-  baseBranch: string,
-  scanId: string,
-  markdown: string
-): Promise<string> {
+async function openRemediationPr(repo: string, baseBranch: string, scanId: string, markdown: string): Promise<string> {
   // 1. Get the SHA of the base branch's HEAD commit.
   const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders() });
   if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check GITHUB_PAT access to ${repo}`);
@@ -121,9 +96,7 @@ async function openRemediationPr(
 
   // 3. Create (or update) SECURITY-FIXES.md on that branch.
   const path = "SECURITY-FIXES.md";
-  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, {
-    headers: ghHeaders(),
-  });
+  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders() });
   const existingSha = existingRes.ok ? ((await existingRes.json()) as { sha: string }).sha : undefined;
 
   const putRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}`, {
@@ -150,10 +123,7 @@ async function openRemediationPr(
     }),
   });
   if (prRes.status === 422) {
-    // Likely "already exists" — find and return it instead of failing.
-    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, {
-      headers: ghHeaders(),
-    });
+    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders() });
     const list = (await listRes.json()) as Array<{ html_url: string }>;
     if (list[0]) return list[0].html_url;
     throw new Error("PR creation returned 422 and no existing PR was found");
