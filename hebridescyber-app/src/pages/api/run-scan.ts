@@ -1,31 +1,37 @@
+// Two-step scan flow — POST with { targetUrl } (no scanId) to create a scan
+// and get a proofToken back, then POST again with { scanId } and an
+// X-Scan-Token header set to that token to actually run it.
+//
+// Rebuilt as a Next.js API route (deploys via the same Azure Static Web
+// Apps pipeline as the rest of the app — see .github/workflows/deploy.yml)
+// rather than as a separate standalone Azure Functions app. That second app
+// (src/functions/run-scan) was never actually deployable — no host.json, no
+// Functions-specific package.json, no real @azure/functions registration —
+// and this file itself used to be a stale, independently-drifted duplicate
+// of it (missing the free-tier cap, admin bypass, shared executeScan(), and
+// every other fix built around those). One implementation now, reused by
+// every path that runs a scan: this route, the scheduled queue's workers
+// (src/scripts/run-queued-scan-jobs.ts), and the public API
+// (src/pages/api/v1/scans.ts).
+//
+// Session-only: nothing calls this with a service/scheduled credential
+// anymore — the scheduled queue calls executeScan() directly instead of
+// going through this HTTP round-trip (see src/scripts/enqueue-scheduled-scans.ts).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary } from "@/lib/scanners";
-import { validateNoSsrf, hostnameFromUrl } from "@/lib/ownership";
+import { validateNoSsrf, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
+import { executeScan } from "@/lib/scanExecution";
+import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 
-const serviceToken = process.env.GITHUB_ACTIONS_TOKEN ?? "";
-const allowDevToken = (process.env.ALLOW_DEV_TOKEN_VERIFICATION ?? "true") === "true";
+// Defaults to requiring real DNS/file domain verification. Set
+// ALLOW_DEV_TOKEN_VERIFICATION=true only for local dev — see
+// src/lib/ownership.ts and docs/security.md.
+const allowDevTokenVerification = process.env.ALLOW_DEV_TOKEN_VERIFICATION === "true";
 
-// Disable Next.js body size limit — scan results can be large.
+// Scan results can be large.
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
-
-async function resolveCaller(req: NextApiRequest): Promise<{ ownerId: string; isService: boolean } | null> {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const { data, error } = await supabaseAdmin.auth.getUser(auth.slice(7));
-    if (error || !data.user) return null;
-    return { ownerId: data.user.id, isService: false };
-  }
-  const provided = req.headers["x-service-token"];
-  if (provided && serviceToken && provided === serviceToken) {
-    const owner = req.body?.owner as string | undefined;
-    if (!owner) return null;
-    return { ownerId: owner, isService: true };
-  }
-  return null;
-}
 
 async function isOwnershipVerified(
   ownerId: string,
@@ -33,19 +39,11 @@ async function isOwnershipVerified(
   proofToken: string,
   req: NextApiRequest
 ): Promise<boolean> {
-  let domain: string;
-  try { domain = hostnameFromUrl(targetUrl); } catch { return false; }
+  if (await isDomainVerified(supabaseAdmin, ownerId, targetUrl)) return true;
+  if (!allowDevTokenVerification) return false;
 
-  const { data } = await supabaseAdmin
-    .from("verifications")
-    .select("verified_at")
-    .eq("owner", ownerId)
-    .eq("domain", domain)
-    .maybeSingle();
-  if (data?.verified_at) return true;
-
-  if (!allowDevToken) return false;
-
+  // DEV-ONLY fallback — proves the caller received the token from step 1,
+  // NOT that they control the domain.
   const supplied = (req.headers["x-scan-token"] as string | undefined) ?? (req.query.verification as string | undefined);
   if (!supplied) return false;
   const a = Buffer.from(supplied);
@@ -57,12 +55,6 @@ async function isOwnershipVerified(
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // supabaseAdmin is constructed lazily on first property access — a missing
-  // SUPABASE_URL/SERVICE_ROLE_KEY throws on the first call below rather than
-  // at import. The whole body is wrapped so that (and any other unexpected
-  // failure) becomes a clean JSON 500 instead of an unhandled exception —
-  // every specific status code below still returns normally, since `return`
-  // inside `try` isn't intercepted by `catch`.
   try {
     return await handleScan(req, res);
   } catch (err) {
@@ -71,22 +63,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 async function handleScan(req: NextApiRequest, res: NextApiResponse) {
-  const caller = await resolveCaller(req);
-  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization" });
+  const caller = await authenticateApiRequest(req);
+  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  if (caller.via !== "session") {
+    return res.status(403).json({ error: "Scans can only be run from a logged-in session, not with an API key — use POST /api/v1/scans instead." });
+  }
 
   const limit = await checkRateLimit(caller.ownerId);
   if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
     return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
   }
 
   const { targetUrl, scanId } = req.body as { targetUrl?: string; scanId?: string };
 
-  // ── Step 1: create scan row, return proof token ───────────────────────────
+  // --- Step 1: create a new scan, return a proof token -----------------
   if (!scanId) {
-    if (!targetUrl) return res.status(400).json({ error: "targetUrl is required" });
+    if (!targetUrl) return res.status(400).json({ error: "targetUrl is required to create a scan" });
 
-    try { await validateNoSsrf(targetUrl); }
-    catch (err) { return res.status(400).json({ error: `Invalid target: ${(err as Error).message}` }); }
+    if (await isFreeTierExhausted(supabaseAdmin, caller.ownerId)) {
+      return res.status(402).json({ error: FREE_TIER_EXHAUSTED_MESSAGE, code: "free_tier_exhausted" });
+    }
+
+    try {
+      await validateNoSsrf(targetUrl);
+    } catch (err) {
+      return res.status(400).json({ error: `Invalid target: ${(err as Error).message}` });
+    }
 
     const proofToken = randomBytes(16).toString("hex");
     const { data: scan, error } = await supabaseAdmin
@@ -99,53 +102,62 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
 
     return res.status(200).json({
       scanId: scan.id,
-      proofToken,
       status: "awaiting_verification",
+      proofToken,
+      verifyInstructions:
+        "Preferred: POST to /api/verify-ownership with action=start for this targetUrl, add the DNS TXT " +
+        "record or file it gives you, then action=check. " +
+        (allowDevTokenVerification
+          ? "Dev path: resubmit this request with scanId and an X-Scan-Token header set to proofToken."
+          : "There is no dev-token shortcut on this deployment — domain verification is required."),
     });
   }
 
-  // ── Step 2: verify ownership, run scan ────────────────────────────────────
-  const { data: scan, error: fetchErr } = await supabaseAdmin
+  // --- Step 2: verify ownership, then actually run the scan -------------
+  const { data: scan, error: fetchError } = await supabaseAdmin
     .from("scans")
     .select("id, owner, target_url, proof_token, status")
     .eq("id", scanId)
     .maybeSingle();
 
-  if (fetchErr || !scan) return res.status(404).json({ error: "Scan not found" });
-  if (!caller.isService && scan.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
+  if (fetchError || !scan) return res.status(404).json({ error: fetchError?.message ?? "Scan not found" });
+  if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "You do not own this scan" });
 
-  if (!(await isOwnershipVerified(scan.owner, scan.target_url, scan.proof_token, req))) {
-    return res.status(401).json({
-      error: "Ownership not verified. Supply the X-Scan-Token header with the proofToken from step 1.",
+  // Idempotent replay: a scan that already finished shouldn't re-run the
+  // whole check suite just because step 2 was called again.
+  if (scan.status === "completed") {
+    const { data: existingResult } = await supabaseAdmin
+      .from("scan_results")
+      .select("score, summary")
+      .eq("scan_id", scanId)
+      .maybeSingle();
+    return res.status(200).json({
+      ok: true,
+      scanId,
+      status: "completed",
+      score: existingResult?.score ?? null,
+      summary: existingResult?.summary ?? null,
     });
   }
 
-  try { await validateNoSsrf(scan.target_url); }
-  catch (err) {
+  if (!(await isOwnershipVerified(scan.owner, scan.target_url, scan.proof_token, req))) {
+    return res.status(401).json({
+      error: "This domain hasn't been verified yet — use the \"Verify domain ownership\" section below, then run your scan again.",
+      code: "domain_not_verified",
+    });
+  }
+
+  try {
+    await validateNoSsrf(scan.target_url);
+  } catch (err) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
     return res.status(400).json({ error: `SSRF check failed: ${(err as Error).message}` });
   }
 
   await supabaseAdmin.from("scans").update({ status: "running", owner_verified: true }).eq("id", scanId);
 
-  const results = await runAllChecks(scan.target_url);
-  const { findings } = summariseResults(results);
-  const score = scoreFromFindings(findings);
-  const summary = await generateAiSummary(results, findings);
+  const outcome = await executeScan(supabaseAdmin, scanId, scan.owner, scan.target_url);
+  if (!outcome.ok) return res.status(500).json({ error: outcome.error });
 
-  const { error: insertErr } = await supabaseAdmin.from("scan_results").insert({
-    scan_id: scanId,
-    results: { ...results, findings },
-    summary,
-    score,
-  });
-
-  if (insertErr) {
-    await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
-    return res.status(500).json({ error: insertErr.message });
-  }
-
-  await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
-
-  return res.status(200).json({ ok: true, scanId, status: "completed", score, summary });
+  return res.status(200).json({ ok: true, scanId, status: "completed", score: outcome.score, summary: outcome.summary });
 }

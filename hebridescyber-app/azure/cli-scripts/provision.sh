@@ -6,6 +6,15 @@
 #
 # Usage: ./provision.sh
 # Requires: az CLI installed and `az login` already run.
+#
+# Only provisions a Static Web App + storage account now — no Function App.
+# The whole application (marketing site, dashboard, every /api/* route,
+# including what used to be a separate Functions app for run-scan/
+# verify-ownership/generate-report/generate-fix-pr/generate-newsletter) runs
+# on the Static Web App alone; Oryx auto-deploys the Next.js API routes as
+# managed Functions behind the CDN. See
+# src/pages/api/run-scan.ts's header comment for why that consolidation
+# happened, and docs/PLATFORM-ROADMAP.md for the "17 Aug" note on it.
 
 set -euo pipefail
 
@@ -13,9 +22,7 @@ set -euo pipefail
 RESOURCE_GROUP="hebridescyber-rg"
 LOCATION="uksouth"
 STATIC_WEB_APP_NAME="hebridescyber-app"
-FUNCTION_APP_NAME="hebridescyber-functions"
 STORAGE_ACCOUNT_NAME="hebridescyberstorage" # TODO: must be globally unique
-KEY_VAULT_NAME="hebridescyber-kv"           # TODO: must be globally unique
 GITHUB_REPO_URL="https://github.com/TODO/hebridescyber-app"
 GITHUB_BRANCH="main"
 # -------------------------------------------------------------------------
@@ -47,43 +54,14 @@ az staticwebapp create \
   --output-location ".next" \
   --login-with-github
 
-echo "== Creating Function App: $FUNCTION_APP_NAME (Consumption plan) =="
-az functionapp create \
-  --name "$FUNCTION_APP_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --storage-account "$STORAGE_ACCOUNT_NAME" \
-  --consumption-plan-location "$LOCATION" \
-  --runtime node \
-  --runtime-version 20 \
-  --functions-version 4
-
-echo "== Creating Key Vault: $KEY_VAULT_NAME =="
-az keyvault create \
-  --name "$KEY_VAULT_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --location "$LOCATION"
-
-echo "== Granting Function App managed identity access to Key Vault =="
-az functionapp identity assign \
-  --name "$FUNCTION_APP_NAME" \
-  --resource-group "$RESOURCE_GROUP"
-
-PRINCIPAL_ID=$(az functionapp identity show \
-  --name "$FUNCTION_APP_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --query principalId -o tsv)
-
-az keyvault set-policy \
-  --name "$KEY_VAULT_NAME" \
-  --object-id "$PRINCIPAL_ID" \
-  --secret-permissions get list
-
 echo ""
 echo "== Done. Manual steps still required: =="
-echo "1. Add secret values to Key Vault ($KEY_VAULT_NAME) — do NOT put them in this script:"
-echo "   az keyvault secret set --vault-name $KEY_VAULT_NAME --name SUPABASE-SERVICE-ROLE-KEY --value <value>"
-echo "2. Set Function App settings to reference Key Vault secrets (see docs/security.md)."
-echo "3. Set GitHub Secrets for the deploy.yml workflow (see README.md)."
-echo "4. Configure a custom domain + SSL on the Static Web App via the Portal or:"
+echo "1. Set Static Web App application settings for secrets that must stay"
+echo "   server-side (SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY,"
+echo "   GITHUB_PAT, AZURE_OPENAI_KEY, etc.) — see docs/security.md:"
+echo "   az staticwebapp appsettings set --name $STATIC_WEB_APP_NAME \\"
+echo "     --setting-names SUPABASE_SERVICE_ROLE_KEY=<value>"
+echo "2. Set GitHub Secrets for the deploy.yml workflow (see README.md)."
+echo "3. Configure a custom domain + SSL on the Static Web App via the Portal or:"
 echo "   az staticwebapp hostname set --name $STATIC_WEB_APP_NAME --hostname hebridescyber.com"
-echo "5. Apply for Azure OpenAI access if not already approved for this subscription."
+echo "4. Apply for Azure OpenAI access if not already approved for this subscription."

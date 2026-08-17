@@ -1,14 +1,18 @@
 name: Weekly Newsletter
 
 # Publishes the weekly cybersecurity blog post (see src/lib/newsletter.ts
-# and src/functions/generate-newsletter). Grounded in real aggregate scan
+# and src/pages/api/generate-newsletter.ts). Grounded in real aggregate scan
 # data from the past 7 days, with an AI narrative write-up if Azure OpenAI
 # is configured, otherwise a deterministic templated post — either way, it
 # publishes something rather than silently skipping the week.
 #
+# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
+# Static Web Apps), not a separate Functions app — see run-scan.ts's header
+# comment for why there's only one deployed surface now.
+#
 # Requires:
-#   AZURE_FUNCTIONS_URL   - base URL of the deployed Functions app
-#   GITHUB_ACTIONS_TOKEN  - shared secret sent as X-Service-Token
+#   NEXT_PUBLIC_SITE_URL   - the deployed site's own URL (repo variable)
+#   GITHUB_ACTIONS_TOKEN   - shared secret sent as X-Service-Token
 
 on:
   schedule:
@@ -23,7 +27,7 @@ jobs:
       - name: Trigger generate-newsletter
         run: |
           status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -X POST "${{ secrets.AZURE_FUNCTIONS_URL }}/api/generate-newsletter" \
+            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/generate-newsletter" \
             -H "X-Service-Token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}")
           cat /tmp/response.json
           if [ "$status" != "200" ]; then

@@ -13,9 +13,7 @@ AZURE_SUBSCRIPTION_ID   = [your subscription ID]
 RESOURCE_GROUP          = hebridescyber-rg
 LOCATION                = uksouth
 STATIC_WEB_APP_NAME     = hebridescyber-app
-FUNCTION_APP_NAME       = hebridescyber-functions
 STORAGE_ACCOUNT_NAME    = hebridescyberstorage   (must be globally unique, lowercase, no dashes)
-KEY_VAULT_NAME          = hebridescyber-kv       (must be globally unique)
 GITHUB_REPO             = [org/hebridescyber-app]
 CUSTOM_DOMAIN           = hebridescyber.com
 ```
@@ -32,7 +30,10 @@ The repo scaffold already exists at [path to repo] and includes:
 - azure/terraform/main.tf (placeholder Terraform)
 - azure/cli-scripts/provision.sh (placeholder CLI script)
 - .github/workflows/deploy.yml (expects specific GitHub Secrets)
-- src/functions/run-scan and src/functions/generate-report (Azure Functions stubs)
+- src/pages/api/* (the whole app — marketing site, dashboard, and every API
+  route including run-scan/verify-ownership/generate-report/generate-fix-pr/
+  generate-newsletter — deploys as ONE Azure Static Web App; there is no
+  separate Functions app to provision)
 
 Do the following, checking in with me before any step that costs money or is
 destructive:
@@ -49,16 +50,16 @@ destructive:
    print it in full, and tell me which GitHub Secret to store it under
    (AZURE_STATIC_WEB_APPS_API_TOKEN).
 
-4. Provision an Azure Function App (FUNCTION_APP_NAME) on the Consumption
-   plan, Node.js runtime matching the version in package.json, linked to a
-   new or existing Storage Account (STORAGE_ACCOUNT_NAME).
+4. Provision a Storage Account (STORAGE_ACCOUNT_NAME) for PDF report
+   generation (see AZURE_STORAGE_CONNECTION_STRING in
+   src/pages/api/generate-report.ts).
 
-5. Provision an Azure Key Vault (KEY_VAULT_NAME) and grant the Function
-   App's managed identity "Key Vault Secrets User" access. Do NOT put any
-   real secret values in yet — just create the vault and access policy.
-   List the secret names it should eventually hold, based on .env.example
-   in the repo (SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY,
-   STRIPE_WEBHOOK_SECRET, AZURE_OPENAI_KEY, AZURE_STORAGE_CONNECTION_STRING).
+5. List the application settings the Static Web App will eventually need,
+   based on .env.example in the repo (SUPABASE_SERVICE_ROLE_KEY,
+   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, AZURE_OPENAI_KEY,
+   AZURE_STORAGE_CONNECTION_STRING, GITHUB_PAT, GITHUB_ACTIONS_TOKEN). Do
+   NOT set any real secret values yet — just produce the list, and tell me
+   the `az staticwebapp appsettings set` command to set each one myself.
 
 6. Update azure/terraform/main.tf and azure/cli-scripts/provision.sh in the
    repo to reflect the actual resource names and IDs you just created,
@@ -67,7 +68,8 @@ destructive:
 
 7. Print a checklist of GitHub Secrets I still need to set manually
    (Settings > Secrets and variables > Actions) for GITHUB_REPO, matching
-   what .github/workflows/deploy.yml and scheduled-scans.yml expect.
+   what .github/workflows/deploy.yml and scheduled-scans.yml expect — plus
+   the NEXT_PUBLIC_SITE_URL repo *variable* (not secret) weekly-newsletter.yml needs.
 
 8. Do NOT attempt to configure the custom domain (CUSTOM_DOMAIN), Azure
    OpenAI resource, or Stripe products automatically — these require manual

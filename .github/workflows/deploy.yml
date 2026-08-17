@@ -6,7 +6,6 @@ name: Deploy
 #   AZURE_STATIC_WEB_APPS_API_TOKEN   - from `az staticwebapp create` or the Portal
 #   NEXT_PUBLIC_SUPABASE_URL
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY
-#   NEXT_PUBLIC_AZURE_FUNCTIONS_URL
 
 on:
   push:
@@ -58,4 +57,3 @@ jobs:
           NODE_VERSION: '20'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_AZURE_FUNCTIONS_URL: ${{ secrets.NEXT_PUBLIC_AZURE_FUNCTIONS_URL }}

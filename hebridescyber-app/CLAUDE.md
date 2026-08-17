@@ -27,11 +27,9 @@ Without those, the app boots but all auth/data calls fail. The Supabase client l
 
 ## Architecture
 
-### Two API layers — don't confuse them
+### One API layer
 
-**`src/pages/api/`** — Next.js API routes, run in the same process as the app. Used for browser-facing, low-latency operations: Stripe webhooks/checkout/portal, admin panel endpoints, contact form. These have access to `NEXT_PUBLIC_*` env vars alongside server-only vars.
-
-**`src/functions/`** — Azure Functions (HTTP-triggered). Used for heavy compute: `run-scan` (the full scanner pipeline), `generate-report` (Playwright PDF), `generate-fix-pr`, `generate-newsletter`, `verify-ownership`. Called from the browser via `NEXT_PUBLIC_AZURE_FUNCTIONS_URL`. The Functions use `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server-only) directly — never the anon key.
+**`src/pages/api/`** — every server-side route, including the scan pipeline (`run-scan`, `verify-ownership`, `generate-report`, `generate-fix-pr`, `generate-newsletter`), Stripe webhooks/checkout/portal, admin panel endpoints, and the contact form. Runs as Next.js API routes deployed to Azure Static Web Apps (Oryx auto-deploys them as managed Functions behind the CDN) — there is no separate standalone Azure Functions app. There used to be one (`src/functions/`); it was never actually deployable (no `host.json`, no real `@azure/functions` registration) and got fully consolidated here — see `src/pages/api/run-scan.ts`'s header comment and `docs/PLATFORM-ROADMAP.md`'s "17 Aug" note. All of `src/pages/api/` has access to `NEXT_PUBLIC_*` env vars alongside server-only vars, and uses `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server-only) directly for privileged operations — never the anon key.
 
 ### Two routers in one Next.js app
 
@@ -50,12 +48,16 @@ Without those, the app boots but all auth/data calls fail. The Supabase client l
 
 ### Scan flow (two-step proof of ownership)
 
-1. Dashboard POSTs `{ targetUrl }` to `run-scan` → Function creates a `scans` row (status `pending`) and returns `{ scanId, proofToken }`.
-2. Dashboard POSTs `{ scanId }` with `X-Scan-Token: <proofToken>` → Function verifies ownership, runs the scanner pipeline, writes to `scan_results`.
+1. Dashboard POSTs `{ targetUrl }` to `/api/run-scan` → creates a `scans` row (status `pending`) and returns `{ scanId, proofToken }`. Rejected with 402 if the caller is on the free tier and has already used their one free scan (`src/lib/freeTier.ts`) — admins exempt.
+2. Dashboard POSTs `{ scanId }` to `/api/run-scan` → verifies domain ownership (real DNS/file verification, required by default — admins exempt, see `src/lib/ownership.ts`'s `isDomainVerified`), then runs the scanner pipeline via `executeScan()` (`src/lib/scanExecution.ts`) and writes to `scan_results`. Replaying step 2 against an already-`completed` scan returns the cached result instead of re-running.
 
-Scheduled scans (`scheduled-scans.yml`) follow the same two-call flow but authenticate via `X-Service-Token` instead of a user JWT.
+`executeScan()` is the single shared implementation — also used by the scheduled-scan queue workers (with `runExtendedTools: true`, running the real nmap/nuclei/sqlmap/ZAP suite too) and the public API (`/api/v1/scans.ts`). Scheduled scans don't call `/api/run-scan` at all anymore — see "Scheduled monitoring" below.
 
-Set `ALLOW_DEV_TOKEN_VERIFICATION=false` in production to require real DNS/file ownership verification (see `src/lib/ownership.ts`) rather than the echo-token shortcut.
+`ALLOW_DEV_TOKEN_VERIFICATION` defaults to unset/`false` (real DNS/file verification required). Set it `true` only for local dev, to use the `X-Scan-Token` echo shortcut instead.
+
+### Scheduled monitoring (job queue)
+
+`.github/workflows/scheduled-scans.yml` runs on a cron through a Postgres-backed queue (`sql/migrations/008_scan_jobs.sql`), not by calling `/api/run-scan`: `src/scripts/enqueue-scheduled-scans.ts` inserts one `scan_jobs` row per verified target with an active subscription, then a matrix of GitHub Actions worker shards (`src/scripts/run-queued-scan-jobs.ts`) claim jobs via `SELECT ... FOR UPDATE SKIP LOCKED` and run them with `executeScan()` directly. This is also the only place the real active-scanning tools run — the workflow installs nmap/sqlmap/nuclei and starts a ZAP daemon fresh each time (no persistent infra, no Redis/BullMQ).
 
 ### Scanner pipeline
 

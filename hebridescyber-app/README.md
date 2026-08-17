@@ -1,9 +1,10 @@
 # Hebrides Cyber
 
 Developer-grade security audits and an automated "Security Score" monitoring
-product, for small businesses and SaaS teams. Marketing site + client
-dashboard built on Next.js and Supabase; scanning and reporting run as Azure
-Functions.
+product, for small businesses and SaaS teams. Marketing site, client
+dashboard, and scanning/reporting API routes are all one Next.js app on
+Supabase, deployed to Azure Static Web Apps (Oryx auto-deploys the API
+routes as managed Functions behind the CDN — no separate Functions app).
 
 See also: `docs/architecture.md`, `docs/security.md`, and the `marketing/`
 folder (one level up, outside this app folder) for homepage copy, pricing,
@@ -20,9 +21,10 @@ just marketing copy describing services:
   (if installed), and OWASP ZAP integration (if a ZAP daemon is
   configured) — see the file header for exactly what's real vs. limited.
 - **Real ownership verification** — DNS TXT / file-upload domain proof
-  (`src/lib/ownership.ts`, `src/functions/verify-ownership`), with a
-  dev-only token-echo fallback you can disable via
-  `ALLOW_DEV_TOKEN_VERIFICATION=false`.
+  (`src/lib/ownership.ts`, `src/pages/api/verify-ownership.ts`), required by
+  default on every deployment. A dev-only token-echo fallback exists for
+  local iteration — opt into it with `ALLOW_DEV_TOKEN_VERIFICATION=true`,
+  never in production.
 - **Real report generation** — PDF via Playwright, optionally uploaded to
   Azure Blob Storage with a SAS URL.
 - **Real remediation** — `generate-fix-pr` opens an actual GitHub pull
@@ -131,23 +133,28 @@ fragility).
 ## Running a Scan (the run-scan / X-Scan-Token flow)
 
 `run-scan` is a two-step, curl-able flow — see
-`src/functions/run-scan/index.ts` and `docs/security.md` for the full
-rationale. In short:
+`src/pages/api/run-scan.ts` and `docs/security.md` for the full rationale.
+It's a Next.js API route on this same app now, not a separate Functions
+app — replace `$SITE_URL` below with wherever you're running it
+(`http://localhost:3000` for local dev).
 
 **Step 1 — create the scan and get a proof token:**
 
 ```bash
-curl -X POST "$AZURE_FUNCTIONS_URL/api/run-scan" \
+curl -X POST "$SITE_URL/api/run-scan" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <supabase-access-token>" \
   -d '{"targetUrl": "https://example.com"}'
 # → { "scanId": "...", "status": "awaiting_verification", "proofToken": "..." }
 ```
 
-**Step 2 — run it, proving you received the token from step 1:**
+**Step 2 — run it, having verified the domain first** (see `POST
+/api/verify-ownership` below) — **or**, only if
+`ALLOW_DEV_TOKEN_VERIFICATION=true` (local dev only, never in production),
+by proving you received the token from step 1:
 
 ```bash
-curl -X POST "$AZURE_FUNCTIONS_URL/api/run-scan" \
+curl -X POST "$SITE_URL/api/run-scan" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <supabase-access-token>" \
   -H "X-Scan-Token: <proofToken from step 1>" \
@@ -156,16 +163,33 @@ curl -X POST "$AZURE_FUNCTIONS_URL/api/run-scan" \
 ```
 
 The dashboard (`src/app/dashboard/page.tsx`) does both calls automatically
-when you submit the "Run scan" form. **This token-echo flow is a stub** —
-it proves the caller received a response from step 1, not that they
-control DNS/hosting for the target. Before enabling real (non-stub)
-scanning, replace it with the DNS TXT / file-upload verification flow
-described in `docs/security.md`.
+when you submit the "Run scan" form, and shows the "Verify domain
+ownership" section (`src/components/DomainVerification.tsx`) so a real
+scan can actually pass step 2 without the dev-only shortcut.
 
-**Generate a PDF report** once a scan has completed:
+**Verify domain ownership** (required before step 2 succeeds, unless
+`ALLOW_DEV_TOKEN_VERIFICATION=true`):
 
 ```bash
-curl "$AZURE_FUNCTIONS_URL/api/generate-report?scan_id=<scanId>" -o report.pdf
+curl -X POST "$SITE_URL/api/verify-ownership" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <supabase-access-token>" \
+  -d '{"action": "start", "targetUrl": "https://example.com"}'
+# → { "dnsRecord": {...}, "file": {...}, ... } — add the DNS TXT record or upload the file, then:
+curl -X POST "$SITE_URL/api/verify-ownership" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <supabase-access-token>" \
+  -d '{"action": "check", "targetUrl": "https://example.com"}'
+# → { "verified": true, "method": "dns" }
+```
+
+**Generate a PDF report** once a scan has completed (requires the caller to
+own the scan, or be an admin):
+
+```bash
+curl "$SITE_URL/api/generate-report?scan_id=<scanId>" \
+  -H "Authorization: Bearer <supabase-access-token>" \
+  -o report.pdf
 ```
 
 (Returns a `{ url }` JSON body with a SAS link instead of the raw PDF if
@@ -181,7 +205,7 @@ curl "$AZURE_FUNCTIONS_URL/api/generate-report?scan_id=<scanId>" -o report.pdf
   `npm run scan:local` pick it up automatically since they share this
   module.
 - **Change the report format:** edit `renderReportHtml()` in
-  `src/functions/generate-report/index.ts`. The target structure to match
+  `src/pages/api/generate-report.ts`. The target structure to match
   is in `marketing/04-security-score-template.md`.
 - **Add a pricing tier or Stripe product:** update
   `src/app/pricing/page.tsx`, create the corresponding Product/Price in the
@@ -216,31 +240,34 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 
 | Secret | Used by |
 |---|---|
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — static site deploy |
-| `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | `deploy.yml` — Functions deploy |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `AZURE_FUNCTIONS_URL` | `scheduled-scans.yml` |
-| `GITHUB_ACTIONS_TOKEN` | `scheduled-scans.yml` — auth to run-scan (`X-Service-Token`) |
-| `SUPABASE_URL` | `scheduled-scans.yml` — `fetch-targets` job queries Supabase directly |
+| `GITHUB_ACTIONS_TOKEN` | `weekly-newsletter.yml` — auth to `/api/generate-newsletter` (`X-Service-Token`) |
+| `SUPABASE_URL` | `scheduled-scans.yml` — enqueue/worker scripts query Supabase directly |
 | `SUPABASE_SERVICE_ROLE_KEY` | `scheduled-scans.yml` — same, plus needed by any CI step that seeds/reads data |
 
-Server-only secrets used by the Functions app itself
+Also set a `NEXT_PUBLIC_SITE_URL` repo **variable** (Settings > Secrets and
+variables > Actions > Variables — not a secret, it's just this app's own
+public URL) — used by `weekly-newsletter.yml` to call this app's own
+`/api/generate-newsletter`, and baked into the build for Slack alert links.
+
+Server-only secrets used by the API routes themselves
 (`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`AZURE_OPENAI_KEY`, `AZURE_STORAGE_CONNECTION_STRING`) belong in Azure Key
-Vault / Function App settings, not GitHub Secrets — see `docs/security.md`.
-The two `SUPABASE_*` GitHub Secrets above are the exception: they're used
-directly *inside* a GitHub Actions job (not deployed anywhere), which is a
-reasonable place for them, but rotate them the same as any other
-service-role credential if the repo's secret store is ever compromised.
+`AZURE_OPENAI_KEY`, `AZURE_STORAGE_CONNECTION_STRING`, `GITHUB_PAT`) belong
+in the Static Web App's own application settings, not GitHub Secrets — see
+`docs/security.md`. The `SUPABASE_*` / `GITHUB_ACTIONS_TOKEN` GitHub
+Secrets above are the exception: they're used directly *inside* a GitHub
+Actions job (not deployed anywhere), which is a reasonable place for them,
+but rotate them the same as any other service-role credential if the
+repo's secret store is ever compromised.
 
 ## Deployment
 
 1. Provision Azure resources (above).
 2. Set GitHub Secrets (above).
 3. Push to `main` — `.github/workflows/deploy.yml` builds and deploys the
-   Next.js site to Azure Static Web Apps and the Functions to Azure
-   Functions.
+   whole Next.js app (site + every API route) to Azure Static Web Apps.
 4. Configure the custom domain (`hebridescyber.com`) on the Static Web App
    and wait for the managed SSL certificate to provision.
 
@@ -248,16 +275,16 @@ service-role credential if the repo's secret store is ever compromised.
 
 - [ ] Register `hebridescyber.com` and point DNS at Azure Static Web Apps
 - [ ] Create the real Supabase project and run `001_init.sql` against it
-- [ ] Provision Azure resources (Static Web App, Functions, Storage, Key
-      Vault) — fill in the TODOs in `azure/terraform/main.tf` /
-      `provision.sh` with real names
+- [ ] Provision Azure resources (Static Web App, Storage) — fill in the
+      TODOs in `azure/terraform/main.tf` / `provision.sh` with real names
 - [ ] Apply for and configure Azure OpenAI access (approval step, not
       instant)
 - [ ] Create Stripe products/prices matching `src/app/pricing/page.tsx` and
       connect Stripe Checkout
 - [ ] Set all GitHub Secrets listed above
-- [ ] Set `ALLOW_DEV_TOKEN_VERIFICATION=false` once customers are expected
-      to complete real DNS/file ownership verification
+- [ ] Confirm `ALLOW_DEV_TOKEN_VERIFICATION` is unset (or `false`) —
+      real DNS/file ownership verification is required by default; only set
+      it `true` for local dev
 - [ ] Set `UPSTASH_REDIS_REST_URL`/`TOKEN` — the in-memory rate limiter
       fallback does not survive Function instance recycling
 - [ ] Enable the Google provider in the Supabase Dashboard (Authentication
@@ -266,13 +293,12 @@ service-role credential if the repo's secret store is ever compromised.
 - [ ] Replace the shared `GITHUB_PAT` in `generate-fix-pr` with a GitHub
       App (per-installation tokens) before onboarding real customers — see
       the TODO at the top of that file about blast radius
-- [ ] Deploy an OWASP ZAP daemon and set `ZAP_API_URL` if you want that
-      check to run (it's a no-op stub without it); install `nmap` in the
-      Functions container (not present by default) for the port-scan check
-- [ ] Move scanner execution into isolated containers (Azure Container
-      Instances) per `docs/security.md`, rather than inline in the Function
-- [ ] Write a real `/privacy` page — linked from the cookie consent banner
-      but doesn't exist yet — before enabling `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+- [x] Real nmap/nuclei/sqlmap/ZAP scanning — done, but only on the
+      scheduled-monitoring path (`.github/workflows/scheduled-scans.yml`
+      installs the binaries + a ZAP daemon fresh per run). The interactive
+      dashboard scan and the public API never run these — see
+      `docs/PLATFORM-ROADMAP.md` §4.
+- [x] Write a `/privacy` page — done (`src/app/privacy/page.tsx`)
 - [ ] Get professional indemnity insurance before offering pen test
       engagements
 - [ ] Obtain SSL (handled automatically by Azure Static Web Apps once the
