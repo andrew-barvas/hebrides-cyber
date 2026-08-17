@@ -53,10 +53,11 @@
 
 ## Scaling Notes
 
-- The Consumption-plan Function App scales automatically per-invocation,
-  but heavy scanners (ZAP, Playwright) will need either a higher-tier plan
-  or delegation to Azure Container Instances to avoid Function timeout
-  limits (default 5–10 minutes depending on plan).
+- The Consumption-plan Function App scales automatically per-invocation, but
+  can't run heavy/real active-scanning tools (ZAP daemon, nmap, sqlmap,
+  nuclei) at all — no shell access, no custom image, 5-10 min execution cap.
+  `run-scan` never attempts them (`executeScan()`'s `runExtendedTools` option
+  defaults off and only the queue worker passes it — see below).
 - `scheduled-scans.yml` enqueues into `scan_jobs` (a Postgres table, no new
   infra — Supabase is already provisioned) and works it with a small,
   fixed-size matrix of GitHub Actions worker shards, each claiming jobs via
@@ -67,11 +68,13 @@
   (`MAX_JOBS_PER_RUN` / `TIME_BUDGET_MS` in `run-queued-scan-jobs.ts`), so a
   backlog just rolls over to the next scheduled run rather than one Actions
   job running unbounded.
-- The same queue is also the intended home for the real nmap/nuclei/sqlmap/
-  ZAP tool suite in `src/worker/tools/` (currently unwired — see
-  `docs/PLATFORM-ROADMAP.md`): a GitHub Actions runner can `apt-get install`
-  and exec real tools, which neither Static Web Apps nor Consumption
-  Functions can.
+- The same queue's worker is also where the real nmap/nuclei/sqlmap/ZAP tool
+  suite (`src/worker/tools/`) actually runs — a GitHub Actions runner can
+  `apt-get install` binaries and start a ZAP daemon via `docker run`
+  (`scheduled-scans.yml`'s `work` job does both), which neither Static Web
+  Apps nor Consumption Functions can. The BullMQ+Redis worker this suite was
+  originally built for was deleted; only the tool-invocation logic survived,
+  ported into `executeScan()`.
 - PDF report generation via Playwright is CPU/memory heavy — if this
   becomes a bottleneck, move it to a dedicated container job rather than
   running it inline in a Function.

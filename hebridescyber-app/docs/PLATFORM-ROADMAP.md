@@ -23,15 +23,26 @@ Every "already built" claim below was verified against the tree.
 >
 > **Hosting constraint (confirmed with the site owner, 16 Aug): this app runs
 > on Azure's free tier — Static Web Apps + Consumption-plan Functions — with
-> no Redis and no container host.** This rules out wiring up the orphaned
-> BullMQ worker without a separate decision to take on that cost. It also
-> rules out the nmap/nuclei/sqlmap/ZAP tool suite on the *current*
-> architecture regardless of the queue question — those need a long-lived
-> container with installed binaries, which Consumption Functions and Static
-> Web Apps cannot provide at all (no shell access, no custom image, 5–10 min
-> execution cap). Don't propose wiring up `src/worker/` or the extended tool
-> suite as a "just build it" item — it requires new paid infrastructure and
-> needs the site owner's explicit go-ahead first.
+> no Redis and no container host.** This ruled out wiring up the orphaned
+> BullMQ worker as-is, and ruled out the nmap/nuclei/sqlmap/ZAP tool suite on
+> Azure specifically — Consumption Functions and Static Web Apps can't run
+> installed binaries at all (no shell access, no custom image, 5–10 min
+> execution cap).
+>
+> **Resolved (17 Aug): wired in via the GitHub Actions queue worker, not
+> Azure.** The BullMQ+Redis worker (`src/worker/runner.ts`, `index.ts`,
+> `src/lib/queue.ts`, `docker-compose.yml`, `worker.Dockerfile`) is deleted —
+> its tool-invocation logic was ported into `executeScan()`
+> (`src/lib/scanExecution.ts`), gated behind an explicit `runExtendedTools`
+> flag that only `run-queued-scan-jobs.ts` passes. `.github/workflows/scheduled-scans.yml`'s
+> `work` job now installs nmap/sqlmap/nuclei and starts a ZAP daemon before
+> running the worker — all free (GitHub Actions minutes, no new Azure spend).
+> Azure Container Apps Jobs was considered and rejected for now: its free
+> tier would likely also have covered this at current volume, but it adds a
+> second infrastructure surface for something GitHub Actions runners already
+> do for £0. Revisit ACA specifically if tool-version reproducibility or
+> IP/isolation hygiene (active-scan payloads currently originate from
+> GitHub's shared, well-known IP ranges) becomes a real concern.
 
 ---
 
@@ -75,6 +86,7 @@ about half of Part 1 of the brief is already shipped.
 | Continuous monitoring change alerts (Slack) | `sendSlackAlert` wired into `src/functions/run-scan/index.ts`, gated on Pro/Agency plan + `new_finding_count > 0` — was built but never called from the live path before |
 | AI-tailored remediation (on-demand, per-finding) | `src/lib/aiRemediation.ts`, `src/pages/api/scans/[id]/ai-fix.ts`, "✨ Get an AI-tailored fix" button in `ScanReportView.tsx` — reuses the same Azure OpenAI wiring as `generateAiSummary`, no new env vars |
 | Job queue (free-tier) | `sql/migrations/008_scan_jobs.sql` (`claim_scan_job()` SKIP LOCKED RPC), `src/scripts/enqueue-scheduled-scans.ts`, `src/scripts/run-queued-scan-jobs.ts` — GitHub Actions shards as ephemeral workers, Postgres as the queue, no Redis/long-lived container. Scopes only the scheduled-monitoring path today; the dashboard's synchronous "Run scan" button still calls `run-scan` directly (see §4) |
+| Extended tool suite (nmap/nuclei/sqlmap/ZAP) | `runExtendedTools` option on `executeScan()` (`src/lib/scanExecution.ts`), enabled only by `run-queued-scan-jobs.ts` — tools installed fresh per run in `scheduled-scans.yml`'s `work` job. Ported from the deleted BullMQ worker; findings now carry `checkId` (the original never set one) so they participate in the New/Fixed diff |
 
 ### Genuinely missing
 
@@ -86,12 +98,10 @@ about half of Part 1 of the brief is already shipped.
   just widening the existing OSV call.
 - **Malware / dark-web checks** (buy-not-build — see §7).
 
-The `src/worker/` BullMQ+Redis worker is now genuinely dead code, not a
-"needs a decision" item — the Postgres `SKIP LOCKED` design got built instead
-(§4), so nothing will ever enqueue to `src/worker/`'s queue. It's the one
-remaining place `nmap`/`nuclei`/`sqlmap`/real `ZAP` integrations exist, so
-it's kept around as a reference for wiring those into the GitHub Actions
-worker rather than deleted outright — see §4.
+~~The `src/worker/` BullMQ+Redis worker is dead code.~~ **Deleted (17 Aug)** —
+the Postgres `SKIP LOCKED` design got built instead (§4), and its
+`nmap`/`nuclei`/`sqlmap`/`ZAP` tool-invocation logic was ported into
+`executeScan()` rather than left as an unused reference. See §4.
 
 ---
 
@@ -499,15 +509,15 @@ used to just sketch. Built:
   curl-based version did.
 
 **Scope**: this only replaces the *scheduled monitoring* path. The
-dashboard's synchronous "Run scan" button still calls `run-scan` directly —
-every check that exists today already runs fine within the Function's
-timeout that way, so there was no forcing reason to change that UX (instant →
-"queued, check back") as part of this. Revisit once either (a) real
-active-scanning tools (`src/worker/tools/`'s nmap/nuclei/sqlmap/ZAP) get
-wired in — those need a real OS process and a runtime long enough that even
-the synchronous path would want to hand off to the queue — or (b) scan volume
-on the interactive path itself becomes a problem, neither of which is true
-yet.
+dashboard's synchronous "Run scan" button still calls `run-scan` directly and
+never passes `runExtendedTools` — every passive check runs fine within the
+Function's timeout, so there was no forcing reason to change that UX (instant
+→ "queued, check back"). The real active-scanning tools (nmap/nuclei/sqlmap/
+ZAP — see below) are wired in, but *only* for the queued path; giving the
+dashboard button a "deep scan" option that hands off to the queue instead of
+running inline is still open, and is the more likely reason to revisit this
+scope than tool integration now is. Also revisit if scan volume on the
+interactive path itself becomes a problem, which isn't true yet.
 
 Per-check isolation is still worth doing separately: `runAllChecks` uses
 `Promise.all`, which fails the whole batch if one check throws. Moving to

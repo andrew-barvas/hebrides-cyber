@@ -23,8 +23,12 @@ import ws from "ws";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
 
-const MAX_JOBS_PER_RUN = 25;
-const TIME_BUDGET_MS = 5 * 60 * 1000; // 5 minutes — well inside a single Actions job's own limits
+// With runExtendedTools enabled, a single job can take up to ~3.5 minutes
+// (sqlmap's own 180s timeout is the long pole, run in parallel with the
+// other tools) versus ~10-30s for passive-only checks — both budgets sized
+// accordingly, well inside a single Actions job's own ~6 hour limit.
+const MAX_JOBS_PER_RUN = 15;
+const TIME_BUDGET_MS = 25 * 60 * 1000; // 25 minutes
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -113,7 +117,15 @@ async function runOne(
 
   await supabaseAdmin.from("scan_jobs").update({ scan_id: scan.id }).eq("id", job.id);
 
-  const outcome = await executeScan(supabaseAdmin, scan.id, job.owner, job.target_url);
+  // Extended tools (nmap/nuclei/sqlmap/ZAP) only ever run here — this is the
+  // one environment (a GitHub Actions runner, see scheduled-scans.yml) that
+  // actually has the binaries/daemon installed. Safe to enable unconditionally:
+  // every job reaching this point already passed isDomainVerified above, so
+  // active scanning only ever targets a domain the owner has proven they
+  // control.
+  const outcome = await executeScan(supabaseAdmin, scan.id, job.owner, job.target_url, {
+    runExtendedTools: true,
+  });
   if (!outcome.ok) {
     await failJob(outcome.error);
     return false;

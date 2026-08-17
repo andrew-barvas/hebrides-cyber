@@ -1,56 +1,63 @@
+// Admin view of the scan_jobs queue (sql/migrations/008_scan_jobs.sql) —
+// the free-tier Postgres + GitHub Actions worker queue, not the BullMQ+Redis
+// one this replaced (src/worker/ was never wired to anything; deleted along
+// with this route's old implementation, which always reported "not active"
+// as a result).
 import type { NextApiRequest, NextApiResponse } from "next";
-import { requireAdmin } from "@/lib/adminAuth";
-// BullMQ imports — dynamic so the page doesn't break if bullmq isn't installed yet.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let bullmqModule: any = null;
+import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 
-async function loadBullmq() {
-  if (bullmqModule) return bullmqModule;
-  try {
-    bullmqModule = await import("@/lib/queue");
-    return bullmqModule;
-  } catch {
-    return null;
-  }
-}
+const RECENT_LIMIT = 20;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).end();
   const adminId = await requireAdmin(req);
   if (!adminId) return res.status(403).json({ error: "Admin access required" });
 
-  if (!process.env.REDIS_URL) {
-    return res.status(200).json({ configured: false, note: "REDIS_URL is not set — queue is not active" });
-  }
-
-  const queue = await loadBullmq();
-  if (!queue) {
-    return res.status(200).json({ configured: false, note: "bullmq package not installed" });
-  }
-
-  const [stats, jobs] = await Promise.all([
-    queue.getQueueStats(),
-    queue.getRecentJobs(20),
+  const [pendingCount, runningCount, completedCount, failedCount, recentRes] = await Promise.all([
+    countByStatus("pending"),
+    countByStatus("running"),
+    countByStatus("completed"),
+    countByStatus("failed"),
+    supabaseAdmin
+      .from("scan_jobs")
+      .select("id, scan_id, target_url, status, created_at, claimed_at")
+      .order("created_at", { ascending: false })
+      .limit(RECENT_LIMIT),
   ]);
 
-  const format = (j: Record<string, unknown>) => ({
+  const recent = recentRes.data ?? [];
+  const format = (j: (typeof recent)[number]) => ({
     id: j.id,
-    scanId: (j.data as Record<string, unknown>)?.scanId,
-    targetUrl: (j.data as Record<string, unknown>)?.targetUrl,
-    addedAt: j.timestamp,
-    startedAt: j.processedOn ?? null,
-    finishedAt: j.finishedOn ?? null,
-    progress: j.progress ?? 0,
+    scanId: j.scan_id,
+    targetUrl: j.target_url,
+    addedAt: new Date(j.created_at).getTime(),
+    startedAt: j.claimed_at ? new Date(j.claimed_at).getTime() : null,
+    finishedAt: null, // scan_jobs doesn't track a separate completed-at column — see scans.created_at for that
+    progress: j.status === "completed" || j.status === "failed" ? 100 : j.status === "running" ? 50 : 0,
   });
 
   return res.status(200).json({
     configured: true,
-    stats,
+    stats: {
+      waiting: pendingCount,
+      active: runningCount,
+      completed: completedCount,
+      failed: failedCount,
+      delayed: 0, // no equivalent concept in this queue design
+    },
     jobs: {
-      active: (jobs.active ?? []).map(format),
-      waiting: (jobs.waiting ?? []).map(format),
-      failed: (jobs.failed ?? []).map(format),
-      completed: (jobs.completed ?? []).map(format),
+      active: recent.filter((j) => j.status === "running").map(format),
+      waiting: recent.filter((j) => j.status === "pending").map(format),
+      failed: recent.filter((j) => j.status === "failed").map(format),
+      completed: recent.filter((j) => j.status === "completed").map(format),
     },
   });
+}
+
+async function countByStatus(status: string): Promise<number> {
+  const { count } = await supabaseAdmin
+    .from("scan_jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", status);
+  return count ?? 0;
 }

@@ -2,10 +2,12 @@
 // report shape GET /api/v1/scans/{id} returns (see src/lib/scanReport.ts) so
 // customers see one consistent contract whether they poll or get pushed to.
 //
-// There's no job queue in this codebase (src/worker/ is a complete BullMQ
-// worker that was built but never wired up — nothing enqueues to it, so
-// delivery happens inline in the same request that just ran the scan).
-// That rules out the multi-hour backoff schedule a queue would allow: one
+// The job queue that exists (sql/migrations/008_scan_jobs.sql, worked by
+// GitHub Actions runners — see scanExecution.ts) is for scheduled/bulk
+// scanning, not webhook delivery itself: delivery still happens inline, in
+// the same process that just finished running the scan, whether that's the
+// synchronous dashboard path or a queue worker. That rules out the
+// multi-hour backoff schedule a dedicated delivery queue would allow: one
 // immediate attempt, one quick retry, then give up and record the failure.
 // The caller already waited for the whole scan to run: a few more seconds
 // for webhook fan-out is acceptable, an unbounded retry loop blocking the
