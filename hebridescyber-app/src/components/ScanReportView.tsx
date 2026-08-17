@@ -12,7 +12,7 @@
 // includes — only score/summary/counts/findings. The public view is a reduced
 // view by design, not a 1:1 mirror of the owner's dashboard.
 import { useState } from "react";
-import type { DiffStatus } from "@/lib/findingsDiff";
+import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -25,6 +25,43 @@ export type ViewFinding = {
   status?: DiffStatus;
   cveIds?: string[];
 };
+
+const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+
+export function sortFindingsBySeverity<T extends { severity: Severity }>(list: T[]): T[] {
+  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+}
+
+export type FindingsFilter = "all" | "new" | "fixed";
+
+/**
+ * Severity-orders `findings`, tags each with its New/Fixed/Unchanged status
+ * against `diff` (matching by checkId — see diffFindings), and returns the
+ * subset matching `filter`. Shared by the scan report page and the dashboard
+ * overview so both render the exact same New/Fixed semantics rather than two
+ * copies that could drift.
+ */
+export function buildFindingsView(
+  findings: ViewFinding[],
+  diff: FindingsDiff | null,
+  filter: FindingsFilter
+): ViewFinding[] {
+  const allOrdered = sortFindingsBySeverity(findings);
+
+  const statusByCheckId = new Map<string, DiffStatus>();
+  if (diff) {
+    diff.added.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "new"));
+    diff.unchanged.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "unchanged"));
+  }
+  const taggedOrdered: ViewFinding[] = allOrdered.map((f) => ({
+    ...f,
+    status: f.checkId ? statusByCheckId.get(f.checkId) : undefined,
+  }));
+
+  if (filter === "new") return taggedOrdered.filter((f) => f.status === "new");
+  if (filter === "fixed") return diff ? sortFindingsBySeverity(diff.fixed) : [];
+  return taggedOrdered;
+}
 
 export const SEVERITY_META: Record<Severity, { label: string; bg: string; text: string; dot: string; border: string }> = {
   critical: { label: "Critical", bg: "bg-red-400/10",    text: "text-red-400",    dot: "bg-red-400",    border: "border-red-400/20" },

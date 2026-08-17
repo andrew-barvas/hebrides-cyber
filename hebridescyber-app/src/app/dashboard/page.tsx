@@ -9,6 +9,12 @@ import ScanList, { Scan } from "@/components/ScanList";
 import PlanUpsell, { Plan } from "@/components/PlanUpsell";
 import DomainVerification from "@/components/DomainVerification";
 import MonitoredTargets from "@/components/MonitoredTargets";
+import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
+import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
+import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
+import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
+
+const OVERVIEW_FINDINGS_PREVIEW = 5;
 
 const PLAN_LABELS: Record<string, string> = {
   basic: "Basic — £20/mo",
@@ -55,6 +61,16 @@ export default function DashboardPage() {
   const [targetUrl, setTargetUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+
+  // Security Overview — summarises the most recently completed scan
+  // (whichever target that was), not an aggregate across every monitored
+  // target. Matches the roadmap's single-score sketch; a multi-target
+  // selector is a bigger, separate design question if that's ever needed.
+  const [overviewScan, setOverviewScan] = useState<{ id: string; target_url: string; score: number; created_at: string } | null>(null);
+  const [overviewFindings, setOverviewFindings] = useState<ViewFinding[]>([]);
+  const [overviewDiff, setOverviewDiff] = useState<FindingsDiff | null>(null);
+  const [overviewScoreHistory, setOverviewScoreHistory] = useState<ScorePoint[]>([]);
+  const [overviewFilter, setOverviewFilter] = useState<FindingsFilter>("all");
 
   const loadPlan = useCallback(async () => {
     const { data } = await supabase
@@ -108,6 +124,37 @@ export default function DashboardPage() {
     );
   }, []);
 
+  const loadOverview = useCallback(async () => {
+    const { data: latest } = await supabase
+      .from("scans")
+      .select("id, target_url, created_at, scan_results(results, score, created_at)")
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const resultRow = (latest as { scan_results?: { results?: { findings?: ViewFinding[] }; score: number | null; created_at: string }[] } | null)
+      ?.scan_results?.[0];
+
+    if (!latest || !resultRow) {
+      setOverviewScan(null);
+      return;
+    }
+
+    const createdAt = resultRow.created_at ?? latest.created_at;
+    const findings = resultRow.results?.findings ?? [];
+    setOverviewScan({ id: latest.id, target_url: latest.target_url, score: resultRow.score ?? 0, created_at: createdAt });
+    setOverviewFindings(findings);
+
+    const [previousFindings, history] = await Promise.all([
+      findPreviousFindingsClient(latest.id, latest.target_url, createdAt),
+      findScoreHistoryClient(latest.id, latest.target_url, resultRow.score, createdAt),
+    ]);
+
+    setOverviewDiff(previousFindings ? diffFindings(findings, previousFindings) : null);
+    setOverviewScoreHistory(history);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const session = await getSession();
@@ -115,13 +162,13 @@ export default function DashboardPage() {
       const { currentLevel, nextLevel } = await getMfaAssuranceLevel();
       if (nextLevel && currentLevel !== nextLevel) { router.replace("/login/mfa-challenge"); return; }
       setAuthed(true);
-      await Promise.all([loadScans(session.user.id), loadPlan()]);
+      await Promise.all([loadScans(session.user.id), loadPlan(), loadOverview()]);
       setLoading(false);
     })().catch((err) => {
       console.error("[dashboard] init error:", (err as Error).message);
       setLoading(false);
     });
-  }, [router, loadScans, loadPlan]);
+  }, [router, loadScans, loadPlan, loadOverview]);
 
   async function deleteScan(scanId: string) {
     await supabase.from("scan_results").delete().eq("scan_id", scanId);
@@ -162,7 +209,7 @@ export default function DashboardPage() {
 
       setScanMessage(`Scan complete — score ${runBody.score}/100.`);
       setTargetUrl("");
-      await loadScans(session.user.id);
+      await Promise.all([loadScans(session.user.id), loadOverview()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -241,6 +288,114 @@ export default function DashboardPage() {
           </Link>
         </div>
 
+        {/* Security overview — most recently completed scan */}
+        {overviewScan && (
+          <div className="space-y-4">
+            <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// security overview</h2>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5 text-center">
+                <p className="text-3xl font-bold text-neon">{overviewScan.score}</p>
+                <p className="mt-0.5 text-xs text-cybertext/40">/100</p>
+              </div>
+              <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5 text-center">
+                {overviewScoreHistory.length >= 2 ? (
+                  (() => {
+                    const delta =
+                      overviewScoreHistory[overviewScoreHistory.length - 1].score -
+                      overviewScoreHistory[overviewScoreHistory.length - 2].score;
+                    return (
+                      <>
+                        <p className={`text-3xl font-bold ${delta > 0 ? "text-neon" : delta < 0 ? "text-red-400" : "text-cybertext/50"}`}>
+                          {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"} {Math.abs(delta)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-cybertext/40">vs last scan</p>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <>
+                    <p className="text-3xl font-bold text-cybertext/30">–</p>
+                    <p className="mt-0.5 text-xs text-cybertext/40">no previous scan yet</p>
+                  </>
+                )}
+              </div>
+              <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5 text-center">
+                <p className="text-3xl font-bold text-cybertext">{overviewDiff ? overviewDiff.added.length : 0}</p>
+                <p className="mt-0.5 text-xs text-cybertext/40">new since last scan</p>
+              </div>
+            </div>
+
+            {overviewScoreHistory.length >= 2 && (
+              <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+                <ScoreTrend points={overviewScoreHistory} />
+              </div>
+            )}
+
+            <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="min-w-0 truncate font-mono text-xs text-cybertext/40 uppercase tracking-wide">
+                  Findings —{" "}
+                  <Link href={`/dashboard/scans/${overviewScan.id}`} className="text-neon hover:underline">
+                    {overviewScan.target_url}
+                  </Link>
+                </h3>
+                <div className="flex flex-shrink-0 gap-1.5">
+                  {(
+                    [
+                      ["all", `All (${overviewFindings.length})`],
+                      ["new", `New (${overviewDiff?.added.length ?? 0})`],
+                      ["fixed", `Fixed (${overviewDiff?.fixed.length ?? 0})`],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setOverviewFilter(key)}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        overviewFilter === key
+                          ? "border-neon text-neon bg-neon/10"
+                          : "border-cyberborder text-cybertext/50 hover:border-cybertext/30 hover:text-cybertext/70"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(() => {
+                const visible = buildFindingsView(overviewFindings, overviewDiff, overviewFilter);
+                if (visible.length === 0) {
+                  return (
+                    <p className="text-sm text-cybertext/40">
+                      {overviewFilter === "new"
+                        ? "No new findings since your last scan of this target."
+                        : overviewFilter === "fixed"
+                          ? "No findings were fixed since your last scan of this target."
+                          : "No findings on the most recent scan."}
+                    </p>
+                  );
+                }
+                return (
+                  <div className="space-y-3">
+                    {visible.slice(0, OVERVIEW_FINDINGS_PREVIEW).map((f, i) => (
+                      <FindingCard key={f.checkId ?? i} finding={f} />
+                    ))}
+                    {visible.length > OVERVIEW_FINDINGS_PREVIEW && (
+                      <Link
+                        href={`/dashboard/scans/${overviewScan.id}`}
+                        className="inline-block text-xs font-medium text-neon hover:underline"
+                      >
+                        View all {visible.length} in the full report →
+                      </Link>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Subscription status */}
         {plan !== "none" && (
           <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
@@ -298,7 +453,12 @@ export default function DashboardPage() {
             </button>
           </form>
           <p className="mt-2 text-xs text-cybertext/40">
-            Only scan sites you own or are authorised to test.
+            We scan only domains you&apos;ve verified you own. Results are
+            private to your account and never shared or sold — see our{" "}
+            <Link href="/privacy" className="text-neon hover:underline">
+              privacy policy
+            </Link>
+            .
           </p>
           {scanMessage && <p className="mt-2 text-sm text-neon">{scanMessage}</p>}
           {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
