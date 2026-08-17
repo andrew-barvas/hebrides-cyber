@@ -5,17 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
-import { diffFindings, type FindingsDiff, type DiffStatus } from "@/lib/findingsDiff";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, type Severity, type ViewFinding } from "@/components/ScanReportView";
+import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
+import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
 
 type Finding = ViewFinding;
-
-const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
-function sortBySeverity<T extends { severity: Severity }>(list: T[]): T[] {
-  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
-}
 
 type ScanResult = {
   id: string;
@@ -34,111 +30,11 @@ type ScanResult = {
   created_at: string;
 };
 
-/**
- * Finds the most recent completed scan of the same target that predates this
- * one, and returns its findings — or null if none exists (first scan of this
- * target) or the target's hostname can't be parsed.
- *
- * Matches by hostname rather than exact target_url: two scans of "the same"
- * site aren't guaranteed byte-identical strings (protocol, trailing slash,
- * case — target_url is stored raw, unnormalised, at scan-creation time).
- *
- * Fetches the 100 most recent completed scans across all of the user's
- * targets and filters client-side, since there's no indexed hostname column
- * to query against directly. Fine at today's scale; if a user regularly runs
- * 100+ scans of other targets between two scans of the same one, the match
- * will be missed and no previous scan can be found — worth revisiting with a
- * proper indexed hostname/target column if that starts happening in practice.
- */
-async function findPreviousFindings(
-  currentScanId: string,
-  currentTargetUrl: string,
-  currentCreatedAt: string
-): Promise<Finding[] | null> {
-  let hostname: string;
-  try {
-    hostname = new URL(currentTargetUrl).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-
-  const { data: candidates } = await supabase
-    .from("scans")
-    .select("id, target_url, created_at, scan_results(results)")
-    .eq("status", "completed")
-    .neq("id", currentScanId)
-    .lt("created_at", currentCreatedAt)
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  for (const c of (candidates ?? []) as Array<{
-    id: string;
-    target_url: string;
-    scan_results: { results: { findings?: Finding[] } }[];
-  }>) {
-    let candidateHost: string;
-    try {
-      candidateHost = new URL(c.target_url).hostname.toLowerCase();
-    } catch {
-      continue;
-    }
-    if (candidateHost !== hostname) continue;
-    const prevFindings = c.scan_results?.[0]?.results?.findings;
-    if (prevFindings) return prevFindings;
-  }
-
-  return null;
-}
-
-/**
- * Score history for every completed scan of the same target (by hostname,
- * same reasoning as findPreviousFindings above), oldest first, including the
- * current scan itself so the trend line ends at "now." Capped at 20 points —
- * a trend line, not a full audit log.
- */
-async function findScoreHistory(
-  currentScanId: string,
-  currentTargetUrl: string,
-  currentScore: number | null,
-  currentCreatedAt: string
-): Promise<ScorePoint[]> {
-  let hostname: string;
-  try {
-    hostname = new URL(currentTargetUrl).hostname.toLowerCase();
-  } catch {
-    return [];
-  }
-
-  const { data: candidates } = await supabase
-    .from("scans")
-    .select("id, target_url, created_at, scan_results(score, created_at)")
-    .eq("status", "completed")
-    .neq("id", currentScanId)
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  const points: ScorePoint[] = [];
-  for (const c of (candidates ?? []) as Array<{
-    target_url: string;
-    scan_results: { score: number | null; created_at: string }[];
-  }>) {
-    let candidateHost: string;
-    try {
-      candidateHost = new URL(c.target_url).hostname.toLowerCase();
-    } catch {
-      continue;
-    }
-    if (candidateHost !== hostname) continue;
-    const result = c.scan_results?.[0];
-    if (result?.score == null) continue;
-    points.push({ date: result.created_at, score: result.score });
-    if (points.length >= 19) break; // + the current scan = 20
-  }
-
-  if (currentScore !== null) points.push({ date: currentCreatedAt, score: currentScore });
-
-  return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-}
+// findPreviousFindings / findScoreHistory now live in
+// src/lib/clientScanHistory.ts (findPreviousFindingsClient /
+// findScoreHistoryClient) — extracted so the dashboard overview
+// (src/app/dashboard/page.tsx) can reuse the exact same hostname-matching
+// logic rather than a second, drifting copy.
 
 export default function ScanDetailPage() {
   const params = useParams<{ id: string }>();
@@ -178,7 +74,7 @@ export default function ScanDetailPage() {
     if (!result?.results?.target_url) return;
     const currentFindings = (result.results.findings as Finding[] | undefined) ?? [];
 
-    findPreviousFindings(result.scan_id, result.results.target_url, result.created_at)
+    findPreviousFindingsClient(result.scan_id, result.results.target_url, result.created_at)
       .then((previousFindings) => {
         if (previousFindings) setDiff(diffFindings(currentFindings, previousFindings));
       })
@@ -189,7 +85,7 @@ export default function ScanDetailPage() {
 
   useEffect(() => {
     if (!result?.results?.target_url) return;
-    findScoreHistory(result.scan_id, result.results.target_url, result.score, result.created_at)
+    findScoreHistoryClient(result.scan_id, result.results.target_url, result.score, result.created_at)
       .then(setScoreHistory)
       .catch(() => {
         // Non-fatal — the report still renders fully without the trend chart.
@@ -224,31 +120,11 @@ export default function ScanDetailPage() {
   }
 
   const findings: Finding[] = (result.results?.findings as Finding[] | undefined) ?? [];
-  const bySeverity = (s: Severity) => findings.filter((f) => f.severity === s);
-  const critical = bySeverity("critical");
-  const high = bySeverity("high");
-  const medium = bySeverity("medium");
-  const low = bySeverity("low");
-  const info = bySeverity("info");
-  const allOrdered = [...critical, ...high, ...medium, ...low, ...info];
-
-  // Tag each current finding with its diff status without disturbing the
-  // severity ordering above — diff.added/unchanged are re-derived copies, not
-  // the same array references, so matching happens by checkId.
-  const statusByCheckId = new Map<string, DiffStatus>();
-  if (diff) {
-    diff.added.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "new"));
-    diff.unchanged.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "unchanged"));
-  }
-  const taggedOrdered: (Finding & { status?: DiffStatus })[] = allOrdered.map((f) => ({
-    ...f,
-    status: f.checkId ? statusByCheckId.get(f.checkId) : undefined,
-  }));
-  const newOrdered = taggedOrdered.filter((f) => f.status === "new");
-  const fixedOrdered = diff ? sortBySeverity(diff.fixed) : [];
-
-  const visibleFindings: (Finding & { status?: DiffStatus })[] =
-    filter === "new" ? newOrdered : filter === "fixed" ? fixedOrdered : taggedOrdered;
+  const taggedOrdered = buildFindingsView(findings, diff, "all");
+  const newOrdered = buildFindingsView(findings, diff, "new");
+  const fixedOrdered = buildFindingsView(findings, diff, "fixed");
+  const visibleFindings = buildFindingsView(findings, diff, filter);
+  const criticalOrHighCount = findings.filter((f) => f.severity === "critical" || f.severity === "high").length;
 
   const targetUrl = result.results?.target_url ?? `Scan ${result.scan_id.slice(0, 8)}`;
   const checkedAt = result.results?.checked_at
@@ -310,11 +186,16 @@ export default function ScanDetailPage() {
               </p>
               {findings.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  {critical.length > 0 && <span className="rounded-full bg-red-400/10 border border-red-400/20 px-2 py-0.5 text-red-400 font-medium">{critical.length} critical</span>}
-                  {high.length > 0 && <span className="rounded-full bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 text-orange-400 font-medium">{high.length} high</span>}
-                  {medium.length > 0 && <span className="rounded-full bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 text-yellow-400 font-medium">{medium.length} medium</span>}
-                  {low.length > 0 && <span className="rounded-full bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 text-blue-400 font-medium">{low.length} low</span>}
-                  {info.length > 0 && <span className="rounded-full bg-cybertext/5 border border-cyberborder px-2 py-0.5 text-cybertext/60 font-medium">{info.length} info</span>}
+                  {(["critical", "high", "medium", "low", "info"] as const).map((sev) => {
+                    const count = findings.filter((f) => f.severity === sev).length;
+                    if (count === 0) return null;
+                    const meta = SEVERITY_META[sev];
+                    return (
+                      <span key={sev} className={`rounded-full ${meta.bg} border ${meta.border} px-2 py-0.5 ${meta.text} font-medium`}>
+                        {count} {sev}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -375,7 +256,7 @@ export default function ScanDetailPage() {
           </div>
 
           {/* Findings */}
-          {allOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
+          {taggedOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
             <div>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
@@ -427,9 +308,9 @@ export default function ScanDetailPage() {
           )}
 
           {/* Remediation prompt */}
-          {(critical.length + high.length) > 0 && (
+          {criticalOrHighCount > 0 && (
             <div className="no-print rounded-lg border border-orange-400/30 bg-orange-400/10 p-4 text-sm text-orange-400">
-              <strong>{critical.length + high.length} critical/high finding{(critical.length + high.length) !== 1 ? "s" : ""} found.</strong>{" "}
+              <strong>{criticalOrHighCount} critical/high finding{criticalOrHighCount !== 1 ? "s" : ""} found.</strong>{" "}
               Hebrides Cyber can open remediation PRs directly in your repository — contact us or{" "}
               <Link href="/services" className="underline hover:text-cybertext">see how it works</Link>.
             </div>

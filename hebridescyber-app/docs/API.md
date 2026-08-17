@@ -358,6 +358,7 @@ security_scan:
 |--------|---------|
 | `400` | Missing/invalid `target_url`, or it failed the SSRF check |
 | `401` | Missing, malformed, revoked, or unknown API key |
+| `402` | Free-tier scan limit used up — `{ "code": "free_tier_exhausted" }`. Subscribe to a plan to run more; admin accounts are exempt |
 | `403` | Domain not verified for this account, or scan belongs to someone else |
 | `404` | Scan not found |
 | `429` | Rate limit exceeded — see the `Retry-After` header |

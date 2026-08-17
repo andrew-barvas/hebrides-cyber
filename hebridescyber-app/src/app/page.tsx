@@ -18,6 +18,9 @@ export default function HomePage() {
             Automated scanning. Real expertise. Clear fixes. Know your attack
             surface and stay ahead of threats — from the Isle of Lewis.
           </p>
+          <p className="mt-4 font-mono text-xs uppercase tracking-wide text-cybertext/40">
+            OWASP-aligned checks &middot; Powered by Azure &middot; UK-based, GDPR compliant
+          </p>
           <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
             <Link
               href="/contact"

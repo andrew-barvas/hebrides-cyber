@@ -330,6 +330,139 @@ export default function WhatWeCheckPage() {
           </div>
         </div>
 
+        {/* How we avoid false positives */}
+        <div className="mt-16">
+          <div className="mb-5 flex items-center gap-3" aria-hidden="true">
+            <span className="font-mono text-xs text-neon/60">// methodology</span>
+            <div className="h-px flex-1 bg-cyberborder" />
+          </div>
+          <h2 className="mb-1 text-xl font-bold text-cybertext">How we avoid false positives</h2>
+          <p className="mb-6 text-sm text-cybertext/50">
+            The single biggest failure mode for this kind of scanning is a catch-all site that
+            returns 200 for every URL — naively probed, that looks like every sensitive file and
+            every admin panel exists. Here&apos;s specifically what stops that.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CategoryCard
+              category={{
+                id: "baseline",
+                icon: "🧪",
+                name: "Known-404 baseline first",
+                desc: "Before probing anything real, every path-probing check fingerprints the site root and a random, guaranteed-nonexistent URL. If that random URL returns 200, the site serves a catch-all — and every subsequent probe gets compared against that baseline, not treated as a finding on its own.",
+                checks: [
+                  "Shared across every path-probing check (src/lib/scanners/httpProbe.ts) — one proven implementation, not a copy per scanner",
+                  "ETag / Content-Length compared against the site root as a first, cheap signal",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
+                id: "masking",
+                icon: "🎭",
+                name: "Path-masked body comparison",
+                desc: "Catch-all shells often echo the requested URL back into the page (a router, a canonical link, an error message) — which would otherwise make every probed path look like a different document, and can accidentally satisfy a content check by pure coincidence. The probed path is masked out of both bodies before they're ever compared.",
+                checks: [
+                  "Prefix/suffix similarity match on the masked bodies — ≥85% shared content counts as \"the same page\"",
+                  "Applied identically whether the probe is for a leaked .env file or an open directory listing",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
+                id: "assertions",
+                icon: "✅",
+                name: "Content assertions, not just status codes",
+                desc: "A 200 response alone is never enough to call something exposed. Each check asserts the body actually looks like what it claims to have found.",
+                checks: [
+                  "A .env \"hit\" must match a real KEY=value assignment pattern, not just any 200",
+                  "A directory listing must show both an \"Index of /...\" title and a Parent Directory link — a page that merely loads at /uploads/ (an upload form, say) doesn't count",
+                  "A .htpasswd \"hit\" must match a real password-hash line format",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
+                id: "scoped",
+                icon: "🎯",
+                name: "Scoped to evidence we actually have",
+                desc: "Every check only reports what it can back up — no guessing at what \"might\" be there.",
+                checks: [
+                  "Cloud misconfig only tests buckets the target's own page source references — never guesses bucket names against infrastructure the customer doesn't own",
+                  "CVE references come from a live OSV.dev lookup against the exact detected version — no CVE claimed if the lookup fails or nothing matches",
+                  "CMS deep scans (WordPress/Joomla/Drupal) only run once fingerprinting has actually detected that CMS",
+                ],
+              }}
+            />
+          </div>
+        </div>
+
+        {/* What this can't detect */}
+        <div className="mt-16">
+          <div className="mb-5 flex items-center gap-3" aria-hidden="true">
+            <span className="font-mono text-xs text-neon/60">// limits</span>
+            <div className="h-px flex-1 bg-cyberborder" />
+          </div>
+          <h2 className="mb-1 text-xl font-bold text-cybertext">What this can&apos;t detect</h2>
+          <p className="mb-6 text-sm text-cybertext/50">
+            Automated scanning is genuinely good at what&apos;s listed above, and genuinely bad at
+            everything below. Worth knowing before you treat a clean scan as a clean bill of health.
+          </p>
+          <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6">
+            <ul className="space-y-3 text-sm text-cybertext/70">
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">Business logic flaws</strong> — price manipulation,
+                  privilege escalation through a legitimate workflow, coupon/quantity abuse. These
+                  require understanding what the application is <em>supposed</em> to do, which no
+                  automated scan can infer.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">Authenticated, logged-in-user testing</strong> —
+                  every scan here is unauthenticated (black-box against the public site). Access-control
+                  bugs that only show up once you&apos;re logged in as one user trying to reach another
+                  user&apos;s data (IDOR) aren&apos;t covered.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">Zero-days and unknown vulnerabilities</strong> —
+                  nuclei and the fingerprinting checks match against known template/CVE databases.
+                  Anything not yet publicly known or catalogued won&apos;t be flagged.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">Real active scanning, most of the time</strong> —
+                  nmap/nuclei/sqlmap/a real ZAP active scan only run on the scheduled monitoring path,
+                  where domain ownership has already been verified. An on-demand dashboard scan is
+                  passive/read-only checks only.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">Physical, social, and process risk</strong> — phishing
+                  susceptibility, insider threats, physical access controls, offline backup hygiene. None
+                  of that is visible from the outside of a website.
+                </span>
+              </li>
+            </ul>
+            <p className="mt-5 text-xs text-cybertext/50">
+              For the things on this list, see{" "}
+              <Link href="/services" className="text-neon underline hover:text-cybertext">
+                manual penetration testing
+              </Link>{" "}
+              — a human tester, not a scanner, is what actually finds these.
+            </p>
+          </div>
+        </div>
+
         {/* CTA */}
         <div className="mt-16 rounded-xl border border-neon/30 bg-cyberpanel p-8 text-center">
           <p className="mb-1 font-mono text-xs text-neon/60">// ready?</p>
