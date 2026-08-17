@@ -489,12 +489,8 @@ function QueueTab({ token }: { token: string }) {
   if (!data.configured) {
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6">
-        <p className="font-semibold text-cybertext/80">Queue not active</p>
-        <p className="mt-1 text-sm text-cybertext/50">
-          Redis is not configured — scans run synchronously. Set{" "}
-          <code className="font-mono bg-cyberbg px-1 rounded text-neon">REDIS_URL</code>{" "}
-          in environment settings to enable the async queue.
-        </p>
+        <p className="font-semibold text-cybertext/80">Queue data unavailable</p>
+        <p className="mt-1 text-sm text-cybertext/50">{data.note ?? "Could not load scan_jobs."}</p>
       </div>
     );
   }

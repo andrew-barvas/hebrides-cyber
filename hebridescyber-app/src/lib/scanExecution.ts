@@ -13,16 +13,111 @@ import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary, t
 import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanReport";
 import { dispatchScanCompletedWebhooks } from "./webhooks";
 import { sendSlackAlert } from "./slack";
+import { runNuclei } from "../worker/tools/nuclei";
+import { runZap } from "../worker/tools/zap";
+import { runSqlmap } from "../worker/tools/sqlmap";
+import { runNmap } from "../worker/tools/nmap";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
   | { ok: false; error: string };
 
+export type ExecuteScanOptions = {
+  /**
+   * Also runs nmap/nuclei/sqlmap/ZAP and merges their findings in. Off by
+   * default — explicit opt-in, not "on wherever the binaries happen to be
+   * installed". These tools take 1-3 minutes and need real binaries/a ZAP
+   * daemon that only the GitHub Actions queue worker actually has (see
+   * .github/workflows/scheduled-scans.yml) — the dashboard's synchronous
+   * run-scan Function and the public API must never wait on them, so they
+   * never pass this. Each tool already degrades to "not_configured" on its
+   * own when its binary/daemon is missing (see src/worker/tools/*.ts), but
+   * this flag means that's never load-bearing for correctness — a future
+   * environment that happens to have nmap installed still won't trigger it
+   * for the dashboard path.
+   */
+  runExtendedTools?: boolean;
+};
+
+// Ports whose presence alone is worth a critical finding, regardless of what
+// nmap's service-detection guessed — an unauthenticated database or Docker
+// daemon exposed to the internet needs no further probing to be dangerous.
+const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
+
+/**
+ * Runs the real active-scanning tool suite and shapes its output into
+ * Finding[] the same way the rest of the scanner suite does — including
+ * checkId, which the original BullMQ-worker sketch (src/worker/runner.ts)
+ * never set, so none of these findings could ever participate in the
+ * New/Fixed scan-to-scan diff. Ported here rather than left in runner.ts
+ * because runner.ts's queue (BullMQ+Redis) was never wired to anything —
+ * see docs/PLATFORM-ROADMAP.md.
+ */
+async function runExtendedTools(targetUrl: string): Promise<{ extended: Record<string, unknown>; findings: Finding[] }> {
+  const [nucleiResult, zapResult, sqlmapResult, nmapResult] = await Promise.allSettled([
+    runNuclei(targetUrl),
+    runZap(targetUrl),
+    runSqlmap(targetUrl),
+    runNmap(targetUrl),
+  ]);
+
+  const extended = {
+    nuclei: nucleiResult.status === "fulfilled" ? nucleiResult.value : { status: "error", findings: [], note: String(nucleiResult.reason) },
+    zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
+    sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
+    nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
+  };
+
+  const findings: Finding[] = [];
+
+  if (extended.nuclei.status === "completed") {
+    for (const f of extended.nuclei.findings) {
+      findings.push({
+        checkId: `nuclei.finding:${f.templateId || f.title}`,
+        severity: (f.severity as Finding["severity"]) || "info",
+        title: `[Nuclei] ${f.title}`,
+        detail: f.detail,
+      });
+    }
+  }
+
+  if (extended.zap.status === "completed" && "findings" in extended.zap) {
+    findings.push(...extended.zap.findings);
+  }
+
+  if (extended.sqlmap.status === "completed" && extended.sqlmap.vulnerable) {
+    for (const f of extended.sqlmap.findings) {
+      findings.push({
+        checkId: `sqlmap.sqli:${f.parameter}`,
+        severity: "critical",
+        title: `[sqlmap] SQL injection — param: ${f.parameter}`,
+        detail: `DBMS: ${f.dbms ?? "unknown"}. Parameter "${f.parameter}" is vulnerable to SQL injection.`,
+      });
+    }
+  }
+
+  if (extended.nmap.status === "completed") {
+    for (const p of extended.nmap.ports) {
+      if (DANGEROUS_TOOL_PORTS.has(p.port)) {
+        findings.push({
+          checkId: `nmap.dangerous-port:${p.port}`,
+          severity: "critical",
+          title: `[nmap] Dangerous port open: ${p.port}/${p.protocol} (${p.service})`,
+          detail: `Service "${p.service}" is publicly reachable on port ${p.port}. This commonly indicates an unprotected database or Docker daemon.`,
+        });
+      }
+    }
+  }
+
+  return { extended, findings };
+}
+
 export async function executeScan(
   supabaseAdmin: SupabaseClient,
   scanId: string,
   ownerId: string,
-  targetUrl: string
+  targetUrl: string,
+  options: ExecuteScanOptions = {}
 ): Promise<ScanExecutionResult> {
   // Phase 1: the part that determines success/failure. Anything thrown here
   // means the scan itself didn't complete, so marking the row 'failed' is
@@ -30,15 +125,23 @@ export async function executeScan(
   let score: number;
   let summary: string;
   let findings: Finding[];
+  let extended: Record<string, unknown> | undefined;
   try {
     const results = await runAllChecks(targetUrl);
     ({ findings } = summariseResults(results));
+
+    if (options.runExtendedTools) {
+      const toolOutcome = await runExtendedTools(targetUrl);
+      extended = toolOutcome.extended;
+      findings = [...findings, ...toolOutcome.findings];
+    }
+
     summary = await generateAiSummary(results, findings);
     score = scoreFromFindings(findings);
 
     const { error: resultsError } = await supabaseAdmin.from("scan_results").insert({
       scan_id: scanId,
-      results: { ...results, findings },
+      results: extended ? { ...results, extended, findings } : { ...results, findings },
       summary,
       score,
     });

@@ -13,7 +13,13 @@ name: Scheduled Scans
 # This replaced a version that called src/functions/run-scan per target via
 # curl — see src/lib/scanExecution.ts's executeScan(), which both that
 # Function and these workers now share, for why scan behaviour is identical
-# either way.
+# either way EXCEPT for one thing: only the `work` job here installs the
+# real active-scanning tool suite (nmap/nuclei/sqlmap/ZAP — previously
+# unwired in src/worker/tools/, meant for a BullMQ+Redis worker that never
+# got connected to anything) and passes runExtendedTools: true, since this
+# is the only environment with the binaries/daemon available. Azure Static
+# Web Apps / Consumption Functions can't run installed binaries at all,
+# which is why this runs here rather than in src/functions/run-scan.
 #
 # Requires:
 #   SUPABASE_URL                 - to query/enqueue/claim scan_jobs
@@ -72,6 +78,51 @@ jobs:
       - name: Install dependencies
         working-directory: hebridescyber-app
         run: npm ci
+
+      # --- Extended tool suite ---------------------------------------------
+      # Same tools/versions as worker.Dockerfile (the never-connected BullMQ
+      # worker this replaced) — installed fresh per run rather than baked
+      # into a custom runner image, since this workflow only runs once a
+      # day and a several-minute setup cost is cheap compared to maintaining
+      # a custom image. src/worker/tools/*.ts already degrade to
+      # "not_configured" gracefully if any of these fail to install, so a
+      # broken step here fails soft (fewer findings that run), not the whole
+      # job.
+      - name: Install nmap and sqlmap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nmap python3 python3-pip
+          pip3 install --break-system-packages sqlmap
+
+      - name: Install nuclei
+        env:
+          NUCLEI_VERSION: v3.3.9
+        run: |
+          curl -fsSL \
+            "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" \
+            -o /tmp/nuclei.zip
+          sudo unzip -o /tmp/nuclei.zip -d /usr/local/bin
+          rm /tmp/nuclei.zip
+          sudo chmod +x /usr/local/bin/nuclei
+          nuclei -update-templates -silent || true
+
+      - name: Start ZAP daemon
+        run: |
+          docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -daemon -host 0.0.0.0 -port 8090 \
+            -config api.key=changeme \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true
+          for i in $(seq 1 12); do
+            if curl -sf "http://localhost:8090/JSON/core/view/version/?apikey=changeme" >/dev/null; then
+              echo "ZAP is ready"
+              exit 0
+            fi
+            echo "Waiting for ZAP ($i/12)..."
+            sleep 5
+          done
+          echo "ZAP did not become ready in time — continuing anyway, zap.ts will report status: error for this run"
+
       - name: Work the scan job queue
         working-directory: hebridescyber-app
         env:
@@ -82,4 +133,10 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
+          ZAP_API_URL: http://localhost:8090
+          ZAP_API_KEY: changeme
         run: npm run queue:run-worker
+
+      - name: Stop ZAP daemon
+        if: always()
+        run: docker rm -f zap || true

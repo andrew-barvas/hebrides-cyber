@@ -145,6 +145,7 @@ export async function runZap(targetUrl: string): Promise<ZapResult> {
     const alerts: ZapAlert[] = alertsResp.alerts ?? [];
 
     const findings: Finding[] = alerts.map((alert) => ({
+      checkId: `zap.alert:${alert.name}`,
       severity: zapRiskToSeverity(alert.risk),
       title: `[ZAP] ${alert.name}`,
       detail: alert.description ?? alert.solution ?? "No additional detail.",
