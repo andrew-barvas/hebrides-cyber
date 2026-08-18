@@ -114,6 +114,14 @@ const KNOWN_RISKY: KnownRisky[] = [
   { name: "Apache", maxSafeMajor: 2, reason: "Apache 1.x is end-of-life" },
 ];
 
+// Flat list of technology names this module can actually fingerprint — kept
+// derived from PATTERNS (not hand-duplicated) so it can never drift out of
+// sync with real detection capability. Consumed by src/lib/newsletter.ts to
+// correlate external vulnerability feeds (e.g. CISA's KEV catalog) against
+// what this product can honestly claim to detect, so the newsletter never
+// overclaims coverage it doesn't have.
+export const DETECTABLE_TECHNOLOGIES: string[] = PATTERNS.map((p) => p.name);
+
 // ---- Engine ---------------------------------------------------------------
 
 export async function checkFingerprint(targetUrl: string): Promise<FingerprintResult> {
