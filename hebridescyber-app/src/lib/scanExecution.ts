@@ -21,6 +21,7 @@ import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runDeepTls } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
+import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { logAuditEvent } from "./audit";
@@ -64,23 +65,26 @@ async function runExtendedTools(
   targetUrl: string,
   githubRepo: string | null
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
-  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult, dependencyManifestResult] = await Promise.allSettled([
+  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult, dependencyManifestResult, dockerBaseImageResult] = await Promise.allSettled([
     runNuclei(targetUrl),
     runZap(targetUrl),
     runSqlmap(targetUrl),
     runNmap(targetUrl),
     runSubdomainDiscovery(targetUrl),
     runDeepTls(targetUrl),
-    // Both of these are only attempted when the scan owner has a row in
+    // All three of these are only attempted when the scan owner has a row in
     // repo_connections — see sql/migrations/009_repo_connections.sql.
-    // secretScan.ts/dependencyManifest.ts are pure { githubRepo } functions
-    // specifically so this call site is the only place that needs to know
-    // where the repo name comes from.
+    // secretScan.ts/dependencyManifest.ts/dockerBaseImage.ts are pure
+    // { githubRepo } functions specifically so this call site is the only
+    // place that needs to know where the repo name comes from.
     githubRepo
       ? scanRepositoryForSecrets({ githubRepo })
       : Promise.resolve({ status: "not_configured" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
     githubRepo
       ? scanDependencyManifest({ githubRepo })
+      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+    githubRepo
+      ? scanDockerBaseImage({ githubRepo })
       : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
   ]);
 
@@ -93,6 +97,7 @@ async function runExtendedTools(
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
     dependencyManifest: dependencyManifestResult.status === "fulfilled" ? dependencyManifestResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dependencyManifestResult.reason) },
+    dockerBaseImage: dockerBaseImageResult.status === "fulfilled" ? dockerBaseImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dockerBaseImageResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -155,6 +160,9 @@ async function runExtendedTools(
   }
   if (extended.dependencyManifest.status === "completed") {
     findings.push(...extended.dependencyManifest.findings);
+  }
+  if (extended.dockerBaseImage.status === "completed") {
+    findings.push(...extended.dockerBaseImage.findings);
   }
 
   // recon.ts's base checkDns pass already reports a single "N subdomains
