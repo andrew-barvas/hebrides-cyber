@@ -27,9 +27,13 @@ name: Scheduled Scans
 
 on:
   schedule:
-    # Every day at 03:00 UTC. TODO: adjust cadence per plan tier once
-    # subscription plans differentiate scan frequency (weekly vs monthly) —
-    # e.g. split this into two workflows/crons keyed by plan.
+    # Every day at 03:00 UTC. Cadence now differs per plan tier at the
+    # enqueue step rather than the cron: enqueue-scheduled-scans.ts skips
+    # any target whose most recent completed scan is still within its
+    # plan's interval (src/lib/scanCadence.ts — basic weekly, pro/agency
+    # daily). Running this cron daily and letting it no-op on non-due
+    # targets is simpler and more robust than maintaining separate
+    # per-plan crons.
     - cron: "0 3 * * *"
   workflow_dispatch: {}
 

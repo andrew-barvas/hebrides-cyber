@@ -18,8 +18,8 @@ const oneOff = [
 
 const subscriptions: Array<{ id: "basic" | "pro" | "agency"; name: string; price: string; desc: string; highlight?: boolean }> = [
   { id: "basic", name: "Basic", price: "£20/mo", desc: "Weekly automated scans, monthly Security Score email, critical alerts." },
-  { id: "pro", name: "Pro", price: "£35/mo", desc: "Everything in Basic + dependency monitoring, Slack alerts, quarterly manual review.", highlight: true },
-  { id: "agency", name: "Agency", price: "£75/mo", desc: "Multi-site monitoring, white-label PDF reports, priority support." },
+  { id: "pro", name: "Pro", price: "£35/mo", desc: "Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts, quarterly manual review.", highlight: true },
+  { id: "agency", name: "Agency", price: "£75/mo", desc: "Daily automated scans across multi-site monitoring, white-label PDF reports, priority support." },
 ];
 
 export default function PricingPage() {
