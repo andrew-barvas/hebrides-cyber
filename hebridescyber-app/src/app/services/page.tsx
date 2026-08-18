@@ -74,7 +74,7 @@ const managedServices: Service[] = [
     name: "Security Score — Automated Scanning",
     icon: "📊",
     tag: "Available now",
-    desc: "Weekly or monthly automated scans of your site — TLS health, security headers, DNS authentication, exposed paths, and dependency versions — with an AI-generated one-page executive summary emailed to you.",
+    desc: "Weekly automated scans on Basic, daily on Pro and Agency — TLS health, security headers, DNS authentication, exposed paths, and dependency versions — with an AI-generated one-page executive summary emailed to you.",
     includes: [
       "TLS certificate monitoring and expiry alerts",
       "HTTP security header checks (HSTS, CSP, X-Frame-Options, and more)",
