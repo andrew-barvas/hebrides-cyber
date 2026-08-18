@@ -14,7 +14,7 @@ export type NewsletterPost = {
   slug: string;
   title: string;
   excerpt: string;
-  body_markdown: string;
+  body: string;
 };
 
 type AggregateStats = {
@@ -63,7 +63,7 @@ export async function generateNewsletterPost(supabaseAdmin: SupabaseClient): Pro
       ? `${stats.totalScans} sites scanned this week. Top issue: ${stats.topFindingTitles[0]?.title ?? "none found"}.`
       : "No scans ran this week — here's what to check anyway.";
 
-  return { slug, title, excerpt, body_markdown: body };
+  return { slug, title, excerpt, body };
 }
 
 async function draftBody(stats: AggregateStats): Promise<string> {
