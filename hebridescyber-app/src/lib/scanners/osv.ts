@@ -38,11 +38,11 @@ type OsvVuln = { id: string; summary?: string; aliases?: string[] };
 
 const OSV_TIMEOUT_MS = 5_000;
 
-// Keyed by "package@version". Many customers run the same jQuery version, so
-// this avoids a redundant OSV round-trip per scan within one warm process —
-// best-effort only, there's no persistence or eviction, since serverless
-// instances are short-lived anyway and this is a cheap win, not a cache layer
-// worth building infrastructure for.
+// Keyed by "ecosystem:package@version". Many customers run the same jQuery
+// version, so this avoids a redundant OSV round-trip per scan within one warm
+// process — best-effort only, there's no persistence or eviction, since
+// serverless instances are short-lived anyway and this is a cheap win, not a
+// cache layer worth building infrastructure for.
 const cache = new Map<string, string[]>();
 
 /** Extracts any CVE ids already present in free text — the fallback when a
@@ -54,14 +54,21 @@ export function extractCveIdsFromText(text: string): string[] {
 }
 
 /**
- * Looks up known vulnerabilities for an npm package/version via OSV.dev.
+ * Looks up known vulnerabilities for a package/version in an arbitrary OSV.dev
+ * ecosystem (e.g. "npm", "PyPI", "Packagist"). OSV.dev's query API accepts any
+ * ecosystem string in this same request shape — "npm" was just the only value
+ * ever passed until src/lib/scanners/dependencyManifest.ts needed the same
+ * lookup for manifest-based scanning.
+ *
  * Never throws — a failed or empty lookup returns [], the caller is expected
- * to fall back to extractCveIdsFromText on its own static reason text.
+ * to fall back to extractCveIdsFromText on its own static reason text where
+ * one exists (webapp.ts), or to simply emit no finding (dependencyManifest.ts,
+ * which has no static reason text to fall back to).
  */
-export async function lookupNpmCveIds(packageName: string, version: string): Promise<string[]> {
+export async function lookupCveIds(ecosystem: string, packageName: string, version: string): Promise<string[]> {
   if (version === "unknown") return [];
 
-  const cacheKey = `${packageName}@${version}`;
+  const cacheKey = `${ecosystem}:${packageName}@${version}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -69,7 +76,7 @@ export async function lookupNpmCveIds(packageName: string, version: string): Pro
     const res = await fetch("https://api.osv.dev/v1/query", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ package: { name: packageName, ecosystem: "npm" }, version }),
+      body: JSON.stringify({ package: { name: packageName, ecosystem }, version }),
       signal: AbortSignal.timeout(OSV_TIMEOUT_MS),
     });
     if (!res.ok) return [];
@@ -89,4 +96,10 @@ export async function lookupNpmCveIds(packageName: string, version: string): Pro
   } catch {
     return [];
   }
+}
+
+/** Thin npm-specific wrapper, kept so webapp.ts's existing call sites and the
+ *  local verification precedent (lodash 4.17.15 → 6 real CVEs) never change. */
+export async function lookupNpmCveIds(packageName: string, version: string): Promise<string[]> {
+  return lookupCveIds("npm", packageName, version);
 }

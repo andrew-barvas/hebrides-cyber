@@ -6,8 +6,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import ApiKeys from "@/components/ApiKeys";
 import Webhooks from "@/components/Webhooks";
+import ConnectRepo from "@/components/ConnectRepo";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
+import BrandingSection from "@/components/BrandingSection";
 
 type Plan = "none" | "basic" | "pro" | "agency";
 
@@ -25,6 +27,8 @@ export default function AccountPage() {
   const [token, setToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<Plan>("none");
   const [planStatus, setPlanStatus] = useState<string | null>(null);
+  const [brandLogoUrl, setBrandLogoUrl] = useState<string | null>(null);
+  const [brandName, setBrandName] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
 
@@ -39,12 +43,14 @@ export default function AccountPage() {
 
     const { data } = await supabase
       .from("subscriptions")
-      .select("plan, status")
+      .select("plan, status, brand_logo_url, brand_name")
       .maybeSingle();
 
     if (data) {
       setPlan(data.plan as Plan);
       setPlanStatus(data.status as string);
+      setBrandLogoUrl((data.brand_logo_url as string | null) ?? null);
+      setBrandName((data.brand_name as string | null) ?? null);
     }
   }, []);
 
@@ -155,11 +161,19 @@ export default function AccountPage() {
           )}
         </section>
 
+        {/* White-label branding (Agency plan only) */}
+        {token && plan === "agency" && (
+          <BrandingSection token={token} initialLogoUrl={brandLogoUrl} initialBrandName={brandName} />
+        )}
+
         {/* API keys */}
         {token && <ApiKeys token={token} />}
 
         {/* Webhooks */}
         {token && <Webhooks token={token} />}
+
+        {/* Connect a repository (dependency manifest scanning) */}
+        <ConnectRepo />
 
         {/* Team */}
         {token && userId && <TeamSection token={token} currentUserId={userId} />}
