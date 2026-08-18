@@ -1,10 +1,19 @@
 name: Weekly Newsletter
 
-# Publishes the weekly cybersecurity blog post (see src/lib/newsletter.ts
-# and src/pages/api/generate-newsletter.ts). Grounded in real aggregate scan
-# data from the past 7 days, with an AI narrative write-up if Azure OpenAI
-# is configured, otherwise a deterministic templated post — either way, it
-# publishes something rather than silently skipping the week.
+# Publishes the weekly cybersecurity newsletter (see
+# src/lib/newsletter.ts's generateWeeklyNewsletterPost and
+# src/pages/api/generate-newsletter.ts). Separate from daily-blog.yml — same
+# underlying real-event sourcing (CISA's KEV catalog, recent high-severity
+# CVEs from NVD, and real breach/incident coverage from a small set of
+# established security news RSS feeds), but a full 7-day lookback window, a
+# broader roundup framing, and a fuller look at the product's own aggregate
+# scan stats. Own slug (week-of-YYYY-MM-DD vs the daily post's
+# cyber-brief-YYYY-MM-DD), so the two never collide even when both run on
+# the same day.
+#
+# AI narrative write-up if Azure OpenAI is configured, otherwise a
+# deterministic templated post built from the same real fetched data —
+# either way, it publishes something rather than silently skipping the week.
 #
 # Calls the Next.js app's own API route (deployed via deploy.yml to Azure
 # Static Web Apps), not a separate Functions app — see run-scan.ts's header

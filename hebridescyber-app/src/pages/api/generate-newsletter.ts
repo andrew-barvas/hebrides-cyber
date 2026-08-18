@@ -1,5 +1,10 @@
-// POST /api/generate-newsletter — drafts and publishes the weekly blog post
-// (see src/lib/newsletter.ts), triggered by
+// POST /api/generate-newsletter — drafts and publishes the WEEKLY cyber
+// security newsletter (see src/lib/newsletter.ts's generateWeeklyNewsletterPost).
+// Distinct from src/pages/api/generate-daily-blog.ts, which publishes a
+// separate, more frequent post — the two share the same underlying
+// real-event sourcing (CISA KEV / NVD / security-news RSS) but different
+// lookback windows, framing, and slugs, so they never collide even when
+// triggered on the same day. Triggered by
 // .github/workflows/weekly-newsletter.yml on a cron. Gated behind
 // X-Service-Token (NEWSLETTER_SERVICE_TOKEN) since this writes public-facing
 // content — it should not be callable by just anyone who finds the URL.
@@ -10,7 +15,7 @@
 // for why (the standalone src/functions/ Azure Functions app was never
 // actually deployable).
 import type { NextApiRequest, NextApiResponse } from "next";
-import { generateNewsletterPost } from "@/lib/newsletter";
+import { generateWeeklyNewsletterPost } from "@/lib/newsletter";
 import { supabaseAdmin } from "@/lib/apiAuth";
 
 const serviceToken = process.env.NEWSLETTER_SERVICE_TOKEN ?? "";
@@ -23,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: "Missing or invalid X-Service-Token" });
   }
 
-  const post = await generateNewsletterPost(supabaseAdmin);
+  const post = await generateWeeklyNewsletterPost(supabaseAdmin);
 
   const { error } = await supabaseAdmin.from("blog_posts").upsert(
     {

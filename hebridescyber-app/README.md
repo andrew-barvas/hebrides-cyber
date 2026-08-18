@@ -33,9 +33,11 @@ just marketing copy describing services:
   updates the `subscriptions` table.
 - **Real auth** — passwordless magic link + Google OAuth login
   (`/login`), auth-aware header, bespoke dashboard content by plan.
-- **Real weekly content** — an automated blog/newsletter
-  (`src/lib/newsletter.ts`) grounded in aggregate scan data, published to
-  `/blog` on a GitHub Actions cron.
+- **Real, real-event-grounded content** — a daily cyber security blog and a
+  separate weekly newsletter (`src/lib/newsletter.ts`), both drawing on
+  CISA's KEV catalog, recent high-severity CVEs from NVD, established
+  security news RSS feeds, and our own aggregate scan data, published to
+  `/blog` on their own GitHub Actions crons.
 - **Real MFA** — TOTP two-factor via Supabase Auth's built-in `auth.mfa`
   API (`/account/security` to enroll, `/login/mfa-challenge` enforced
   automatically on sign-in once a factor exists — see `src/lib/auth.ts`).
@@ -243,14 +245,14 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `NEWSLETTER_SERVICE_TOKEN` | `weekly-newsletter.yml` — auth to `/api/generate-newsletter` (`X-Service-Token`). Not named `GITHUB_ACTIONS_TOKEN` — GitHub rejects any repo secret starting with `GITHUB_` |
+| `NEWSLETTER_SERVICE_TOKEN` | `weekly-newsletter.yml` (`/api/generate-newsletter`) and `daily-blog.yml` (`/api/generate-daily-blog`) — same shared secret, both routes gate on `X-Service-Token`. Not named `GITHUB_ACTIONS_TOKEN` — GitHub rejects any repo secret starting with `GITHUB_` |
 | `SUPABASE_URL` | `scheduled-scans.yml` — enqueue/worker scripts query Supabase directly |
 | `SUPABASE_SERVICE_ROLE_KEY` | `scheduled-scans.yml` — same, plus needed by any CI step that seeds/reads data |
 
 Also set a `NEXT_PUBLIC_SITE_URL` repo **variable** (Settings > Secrets and
 variables > Actions > Variables — not a secret, it's just this app's own
-public URL) — used by `weekly-newsletter.yml` to call this app's own
-`/api/generate-newsletter`, and baked into the build for Slack alert links.
+public URL) — used by `weekly-newsletter.yml`/`daily-blog.yml` to call this
+app's own API routes, and baked into the build for Slack alert links.
 
 Server-only secrets used by the API routes themselves
 (`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
