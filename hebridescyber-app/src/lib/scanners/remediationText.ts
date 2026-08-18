@@ -901,3 +901,39 @@ authentication — confirm it requires credentials, and restrict network
 access to it if it doesn't need to be public.`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Dependency manifest scanning (src/lib/scanners/dependencyManifest.ts) —
+// real npm/package.json CVE scanning via OSV.dev, as opposed to webapp.ts's
+// client-side JS library *detection*. Function, not a constant, for the same
+// reason sqlmapRemediation/nmapDangerousPortRemediation are: the fix names a
+// specific package, and a static string can't do that.
+// ---------------------------------------------------------------------------
+
+/**
+ * OSV.dev doesn't return one canonical "fixed version" in a shape safe to
+ * quote across every advisory, so this stays generic rather than fabricating
+ * a specific target version we haven't independently verified.
+ */
+export function dependencyVulnerableRemediation(packageName: string): string {
+  return `Update **${packageName}** to a patched version.
+
+\`\`\`bash
+npm view ${packageName} versions --json   # see what's available
+npm update ${packageName}
+# or pin a specific patched version directly:
+npm install ${packageName}@<fixed-version>
+\`\`\`
+
+Check the advisory OSV.dev matched (search \`${packageName}\` at
+https://osv.dev) for the exact patched range — \`npm audit fix\` applies it
+automatically when the fix doesn't require a major-version bump.
+
+The version checked here comes from the range declared in \`package.json\`,
+not a lockfile, so it is an approximation of what's actually installed — run
+\`npm ls ${packageName}\` to confirm the real installed version before
+deciding whether this is already fixed.
+
+After upgrading, run your test suite and re-scan to confirm the finding
+clears.`;
+}
