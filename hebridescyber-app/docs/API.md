@@ -33,8 +33,9 @@ Unverified targets return `403` with the domain named in the error.
 
 ### `POST /api/v1/scans`
 
-Runs a scan and returns the result. Synchronous — expect it to take a while
-on a large site.
+Queues a scan and returns immediately — it does not wait for the scan to
+finish. Get the result via `GET /api/v1/scans/{id}` (poll it) or a webhook
+(push, no polling — see below). Usually completes within a minute.
 
 ```bash
 curl -X POST https://hebridescyber.com/api/v1/scans \
@@ -43,27 +44,21 @@ curl -X POST https://hebridescyber.com/api/v1/scans \
   -d '{"target_url": "https://example.com"}'
 ```
 
-`201`:
+`202`:
 
 ```json
 {
   "scan_id": "b3f1c2d4-...",
   "target_url": "https://example.com",
-  "status": "completed",
-  "score": 72,
-  "summary": "Two high-severity issues...",
-  "counts": { "high": 2, "medium": 5, "low": 3, "info": 7 },
-  "findings": [
-    {
-      "check_id": "dns.spf-missing",
-      "severity": "high",
-      "title": "No SPF record",
-      "detail": "Email from this domain can be spoofed.",
-      "remediation": "Publish an SPF record so receiving servers..."
-    }
-  ]
+  "status": "queued",
+  "message": "Scan queued — usually completes within a minute. Poll GET /api/v1/scans/{id} or register a webhook for scan.completed."
 }
 ```
+
+This used to run the scan inline and return the finished report in the same
+call. It doesn't anymore — the packaged GitHub Action and both CI examples
+below already poll `GET /api/v1/scans/{id}` for you; update any integration
+that parsed `score`/`findings` directly off the `POST` response.
 
 ### `GET /api/v1/scans`
 
@@ -282,17 +277,33 @@ jobs:
             -d "{\"target_url\": \"$TARGET\"}")
 
           scan_id=$(echo "$response" | jq -r '.scan_id')
-          score=$(echo "$response" | jq -r '.score')
 
           if [ "$scan_id" = "null" ]; then
-            echo "Scan failed:"; echo "$response" | jq .
+            echo "Could not queue scan:"; echo "$response" | jq .
             exit 1
           fi
 
-          # Re-fetch to get findings tagged new/unchanged against last scan
-          detail=$(curl -sS "https://hebridescyber.com/api/v1/scans/$scan_id" \
-            -H "Authorization: Bearer $API_KEY")
+          # POST only queues the scan — poll until it's done (usually under a
+          # minute). status field also carries the diff-tagged findings once
+          # complete, so this same call replaces the old separate re-fetch.
+          detail=""
+          for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
+            detail=$(curl -sS "https://hebridescyber.com/api/v1/scans/$scan_id" \
+              -H "Authorization: Bearer $API_KEY")
+            status=$(echo "$detail" | jq -r '.status')
+            [ "$status" = "completed" ] && break
+            if [ "$status" = "failed" ]; then
+              echo "Scan failed:"; echo "$detail" | jq .
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$status" != "completed" ]; then
+            echo "Scan $scan_id did not complete in time"
+            exit 1
+          fi
 
+          score=$(echo "$detail" | jq -r '.score')
           compared=$(echo "$detail" | jq -r '.compared_to_previous_scan')
           new_high=$(echo "$detail" | jq '[.findings[]
             | select(.status == "new")
@@ -341,11 +352,21 @@ security_scan:
     - apk add --no-cache curl jq
   script:
     - |
-      curl -sS -X POST https://hebridescyber.com/api/v1/scans \
+      scan_id=$(curl -sS -X POST https://hebridescyber.com/api/v1/scans \
         -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" \
         -H "Content-Type: application/json" \
-        -d "{\"target_url\": \"$TARGET_URL\"}" | tee result.json
-      jq -e '.score >= 70' result.json
+        -d "{\"target_url\": \"$TARGET_URL\"}" | jq -r '.scan_id')
+
+      for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
+        curl -sS "https://hebridescyber.com/api/v1/scans/$scan_id" \
+          -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" > result.json
+        status=$(jq -r '.status' result.json)
+        [ "$status" = "completed" ] && break
+        [ "$status" = "failed" ] && { echo "Scan failed"; exit 1; }
+        sleep 5
+      done
+
+      jq -e '.status == "completed" and .score >= 70' result.json
   artifacts:
     paths: [result.json]
 ```
@@ -362,9 +383,15 @@ security_scan:
 | `403` | Domain not verified for this account, or scan belongs to someone else |
 | `404` | Scan not found |
 | `429` | Rate limit exceeded — see the `Retry-After` header |
-| `500` | Scan failed; `scan_id` is included so you can inspect it |
+| `500` | Could not queue the scan (e.g. a transient database error) — nothing was created, retry the `POST` |
 
 All errors return `{ "error": "..." }`.
+
+A scan that fails **after** being queued doesn't show up as an error from
+`POST` — it queued successfully. Check for it via `GET /api/v1/scans/{id}`
+returning `"status": "failed"`. The `scan.completed` webhook only fires on a
+successful completion today, not on a post-queue failure — poll if you need
+to detect that case.
 
 ## Rate limits
 

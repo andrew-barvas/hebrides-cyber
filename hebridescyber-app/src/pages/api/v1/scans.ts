@@ -1,16 +1,27 @@
 // Public REST API — POST /api/v1/scans (run a scan), GET /api/v1/scans (list).
 //
-// Unlike the dashboard's two-step /api/run-scan (create → prove ownership →
-// run), this runs the whole flow in one call. That's only safe because it
-// requires the domain to already be verified: an API key must not be able to
-// point the scanner at a host its owner hasn't proven they control, and
-// there's no interactive step in CI to complete a challenge.
+// Was fully synchronous — one call ran the whole check suite inline and
+// returned the finished report. That shared the same failure mode the
+// dashboard's "Run scan" button hit in production: Azure Static Web Apps'
+// Free-tier managed Functions have an execution ceiling this route could
+// exceed on a slow-to-check site, killing the request with a proxy error
+// before any JSON was ever returned (`az staticwebapp functions show`
+// refuses to even run on Free SKU, which is the strongest signal available
+// that this ceiling is real and not app-configurable).
+//
+// Now queues via the same scan_jobs path run-scan.ts uses (see that file and
+// .github/workflows/on-demand-scan.yml) and returns 202 immediately. This is
+// a breaking change for existing integrations that expected the full report
+// in one call — docs/API.md and action/index.js are updated accordingly, and
+// callers now poll GET /api/v1/scans/{id} (already returns a pending shape
+// with `status`, see pendingScanReport in scanReport.ts — needed no changes)
+// or use webhooks, which were already the documented "don't poll" option.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { validateNoSsrf, hostnameFromUrl, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
-import { executeScan } from "@/lib/scanExecution";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
+import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
@@ -103,17 +114,31 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     return res.status(500).json({ error: createErr?.message ?? "Failed to create scan" });
   }
 
-  // Same executeScan() the dashboard's run-scan Function and the scheduled
-  // queue's workers use — one implementation of "run the checks, persist,
-  // notify" rather than a third copy that can drift (this used to duplicate
-  // it inline, including never sending the Slack change-alert other paths
-  // get). Awaited, not fire-and-forget: a serverless function can be torn
-  // down the moment the response is sent, which would silently kill an
-  // un-awaited webhook delivery mid-flight.
-  const outcome = await executeScan(supabaseAdmin, scan.id, ownerId, targetUrl);
-  if (!outcome.ok) {
-    return res.status(500).json({ error: `Scan failed: ${outcome.error}`, scan_id: scan.id });
+  // Enqueue rather than call executeScan() directly — see this file's header
+  // comment. scan_id is pre-set so run-queued-scan-jobs.ts reuses this row
+  // and stays passive-only (same as every other on-demand path), rather than
+  // creating a second scans row and running the active-scanning tool suite
+  // the way scheduled jobs do.
+  const { error: jobError } = await supabaseAdmin.from("scan_jobs").insert({
+    owner: ownerId,
+    target_url: targetUrl,
+    scan_id: scan.id,
+    status: "pending",
+  });
+  if (jobError) {
+    await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scan.id);
+    return res.status(500).json({ error: `Failed to queue scan: ${jobError.message}` });
   }
 
-  return res.status(201).json(outcome.report);
+  // Awaited so the dispatch call isn't cut off by the function returning —
+  // never throws or blocks beyond its own 6s timeout, see
+  // triggerOnDemandWorkflow's doc comment.
+  await triggerOnDemandWorkflow();
+
+  return res.status(202).json({
+    scan_id: scan.id,
+    target_url: targetUrl,
+    status: "queued",
+    message: "Scan queued — usually completes within a minute. Poll GET /api/v1/scans/{id} or register a webhook for scan.completed.",
+  });
 }
