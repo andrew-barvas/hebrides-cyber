@@ -13,7 +13,7 @@ const COPY: Record<Plan, { label: string; message: string; cta: string; href: st
   },
   basic: {
     label: "Basic plan",
-    message: "Upgrade to Pro for dependency monitoring, Slack alerts, and a quarterly manual review.",
+    message: "Upgrade to Pro for dependency monitoring and Slack alerts.",
     cta: "Upgrade to Pro",
     href: "/pricing",
   },

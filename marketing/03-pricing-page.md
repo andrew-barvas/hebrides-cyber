@@ -19,10 +19,10 @@ Full manual pen test, CI/CD review, cloud permissions review, RLS/database check
 Weekly automated scans, monthly Security Score email, critical alerts.
 
 **Pro — £35/month**
-Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts, quarterly manual review.
+Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts.
 
 **Agency — £75/month**
-Daily automated scans across multi-site monitoring, white-label PDF reports, priority support, monthly manual review.
+Daily automated scans across multi-site monitoring, white-label PDF reports, priority support.
 
 ## Add-ons
 

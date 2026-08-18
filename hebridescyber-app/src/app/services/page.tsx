@@ -91,13 +91,11 @@ const managedServices: Service[] = [
     icon: "🔍",
     desc: "Ongoing tracking of outdated libraries, CMS versions, and known CVEs in your dependencies — with remediation PRs opened automatically in your repository when safe fixes are available.",
     includes: [
-      "Weekly dependency audit (npm, pip, composer, etc.)",
-      "CVE matching against your specific dependency versions",
-      "Automated remediation PRs for safe minor/patch updates",
-      "Monthly report: what was patched, what needs manual review",
-      "Notifications for critical CVEs within 24 hours of NVD publication",
+      "Real npm dependency scanning via OSV.dev, once you connect a repository (Account → Connect a repository)",
+      "CVE matching against your specific declared dependency versions",
+      "Findings tagged new/fixed automatically on every re-scan",
     ],
-    meta: "Active monitoring begins within 1 business day",
+    meta: "Runs as part of your regular scan cadence (weekly on Basic, daily on Pro/Agency) once a repository is connected",
   },
   {
     name: "Local Business Package",
