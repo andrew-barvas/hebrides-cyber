@@ -20,7 +20,10 @@ import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runDeepTls } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
+import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
+import { sendCriticalAlertEmail } from "./scanAlerts";
+import { logAuditEvent } from "./audit";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -61,20 +64,24 @@ async function runExtendedTools(
   targetUrl: string,
   githubRepo: string | null
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
-  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult] = await Promise.allSettled([
+  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult, dependencyManifestResult] = await Promise.allSettled([
     runNuclei(targetUrl),
     runZap(targetUrl),
     runSqlmap(targetUrl),
     runNmap(targetUrl),
     runSubdomainDiscovery(targetUrl),
     runDeepTls(targetUrl),
-    // Only attempted when the scan owner has a row in repo_connections — see
-    // sql/migrations/009_repo_connections.sql. secretScan.ts is a pure
-    // { githubRepo } function specifically so this call site is the only
-    // place that needs to know where the repo name comes from.
+    // Both of these are only attempted when the scan owner has a row in
+    // repo_connections — see sql/migrations/009_repo_connections.sql.
+    // secretScan.ts/dependencyManifest.ts are pure { githubRepo } functions
+    // specifically so this call site is the only place that needs to know
+    // where the repo name comes from.
     githubRepo
       ? scanRepositoryForSecrets({ githubRepo })
       : Promise.resolve({ status: "not_configured" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+    githubRepo
+      ? scanDependencyManifest({ githubRepo })
+      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
   ]);
 
   const extended = {
@@ -85,6 +92,7 @@ async function runExtendedTools(
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
+    dependencyManifest: dependencyManifestResult.status === "fulfilled" ? dependencyManifestResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dependencyManifestResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -145,6 +153,9 @@ async function runExtendedTools(
   if (extended.secretScan.status === "completed") {
     findings.push(...extended.secretScan.findings);
   }
+  if (extended.dependencyManifest.status === "completed") {
+    findings.push(...extended.dependencyManifest.findings);
+  }
 
   // recon.ts's base checkDns pass already reports a single "N subdomains
   // found via crt.sh" finding (recon.subdomains-found). When Subfinder also
@@ -172,6 +183,15 @@ export async function executeScan(
   let summary: string;
   let findings: Finding[];
   let extended: Record<string, unknown> | undefined;
+
+  await logAuditEvent(supabaseAdmin, {
+    actorId: ownerId,
+    action: "scan.started",
+    resourceType: "scan",
+    resourceId: scanId,
+    metadata: { target_url: targetUrl, extended_tools: Boolean(options.runExtendedTools) },
+  });
+
   try {
     const results = await runAllChecks(targetUrl);
     ({ findings } = summariseResults(results));
@@ -203,6 +223,13 @@ export async function executeScan(
     if (resultsError) throw new Error(resultsError.message);
 
     await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
+    await logAuditEvent(supabaseAdmin, {
+      actorId: ownerId,
+      action: "scan.completed",
+      resourceType: "scan",
+      resourceId: scanId,
+      metadata: { target_url: targetUrl, score },
+    });
   } catch (err) {
     await supabaseAdmin
       .from("scans")
@@ -212,6 +239,13 @@ export async function executeScan(
         () => {},
         () => {}
       );
+    await logAuditEvent(supabaseAdmin, {
+      actorId: ownerId,
+      action: "scan.failed",
+      resourceType: "scan",
+      resourceId: scanId,
+      metadata: { target_url: targetUrl, error: (err as Error).message },
+    });
     return { ok: false, error: (err as Error).message };
   }
 
@@ -238,6 +272,7 @@ export async function executeScan(
   try {
     await dispatchScanCompletedWebhooks(supabaseAdmin, ownerId, report);
     await sendChangeAlertIfDue(supabaseAdmin, ownerId, report, findings);
+    await sendCriticalAlertEmail(supabaseAdmin, ownerId, report);
   } catch (err) {
     console.error(`[scanExecution] post-completion notifications failed for scan ${scanId}:`, (err as Error).message);
   }
