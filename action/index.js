@@ -65,6 +65,42 @@ function fetchWithTimeout(url, options, timeoutMs) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+const POLL_INTERVAL_MS = 5_000;
+const POLL_BUDGET_MS = 9 * 60 * 1000; // overall ceiling for the polling phase
+
+/**
+ * POST /api/v1/scans queues the scan and returns almost immediately
+ * (202 { scan_id, status: "queued" }) rather than the finished report — see
+ * that route's header comment for why a synchronous "run the whole check
+ * suite inline" design isn't safe on the platform it deploys to. Poll
+ * GET /api/v1/scans/{id} (already returns a pending shape with `status`
+ * before results exist — no server-side change was needed for this) until
+ * status is "completed" or "failed".
+ */
+async function pollUntilDone(apiBaseUrl, apiKey, scanId) {
+  const deadline = Date.now() + POLL_BUDGET_MS;
+  while (Date.now() < deadline) {
+    const res = await fetchWithTimeout(
+      `${apiBaseUrl}/api/v1/scans/${scanId}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+      15_000
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body) {
+      fail(`Could not check scan status (HTTP ${res.status}): ${body?.error ?? "no response body"}`);
+      return null;
+    }
+    if (body.status === "completed") return body;
+    if (body.status === "failed") {
+      fail(`Scan failed while running (scan ${scanId}).`);
+      return null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+  fail(`Scan ${scanId} did not complete within ${Math.round(POLL_BUDGET_MS / 60000)} minutes.`);
+  return null;
+}
+
 async function main() {
   const apiKey = getInput("api-key", { required: true });
   const targetUrl = getInput("target-url", { required: true });
@@ -87,20 +123,23 @@ async function main() {
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ target_url: targetUrl }),
       },
-      // A full scan can genuinely take a while — this is a generous ceiling,
-      // not the expected duration.
-      10 * 60 * 1000
+      // Just an enqueue now — should return almost instantly.
+      30_000
     );
   } catch (err) {
     fail(`Could not reach the Hebrides Cyber API: ${err.message}`);
     return;
   }
 
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !body) {
-    fail(`Scan failed (HTTP ${res.status}): ${body?.error ?? "no response body"}`);
+  const queued = await res.json().catch(() => null);
+  if (!res.ok || !queued) {
+    fail(`Scan failed (HTTP ${res.status}): ${queued?.error ?? "no response body"}`);
     return;
   }
+
+  console.log(`Queued (scan ${queued.scan_id}) — polling for completion...`);
+  const body = await pollUntilDone(apiBaseUrl, apiKey, queued.scan_id);
+  if (!body) return; // pollUntilDone already called fail()
 
   const {
     score,

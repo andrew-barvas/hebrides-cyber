@@ -112,7 +112,7 @@ about half of Part 1 of the brief is already shipped.
 | "What we check" technical page | `src/app/what-we-check/page.tsx`, linked from nav + services page |
 | Continuous monitoring change alerts (Slack) | `sendSlackAlert` wired into `src/functions/run-scan/index.ts`, gated on Pro/Agency plan + `new_finding_count > 0` — was built but never called from the live path before |
 | AI-tailored remediation (on-demand, per-finding) | `src/lib/aiRemediation.ts`, `src/pages/api/scans/[id]/ai-fix.ts`, "✨ Get an AI-tailored fix" button in `ScanReportView.tsx` — reuses the same Azure OpenAI wiring as `generateAiSummary`, no new env vars |
-| Job queue (free-tier) | `sql/migrations/008_scan_jobs.sql` (`claim_scan_job()` SKIP LOCKED RPC), `src/scripts/enqueue-scheduled-scans.ts`, `src/scripts/run-queued-scan-jobs.ts` — GitHub Actions shards as ephemeral workers, Postgres as the queue, no Redis/long-lived container. Scopes only the scheduled-monitoring path today; the dashboard's synchronous "Run scan" button still calls `run-scan` directly (see §4) |
+| Job queue (free-tier) | `sql/migrations/008_scan_jobs.sql` (`claim_scan_job()` SKIP LOCKED RPC), `src/scripts/enqueue-scheduled-scans.ts`, `src/scripts/run-queued-scan-jobs.ts` — GitHub Actions shards as ephemeral workers, Postgres as the queue, no Redis/long-lived container. Now also backs on-demand scans (dashboard "Run scan" and `POST /api/v1/scans`), not just scheduled monitoring — see §4's 18 Aug update |
 | Extended tool suite (nmap/nuclei/sqlmap/ZAP) | `runExtendedTools` option on `executeScan()` (`src/lib/scanExecution.ts`), enabled only by `run-queued-scan-jobs.ts` — tools installed fresh per run in `scheduled-scans.yml`'s `work` job. Ported from the deleted BullMQ worker; findings now carry `checkId` (the original never set one) so they participate in the New/Fixed diff |
 
 ### Genuinely missing
@@ -173,10 +173,17 @@ makes the product developer-facing.
 7. ~~GitHub Action + CI examples.~~ **Done** — `action/` at the true repo
    root (not a separate repo, per the sketch below; `uses:` supports a path
    within the same repo), dependency-free Node 20 (`action/index.js`, no
-   `node_modules`). Implements the new-findings-only gate: `POST /api/v1/scans`
-   already returns the full diff-tagged report in one call, so the action
-   doesn't need the two-call polling shape the curl/jq example uses. `docs/API.md`
-   keeps the raw curl/jq version too, for non-GitHub CI.
+   `node_modules`). Implements the new-findings-only gate.
+   >
+   > **Correction (18 Aug):** `POST /api/v1/scans` used to return the full
+   > diff-tagged report in one synchronous call, so this originally didn't
+   > need to poll. It now queues and returns `202` immediately instead, for the same
+   > reason `run-scan.ts` moved off calling `executeScan()` inline: Azure
+   > Static Web Apps' Free-tier managed Functions execution ceiling could
+   > kill a slow scan mid-request with a proxy error rather than valid JSON.
+   > `action/index.js` now polls `GET /api/v1/scans/{id}` after queuing —
+   > the two-call shape the curl/jq example always used. `docs/API.md` keeps
+   > the raw curl/jq version too, for non-GitHub CI.
 8. ~~Shareable report links.~~ **Done** — `src/pages/api/reports/[token].ts`
    (public, no auth — token is the credential, same trust model as the
    existing badge route), `src/pages/api/scans/[id]/shares.ts` (session-only
@@ -535,16 +542,27 @@ used to just sketch. Built:
   adding shards, not by widening a per-target matrix the way the old
   curl-based version did.
 
-**Scope**: this only replaces the *scheduled monitoring* path. The
-dashboard's synchronous "Run scan" button still calls `run-scan` directly and
-never passes `runExtendedTools` — every passive check runs fine within the
-Function's timeout, so there was no forcing reason to change that UX (instant
-→ "queued, check back"). The real active-scanning tools (nmap/nuclei/sqlmap/
-ZAP — see below) are wired in, but *only* for the queued path; giving the
-dashboard button a "deep scan" option that hands off to the queue instead of
-running inline is still open, and is the more likely reason to revisit this
-scope than tool integration now is. Also revisit if scan volume on the
-interactive path itself becomes a problem, which isn't true yet.
+**Scope, updated (18 Aug)**: originally only replaced the *scheduled
+monitoring* path — the assumption above was that every passive check ran
+fine within the Function's timeout on the dashboard's synchronous "Run scan"
+button. That assumption turned out to be wrong in production: a real scan
+against a real target ("Backend call failure" on the dashboard) exceeded
+Azure Static Web Apps' Free-tier execution ceiling and returned a proxy
+error instead of JSON. Both `run-scan.ts` (dashboard) and `POST
+/api/v1/scans` (public API) now enqueue via `scan_jobs` the same way the
+scheduled path does — see `.github/workflows/on-demand-scan.yml`, a
+lightweight sibling of `scheduled-scans.yml`'s `work` job that skips the
+nmap/sqlmap/nuclei/testssl.sh/gitleaks/ZAP installs (on-demand jobs stay
+passive-only, distinguished from scheduled jobs by whether `scan_jobs.scan_id`
+arrives pre-set — see `run-queued-scan-jobs.ts`'s `runOne()`). Both routes
+trigger that workflow immediately via the GitHub API
+(`src/lib/onDemandScanTrigger.ts`) rather than waiting for the next cron,
+falling back to the daily cron if `GITHUB_PAT` isn't configured. `docs/API.md`
+and `action/index.js` were updated to poll `GET /api/v1/scans/{id}` instead
+of expecting a synchronous report — a breaking change for any existing API
+integration that parsed the `POST` response directly, accepted deliberately
+since the alternative was leaving a real, already-observed production bug in
+place.
 
 Per-check isolation is still worth doing separately: `runAllChecks` uses
 `Promise.all`, which fails the whole batch if one check throws. Moving to
