@@ -42,6 +42,9 @@ export default function PricingPage() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `Checkout failed (${res.status})`);
+      // react-hooks/immutability treats window.location as a value being
+      // mutated; assigning href is just a navigation to Stripe Checkout.
+      // eslint-disable-next-line react-hooks/immutability
       window.location.href = body.url;
     } catch (err) {
       setError((err as Error).message);

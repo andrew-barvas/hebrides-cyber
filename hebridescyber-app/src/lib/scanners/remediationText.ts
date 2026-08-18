@@ -285,6 +285,45 @@ Check your aggregate reports first — every legitimate sender must be passing S
 or DKIM, or their mail will start going to spam. Once clean, move to \`p=reject\`.
 You can ease in with \`pct=25\` to apply the policy to a quarter of failing mail.`;
 
+export const DKIM_NOT_DETECTED = `DKIM signs outgoing mail with a private key so receivers can verify it really
+came from you and was not altered in transit. Together with SPF it is what
+DMARC enforcement depends on.
+
+**This check is not conclusive.** DKIM keys live at \`<selector>._domainkey\`,
+and the selector name is chosen freely — it cannot be discovered from DNS. We
+probed the defaults used by the common providers (Google, Microsoft 365,
+Mailchimp, SendGrid and similar). If you sign with a custom selector, DKIM is
+working and there is nothing to fix here.
+
+To confirm for yourself, send a message to any address you control and look for
+\`dkim=pass\` in the received message's \`Authentication-Results\` header.
+
+If DKIM genuinely is not set up, enable it in your mail provider's admin
+console — they generate the key pair and give you the TXT record to publish:
+
+| Provider | Where |
+|----------|-------|
+| Google Workspace | Admin console → Apps → Gmail → Authenticate email |
+| Microsoft 365 | Defender portal → Policies → Email authentication → DKIM |
+| SendGrid / Mailgun | Sender authentication → domain setup |
+
+Use a 2048-bit key where offered.`;
+
+export const DKIM_ISSUES = `A DKIM key was found, but its configuration weakens or disables the protection
+it is meant to provide.
+
+- **Revoked key (empty \`p=\`)** — this is the RFC-defined way to retire a key.
+  Mail still signed with this selector will fail verification. Either republish
+  the public key or move signing to a live selector.
+- **Testing mode (\`t=y\`)** — tells receivers to ignore verification failures,
+  so the signature provides no real protection. Remove \`t=y\` once you have
+  confirmed signing works.
+- **Short key** — 1024-bit RSA keys are considered weak. Regenerate at 2048-bit
+  in your provider's console and publish the new record.
+
+After changing a key, keep the old selector published for a few days so mail
+already in flight can still be verified.`;
+
 export const CAA_MISSING = `Add CAA records so only your chosen certificate authorities can issue
 certificates for the domain:
 
@@ -650,3 +689,74 @@ and known-vulnerable versions — it does not cover business logic, access
 control, or authorisation flaws, which need manual testing.
 
 Keep scanning on a schedule so regressions surface early.`;
+
+// ---------------------------------------------------------------------------
+// Deep TLS (src/lib/scanners/deepTls.ts, testssl.sh) — moved here from being
+// kept local in that file's first draft, per the convention at the top of
+// this file.
+// ---------------------------------------------------------------------------
+
+export const DEEP_TLS_PROTOCOL = `Disable the obsolete protocol version on the server and require TLS 1.2 or
+higher.
+
+**nginx:**
+\`\`\`nginx
+ssl_protocols TLSv1.2 TLSv1.3;
+\`\`\`
+
+**Apache:**
+\`\`\`apache
+SSLProtocol -all +TLSv1.2 +TLSv1.3
+\`\`\`
+
+Managed platforms (Cloudflare, Azure, AWS ALB) expose this as a "minimum TLS
+version" setting. Reload the server and re-scan to confirm.`;
+
+export const DEEP_TLS_CIPHERS = `Restrict the server to modern AEAD cipher suites with forward secrecy and
+remove the weak categories listed above.
+
+**nginx:**
+\`\`\`nginx
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+ssl_prefer_server_ciphers off;
+\`\`\`
+
+The Mozilla SSL Configuration Generator produces a correct config for your
+exact server and version — use its "intermediate" profile unless you have a
+documented need to support legacy clients.`;
+
+export const DEEP_TLS_VULNERABILITY = `This is a known, named weakness in the server's TLS stack. The fix is almost
+always one of:
+
+1. **Update the TLS library** (OpenSSL, LibreSSL, or the load balancer /
+   platform firmware) to a current supported release.
+2. **Disable the feature the attack relies on** — the obsolete protocol
+   version, TLS compression, or the affected cipher suites.
+
+Re-scan afterwards: these checks are direct probes, so a clean result is
+positive confirmation that the fix landed.`;
+
+export const DEEP_TLS_FORWARD_SECRECY = `Enable forward secrecy so that a future compromise of the server's private key
+cannot decrypt traffic captured today. Prefer ECDHE key exchange and drop
+static RSA key exchange entirely.
+
+If a Diffie-Hellman group was flagged as weak, generate a strong one:
+
+\`\`\`bash
+openssl dhparam -out /etc/ssl/dhparam.pem 4096
+\`\`\`
+
+then point \`ssl_dhparam\` (nginx) or \`SSLOpenSSLConfCmd DHParameters\`
+(Apache) at it. TLS 1.3 gives forward secrecy unconditionally.`;
+
+export const DEEP_TLS_CERTIFICATE = `Fix the certificate itself rather than the protocol configuration.
+
+- **Chain of trust / incomplete chain:** serve the full chain, not just the
+  leaf. Most issuers publish a "fullchain" bundle — use it.
+- **Hostname or SAN mismatch:** reissue the certificate with every hostname
+  the site is reached by listed in the subject alternative names.
+- **Weak key or signature algorithm:** reissue with at least RSA 2048 (or
+  ECDSA P-256) and a SHA-256 signature.
+
+Managed issuers (Let's Encrypt, ACM, Cloudflare) get all of this right by
+default, so a flagged certificate usually means a manual install to redo.`;

@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
+import { useSessionToken } from "@/lib/useSessionToken";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type Session = { access_token: string };
 
 type Metrics = {
   totalCustomers: number;
@@ -1142,8 +1141,13 @@ function ContactsTab({ token }: { token: string }) {
 
 export default function AdminPage() {
   const [authState, setAuthState] = useState<"loading" | "signed-out" | "unauthorized" | "ready">("loading");
-  const [session, setSession] = useState<Session | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  // Every tab below sends this as a bearer token. Held in a hook that tracks
+  // onAuthStateChange rather than captured once from the mount-time session —
+  // an admin leaving this page open past the one-hour token lifetime would
+  // otherwise find every tab's requests failing with 401 while the page still
+  // looked signed in.
+  const token = useSessionToken();
 
   useEffect(() => {
     (async () => {
@@ -1167,7 +1171,6 @@ export default function AdminPage() {
 
       if (res.status === 403 || !res.ok) { setAuthState("unauthorized"); return; }
 
-      setSession(s);
       setAuthState("ready");
     })().catch(() => setAuthState("unauthorized"));
   }, []);
@@ -1256,15 +1259,15 @@ export default function AdminPage() {
         </nav>
 
         {/* Content */}
-        {session && (
+        {token && (
           <>
-            {activeTab === "overview"  && <OverviewTab  token={session.access_token} />}
-            {activeTab === "customers" && <CustomersTab token={session.access_token} />}
-            {activeTab === "scans"     && <ScansTab     token={session.access_token} />}
-            {activeTab === "queue"     && <QueueTab     token={session.access_token} />}
-            {activeTab === "blog"      && <BlogTab      token={session.access_token} />}
-            {activeTab === "audit"     && <AuditTab     token={session.access_token} />}
-            {activeTab === "contacts"  && <ContactsTab  token={session.access_token} />}
+            {activeTab === "overview"  && <OverviewTab  token={token} />}
+            {activeTab === "customers" && <CustomersTab token={token} />}
+            {activeTab === "scans"     && <ScansTab     token={token} />}
+            {activeTab === "queue"     && <QueueTab     token={token} />}
+            {activeTab === "blog"      && <BlogTab      token={token} />}
+            {activeTab === "audit"     && <AuditTab     token={token} />}
+            {activeTab === "contacts"  && <ContactsTab  token={token} />}
           </>
         )}
       </div>

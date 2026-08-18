@@ -216,6 +216,15 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     } else if (results.dns.spf.issues.length > 0) {
       findings.push({ checkId: "dns.spf-issues", severity: "medium", title: "SPF misconfiguration", detail: results.dns.spf.issues.join("; "), remediation: FIX.SPF_ISSUES });
     }
+    // DKIM absence is info-level, not high like SPF/DMARC: those live at fixed
+    // record names so a missing one is proof, whereas the DKIM selector is
+    // unguessable and a custom one may well be signing correctly. Title and
+    // detail both say "not detected" rather than "missing" for that reason.
+    if (results.dns.dkim.found && results.dns.dkim.issues.length > 0) {
+      findings.push({ checkId: "dns.dkim-issues", severity: "medium", title: "DKIM record misconfiguration", detail: results.dns.dkim.issues.join("; "), remediation: FIX.DKIM_ISSUES });
+    } else if (!results.dns.dkim.found && results.dns.dkim.selectorsTried > 0) {
+      findings.push({ checkId: "dns.dkim-not-detected", severity: "info", title: "DKIM not detected at common selectors", detail: `No DKIM key found at any of the ${results.dns.dkim.selectorsTried} default selectors used by major providers. This does not prove DKIM is absent — a custom selector cannot be discovered from DNS. Verify via the Authentication-Results header on a message you send.`, remediation: FIX.DKIM_NOT_DETECTED });
+    }
     if (!results.dns.dmarc.present) {
       findings.push({ checkId: "dns.dmarc-missing", severity: "high", title: "No DMARC record", detail: "Without DMARC, email spoofing is undetected. Add a _dmarc TXT record.", remediation: FIX.DMARC_MISSING });
     } else if (results.dns.dmarc.policy === "none") {
