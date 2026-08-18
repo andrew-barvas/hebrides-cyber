@@ -760,3 +760,144 @@ export const DEEP_TLS_CERTIFICATE = `Fix the certificate itself rather than the 
 
 Managed issuers (Let's Encrypt, ACM, Cloudflare) get all of this right by
 default, so a flagged certificate usually means a manual install to redo.`;
+
+// ---------------------------------------------------------------------------
+// Extended tool suite (src/lib/scanExecution.ts's runExtendedTools) —
+// nuclei/sqlmap/nmap findings are built inline there rather than in a
+// dedicated scanner module (unlike everything above), but the same rule
+// applies: remediation prose lives here, not inline at the finding site.
+// ZAP is the one exception — ZAP's own `alert.solution` is real, specific,
+// evidenced guidance from its own knowledge base, so it's used directly as
+// the Finding's remediation rather than duplicated here.
+// ---------------------------------------------------------------------------
+
+/**
+ * nuclei covers thousands of templates spanning wildly different issue
+ * classes, so a single static string would be either too vague to help or
+ * (worse) confidently wrong for a chunk of them. Categorising by the
+ * template-id's path prefix — nuclei's own directory taxonomy in
+ * https://github.com/projectdiscovery/nuclei-templates — is the honest
+ * middle ground: specific enough to be useful, general enough to never claim
+ * evidence a category name doesn't actually give us.
+ */
+export function nucleiRemediation(templateId: string): string {
+  const category = templateId.split(/[:/]/)[0] ?? "";
+
+  const base = `nuclei matched this against a known vulnerability template
+(\`${templateId || "unknown template"}\`). Look the template ID up at
+https://github.com/projectdiscovery/nuclei-templates for the exact advisory
+it's based on — that page names the specific CVE or issue and usually links
+the vendor's own fix.`;
+
+  const byCategory: Record<string, string> = {
+    cves: `${base}\n\nThis is a known CVE. Update the affected software to the
+version the advisory names as fixed — check the vendor's changelog for the
+CVE number in the template ID.`,
+    "exposed-panels": `${base}\n\nAn admin or management interface is
+reachable from the public internet. Put it behind a VPN, IP allowlist, or at
+minimum strong authentication + rate limiting — these panels are a common
+first foothold in real attacks specifically because they're easy to find.`,
+    exposures: `${base}\n\nSomething that shouldn't be publicly readable is —
+a config file, backup, credential, or debug endpoint. Remove or restrict
+access to the exposed path, then rotate anything it revealed (keys, tokens,
+passwords).`,
+    misconfiguration: `${base}\n\nThis is a configuration weakness rather
+than a code vulnerability — check the affected service's hardening guide for
+the specific setting nuclei flagged.`,
+    "default-logins": `${base}\n\nA service is reachable with vendor-default
+credentials still active. Change them immediately — default credentials are
+one of the most automated attack vectors that exist, scanned for constantly
+and not just by security researchers.`,
+    takeovers: `${base}\n\nA DNS record points at a service (cloud storage,
+a SaaS platform, a deprovisioned app) that no longer owns that hostname.
+Remove the dangling DNS record, or reclaim the resource it points to —
+otherwise anyone can claim it and serve content under your domain.`,
+    vulnerabilities: `${base}\n\nUpdate the affected software to a current
+version; check its changelog for the specific issue nuclei's template
+targets.`,
+  };
+
+  return byCategory[category] ?? base;
+}
+
+export const SQLMAP_SQLI_BASE = `sqlmap confirmed this parameter accepts attacker-controlled SQL — the
+database can very likely be read, modified, or used as a foothold into the
+rest of the network. Treat this as urgent.
+
+**The fix is always the same: stop building queries by string concatenation.**
+
+- Use parameterised queries / prepared statements everywhere this parameter
+  reaches the database — never string-interpolate user input into SQL.
+- If an ORM is available (Prisma, Sequelize, ActiveRecord, Django ORM,
+  Entity Framework...), use its query builder rather than raw SQL for this
+  code path.
+- Apply least privilege to the database account the application connects
+  with — it should not be able to read tables or run commands it has no
+  legitimate reason to touch, so a successful injection here does less
+  damage even before the code fix ships.
+- Add input validation as defence in depth, not as the primary fix —
+  allowlisting expected formats (numeric IDs, known enum values) helps, but
+  parameterisation is what actually closes this class of bug.`;
+
+/** Same as SQLMAP_SQLI_BASE, with DBMS-specific prepared-statement syntax appended when sqlmap identified one. */
+export function sqlmapRemediation(dbms: string | null): string {
+  const snippets: Record<string, string> = {
+    mysql: "\n\n**MySQL / MariaDB (mysqli):**\n```php\n$stmt = $mysqli->prepare(\"SELECT * FROM users WHERE id = ?\");\n$stmt->bind_param(\"i\", $id);\n```",
+    postgresql: "\n\n**PostgreSQL (node-postgres):**\n```js\nawait pool.query(\"SELECT * FROM users WHERE id = $1\", [id]);\n```",
+    "microsoft sql server": "\n\n**SQL Server (mssql):**\n```js\nawait pool.request().input(\"id\", sql.Int, id).query(\"SELECT * FROM users WHERE id = @id\");\n```",
+    sqlite: "\n\n**SQLite (better-sqlite3):**\n```js\ndb.prepare(\"SELECT * FROM users WHERE id = ?\").get(id);\n```",
+    oracle: "\n\n**Oracle (node-oracledb):**\n```js\nawait connection.execute(\"SELECT * FROM users WHERE id = :id\", [id]);\n```",
+  };
+  const key = (dbms ?? "").toLowerCase();
+  const match = Object.keys(snippets).find((k) => key.includes(k));
+  return SQLMAP_SQLI_BASE + (match ? snippets[match] : "");
+}
+
+/**
+ * The small fixed set of ports scanExecution.ts's DANGEROUS_TOOL_PORTS
+ * escalates to critical regardless of nmap's service-guess — each one is
+ * dangerous for a specific, well-known reason, so per-port text is both
+ * cheap to write correctly (six ports, not nmap's whole 1000-port sweep) and
+ * more useful than one generic "close this port" paragraph.
+ */
+export function nmapDangerousPortRemediation(port: number): string {
+  const byPort: Record<number, string> = {
+    2375: `Port 2375 is the Docker Engine API over plain HTTP — no
+authentication, no encryption. Anyone reaching it can run arbitrary
+containers with root-equivalent access to the host. Bind the Docker daemon
+to localhost only, or if remote access is genuinely needed, use port 2376
+with TLS client-certificate authentication (\`--tlsverify\`) instead.`,
+    2376: `Port 2376 is the Docker Engine API over TLS. It being open isn't
+itself the problem — check that \`--tlsverify\` is actually enforced and
+that client certificates are required, not just offered. A misconfigured
+TLS listener here still grants root-equivalent container access.`,
+    6379: `Port 6379 is Redis. By default Redis has no authentication and no
+encryption, so anyone reaching this port can read every key, and depending
+on configuration can write files to the host via \`CONFIG SET\` /
+\`SAVE\` — a known path to full remote code execution. Set \`requirepass\`,
+bind to a private network only, and never expose Redis directly to the
+internet.`,
+    9200: `Port 9200 is Elasticsearch's HTTP API. Without security enabled
+(disabled by default in older versions), anyone reaching this port can read,
+modify, or delete every index — a very common source of large public data
+leaks. Enable Elasticsearch Security (authentication + TLS) or put it behind
+a private network / VPN, never expose it directly.`,
+    27017: `Port 27017 is MongoDB. Older defaults bind to 0.0.0.0 with no
+authentication, meaning anyone reaching this port has full read/write access
+to every database. Enable authentication (\`--auth\`), bind to a private
+network only, and confirm the exposed instance isn't one of the many
+publicly-indexed unauthenticated MongoDB instances attackers actively scan
+for.`,
+    2379: `Port 2379 is etcd's client API — the coordination/config store
+behind most Kubernetes clusters. Unauthenticated access here can expose
+every secret and config value the cluster stores, including credentials for
+other systems. Enable etcd's client authentication (RBAC or mutual TLS) and
+restrict network access to cluster-internal traffic only.`,
+  };
+  return (
+    byPort[port] ??
+    `This port runs a service (${port}) that's dangerous to expose without
+authentication — confirm it requires credentials, and restrict network
+access to it if it doesn't need to be public.`
+  );
+}

@@ -144,11 +144,16 @@ export async function runZap(targetUrl: string): Promise<ZapResult> {
 
     const alerts: ZapAlert[] = alertsResp.alerts ?? [];
 
+    // alert.solution is ZAP's own real, evidenced fix guidance for this
+    // specific alert type — used directly as remediation rather than
+    // duplicated as static text, unlike nuclei/sqlmap/nmap (see
+    // remediationText.ts's header comment on the extended tool suite).
     const findings: Finding[] = alerts.map((alert) => ({
       checkId: `zap.alert:${alert.name}`,
       severity: zapRiskToSeverity(alert.risk),
       title: `[ZAP] ${alert.name}`,
       detail: alert.description ?? alert.solution ?? "No additional detail.",
+      remediation: alert.solution || undefined,
     }));
 
     return { status: "completed", alerts, findings };
