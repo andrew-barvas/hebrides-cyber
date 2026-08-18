@@ -20,6 +20,7 @@ import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runDeepTls } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
+import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -95,10 +96,14 @@ async function runExtendedTools(
         severity: (f.severity as Finding["severity"]) || "info",
         title: `[Nuclei] ${f.title}`,
         detail: f.detail,
+        remediation: nucleiRemediation(f.templateId),
       });
     }
   }
 
+  // ZAP's own alert.solution is real, evidenced, per-finding remediation
+  // from its own knowledge base — runZap() (src/worker/tools/zap.ts) attaches
+  // it directly as Finding.remediation, so there's nothing to add here.
   if (extended.zap.status === "completed" && "findings" in extended.zap) {
     findings.push(...extended.zap.findings);
   }
@@ -110,6 +115,7 @@ async function runExtendedTools(
         severity: "critical",
         title: `[sqlmap] SQL injection — param: ${f.parameter}`,
         detail: `DBMS: ${f.dbms ?? "unknown"}. Parameter "${f.parameter}" is vulnerable to SQL injection.`,
+        remediation: sqlmapRemediation(f.dbms),
       });
     }
   }
@@ -122,6 +128,7 @@ async function runExtendedTools(
           severity: "critical",
           title: `[nmap] Dangerous port open: ${p.port}/${p.protocol} (${p.service})`,
           detail: `Service "${p.service}" is publicly reachable on port ${p.port}. This commonly indicates an unprotected database or Docker daemon.`,
+          remediation: nmapDangerousPortRemediation(p.port),
         });
       }
     }
