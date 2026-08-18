@@ -103,3 +103,140 @@ export async function lookupCveIds(ecosystem: string, packageName: string, versi
 export async function lookupNpmCveIds(packageName: string, version: string): Promise<string[]> {
   return lookupCveIds("npm", packageName, version);
 }
+
+// ---------------------------------------------------------------------------
+// Fix-version lookup, added for src/pages/api/generate-fix-pr.ts's dependency
+// bump feature. Deliberately a separate function/cache from lookupCveIds
+// above rather than a change to its signature or return shape — every
+// existing caller (webapp.ts, dependencyManifest.ts) keeps working unchanged.
+//
+// OSV.dev's `affected[].ranges[].events` array names a `"fixed"` version per
+// SEMVER range (confirmed against a live https://api.osv.dev/v1/query
+// response for lodash@4.17.15, which returns
+// `"ranges":[{"type":"SEMVER","events":[{"introduced":"4.0.0"},{"fixed":"4.17.21"}]}]`
+// under the `affected` entry whose `package.name` is "lodash" — the same
+// response also contains `affected` entries for unrelated packages like
+// "lodash-es" and "lodash.trimend" that must be filtered out by name).
+//
+// A `"fixed"` event is a real patched version. Its absence (only
+// `"last_affected"`, or no matching range at all) means OSV.dev does not know
+// of one yet — that is exactly the "don't guess" case the caller's safety
+// gate must skip.
+
+type OsvRangeEvent = { introduced?: string; fixed?: string; last_affected?: string };
+type OsvRange = { type?: string; events?: OsvRangeEvent[] };
+type OsvAffected = { package?: { name?: string; ecosystem?: string }; ranges?: OsvRange[] };
+type OsvVulnFull = OsvVuln & { affected?: OsvAffected[] };
+
+export type OsvFixInfo = {
+  cveIds: string[];
+  /** Raw OSV.dev advisory ids (e.g. "GHSA-…" or "OSV-…") — every advisory has
+   *  one of these even when it has no CVE alias, and https://osv.dev/vulnerability/<id>
+   *  is a valid page for each, unlike CVE ids which OSV.dev doesn't host directly. */
+  osvIds: string[];
+  /**
+   * The lowest concrete version that resolves every vulnerability OSV.dev
+   * reports for this package at the queried version, or null when at least
+   * one of them has no named fixed version (still unpatched upstream, or the
+   * only event is `last_affected`) — callers must treat null as "cannot
+   * determine a safe target version," never as "no fix needed."
+   */
+  fixedVersion: string | null;
+};
+
+const fixCache = new Map<string, OsvFixInfo>();
+
+/** Parses a bare `X.Y.Z` version for comparison. Anything with a prerelease/
+ *  build suffix or non-numeric segment returns null — same "don't guess"
+ *  posture as dependencyManifest.ts's minVersionFromRange. */
+function parseConcreteVersion(v: string): [number, number, number] | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function compareConcreteVersions(a: [number, number, number], b: [number, number, number]): number {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+/**
+ * Looks up CVE ids plus a fixed-version target for a package/version, in the
+ * same "npm" (or any OSV ecosystem) shape as lookupCveIds. Never throws — a
+ * failed or empty lookup returns { cveIds: [], fixedVersion: null }, which
+ * callers must treat as "cannot safely act," not "nothing wrong."
+ */
+export async function lookupOsvFixInfo(ecosystem: string, packageName: string, version: string): Promise<OsvFixInfo> {
+  const empty: OsvFixInfo = { cveIds: [], osvIds: [], fixedVersion: null };
+  if (version === "unknown") return empty;
+
+  const cacheKey = `${ecosystem}:${packageName}@${version}`;
+  const cached = fixCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch("https://api.osv.dev/v1/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ package: { name: packageName, ecosystem }, version }),
+      signal: AbortSignal.timeout(OSV_TIMEOUT_MS),
+    });
+    if (!res.ok) return empty;
+
+    const body = (await res.json()) as { vulns?: OsvVulnFull[] };
+    const vulns = body.vulns ?? [];
+    if (vulns.length === 0) {
+      fixCache.set(cacheKey, empty);
+      return empty;
+    }
+
+    const isCve = (id: string) => /^CVE-\d{4}-\d{4,}$/i.test(id);
+    const cveIds = [
+      ...new Set(vulns.flatMap((v) => [v.id, ...(v.aliases ?? [])]).filter(isCve).map((id) => id.toUpperCase())),
+    ];
+    const osvIds = [...new Set(vulns.map((v) => v.id).filter((id): id is string => typeof id === "string"))];
+
+    // Every returned vuln must name a concrete fixed version for this
+    // package for us to claim a single safe target version — if any one of
+    // them doesn't, we cannot say the package is fully fixed at any version,
+    // so the whole lookup reports fixedVersion: null.
+    let maxFixed: [number, number, number] | null = null;
+    let maxFixedStr: string | null = null;
+    for (const v of vulns) {
+      const matchingRanges = (v.affected ?? [])
+        .filter((a) => a.package?.name === packageName && a.package?.ecosystem === ecosystem)
+        .flatMap((a) => a.ranges ?? [])
+        .filter((r) => r.type === "SEMVER");
+
+      const fixedVersionsForThisVuln = matchingRanges
+        .flatMap((r) => r.events ?? [])
+        .map((e) => e.fixed)
+        .filter((f): f is string => typeof f === "string")
+        .map((f) => ({ raw: f, parsed: parseConcreteVersion(f) }))
+        .filter((f): f is { raw: string; parsed: [number, number, number] } => f.parsed !== null);
+
+      if (fixedVersionsForThisVuln.length === 0) {
+        // This vuln has no matching range with a concrete fixed version —
+        // either still unpatched, or only a last_affected event. Bail out
+        // entirely: we cannot promise a single version fixes everything.
+        fixCache.set(cacheKey, { cveIds, osvIds, fixedVersion: null });
+        return { cveIds, osvIds, fixedVersion: null };
+      }
+
+      for (const f of fixedVersionsForThisVuln) {
+        if (maxFixed === null || compareConcreteVersions(f.parsed, maxFixed) > 0) {
+          maxFixed = f.parsed;
+          maxFixedStr = f.raw;
+        }
+      }
+    }
+
+    const result: OsvFixInfo = { cveIds, osvIds, fixedVersion: maxFixedStr };
+    fixCache.set(cacheKey, result);
+    return result;
+  } catch {
+    return empty;
+  }
+}
