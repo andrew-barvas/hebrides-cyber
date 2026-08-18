@@ -2,6 +2,7 @@
 // WordPress deep scan (if detected), CORS reflected-origin, JS library versions.
 // All checks are passive/safe read-only probes — no exploit code.
 import { npmPackageNameFor, lookupNpmCveIds, extractCveIdsFromText } from "./osv";
+import { type Baseline, normaliseBody, fetchBaseline, matchesBaselineHeaders, isCatchAllBody } from "./httpProbe";
 
 export type WebAppResult =
   | {
@@ -44,6 +45,17 @@ export type WordPressData = {
   readmeAccessible: boolean;
   wpCronAccessible: boolean;
   enumeratedUsers: string[];
+  plugins: DetectedPlugin[];
+};
+
+// A plugin name + version pair read from the plugin's own public readme.txt.
+// See the "WordPress plugin version detection" section below for how this is
+// produced and why no cveIds field exists here (OSV.dev has no WordPress
+// plugin ecosystem — see src/lib/scanners/osv.ts's ecosystem comment).
+export type DetectedPlugin = {
+  slug: string;
+  name: string;
+  version: string;
 };
 
 export type JoomlaData = {
@@ -208,12 +220,15 @@ async function probePath(url: string): Promise<boolean> {
 }
 
 async function checkWordPress(origin: string): Promise<WordPressData> {
-  const [xmlRpc, usersRes, debugLog, readme, wpCron] = await Promise.all([
+  // Baseline is shared by the plugin readme.txt probes below — see the
+  // "WordPress plugin version detection" section for why it's needed.
+  const [xmlRpc, usersRes, debugLog, readme, wpCron, baseline] = await Promise.all([
     probePath(`${origin}/xmlrpc.php`),
     fetch(`${origin}/wp-json/wp/v2/users`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
     probePath(`${origin}/wp-content/debug.log`),
     probePath(`${origin}/readme.html`),
     probePath(`${origin}/wp-cron.php`),
+    fetchBaseline(origin),
   ]);
 
   let enumeratedUsers: string[] = [];
@@ -228,6 +243,8 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     } catch { /* ignore */ }
   }
 
+  const plugins = await detectPlugins(origin, baseline);
+
   return {
     xmlRpcEnabled: xmlRpc,
     userEnumerationPossible,
@@ -235,7 +252,91 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     readmeAccessible: readme,
     wpCronAccessible: wpCron,
     enumeratedUsers,
+    plugins,
   };
+}
+
+// ── WordPress plugin version detection ──────────────────────────────────────
+// Every plugin hosted on the official wordpress.org repository ships a public
+// /wp-content/plugins/<slug>/readme.txt with a "Stable tag: X.Y.Z" line —
+// wp.org's own directory listing reads that same line to know what version to
+// serve, so it's the plugin author's own declared version, not a guess.
+//
+// Deliberately NOT a brute force of the thousands of slugs on wp.org: this
+// list is capped to plugins that are both genuinely common and have a
+// meaningful history of CVEs, so the check stays low-noise and low-volume.
+// If a plugin isn't installed, its readme.txt 404s (or gets caught by the
+// baseline/catch-all check below) — nothing is reported either way.
+type PluginCandidate = { slug: string; name: string };
+
+const PLUGIN_CANDIDATES: PluginCandidate[] = [
+  { slug: "wordpress-seo", name: "Yoast SEO" },
+  { slug: "elementor", name: "Elementor" },
+  { slug: "woocommerce", name: "WooCommerce" },
+  { slug: "contact-form-7", name: "Contact Form 7" },
+  { slug: "jetpack", name: "Jetpack" },
+  { slug: "wpforms-lite", name: "WPForms" },
+  { slug: "all-in-one-seo-pack", name: "All in One SEO" },
+  { slug: "updraftplus", name: "UpdraftPlus" },
+  { slug: "wordfence", name: "Wordfence Security" },
+  { slug: "akismet", name: "Akismet" },
+  { slug: "really-simple-ssl", name: "Really Simple SSL" },
+  { slug: "advanced-custom-fields", name: "Advanced Custom Fields" },
+  { slug: "litespeed-cache", name: "LiteSpeed Cache" },
+  { slug: "w3-total-cache", name: "W3 Total Cache" },
+  { slug: "wp-super-cache", name: "WP Super Cache" },
+  { slug: "wp-smushit", name: "Smush" },
+  { slug: "redirection", name: "Redirection" },
+  { slug: "better-wp-security", name: "iThemes/Solid Security" },
+  { slug: "ninja-forms", name: "Ninja Forms" },
+  { slug: "google-analytics-for-wordpress", name: "MonsterInsights" },
+];
+
+// Run readme.txt probes in small concurrent batches — bounds both total
+// request volume (capped candidate list) and in-flight concurrency (this),
+// so 20 candidates neither hit the target sequentially one-by-one (slow) nor
+// all at once (bursty/abusive).
+const PLUGIN_PROBE_CONCURRENCY = 5;
+
+const STABLE_TAG_RE = /Stable tag:\s*([\w.\-]+)/i;
+
+async function probePlugin(origin: string, candidate: PluginCandidate, baseline: Baseline): Promise<DetectedPlugin | null> {
+  const path = `/wp-content/plugins/${candidate.slug}/readme.txt`;
+  try {
+    const res = await fetch(origin + path, { redirect: "manual", signal: AbortSignal.timeout(6_000) });
+    if (res.status !== 200) return null;
+
+    // Belt-and-suspenders: same document as the site root for every path.
+    if (matchesBaselineHeaders(baseline, res)) return null;
+
+    const text = await res.text().catch(() => "");
+    const masked = normaliseBody(text, path);
+
+    // Same document as a URL we know doesn't exist — this "plugin" isn't real.
+    if (isCatchAllBody(baseline, masked)) return null;
+
+    // A genuine wp.org readme.txt always declares a stable tag. A catch-all
+    // shell (or an unrelated 200) will not — this is the decisive check, not
+    // just a version-extraction convenience.
+    const m = text.match(STABLE_TAG_RE);
+    if (!m) return null;
+
+    return { slug: candidate.slug, name: candidate.name, version: m[1] };
+  } catch {
+    return null; // Network errors are not findings.
+  }
+}
+
+async function detectPlugins(origin: string, baseline: Baseline): Promise<DetectedPlugin[]> {
+  const found: DetectedPlugin[] = [];
+  for (let i = 0; i < PLUGIN_CANDIDATES.length; i += PLUGIN_PROBE_CONCURRENCY) {
+    const batch = PLUGIN_CANDIDATES.slice(i, i + PLUGIN_PROBE_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((c) => probePlugin(origin, c, baseline)));
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) found.push(r.value);
+    }
+  }
+  return found;
 }
 
 // ── Joomla deep scan ───────────────────────────────────────────────────────────
