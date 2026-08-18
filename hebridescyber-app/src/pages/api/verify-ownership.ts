@@ -15,6 +15,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "node:crypto";
 import { hostnameFromUrl, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { logAuditEvent } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -58,6 +59,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .update({ verified_at: new Date().toISOString(), method: result.method })
         .eq("id", existing.id);
     }
+
+    // Logged both ways — repeated failures against the same domain are worth
+    // being able to see (someone probing a domain they don't actually
+    // control), not just successes.
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: result.verified ? "domain_verification.succeeded" : "domain_verification.failed",
+      resourceType: "domain",
+      resourceId: domain,
+      metadata: { method: result.method },
+    });
 
     return res.status(200).json({ verified: result.verified, method: result.method });
   }

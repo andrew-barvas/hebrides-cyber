@@ -6,6 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateShareToken } from "@/lib/reportShares";
+import { logAuditEvent } from "@/lib/audit";
 
 const MAX_EXPIRY_DAYS = 365;
 
@@ -68,6 +69,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Flagged as the highest-priority audit event of this batch — a share
+    // link is a credential that's externally reachable (see
+    // src/pages/api/reports/[token].ts), unlike everything else here.
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "share_link.created",
+      resourceType: "scan",
+      resourceId: scanId,
+      metadata: { share_id: data.id, expires_at: expiresAt },
+    });
+
     return res.status(201).json(withShareUrl(data));
   }
 
@@ -82,6 +95,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("scan_id", scanId);
 
     if (error) return res.status(500).json({ error: error.message });
+
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "share_link.revoked",
+      resourceType: "scan",
+      resourceId: scanId,
+      metadata: { share_id: id },
+    });
+
     return res.status(200).json({ ok: true });
   }
 

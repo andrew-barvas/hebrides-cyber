@@ -7,6 +7,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateWebhookSecret } from "@/lib/webhooks";
+import { logAuditEvent } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -63,6 +64,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (error) return res.status(500).json({ error: error.message });
 
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "webhook.created",
+      resourceType: "webhook",
+      resourceId: data.id,
+      metadata: { url, name: label },
+    });
+
     // The only time the plaintext secret is ever returned. Unlike an API key,
     // it IS still readable server-side afterwards (see src/lib/webhooks.ts
     // for why), but the UI should still treat this as the one moment to
@@ -81,6 +90,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId);
 
     if (error) return res.status(500).json({ error: error.message });
+
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "webhook.removed",
+      resourceType: "webhook",
+      resourceId: id,
+    });
+
     return res.status(200).json({ ok: true });
   }
 

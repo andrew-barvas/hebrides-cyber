@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { logAuditEvent } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const adminId = await requireAdmin(req);
@@ -59,10 +60,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!scanId || !action) return res.status(400).json({ error: "scanId and action required" });
     if (action === "cancel") {
       await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
+      await logAuditEvent(supabaseAdmin, {
+        actorId: adminId,
+        action: "admin.scan_cancelled",
+        resourceType: "scan",
+        resourceId: scanId,
+      });
       return res.status(200).json({ ok: true });
     }
     if (action === "retry") {
       await supabaseAdmin.from("scans").update({ status: "pending" }).eq("id", scanId);
+      await logAuditEvent(supabaseAdmin, {
+        actorId: adminId,
+        action: "admin.scan_retried",
+        resourceType: "scan",
+        resourceId: scanId,
+      });
       return res.status(200).json({ ok: true });
     }
     return res.status(400).json({ error: "Unknown action" });

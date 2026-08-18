@@ -30,12 +30,44 @@ async function isAlreadyProcessed(eventId: string): Promise<boolean> {
   }
 }
 
-async function markProcessed(eventId: string, action: string) {
+async function markProcessed(
+  eventId: string,
+  action: string,
+  extra?: { actor?: string | null; actorEmail?: string | null; metadata?: Record<string, unknown> }
+) {
   await supabaseAdmin.from("audit_logs").insert({
     action,
     resource_type: "stripe_event",
     resource_id: eventId,
+    actor: extra?.actor ?? null,
+    // admin/audit.ts's search UI filters on actor_email — populate it here
+    // too (from the caller's already-fetched profile, where available)
+    // rather than leaving Stripe-originated entries unsearchable by that
+    // filter while everything else in the log is.
+    actor_email: extra?.actorEmail ?? null,
+    metadata: extra?.metadata ?? null,
   });
+}
+
+/**
+ * subscription.updated/payment_failed/subscription.deleted only carry a
+ * stripe_subscription_id, not the owner directly — this resolves both owner
+ * and email in one query so those audit_logs entries stay attributable
+ * (checkout.completed gets this for free, already has `owner` in scope).
+ */
+async function lookupSubscriptionOwner(stripeSubscriptionId: string): Promise<{ owner: string | null; email: string | null }> {
+  const { data: sub } = await supabaseAdmin
+    .from("subscriptions")
+    .select("owner")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle();
+  if (!sub?.owner) return { owner: null, email: null };
+
+  // Two queries, not an embed: subscriptions.owner references auth.users,
+  // not public.users, so there's no FK path for PostgREST to follow a
+  // subscriptions.select("owner, users(email)")-style embed through.
+  const { data: profile } = await supabaseAdmin.from("users").select("email").eq("id", sub.owner).maybeSingle();
+  return { owner: sub.owner, email: profile?.email ?? null };
 }
 
 async function sendWelcomeEmail(email: string, plan: string) {
@@ -154,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .eq("id", owner);
         }
 
-        await markProcessed(event.id, "stripe.checkout.completed");
+        await markProcessed(event.id, "stripe.checkout.completed", { actor: owner, metadata: { plan } });
         break;
       }
 
@@ -176,7 +208,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
           .eq("stripe_subscription_id", sub.id);
 
-        await markProcessed(event.id, "stripe.subscription.updated");
+        {
+          const { owner, email } = await lookupSubscriptionOwner(sub.id);
+          await markProcessed(event.id, "stripe.subscription.updated", {
+            actor: owner,
+            actorEmail: email,
+            metadata: { plan, status },
+          });
+        }
         break;
       }
 
@@ -190,7 +229,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .update({ status: "past_due", updated_at: new Date().toISOString() })
           .eq("stripe_subscription_id", subId);
 
-        await markProcessed(event.id, "stripe.payment_failed");
+        {
+          const { owner, email } = await lookupSubscriptionOwner(subId);
+          await markProcessed(event.id, "stripe.payment_failed", { actor: owner, actorEmail: email });
+        }
         break;
       }
 
@@ -201,7 +243,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .update({ status: "cancelled", updated_at: new Date().toISOString() })
           .eq("stripe_subscription_id", sub.id);
 
-        await markProcessed(event.id, "stripe.subscription.deleted");
+        {
+          const { owner, email } = await lookupSubscriptionOwner(sub.id);
+          await markProcessed(event.id, "stripe.subscription.deleted", { actor: owner, actorEmail: email });
+        }
         break;
       }
 

@@ -6,6 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { mintApiKey } from "@/lib/apiKeys";
+import { logAuditEvent } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -56,6 +57,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (error) return res.status(500).json({ error: error.message });
 
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "api_key.created",
+      resourceType: "api_key",
+      resourceId: data.id,
+      metadata: { name: keyName, key_prefix: data.key_prefix },
+    });
+
     // The only time the plaintext is ever returned. It is not stored, so it
     // cannot be shown again — the UI must make that clear to the user.
     return res.status(201).json({ ...data, key: minted.plaintext });
@@ -74,6 +83,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId);
 
     if (error) return res.status(500).json({ error: error.message });
+
+    await logAuditEvent(supabaseAdmin, {
+      actorId: caller.ownerId,
+      action: "api_key.revoked",
+      resourceType: "api_key",
+      resourceId: id,
+    });
+
     return res.status(200).json({ ok: true });
   }
 
