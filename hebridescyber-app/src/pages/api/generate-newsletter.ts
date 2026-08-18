@@ -30,7 +30,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       slug: post.slug,
       title: post.title,
       excerpt: post.excerpt,
-      body_markdown: post.body_markdown,
+      body: post.body,
+      // Both status and published_at are required to be publicly visible —
+      // sql/migrations/002_improvements.sql's RLS policy is
+      // `status = 'published' and published_at is not null`. status
+      // defaults to 'draft', so omitting this silently published nothing
+      // (the row existed but no anon reader could ever see it).
+      status: "published",
       published_at: new Date().toISOString(),
     },
     { onConflict: "slug" }

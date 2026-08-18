@@ -1,7 +1,10 @@
 -- Seed data for the /blog section (public_posts table: sql/migrations/001_init.sql).
 --
--- Run this in the Supabase SQL editor AFTER 001_init.sql. Idempotent —
--- ON CONFLICT (slug) DO NOTHING means it's safe to re-run.
+-- Run this in the Supabase SQL editor AFTER 002_improvements.sql (needs the
+-- body/status columns that migration adds — body_markdown was renamed to
+-- body, and a row needs status = 'published', not just published_at set, to
+-- pass that migration's RLS policy). Idempotent — ON CONFLICT (slug) DO
+-- NOTHING means it's safe to re-run.
 --
 -- Mix of real, sourced recent incidents (each cites where the facts came
 -- from — verify independently before repeating these claims anywhere
@@ -11,7 +14,7 @@
 -- (2026-08-15) — going forward, generate-newsletter (src/lib/newsletter.ts)
 -- takes over and writes real ones grounded in this app's own scan data.
 
-insert into public.blog_posts (slug, title, excerpt, body_markdown, published_at) values
+insert into public.blog_posts (slug, title, excerpt, body, published_at, status) values
 
 ('hyundai-turkiye-ransomware-recruitment-data',
  'CRPx0 Ransomware Hits Hyundai Turkey: Why Recruitment Data Is a Bigger Target Than You Think',
@@ -36,7 +39,7 @@ Repeat incidents at the same organisation are a reminder that a one-off audit is
 
 *Sources: [GBHackers](https://gbhackers.com/crpx0-ransomware-claims-hyundai-turkey-breach/), [CyberPress](https://cyberpress.org/crpx0-ransomware-claims-hyundai-turkey-breach/)*
 $md$,
- '2026-08-10T08:00:00Z'),
+ '2026-08-10T08:00:00Z', 'published'),
 
 ('uk-ransomware-2026-sme-stats',
  '323 UK Firms Hit by Ransomware in a Year — More Than Half Were SMEs',
@@ -64,7 +67,7 @@ If you don't currently have anything watching for the second point — outdated 
 
 *Sources: [City of London Police](https://www.cityoflondon.police.uk/news/city-of-london/news/2026/june/dont-pay-the-ransom-warning-to-organisations-to-protect-themselves-from-ransomware-attacks-as-more-than-320-businesses-affected-last-year), [Infosecurity Magazine](https://www.infosecurity-magazine.com/news/over-300-uk-firms-hit-ransomware/)*
 $md$,
- '2026-08-03T08:00:00Z'),
+ '2026-08-03T08:00:00Z', 'published'),
 
 ('klue-supply-chain-breach-third-party-risk',
  'One Leaked Credential From 2022, ~200 Companies Breached: The Klue Supply-Chain Lesson',
@@ -90,7 +93,7 @@ A [CI/CD and secrets management review](/services) is specifically designed to c
 
 *Sources: roundup reporting via [TechCrunch](https://techcrunch.com/2026/07/07/the-worst-hacks-and-breaches-of-2026-so-far/) and [TechRepublic](https://www.techrepublic.com/article/news-biggest-data-breaches-2026-ranked-impact/)*
 $md$,
- '2026-07-27T08:00:00Z'),
+ '2026-07-27T08:00:00Z', 'published'),
 
 ('conduent-healthcare-breach-vendor-liability',
  '62.2 Million Records: The Conduent Breach and Why "We''re Just a Vendor" Isn''t a Defence',
@@ -115,7 +118,7 @@ Conduent isn't a healthcare provider itself — it's a *business associate*, a v
 
 *Sources: [Paubox](https://www.paubox.com/blog/conduent-breach-hits-62m-ranking-third-largest-in-us-healthcare-history), [HIPAA Journal](https://www.hipaajournal.com/conduent-business-solutions-data-breach/)*
 $md$,
- '2026-07-20T08:00:00Z'),
+ '2026-07-20T08:00:00Z', 'published'),
 
 ('charter-communications-breach-42-million',
  'Charter Communications: Tens of Millions of Records Stolen and Published — What Extortion-Only Attacks Mean for You',
@@ -137,7 +140,7 @@ Classic ransomware follows a familiar shape: encrypt the victim's files, demand 
 
 *Source: roundup reporting via [TechCrunch](https://techcrunch.com/2026/07/07/the-worst-hacks-and-breaches-of-2026-so-far/)*
 $md$,
- '2026-07-13T08:00:00Z'),
+ '2026-07-13T08:00:00Z', 'published'),
 
 ('mfa-best-value-security-upgrade',
  'Multi-Factor Authentication: The Best Free Security Upgrade for a Small Business',
@@ -157,7 +160,7 @@ Multi-factor authentication (MFA) adds a second check — usually a time-based c
 If you're a Hebrides Cyber customer, you can enable TOTP two-factor on your own account right now from [Account → Security](/account/security) — it's built on Supabase's standard MFA implementation, no extra app required beyond an authenticator.
 
 $md$,
- '2026-07-06T08:00:00Z'),
+ '2026-07-06T08:00:00Z', 'published'),
 
 ('security-headers-five-minute-fix',
  'Five HTTP Headers Every Small Business Website Should Set (And None of Them Cost Anything)',
@@ -204,6 +207,6 @@ Adjust the CSP `default-src` to actually match what your site loads — a too-st
 
 Not sure which of these your own site is missing? [Run a free Security Score scan](/dashboard) and it'll tell you in about a minute.
 $md$,
- '2026-06-29T08:00:00Z')
+ '2026-06-29T08:00:00Z', 'published')
 
 on conflict (slug) do nothing;
