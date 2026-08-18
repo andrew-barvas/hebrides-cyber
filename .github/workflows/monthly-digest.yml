@@ -1,0 +1,39 @@
+name: Monthly Digest
+
+# Sends the monthly Security Score digest email to every active subscriber
+# (see src/lib/email.ts and src/pages/api/send-monthly-digest.ts). One email
+# per subscriber, summarising the most recent completed scan for each of
+# their monitored targets — not one email per scan.
+#
+# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
+# Static Web Apps), same pattern as weekly-newsletter.yml calling
+# generate-newsletter — see that workflow's header comment for why there's
+# only one deployed surface to call.
+#
+# Requires:
+#   NEXT_PUBLIC_SITE_URL    - the deployed site's own URL (repo variable)
+#   DIGEST_SERVICE_TOKEN    - shared secret sent as X-Service-Token. Not
+#     named GITHUB_*  — GitHub rejects any repo secret starting with GITHUB_
+#     as reserved for its own auto-generated ones (see NEWSLETTER_SERVICE_TOKEN's
+#     comment in .env.example for the same lesson).
+
+on:
+  schedule:
+    # 07:30 UTC on the 1st of every month.
+    - cron: "30 7 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger send-monthly-digest
+        run: |
+          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/send-monthly-digest" \
+            -H "X-Service-Token: ${{ secrets.DIGEST_SERVICE_TOKEN }}")
+          cat /tmp/response.json
+          if [ "$status" != "200" ]; then
+            echo "send-monthly-digest failed with status $status"
+            exit 1
+          fi
