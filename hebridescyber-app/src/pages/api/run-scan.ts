@@ -22,13 +22,53 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { validateNoSsrf, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
-import { executeScan } from "@/lib/scanExecution";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 
 // Defaults to requiring real DNS/file domain verification. Set
 // ALLOW_DEV_TOKEN_VERIFICATION=true only for local dev — see
 // src/lib/ownership.ts and docs/security.md.
 const allowDevTokenVerification = process.env.ALLOW_DEV_TOKEN_VERIFICATION === "true";
+
+// This repo's own identity, for dispatching .github/workflows/on-demand-scan.yml
+// — not customer-supplied, so it's a constant rather than an input like
+// generate-fix-pr.ts's githubRepo.
+const OWN_GITHUB_REPO = "andrew-barvas/hebrides-cyber";
+
+/**
+ * Best-effort trigger for the on-demand-scan.yml workflow, so a queued job
+ * gets picked up in roughly a minute instead of waiting for
+ * scheduled-scans.yml's next daily cron. Never throws — GITHUB_PAT being
+ * unset, or GitHub's API being briefly unavailable, must never turn a
+ * successful "queued" response into a 500, since the job is safely queued
+ * either way and the daily cron is a real fallback, just a slower one.
+ */
+async function triggerOnDemandWorkflow(): Promise<void> {
+  const pat = process.env.GITHUB_PAT;
+  if (!pat) {
+    console.warn("[run-scan] GITHUB_PAT not set — queued scan will wait for the next scheduled-scans.yml cron.");
+    return;
+  }
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${OWN_GITHUB_REPO}/actions/workflows/on-demand-scan.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${pat}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ref: "master" }),
+        signal: AbortSignal.timeout(6_000),
+      }
+    );
+    if (!res.ok) {
+      console.warn(`[run-scan] on-demand-scan.yml dispatch failed (${res.status}) — falling back to the daily cron.`);
+    }
+  } catch (err) {
+    console.warn("[run-scan] on-demand-scan.yml dispatch threw — falling back to the daily cron:", (err as Error).message);
+  }
+}
 
 // Scan results can be large.
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
@@ -123,8 +163,11 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   if (fetchError || !scan) return res.status(404).json({ error: fetchError?.message ?? "Scan not found" });
   if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "You do not own this scan" });
 
-  // Idempotent replay: a scan that already finished shouldn't re-run the
-  // whole check suite just because step 2 was called again.
+  // Idempotent replay: the dashboard polls this same endpoint while a scan is
+  // queued/running, so a scan that already finished (or already failed)
+  // shouldn't be re-verified or re-queued just because step 2 was called
+  // again — and a scan that's mid-flight must return its current status
+  // without inserting a second scan_jobs row for it.
   if (scan.status === "completed") {
     const { data: existingResult } = await supabaseAdmin
       .from("scan_results")
@@ -140,6 +183,16 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     });
   }
 
+  if (scan.status === "failed") {
+    return res.status(200).json({ ok: false, scanId, status: "failed", error: "Scan failed — try running it again." });
+  }
+
+  if (scan.status === "running") {
+    return res.status(202).json({ ok: true, scanId, status: "running" });
+  }
+
+  // scan.status === "pending" — first time step 2 has been reached for this
+  // scan, so this is the only branch that verifies ownership and enqueues.
   if (!(await isOwnershipVerified(scan.owner, scan.target_url, scan.proof_token, req))) {
     return res.status(401).json({
       error: "This domain hasn't been verified yet — use the \"Verify domain ownership\" section below, then run your scan again.",
@@ -156,8 +209,32 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
 
   await supabaseAdmin.from("scans").update({ status: "running", owner_verified: true }).eq("id", scanId);
 
-  const outcome = await executeScan(supabaseAdmin, scanId, scan.owner, scan.target_url);
-  if (!outcome.ok) return res.status(500).json({ error: outcome.error });
+  // Enqueue rather than call executeScan() directly — see
+  // .github/workflows/on-demand-scan.yml's header comment for why running
+  // the check suite synchronously inside this HTTP request isn't safe on
+  // Azure Static Web Apps' Free SKU. scan_id is pre-set so
+  // run-queued-scan-jobs.ts reuses this row and stays passive-only, rather
+  // than creating a second scans row the way scheduled jobs do.
+  const { error: jobError } = await supabaseAdmin.from("scan_jobs").insert({
+    owner: scan.owner,
+    target_url: scan.target_url,
+    scan_id: scanId,
+    status: "pending",
+  });
+  if (jobError) {
+    await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
+    return res.status(500).json({ error: `Failed to queue scan: ${jobError.message}` });
+  }
 
-  return res.status(200).json({ ok: true, scanId, status: "completed", score: outcome.score, summary: outcome.summary });
+  // Awaited so the dispatch call isn't cut off by the function returning —
+  // but it never throws or blocks the response beyond its own 6s timeout,
+  // see triggerOnDemandWorkflow's doc comment.
+  await triggerOnDemandWorkflow();
+
+  return res.status(202).json({
+    ok: true,
+    scanId,
+    status: "queued",
+    message: "Scan queued — this usually takes under a minute.",
+  });
 }
