@@ -937,3 +937,258 @@ deciding whether this is already fixed.
 After upgrading, run your test suite and re-scan to confirm the finding
 clears.`;
 }
+
+// ---------------------------------------------------------------------------
+// Google Safe Browsing (src/lib/scanners/safeBrowsing.ts) — the site itself
+// is currently on Google's malware/phishing/unwanted-software threat list.
+// Unlike most findings above, the fix isn't "configure something" — it's
+// "your site is very likely compromised" (or a redirect on your domain is
+// being abused), plus the delisting process once it's actually clean.
+// ---------------------------------------------------------------------------
+
+export const SAFE_BROWSING_FLAGGED = `Google has flagged this exact URL on its Safe Browsing threat list. Chrome,
+Firefox, and Safari all consult this list before loading a page — visitors
+may already be seeing a full-page red warning, or being blocked outright,
+without you knowing anything is wrong.
+
+**This is not a configuration issue like the other findings in this report.**
+A URL only ends up flagged for one of two reasons:
+
+1. **Your site was compromised** and is now serving malicious content —
+   injected JavaScript, a drive-by download, or a hidden redirect to a
+   malicious site — without your knowledge. This is the far more common case.
+2. **A URL shortener, open redirect, or user-generated-content area on your
+   domain** is being abused to point at someone else's malicious page, and
+   Google flagged your domain because the malicious content is reachable
+   through it.
+
+**Investigate before you try to get delisted — delisting a still-compromised
+site just gets it flagged again within hours:**
+
+1. Compare live files against a known-good backup or your git history for
+   unexpected changes, especially in theme/plugin files, \`.htaccess\`,
+   \`web.config\`, or anywhere your CMS stores executable templates.
+2. Search page source and templates for injected \`<script>\` tags, obfuscated
+   \`eval(\`/\`atob(\` JavaScript, or iframes pointing at unfamiliar domains —
+   these are frequently appended right before \`</body>\`.
+3. Check for admin/user accounts you don't recognise, and rotate every
+   credential with access to the server, database, and hosting/DNS control
+   panel — not just the CMS admin password.
+4. Check web server and application logs around the time the compromise
+   likely started for the initial entry point (an outdated plugin, an
+   exposed admin panel, a leaked credential) so the same hole doesn't let the
+   attacker back in after cleanup.
+5. If your site includes a redirect, URL-shortening, or user-submitted-link
+   feature, confirm it can't be pointed at arbitrary external URLs by an
+   anonymous visitor.
+
+**Once you're confident the site is genuinely clean:**
+
+1. In [Google Search Console](https://search.google.com/search-console),
+   verify ownership of the domain if you haven't already.
+2. Open **Security Issues** in the left sidebar — Google lists the specific
+   pages and threat type it detected, which is often more precise than what
+   this scan alone can tell you.
+3. After remediation, use the **Request a Review** action on that page.
+   Google re-crawls and, if clean, lifts the flag — this typically takes
+   anywhere from a few hours to a few days, not instantly.
+4. Keep monitoring: re-run this scan and keep Search Console's email alerts
+   on, since a reinfection through the same hole will flag the site again.`;
+
+// ---------------------------------------------------------------------------
+// WordPress plugin version detection (src/lib/scanners/webapp.ts,
+// checkWordPress() → detectPlugins()) — informational only. This finding
+// reports a plugin name + version read from the plugin's own public
+// readme.txt; it is not itself a vulnerability claim. OSV.dev has no
+// "WordPress" ecosystem (verified against its published ecosystem list), so
+// unlike the npm-backed JS library findings above, no automated CVE id can be
+// attached here — forcing one would risk a false match, which the appendix
+// convention in docs/PLATFORM-ROADMAP.md explicitly rules out.
+// ---------------------------------------------------------------------------
+
+export const WP_PLUGIN_DETECTED = `This is an informational finding, not a vulnerability report — a WordPress
+plugin and its version were readable from the plugin's own public
+\`readme.txt\` file. No automated CVE match is attached because OSV.dev
+(this scanner's vulnerability data source) does not cover the WordPress
+plugin ecosystem.
+
+**What to do with this:**
+
+1. Compare the detected version against the plugin's changelog on
+   [wordpress.org/plugins](https://wordpress.org/plugins/) to see how far
+   behind current it is.
+2. Cross-check the exact version against
+   [WPScan's vulnerability database](https://wpscan.com/) or the
+   [National Vulnerability Database](https://nvd.nist.gov/vuln/search) —
+   both index WordPress-plugin-specific CVEs that OSV.dev does not.
+3. If the plugin is out of date, update it from the WordPress admin dashboard
+   (**Plugins → Update Available**) after taking a backup.
+
+**Reduce exposure regardless of version**, since the readme.txt itself being
+world-readable is what made this detection possible in the first place:
+
+\`\`\`nginx
+location ~ /wp-content/plugins/.*/readme\\.(txt|html)$ { deny all; return 404; }
+\`\`\`
+
+\`\`\`apache
+<FilesMatch "readme\\.(txt|html)$">
+  Require all denied
+</FilesMatch>
+\`\`\`
+
+This doesn't replace keeping the plugin updated — it only removes one of the
+easiest ways for an automated scanner (including this one) to fingerprint the
+exact version remotely.`;
+
+// ---------------------------------------------------------------------------
+// Wayback historical path discovery (src/lib/scanners/waybackDiscovery.ts)
+// ---------------------------------------------------------------------------
+
+export const WAYBACK_LIVE_PATH = `Confirm this path is meant to be publicly reachable, then either secure it or
+remove it.
+
+This wasn't found on a generic wordlist — it was found in the Wayback
+Machine's own archive of this domain, meaning it genuinely existed here at
+some point and still responds today. That combination (old + forgotten + still
+live) is exactly the profile of things nobody remembers to decommission:
+retired admin panels, one-off debug pages, deprecated API versions still
+running alongside their replacement.
+
+1. **Identify what it is.** Check the response directly and search your
+   deployment history/commit log for the path.
+2. **If it's not meant to be public**, remove the route or block it at the
+   server/CDN, the same as any other unintended exposure:
+
+\`\`\`nginx
+location = /path { deny all; return 404; }
+\`\`\`
+
+3. **If it's an old API version or admin surface still in active use**, that's
+   a bigger conversation than this one finding — put it behind authentication
+   and confirm it's on your team's radar for eventual retirement rather than
+   living on indefinitely because nothing broke yet.
+4. **Rotate anything it could have exposed** if it turns out to serve data or
+   functionality that shouldn't have been reachable — the same rule as any
+   other exposed-endpoint finding.`;
+
+// ---------------------------------------------------------------------------
+// HIBP domain breach search (src/lib/scanners/hibp.ts) — a positive match
+// here is evidence that email addresses on this domain appeared in a known
+// third-party breach dump. It is NOT a claim that this site is currently
+// compromised — say so explicitly, since it's easy to conflate with the
+// Safe Browsing finding above. Function, not a constant, because the useful
+// advice differs a lot depending on which data classes HIBP actually
+// reported (a breach with just email addresses needs different next steps
+// than one with plaintext passwords or financial data).
+// ---------------------------------------------------------------------------
+
+export function hibpBreachRemediation(dataClasses: string[]): string {
+  const classes = dataClasses.map((c) => c.toLowerCase());
+  const hasPasswords = classes.some((c) => c.includes("password"));
+  const hasFinancial = classes.some((c) =>
+    ["credit card", "bank account", "financ", "social security", "passport", "national id"].some((s) => c.includes(s))
+  );
+
+  const parts: string[] = [
+    `This is a record that email addresses on this domain appeared in a third-party breach dump — it is not a claim that this site is currently compromised. The exposure happened on the breached service, not here.`,
+    ``,
+    `1. **Identify who's actually affected.** Cross-reference the affected aliases against active accounts — some may be shared inboxes, former employees, or aliases no longer in use, which need no action.`,
+  ];
+
+  if (hasPasswords) {
+    parts.push(
+      ``,
+      `2. **Force a password reset** for every affected account that may have reused the breached password anywhere else, and enable MFA where it isn't already required. Leaked passwords are the single biggest driver of credential-stuffing attacks — attackers replay them against unrelated services, not just the one that was breached.`
+    );
+  } else {
+    parts.push(
+      ``,
+      `2. **No password was in this particular breach**, but treat the exposed addresses as a phishing/spam target list. Confirm SPF, DKIM, and DMARC are enforced (see the DNS findings above if any are missing) so a spoofed message impersonating these addresses is rejected rather than delivered.`
+    );
+  }
+
+  if (hasFinancial) {
+    parts.push(
+      ``,
+      `3. **Financial or government-ID data was included.** Check whether this triggers a breach-notification obligation in your jurisdiction (e.g. GDPR Article 33/34) and consider proactively notifying affected account holders.`
+    );
+  }
+
+  parts.push(
+    ``,
+    `Ongoing: re-run this check periodically rather than once. HIBP indexes newly-published breach dumps continuously, so a domain that's clean today can show a new match after the next one surfaces — that's expected, not a sign this check is unreliable.`
+  );
+
+  return parts.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Dockerfile base-image freshness (src/lib/scanners/dockerBaseImage.ts) — see
+// that file's header for why this is an end-of-life-tag check against
+// https://endoflife.date rather than an OSV.dev CVE match: OSV.dev's OS
+// ecosystems are real, but querying them needs the exact OS package versions
+// baked into the image, which a Dockerfile's FROM line doesn't give us.
+// ---------------------------------------------------------------------------
+
+/** Static because the fix is identical regardless of which image is affected. */
+export const DOCKER_BASE_IMAGE_UNPINNED = `Pin the base image to an explicit version tag (and ideally a digest) instead
+of \`latest\` or no tag at all.
+
+\`\`\`dockerfile
+# Before
+FROM node
+
+# After — explicit tag
+FROM node:20-alpine
+
+# Stronger still — tag *and* digest, so the build is byte-for-byte
+# reproducible even if the tag is later moved or the registry is compromised
+FROM node:20-alpine@sha256:<digest>
+\`\`\`
+
+Get the current digest for a tag with:
+
+\`\`\`bash
+docker pull node:20-alpine
+docker inspect --format='{{index .RepoDigests 0}}' node:20-alpine
+\`\`\`
+
+Without a pinned tag, the exact contents of the base image can change between
+builds with no corresponding change to the Dockerfile — a dependency update
+upstream can break or silently alter your build, and there's no way to tell
+from the file alone which version actually shipped. Bump the pinned
+version/digest deliberately, as its own reviewed change, rather than
+inheriting whatever \`latest\` happens to resolve to on build day.`;
+
+/**
+ * Function, not a constant, for the same reason
+ * dependencyVulnerableRemediation is: the fix names the specific image,
+ * tag, and the real EOL date that was actually looked up — a static string
+ * can't do that, and fabricating a "latest supported version" we haven't
+ * verified would violate the same evidence rule the finding itself follows.
+ */
+export function dockerBaseImageOutdatedRemediation(repoPath: string, tag: string, cycle: string, eolDate: string, endoflifeProduct: string): string {
+  return `Upgrade **${repoPath}:${tag}** to a currently supported release. endoflife.date
+records ${repoPath} ${cycle} as end-of-life since ${eolDate} — no further
+security patches are published for it upstream, so any vulnerability found in
+it from this point on stays unpatched for as long as it's in use.
+
+1. Check the currently supported cycles for **${repoPath}** at
+   https://endoflife.date/${endoflifeProduct} — pick a cycle that is not past its own EOL date, ideally one with long support remaining.
+2. Update the tag in the Dockerfile:
+
+\`\`\`dockerfile
+FROM ${repoPath}:${tag}
+# becomes, e.g.
+FROM ${repoPath}:<current-supported-tag>
+\`\`\`
+
+3. Rebuild and run your test suite — a major-version bump on the base image
+   can change installed tooling, default users/permissions, or libc
+   (glibc vs musl on Alpine), so treat this like any other major dependency
+   upgrade rather than a drop-in swap.
+4. Re-scan to confirm the finding clears, and consider pinning the new tag by
+   digest too (see the unpinned-tag remediation) so the next upgrade is a
+   deliberate, reviewed change rather than a silent drift.`;
+}

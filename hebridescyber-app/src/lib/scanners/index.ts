@@ -12,12 +12,15 @@ import { checkOpenPorts, type PortsResult } from "./ports";
 import { checkPlaywrightPageLoad, type PlaywrightResult } from "./playwright";
 import { checkRecon, type ReconResult } from "./recon";
 import { checkWebApp, type WebAppResult } from "./webapp";
+import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
+import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
+import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import * as FIX from "./remediationText";
 
 export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
-  CloudMisconfigResult,
+  CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult,
 };
 
 export type ScanResults = {
@@ -34,6 +37,9 @@ export type ScanResults = {
   playwright: PlaywrightResult;
   recon: ReconResult;
   webapp: WebAppResult;
+  safeBrowsing: SafeBrowsingResult;
+  waybackDiscovery: WaybackDiscoveryResult;
+  hibp: HibpResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -105,7 +111,7 @@ async function checkZap(targetUrl: string): Promise<ZapResult> {
  * and ZAP (async server-side) run after.
  */
 export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
-  const [tls, headers, dns, exposure, directoryListing, cloudMisconfig, fingerprint, ports, recon] =
+  const [tls, headers, dns, exposure, directoryListing, cloudMisconfig, fingerprint, ports, recon, safeBrowsing, waybackDiscovery, hibp] =
     await Promise.all([
       checkTls(targetUrl),
       checkHeaders(targetUrl),
@@ -116,6 +122,9 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
       checkFingerprint(targetUrl),
       checkOpenPorts(targetUrl),
       checkRecon(targetUrl),
+      checkSafeBrowsing(targetUrl),
+      checkWaybackDiscovery(targetUrl),
+      checkHibp(targetUrl),
     ]);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
@@ -146,6 +155,9 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     playwright,
     recon,
     webapp,
+    safeBrowsing,
+    waybackDiscovery,
+    hibp,
     zap,
   };
 }
@@ -423,6 +435,17 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           remediation: FIX.WP_CRON,
         });
       }
+      if (wordpress.plugins.length > 0) {
+        for (const plugin of wordpress.plugins) {
+          findings.push({
+            checkId: `webapp.wp-plugin-detected:${plugin.slug}`,
+            severity: "info",
+            title: `WordPress plugin detected: ${plugin.name} ${plugin.version}`,
+            detail: `Version read from the plugin's public readme.txt (Stable tag). No automated CVE lookup is available for WordPress plugins — OSV.dev has no WordPress ecosystem coverage — so check this version manually against the plugin's changelog or WPScan/NVD for known vulnerabilities.`,
+            remediation: FIX.WP_PLUGIN_DETECTED,
+          });
+        }
+      }
     }
 
     // Joomla findings
@@ -527,6 +550,48 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           cveIds: lib.cveIds,
         });
       }
+    }
+  }
+
+  // --- Google Safe Browsing --------------------------------------------------
+  if (results.safeBrowsing.status === "checked" && results.safeBrowsing.flagged) {
+    const threatLabel = results.safeBrowsing.threatTypes
+      .map((t) =>
+        t === "SOCIAL_ENGINEERING" ? "phishing/social engineering" : t === "UNWANTED_SOFTWARE" ? "unwanted software" : "malware"
+      )
+      .join(", ");
+    findings.push({
+      checkId: "safe-browsing.flagged",
+      severity: "critical",
+      title: `Site flagged by Google Safe Browsing: ${threatLabel}`,
+      detail: `Google's Safe Browsing threat lists currently flag this URL for ${threatLabel}. Chrome, Firefox, and Safari may already be showing visitors a full-page warning or blocking access entirely.`,
+      remediation: FIX.SAFE_BROWSING_FLAGGED,
+    });
+  }
+
+  // --- Wayback Machine historical URL discovery -------------------------------
+  if (results.waybackDiscovery.status === "checked") {
+    for (const found of results.waybackDiscovery.discovered) {
+      findings.push({
+        checkId: found.checkId,
+        severity: found.severity,
+        title: `${found.name}: ${found.path}`,
+        detail: found.hint,
+        remediation: FIX.WAYBACK_LIVE_PATH,
+      });
+    }
+  }
+
+  // --- HaveIBeenPwned domain breach check --------------------------------------
+  if (results.hibp.status === "checked") {
+    for (const breach of results.hibp.breaches) {
+      findings.push({
+        checkId: `hibp.domain-breach:${breach.name}`,
+        severity: hibpBreachSeverity(breach),
+        title: `${breach.title}${breach.breachDate ? ` (${breach.breachDate})` : ""} — ${breach.affectedAliasCount} address(es) on this domain exposed`,
+        detail: breach.description || `Data classes exposed: ${breach.dataClasses.join(", ") || "unknown"}.`,
+        remediation: FIX.hibpBreachRemediation(breach.dataClasses),
+      });
     }
   }
 
