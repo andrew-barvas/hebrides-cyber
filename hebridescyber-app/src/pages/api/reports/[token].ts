@@ -7,6 +7,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildScanReport, findPreviousFindings, pendingScanReport } from "@/lib/scanReport";
 import { isExpired } from "@/lib/reportShares";
+import { logAuditEvent } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -38,6 +39,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .from("report_shares")
     .update({ view_count: share.view_count + 1 })
     .eq("id", share.id);
+
+  // No authenticated actor for a public link — actorId stays null. Logged
+  // per-view rather than folded into view_count's aggregate counter because
+  // this is the one audit-worthy action in the whole app with no
+  // authenticated actor at all: knowing *when* an externally-reachable
+  // report was opened is what an incident review would actually want.
+  void logAuditEvent(supabaseAdmin, {
+    action: "share_link.viewed",
+    resourceType: "scan",
+    resourceId: share.scan_id,
+    metadata: { share_id: share.id },
+  });
 
   const { data: scan } = await supabaseAdmin
     .from("scans")

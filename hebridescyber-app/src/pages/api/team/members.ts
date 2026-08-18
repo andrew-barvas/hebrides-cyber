@@ -7,6 +7,7 @@
 //   - member: read-only, can only remove themselves (leave)
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { logAuditEvent } from "@/lib/audit";
 
 type TeamRow = { id: string; owner_id: string };
 type MemberRow = { team_id: string; user_id: string; role: "admin" | "member" };
@@ -83,6 +84,15 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
     .insert({ team_id: teamId, user_id: invitee.id, role: memberRole });
 
   if (error) return res.status(500).json({ error: error.message });
+
+  await logAuditEvent(supabaseAdmin, {
+    actorId: callerId,
+    action: "team_member.invited",
+    resourceType: "team",
+    resourceId: teamId,
+    metadata: { invited_user_id: invitee.id, invited_email: invitee.email, role: memberRole },
+  });
+
   return res.status(201).json({ user_id: invitee.id, email: invitee.email, role: memberRole });
 }
 
@@ -104,6 +114,15 @@ async function setRole(req: NextApiRequest, res: NextApiResponse, callerId: stri
     .eq("user_id", userId);
 
   if (error) return res.status(500).json({ error: error.message });
+
+  await logAuditEvent(supabaseAdmin, {
+    actorId: callerId,
+    action: "team_member.role_changed",
+    resourceType: "team",
+    resourceId: teamId,
+    metadata: { target_user_id: userId, new_role: role },
+  });
+
   return res.status(200).json({ ok: true });
 }
 
@@ -132,5 +151,14 @@ async function remove(req: NextApiRequest, res: NextApiResponse, callerId: strin
 
   const { error } = await supabaseAdmin.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
   if (error) return res.status(500).json({ error: error.message });
+
+  await logAuditEvent(supabaseAdmin, {
+    actorId: callerId,
+    action: isSelf ? "team_member.left" : "team_member.removed",
+    resourceType: "team",
+    resourceId: teamId,
+    metadata: isSelf ? null : { removed_user_id: userId },
+  });
+
   return res.status(200).json({ ok: true });
 }
