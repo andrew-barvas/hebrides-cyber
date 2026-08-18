@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendEmail, escapeHtml } from "@/lib/email";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -38,44 +39,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Send a notification email via Resend if configured.
   // Set RESEND_API_KEY and CONTACT_EMAIL in environment variables.
-  const resendKey = process.env.RESEND_API_KEY;
+  // sendEmail() never throws and resolves { ok: false } when RESEND_API_KEY
+  // is unset, so this stays non-fatal exactly as the inline fetch was.
   const toEmail = process.env.CONTACT_EMAIL ?? "hello@hebridescyber.com";
-  if (resendKey) {
-    try {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "Hebrides Cyber <noreply@hebridescyber.com>",
-          to: [toEmail],
-          subject: `New enquiry from ${name.trim()}`,
-          html: [
-            `<p><strong>Name:</strong> ${escape(name.trim())}</p>`,
-            `<p><strong>Email:</strong> ${escape(email.trim())}</p>`,
-            typeof url === "string" && url.trim()
-              ? `<p><strong>Website:</strong> ${escape(url.trim())}</p>`
-              : "",
-            `<p><strong>Message:</strong></p>`,
-            `<p>${escape(message.trim()).replace(/\n/g, "<br>")}</p>`,
-          ].join(""),
-        }),
-      });
-    } catch (emailErr) {
-      // Non-fatal: the record is saved; log but don't fail the request.
-      console.error("[contact] Resend error:", (emailErr as Error).message);
-    }
+  const result = await sendEmail({
+    to: toEmail,
+    subject: `New enquiry from ${name.trim()}`,
+    html: [
+      `<p><strong>Name:</strong> ${escapeHtml(name.trim())}</p>`,
+      `<p><strong>Email:</strong> ${escapeHtml(email.trim())}</p>`,
+      typeof url === "string" && url.trim()
+        ? `<p><strong>Website:</strong> ${escapeHtml(url.trim())}</p>`
+        : "",
+      `<p><strong>Message:</strong></p>`,
+      `<p>${escapeHtml(message.trim()).replace(/\n/g, "<br>")}</p>`,
+    ].join(""),
+  });
+  if (!result.ok && result.error !== "RESEND_API_KEY not configured") {
+    // Non-fatal: the record is saved; log but don't fail the request.
+    console.error("[contact] Resend error:", result.error);
   }
 
   return res.status(200).json({ ok: true });
-}
-
-function escape(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
