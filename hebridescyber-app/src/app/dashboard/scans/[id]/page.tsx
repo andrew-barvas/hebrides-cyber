@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { getSession } from "@/lib/auth";
+import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
 import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
@@ -43,12 +43,11 @@ export default function ScanDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<FindingsDiff | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
-
-  useEffect(() => {
-    getSession().then((session) => setSessionToken(session?.access_token ?? null));
-  }, []);
+  // Kept fresh via onAuthStateChange — reading it once on mount left this page
+  // holding an expired token after a few hours idle, which silently 401'd the
+  // share-link and AI-fix buttons while the page still looked signed in.
+  const sessionToken = useSessionToken();
 
   useEffect(() => {
     if (!params?.id) return;

@@ -156,7 +156,7 @@ export async function checkDnsTxt(domain: string, token: string): Promise<boolea
     // resolveTxt returns string[][] — each TXT record can be split into
     // multiple strings by DNS itself, so join before comparing.
     return records.some((chunks) => chunks.join("") === expected);
-  } catch (err) {
+  } catch {
     // NXDOMAIN, no TXT records, timeout, etc. — all just mean "not verified yet".
     return false;
   }
@@ -175,7 +175,7 @@ export async function checkFileVerification(domain: string, token: string): Prom
     if (!res.ok) return false;
     const body = await res.text();
     return body.trim() === token;
-  } catch (err) {
+  } catch {
     return false;
   }
 }

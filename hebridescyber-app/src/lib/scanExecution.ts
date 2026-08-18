@@ -17,6 +17,9 @@ import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runNmap } from "../worker/tools/nmap";
+import { runSubdomainDiscovery } from "./scanners/subdomains";
+import { runDeepTls } from "./scanners/deepTls";
+import { scanRepositoryForSecrets } from "./scanners/secretScan";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -53,12 +56,24 @@ const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
  * because runner.ts's queue (BullMQ+Redis) was never wired to anything —
  * see docs/PLATFORM-ROADMAP.md.
  */
-async function runExtendedTools(targetUrl: string): Promise<{ extended: Record<string, unknown>; findings: Finding[] }> {
-  const [nucleiResult, zapResult, sqlmapResult, nmapResult] = await Promise.allSettled([
+async function runExtendedTools(
+  targetUrl: string,
+  githubRepo: string | null
+): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
+  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult] = await Promise.allSettled([
     runNuclei(targetUrl),
     runZap(targetUrl),
     runSqlmap(targetUrl),
     runNmap(targetUrl),
+    runSubdomainDiscovery(targetUrl),
+    runDeepTls(targetUrl),
+    // Only attempted when the scan owner has a row in repo_connections — see
+    // sql/migrations/009_repo_connections.sql. secretScan.ts is a pure
+    // { githubRepo } function specifically so this call site is the only
+    // place that needs to know where the repo name comes from.
+    githubRepo
+      ? scanRepositoryForSecrets({ githubRepo })
+      : Promise.resolve({ status: "not_configured" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
   ]);
 
   const extended = {
@@ -66,6 +81,9 @@ async function runExtendedTools(targetUrl: string): Promise<{ extended: Record<s
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
+    subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
+    deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
+    secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -109,7 +127,28 @@ async function runExtendedTools(targetUrl: string): Promise<{ extended: Record<s
     }
   }
 
-  return { extended, findings };
+  // subdomains.ts (Subfinder) and deepTls.ts (testssl.sh) already emit
+  // fully-formed Finding[] with their own checkId namespaces, same as ZAP.
+  if (extended.subdomains.status === "completed") {
+    findings.push(...extended.subdomains.findings);
+  }
+  if (extended.deepTls.status === "completed") {
+    findings.push(...extended.deepTls.findings);
+  }
+  if (extended.secretScan.status === "completed") {
+    findings.push(...extended.secretScan.findings);
+  }
+
+  // recon.ts's base checkDns pass already reports a single "N subdomains
+  // found via crt.sh" finding (recon.subdomains-found). When Subfinder also
+  // ran and found anything, its per-host findings are strictly more useful
+  // (evidence-scored severity, takeover/sensitive-host detection, New/Fixed
+  // diffing per host) — the caller drops the recon.ts summary finding in
+  // that case so one report never lists both.
+  const supersedesReconSubdomains =
+    extended.subdomains.status === "completed" && "total" in extended.subdomains && extended.subdomains.total > 0;
+
+  return { extended, findings, supersedesReconSubdomains };
 }
 
 export async function executeScan(
@@ -131,8 +170,17 @@ export async function executeScan(
     ({ findings } = summariseResults(results));
 
     if (options.runExtendedTools) {
-      const toolOutcome = await runExtendedTools(targetUrl);
+      const { data: repoConnection } = await supabaseAdmin
+        .from("repo_connections")
+        .select("github_repo")
+        .eq("owner", ownerId)
+        .maybeSingle();
+
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null);
       extended = toolOutcome.extended;
+      if (toolOutcome.supersedesReconSubdomains) {
+        findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
+      }
       findings = [...findings, ...toolOutcome.findings];
     }
 

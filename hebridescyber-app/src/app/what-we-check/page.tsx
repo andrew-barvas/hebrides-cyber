@@ -56,6 +56,7 @@ const categories: CheckCategory[] = [
     desc: "Whether your domain can be spoofed for phishing, and whether your certificate issuance is locked down.",
     checks: [
       "SPF record present and correctly scoped",
+      "DKIM key discovery across the default selectors used by major providers, plus key strength, revocation, and testing-mode checks",
       "DMARC record present, and enforcement policy (none / quarantine / reject)",
       "CAA records restricting which CAs can issue certificates for your domain",
       "DNSSEC signing status",
@@ -252,8 +253,8 @@ export default function WhatWeCheckPage() {
           <p className="mb-1 font-mono text-xs text-neon/60">// scan categories</p>
           <p className="text-sm text-cybertext/50">
             Every check is read-only and passive by default — no exploit payloads, no destructive
-            requests. The one exception is the optional ZAP active scan, which only runs where it's
-            explicitly configured against a domain you've already verified you own.
+            requests. The one exception is the optional ZAP active scan, which only runs where
+            it&apos;s explicitly configured against a domain you&apos;ve already verified you own.
           </p>
         </div>
 
@@ -433,6 +434,16 @@ export default function WhatWeCheckPage() {
                   <strong className="text-cybertext">Zero-days and unknown vulnerabilities</strong> —
                   nuclei and the fingerprinting checks match against known template/CVE databases.
                   Anything not yet publicly known or catalogued won&apos;t be flagged.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span>
+                  <strong className="text-cybertext">DKIM on a custom selector</strong> — a DKIM key
+                  lives at a selector name chosen freely by whoever set it up, and it cannot be
+                  discovered from DNS. We probe the defaults the major providers use, so finding a key
+                  is real evidence, but not finding one isn&apos;t proof of absence. We report that
+                  case as informational, never as &ldquo;DKIM missing&rdquo;.
                 </span>
               </li>
               <li className="flex gap-3">

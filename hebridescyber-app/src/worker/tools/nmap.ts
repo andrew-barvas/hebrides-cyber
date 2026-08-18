@@ -54,7 +54,6 @@ export async function runNmap(targetUrl: string): Promise<NmapResult> {
 
     const ports: NmapPort[] = [];
     // Regex uses s flag (dotall) — TypeScript targets es2018+ so this is safe in Node 18+.
-    // eslint-disable-next-line no-useless-escape
     const portPattern = new RegExp('<port protocol="(\\w+)" portid="(\\d+)">.*?<state state="(\\w+)".*?<service name="([^"]*)"(?:[^/]*)version="([^"]*)".*?<\\/port>', "gs");
 
     let match: RegExpExecArray | null;
