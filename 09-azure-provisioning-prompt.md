@@ -57,7 +57,7 @@ destructive:
 5. List the application settings the Static Web App will eventually need,
    based on .env.example in the repo (SUPABASE_SERVICE_ROLE_KEY,
    STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, AZURE_OPENAI_KEY,
-   AZURE_STORAGE_CONNECTION_STRING, GITHUB_PAT, GITHUB_ACTIONS_TOKEN). Do
+   AZURE_STORAGE_CONNECTION_STRING, GITHUB_PAT, NEWSLETTER_SERVICE_TOKEN). Do
    NOT set any real secret values yet — just produce the list, and tell me
    the `az staticwebapp appsettings set` command to set each one myself.
 

@@ -1,9 +1,10 @@
 // POST /api/generate-newsletter — drafts and publishes the weekly blog post
 // (see src/lib/newsletter.ts), triggered by
 // .github/workflows/weekly-newsletter.yml on a cron. Gated behind
-// X-Service-Token (same shared secret as the scheduled-scans queue) since
-// this writes public-facing content — it should not be callable by just
-// anyone who finds the URL.
+// X-Service-Token (NEWSLETTER_SERVICE_TOKEN) since this writes public-facing
+// content — it should not be callable by just anyone who finds the URL.
+// Not named GITHUB_ACTIONS_TOKEN (an earlier name) — GitHub rejects any repo
+// secret starting with GITHUB_ as reserved for its own auto-generated ones.
 //
 // Rebuilt as a Next.js API route alongside run-scan — see that file's header
 // for why (the standalone src/functions/ Azure Functions app was never
@@ -12,7 +13,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { generateNewsletterPost } from "@/lib/newsletter";
 import { supabaseAdmin } from "@/lib/apiAuth";
 
-const serviceToken = process.env.GITHUB_ACTIONS_TOKEN ?? "";
+const serviceToken = process.env.NEWSLETTER_SERVICE_TOKEN ?? "";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
