@@ -21,6 +21,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { buildRemediationMarkdown } from "@/lib/remediation";
 import type { Finding } from "@/lib/scanners";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { lookupOsvFixInfo } from "@/lib/scanners/osv";
 
 const githubPat = process.env.GITHUB_PAT ?? "";
 const githubApi = "https://api.github.com";
@@ -68,12 +69,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const findings = ((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[];
   const markdown = buildRemediationMarkdown(scan.target_url, findings, result.score ?? null);
 
+  let prUrl: string;
   try {
-    const prUrl = await openRemediationPr(githubRepo, baseBranch, scanId, markdown);
-    return res.status(200).json({ ok: true, prUrl });
+    prUrl = await openRemediationPr(githubRepo, baseBranch, scanId, markdown);
   } catch (err) {
     return res.status(502).json({ error: `GitHub API error: ${(err as Error).message}` });
   }
+
+  // Dependency version bumps are a second, independent PR (see
+  // openDependencyBumpPr's header comment for why) opened on a best-effort
+  // basis: it must never turn an otherwise-successful recommendations PR
+  // into a failed request. If it can't run (no package.json, nothing safe to
+  // bump, or a GitHub error), that's reported alongside the 200, not thrown.
+  let dependencyBumpPrUrl: string | undefined;
+  let dependencyBumpError: string | undefined;
+  try {
+    const bumpResult = await openDependencyBumpPr(githubRepo, baseBranch, scanId);
+    if (bumpResult) dependencyBumpPrUrl = bumpResult.prUrl;
+  } catch (err) {
+    dependencyBumpError = `dependency bump PR failed: ${(err as Error).message}`;
+  }
+
+  return res.status(200).json({ ok: true, prUrl, dependencyBumpPrUrl, dependencyBumpError });
 }
 
 async function openRemediationPr(repo: string, baseBranch: string, scanId: string, markdown: string): Promise<string> {
@@ -131,4 +148,331 @@ async function openRemediationPr(repo: string, baseBranch: string, scanId: strin
   if (!prRes.ok) throw new Error(`could not open PR (${prRes.status})`);
   const pr = (await prRes.json()) as { html_url: string };
   return pr.html_url;
+}
+
+// ---------------------------------------------------------------------------
+// Dependency version bumps — the half of "automated remediation PRs for safe
+// minor/patch updates" that didn't exist before (openRemediationPr above only
+// ever wrote a recommendations file, never touched a real dependency
+// version). This is deliberately a SECOND, independent PR on its own branch,
+// not folded into the SECURITY-FIXES.md one: that PR is a zero-risk read of
+// recommendations a human skims; this one is a real change to a manifest
+// file that could, if the safety gate below is ever wrong, break a build.
+// Keeping them separate means a customer can ignore/close the bump PR
+// without losing the recommendations one, and the reverse.
+//
+// SAFETY GATE (see also lookupOsvFixInfo's doc comment in scanners/osv.ts):
+// a dependency is only bumped if ALL of the following hold —
+//   1. OSV.dev names a specific, concrete (X.Y.Z, no prerelease/build tag)
+//      fixed version for every vulnerability it reports at the currently
+//      declared floor version. Any vuln without one (still unpatched
+//      upstream, or only a `last_affected` event) means the whole lookup is
+//      treated as "no safe target" — see lookupOsvFixInfo's own comment.
+//   2. The fixed version's major component matches the currently declared
+//      version's major component. A major-version difference is never
+//      auto-bumped, full stop — that's a human's call, not this feature's.
+//   3. The declared range's own syntax is unambiguous: exactly `X.Y.Z`,
+//      `^X.Y.Z`, or `~X.Y.Z` (parseDeclaredVersion). Compound ranges
+//      (">=1.2.0 <2.0.0", "1.x || 2.x", etc.) are skipped outright — there is
+//      no single unambiguous "bump the declared range" edit for those, and
+//      dependencyManifest.ts's own minVersionFromRange approximation (which
+//      silently drops everything after the first dotted version) is not
+//      rigorous enough to reuse for a write path.
+//   4. The declared range doesn't already permit the fixed version under
+//      npm's own ^/~ resolution rules (rangeAlreadyPermits) — if it does,
+//      the real fix is `npm install`, not a package.json edit, and
+//      committing a no-op diff would be actively misleading.
+//
+// Anything that fails one of these gates is simply left out of this PR. It
+// may still show up in the SECURITY-FIXES.md PR's recommendations (built
+// from the scan's stored findings, which is a separate data source from the
+// fresh package.json read here) — that's fine, that PR's whole point is
+// "things a human should look at," including ones this feature won't touch.
+
+type PackageJsonShape = {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
+type DependencySection = "dependencies" | "devDependencies";
+
+type DependencyBumpCandidate = {
+  name: string;
+  section: DependencySection;
+  oldRange: string;
+  newRange: string;
+  fixedVersion: string;
+  cveIds: string[];
+  osvIds: string[];
+};
+
+type DeclaredVersion = { prefix: "" | "^" | "~"; major: number; minor: number; patch: number; raw: string };
+type ConcreteVersion = { major: number; minor: number; patch: number };
+
+// Same ceiling as dependencyManifest.ts's MAX_PACKAGES_QUERIED, and for the
+// same reason: bound worst-case OSV.dev round-trips for a pathological
+// package.json rather than firing an unbounded number of requests.
+const MAX_PACKAGES_QUERIED = 150;
+const QUERY_CONCURRENCY = 10;
+
+/** Accepts only `X.Y.Z`, `^X.Y.Z`, or `~X.Y.Z` — anything else (compound
+ *  ranges, `>=`, `||`, tags, workspace/git specifiers) returns null and the
+ *  caller skips that dependency. See the module header for why this is
+ *  stricter than dependencyManifest.ts's read-only approximation. */
+function parseDeclaredVersion(range: string): DeclaredVersion | null {
+  const m = /^(\^|~)?(\d+)\.(\d+)\.(\d+)$/.exec(range.trim());
+  if (!m) return null;
+  return { prefix: (m[1] as "^" | "~" | undefined) ?? "", major: Number(m[2]), minor: Number(m[3]), patch: Number(m[4]), raw: range.trim() };
+}
+
+function parseConcreteVersion(v: string): ConcreteVersion | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+}
+
+function gte(a: ConcreteVersion, b: ConcreteVersion): boolean {
+  if (a.major !== b.major) return a.major > b.major;
+  if (a.minor !== b.minor) return a.minor > b.minor;
+  return a.patch >= b.patch;
+}
+
+/** True if npm's own ^/~ resolution of the declared range would already
+ *  reach `fixed` — i.e. there is nothing to edit in package.json, the real
+ *  fix is `npm install`/a lockfile refresh. Mirrors npm's actual caret/tilde
+ *  semantics (caret holds the leftmost non-zero component fixed; tilde holds
+ *  major.minor fixed; a bare version permits only itself). */
+function rangeAlreadyPermits(declared: DeclaredVersion, fixed: ConcreteVersion): boolean {
+  if (!gte(fixed, declared)) return true; // declared floor is already >= fixed; nothing to do
+  if (declared.prefix === "") return fixed.major === declared.major && fixed.minor === declared.minor && fixed.patch === declared.patch;
+  if (declared.prefix === "~") return fixed.major === declared.major && fixed.minor === declared.minor;
+  // caret: allowed range depends on the leftmost non-zero component (npm's own rule for 0.x ranges)
+  if (declared.major > 0) return fixed.major === declared.major;
+  if (declared.minor > 0) return fixed.major === 0 && fixed.minor === declared.minor;
+  return fixed.major === 0 && fixed.minor === 0 && fixed.patch === declared.patch;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Exported for local verification without a GitHub token/repo — mirrors
+ * dependencyManifest.ts's buildDependencyFindings in that respect: the part
+ * of this feature that must be provable against real OSV.dev data alone,
+ * with no network access to GitHub required.
+ */
+export async function buildDependencyBumpPlan(pkg: PackageJsonShape): Promise<{
+  bumps: DependencyBumpCandidate[];
+  skipped: { majorBumpRequired: string[]; noFixAvailable: string[]; alreadySatisfied: string[]; unsupportedRange: string[] };
+}> {
+  const sections: DependencySection[] = ["dependencies", "devDependencies"];
+  const entries: Array<{ name: string; range: string; section: DependencySection }> = [];
+  for (const section of sections) {
+    for (const [name, range] of Object.entries(pkg[section] ?? {})) {
+      entries.push({ name, range, section });
+    }
+  }
+
+  const skipped = { majorBumpRequired: [] as string[], noFixAvailable: [] as string[], alreadySatisfied: [] as string[], unsupportedRange: [] as string[] };
+  const queryable = entries.slice(0, MAX_PACKAGES_QUERIED);
+  const parsed = queryable.map((e) => ({ ...e, declared: parseDeclaredVersion(e.range) }));
+
+  for (const p of parsed) {
+    if (!p.declared) skipped.unsupportedRange.push(`${p.name}@${p.range}`);
+  }
+
+  const withDeclared = parsed.filter((p): p is typeof p & { declared: DeclaredVersion } => p.declared !== null);
+
+  const checked = await mapWithConcurrency(withDeclared, QUERY_CONCURRENCY, async (p) => ({
+    ...p,
+    fixInfo: await lookupOsvFixInfo("npm", p.name, `${p.declared.major}.${p.declared.minor}.${p.declared.patch}`),
+  }));
+
+  const bumps: DependencyBumpCandidate[] = [];
+  for (const c of checked) {
+    if (c.fixInfo.fixedVersion === null) {
+      // Only worth noting if OSV actually flagged something for this
+      // version — an empty result just means this dependency isn't
+      // vulnerable at all, which isn't a "skip," it's a non-event.
+      if (c.fixInfo.cveIds.length > 0 || c.fixInfo.osvIds.length > 0) {
+        skipped.noFixAvailable.push(`${c.name}@${c.declared.raw}`);
+      }
+      continue;
+    }
+
+    const fixed = parseConcreteVersion(c.fixInfo.fixedVersion);
+    if (!fixed) {
+      // Defensive only — lookupOsvFixInfo's own parsing already guarantees
+      // this, but never trust a "safe to write" decision on an assumption.
+      skipped.noFixAvailable.push(`${c.name}@${c.declared.raw}`);
+      continue;
+    }
+
+    if (fixed.major !== c.declared.major) {
+      skipped.majorBumpRequired.push(`${c.name} (${c.declared.raw} → ${c.fixInfo.fixedVersion})`);
+      continue;
+    }
+
+    if (rangeAlreadyPermits(c.declared, fixed)) {
+      skipped.alreadySatisfied.push(`${c.name} (${c.declared.raw} already permits ${c.fixInfo.fixedVersion})`);
+      continue;
+    }
+
+    bumps.push({
+      name: c.name,
+      section: c.section,
+      oldRange: c.declared.raw,
+      newRange: `${c.declared.prefix}${c.fixInfo.fixedVersion}`,
+      fixedVersion: c.fixInfo.fixedVersion,
+      cveIds: c.fixInfo.cveIds,
+      osvIds: c.fixInfo.osvIds,
+    });
+  }
+
+  return { bumps, skipped };
+}
+
+/** Sniffs the indentation package.json already uses so re-serialising it
+ *  doesn't produce a whole-file reformat diff. Falls back to 2 spaces, npm's
+ *  own default, if nothing is found (e.g. a single-line/minified file). */
+function detectIndent(raw: string): string {
+  const m = raw.match(/\n([ \t]+)"/);
+  return m ? m[1] : "  ";
+}
+
+function buildDependencyBumpPrBody(bumps: DependencyBumpCandidate[]): string {
+  const rows = bumps
+    .map((b) => {
+      const cves = b.cveIds.length ? b.cveIds.join(", ") : "—";
+      const advisories = b.osvIds.map((id) => `https://osv.dev/vulnerability/${id}`).join(" ") || "—";
+      return `| \`${b.name}\` | \`${b.oldRange}\` | \`${b.newRange}\` | ${cves} | ${advisories} |`;
+    })
+    .join("\n");
+
+  return `# Hebrides Cyber — Automated dependency version bumps
+
+**This PR has not been reviewed by a human and has not been run against your test suite.**
+Do not merge until your own CI/tests pass on this branch. Only \`package.json\`'s
+declared version ranges were changed — no lockfile was touched, so run your
+usual install step (e.g. \`npm install\`) on this branch to refresh it before
+relying on the result.
+
+Every bump below passed a conservative safety gate: OSV.dev names a specific
+patched version, that version does **not** require a major-version bump from
+what's currently declared, and the currently declared range didn't already
+permit it (this file lists changes an \`npm install\` alone would not have
+made).
+
+| Package | Old range | New range | CVE(s) | Advisory |
+|---|---|---|---|---|
+${rows}
+
+Nothing else in this repo was touched.
+
+---
+
+*Generated automatically from a Hebrides Cyber Security Score scan. See
+https://hebridescyber.com for details, or reply to your scan email with
+questions.*
+`;
+}
+
+/**
+ * Opens a second PR, independent of openRemediationPr's SECURITY-FIXES.md
+ * one, bumping only the dependencies that pass buildDependencyBumpPlan's
+ * safety gate. Returns null (not an error) when there's no package.json, it
+ * doesn't parse, or nothing qualifies — all expected, non-exceptional
+ * outcomes for a repo that simply has nothing safe to bump right now.
+ */
+export async function openDependencyBumpPr(repo: string, baseBranch: string, scanId: string): Promise<{ prUrl: string; bumps: DependencyBumpCandidate[] } | null> {
+  const pkgRes = await fetch(`${githubApi}/repos/${repo}/contents/package.json?ref=${baseBranch}`, { headers: ghHeaders() });
+  if (!pkgRes.ok) return null; // no package.json at the repo root — nothing for this feature to do
+  const pkgFile = (await pkgRes.json()) as { content?: string; encoding?: string };
+  if (!pkgFile.content) return null;
+
+  const rawPackageJson = Buffer.from(pkgFile.content, (pkgFile.encoding as BufferEncoding) ?? "base64").toString("utf-8");
+  let pkg: PackageJsonShape;
+  try {
+    pkg = JSON.parse(rawPackageJson) as PackageJsonShape;
+  } catch {
+    return null; // malformed package.json isn't this feature's problem to fix
+  }
+
+  const { bumps } = await buildDependencyBumpPlan(pkg);
+  if (bumps.length === 0) return null;
+
+  // Re-parse fresh rather than reusing `pkg` so nothing buildDependencyBumpPlan
+  // might read (but shouldn't mutate) can ever leak into the committed diff.
+  const updated = JSON.parse(rawPackageJson) as Record<string, Record<string, string> | unknown>;
+  for (const b of bumps) {
+    const section = (updated[b.section] ?? {}) as Record<string, string>;
+    section[b.name] = b.newRange;
+    updated[b.section] = section;
+  }
+  const indent = detectIndent(rawPackageJson);
+  const newRaw = JSON.stringify(updated, null, indent) + (rawPackageJson.endsWith("\n") ? "\n" : "");
+
+  // 1. Base branch HEAD sha.
+  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders() });
+  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check GITHUB_PAT access to ${repo}`);
+  const baseRef = (await baseRefRes.json()) as { object: { sha: string } };
+
+  // 2. A branch separate from openRemediationPr's — see module header.
+  const branchName = `hebridescyber/dependency-bumps-${scanId.slice(0, 8)}`;
+  const createRefRes = await fetch(`${githubApi}/repos/${repo}/git/refs`, {
+    method: "POST",
+    headers: ghHeaders(),
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }),
+  });
+  if (!createRefRes.ok && createRefRes.status !== 422) {
+    throw new Error(`could not create branch (${createRefRes.status})`);
+  }
+
+  // 3. Commit the bumped package.json on that branch.
+  const path = "package.json";
+  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders() });
+  const existingSha = existingRes.ok ? ((await existingRes.json()) as { sha: string }).sha : undefined;
+
+  const putRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}`, {
+    method: "PUT",
+    headers: ghHeaders(),
+    body: JSON.stringify({
+      message: `Bump ${bumps.length} dependenc${bumps.length === 1 ? "y" : "ies"} to patch known CVEs`,
+      content: Buffer.from(newRaw, "utf-8").toString("base64"),
+      branch: branchName,
+      ...(existingSha ? { sha: existingSha } : {}),
+    }),
+  });
+  if (!putRes.ok) throw new Error(`could not write ${path} (${putRes.status})`);
+
+  // 4. Open the PR (or return the existing one if it's already open).
+  const prRes = await fetch(`${githubApi}/repos/${repo}/pulls`, {
+    method: "POST",
+    headers: ghHeaders(),
+    body: JSON.stringify({
+      title: `Security: bump ${bumps.length} dependenc${bumps.length === 1 ? "y" : "ies"} (Hebrides Cyber)`,
+      head: branchName,
+      base: baseBranch,
+      body: buildDependencyBumpPrBody(bumps),
+    }),
+  });
+  if (prRes.status === 422) {
+    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders() });
+    const list = (await listRes.json()) as Array<{ html_url: string }>;
+    if (list[0]) return { prUrl: list[0].html_url, bumps };
+    throw new Error("dependency-bump PR creation returned 422 and no existing PR was found");
+  }
+  if (!prRes.ok) throw new Error(`could not open dependency-bump PR (${prRes.status})`);
+  const pr = (await prRes.json()) as { html_url: string };
+  return { prUrl: pr.html_url, bumps };
 }
