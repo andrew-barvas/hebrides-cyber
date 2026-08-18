@@ -11,8 +11,10 @@ name: Weekly Newsletter
 # comment for why there's only one deployed surface now.
 #
 # Requires:
-#   NEXT_PUBLIC_SITE_URL   - the deployed site's own URL (repo variable)
-#   GITHUB_ACTIONS_TOKEN   - shared secret sent as X-Service-Token
+#   NEXT_PUBLIC_SITE_URL     - the deployed site's own URL (repo variable)
+#   NEWSLETTER_SERVICE_TOKEN - shared secret sent as X-Service-Token. Not
+#     named GITHUB_ACTIONS_TOKEN (an earlier name) — GitHub rejects any repo
+#     secret starting with GITHUB_ as reserved for its own auto-generated ones.
 
 on:
   schedule:
@@ -28,7 +30,7 @@ jobs:
         run: |
           status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/generate-newsletter" \
-            -H "X-Service-Token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}")
+            -H "X-Service-Token: ${{ secrets.NEWSLETTER_SERVICE_TOKEN }}")
           cat /tmp/response.json
           if [ "$status" != "200" ]; then
             echo "generate-newsletter failed with status $status"

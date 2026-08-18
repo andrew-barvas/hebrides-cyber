@@ -243,7 +243,7 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `GITHUB_ACTIONS_TOKEN` | `weekly-newsletter.yml` — auth to `/api/generate-newsletter` (`X-Service-Token`) |
+| `NEWSLETTER_SERVICE_TOKEN` | `weekly-newsletter.yml` — auth to `/api/generate-newsletter` (`X-Service-Token`). Not named `GITHUB_ACTIONS_TOKEN` — GitHub rejects any repo secret starting with `GITHUB_` |
 | `SUPABASE_URL` | `scheduled-scans.yml` — enqueue/worker scripts query Supabase directly |
 | `SUPABASE_SERVICE_ROLE_KEY` | `scheduled-scans.yml` — same, plus needed by any CI step that seeds/reads data |
 
@@ -256,7 +256,7 @@ Server-only secrets used by the API routes themselves
 (`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `AZURE_OPENAI_KEY`, `AZURE_STORAGE_CONNECTION_STRING`, `GITHUB_PAT`) belong
 in the Static Web App's own application settings, not GitHub Secrets — see
-`docs/security.md`. The `SUPABASE_*` / `GITHUB_ACTIONS_TOKEN` GitHub
+`docs/security.md`. The `SUPABASE_*` / `NEWSLETTER_SERVICE_TOKEN` GitHub
 Secrets above are the exception: they're used directly *inside* a GitHub
 Actions job (not deployed anywhere), which is a reasonable place for them,
 but rotate them the same as any other service-role credential if the

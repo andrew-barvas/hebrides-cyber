@@ -87,7 +87,7 @@ interactive request:
   Azure OpenAI key, `GITHUB_PAT`, storage connection strings) as **Static
   Web App application settings** — `az staticwebapp appsettings set` or the
   Portal. Never paste raw values into `.env.local`, Terraform files, or
-  GitHub Actions YAML (the `GITHUB_ACTIONS_TOKEN`/`SUPABASE_*` GitHub
+  GitHub Actions YAML (the `NEWSLETTER_SERVICE_TOKEN`/`SUPABASE_*` GitHub
   Secrets used directly inside CI jobs — see `README.md` — are the
   intentional exception).
 - `.env.example` in this repo lists required variable names only — no
