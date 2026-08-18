@@ -60,7 +60,7 @@ async function main() {
       break;
     }
 
-    const job = claimed?.[0] as { id: string; owner: string; target_url: string } | undefined;
+    const job = claimed?.[0] as { id: string; owner: string; target_url: string; scan_id: string | null } | undefined;
     if (!job) break; // queue is empty
 
     processed++;
@@ -76,17 +76,21 @@ async function main() {
 
 async function runOne(
   supabaseAdmin: SupabaseClient,
-  job: { id: string; owner: string; target_url: string }
+  job: { id: string; owner: string; target_url: string; scan_id: string | null }
 ): Promise<boolean> {
   async function failJob(message: string) {
     console.error(`[job ${job.id}] failed: ${message}`);
     await supabaseAdmin.from("scan_jobs").update({ status: "failed", last_error: message }).eq("id", job.id);
+    if (job.scan_id) {
+      await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", job.scan_id);
+    }
   }
 
-  // Re-checked here even though enqueue-scheduled-scans.ts already filtered
-  // on this — a job can sit in the queue for a while, and defense in depth
-  // costs nothing. Same reasoning as run-scan/index.ts's own SSRF re-check
-  // at execution time, not just at scan-creation time.
+  // Re-checked here even though enqueue-scheduled-scans.ts (and
+  // src/pages/api/run-scan.ts, for on-demand jobs) already filtered on this —
+  // a job can sit in the queue for a while, and defense in depth costs
+  // nothing. Same reasoning as run-scan.ts's own SSRF re-check at execution
+  // time, not just at scan-creation time.
   try {
     await validateNoSsrf(job.target_url);
   } catch (err) {
@@ -99,32 +103,50 @@ async function runOne(
     return false;
   }
 
-  const { data: scan, error: insertError } = await supabaseAdmin
-    .from("scans")
-    .insert({
-      owner: job.owner,
-      target_url: job.target_url,
-      status: "running",
-      owner_verified: true,
-    })
-    .select("id")
-    .single();
+  // job.scan_id distinguishes the two sources this queue now serves:
+  //   - null: a scheduled job (enqueue-scheduled-scans.ts) — this worker owns
+  //     the whole scans row lifecycle and runs the real active-scanning tool
+  //     suite, since every scheduled target already has a verified,
+  //     paying-subscription owner behind it.
+  //   - set: an on-demand job (src/pages/api/run-scan.ts) — the scans row
+  //     already exists (created when the customer clicked "Run scan"), so
+  //     this worker reuses it and stays passive-only, matching what
+  //     /what-we-check tells customers an on-demand scan does.
+  let scanId = job.scan_id;
+  const runExtendedTools = !scanId;
 
-  if (insertError || !scan) {
-    await failJob(insertError?.message ?? "Failed to create scans row");
+  if (!scanId) {
+    const { data: scan, error: insertError } = await supabaseAdmin
+      .from("scans")
+      .insert({
+        owner: job.owner,
+        target_url: job.target_url,
+        status: "running",
+        owner_verified: true,
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !scan) {
+      await failJob(insertError?.message ?? "Failed to create scans row");
+      return false;
+    }
+
+    scanId = scan.id;
+    await supabaseAdmin.from("scan_jobs").update({ scan_id: scanId }).eq("id", job.id);
+  }
+
+  if (!scanId) {
+    // Unreachable — either job.scan_id was already set, or the insert above
+    // succeeded (guarded by the insertError/!scan check). Kept as an explicit
+    // guard rather than a non-null assertion so a future change to that logic
+    // fails loudly here instead of passing a bad id to executeScan.
+    await failJob("Internal error: scanId was not resolved before running the scan.");
     return false;
   }
 
-  await supabaseAdmin.from("scan_jobs").update({ scan_id: scan.id }).eq("id", job.id);
-
-  // Extended tools (nmap/nuclei/sqlmap/ZAP) only ever run here — this is the
-  // one environment (a GitHub Actions runner, see scheduled-scans.yml) that
-  // actually has the binaries/daemon installed. Safe to enable unconditionally:
-  // every job reaching this point already passed isDomainVerified above, so
-  // active scanning only ever targets a domain the owner has proven they
-  // control.
-  const outcome = await executeScan(supabaseAdmin, scan.id, job.owner, job.target_url, {
-    runExtendedTools: true,
+  const outcome = await executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
+    runExtendedTools,
   });
   if (!outcome.ok) {
     await failJob(outcome.error);

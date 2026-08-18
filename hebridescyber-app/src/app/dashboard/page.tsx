@@ -195,20 +195,46 @@ export default function DashboardPage() {
       const createBody = await createRes.json();
       if (!createRes.ok) throw new Error(createBody.error ?? `run-scan create failed (${createRes.status})`);
 
-      const runRes = await fetch("/api/run-scan", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-          "X-Scan-Token": createBody.proofToken,
-        },
-        body: JSON.stringify({ scanId: createBody.scanId }),
-      });
-      const runBody = await runRes.json();
-      if (!runRes.ok) throw new Error(runBody.error ?? `run-scan execution failed (${runRes.status})`);
+      // Step 2 now queues the scan rather than running it inline — see
+      // src/pages/api/run-scan.ts and .github/workflows/on-demand-scan.yml
+      // for why. "queued"/"running" responses mean poll again; only the
+      // first call needs X-Scan-Token, since later polls hit the
+      // already-"running" branch which skips ownership re-verification.
+      const POLL_INTERVAL_MS = 4_000;
+      const MAX_POLLS = 45; // ~3 minutes — comfortably above the on-demand workflow's expected runtime
 
-      setScanMessage(`Scan complete — score ${runBody.score}/100.`);
-      setTargetUrl("");
+      async function pollRunScan(withToken: boolean) {
+        const res = await fetch("/api/run-scan", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session!.access_token}`,
+            ...(withToken ? { "X-Scan-Token": createBody.proofToken } : {}),
+          },
+          body: JSON.stringify({ scanId: createBody.scanId }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? `run-scan failed (${res.status})`);
+        return body;
+      }
+
+      let runBody = await pollRunScan(true);
+      let polls = 0;
+      while ((runBody.status === "queued" || runBody.status === "running") && polls < MAX_POLLS) {
+        setScanMessage(runBody.status === "queued" ? "Scan queued…" : "Scan running…");
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        runBody = await pollRunScan(false);
+        polls++;
+      }
+
+      if (runBody.status === "queued" || runBody.status === "running") {
+        setScanMessage("Still running — refresh the page in a minute to see the result.");
+      } else if (runBody.status === "failed" || runBody.ok === false) {
+        throw new Error(runBody.error ?? "Scan failed — try again.");
+      } else {
+        setScanMessage(`Scan complete — score ${runBody.score}/100.`);
+        setTargetUrl("");
+      }
       await Promise.all([loadScans(session.user.id), loadOverview()]);
     } catch (err) {
       setError((err as Error).message);
