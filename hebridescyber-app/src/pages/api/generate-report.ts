@@ -42,7 +42,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!user?.is_admin) return res.status(403).json({ error: "You do not own this scan" });
   }
 
-  const html = renderReportHtml(scanResult);
+  // Branded on the SCAN OWNER's plan, not the caller's — an admin viewing
+  // someone else's report should see that owner's branding, not their own
+  // (or lack thereof). Falls back to the default template unless the owner
+  // is genuinely Agency-plan AND has actually set a logo/name — an Agency
+  // account that hasn't configured anything yet must render identically to
+  // today, not show a half-branded page.
+  const { data: ownerSub } = await supabaseAdmin
+    .from("subscriptions")
+    .select("plan, brand_logo_url, brand_name")
+    .eq("owner", owner)
+    .maybeSingle();
+
+  const branding =
+    ownerSub?.plan === "agency" && (ownerSub.brand_logo_url || ownerSub.brand_name)
+      ? { logoUrl: ownerSub.brand_logo_url ?? undefined, name: ownerSub.brand_name ?? undefined }
+      : undefined;
+
+  const html = renderReportHtml(scanResult, branding);
 
   // Unique temp directory per invocation so concurrent requests never
   // collide, cleaned up in `finally` regardless of success/failure.
@@ -52,6 +69,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // TODO: in production, run Playwright with no network egress beyond what's
     // needed to render local HTML, to avoid SSRF risk from the report template.
+    // No longer strictly zero-network as of Agency branding: a configured
+    // brand_logo_url is fetched during render. Narrow in practice (an
+    // Azure Blob URL we control, not attacker-supplied), but worth knowing
+    // if this TODO is ever actually addressed.
     const browser = await chromium.launch();
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
@@ -118,7 +139,7 @@ async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderReportHtml(scanResult: Record<string, any>): string {
+function renderReportHtml(scanResult: Record<string, any>, branding?: { logoUrl?: string; name?: string }): string {
   // Minimal inline template. See marketing/04-security-score-template.md for
   // the full report structure this should eventually match (executive
   // summary, top 5 findings, risk breakdown, action plan, appendix).
@@ -126,6 +147,16 @@ function renderReportHtml(scanResult: Record<string, any>): string {
   const summary: string = scanResult.summary ?? scanResult.results?.ai_summary ?? "No summary available.";
   const score: number | undefined = scanResult.score;
   const findings: Array<{ severity: string; title: string; detail: string }> = scanResult.results?.findings ?? [];
+
+  // Swapped in only when branding is actually set — see the caller's gate
+  // (Agency plan AND a configured logo/name). No branding means this
+  // renders byte-for-byte the same fixed header as before this feature.
+  const headerHtml = branding
+    ? `<div style="display:flex;align-items:center;gap:12px;">
+         ${branding.logoUrl ? `<img src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(branding.name ?? "Logo")}" style="height:40px;max-width:160px;object-fit:contain;" />` : ""}
+         <h1 style="margin:0;">${escapeHtml(branding.name ?? "Security Score Report")}</h1>
+       </div>`
+    : `<h1>Hebrides Cyber — Security Score Report</h1>`;
 
   const findingsRows = findings
     .map(
@@ -150,7 +181,7 @@ function renderReportHtml(scanResult: Record<string, any>): string {
         </style>
       </head>
       <body>
-        <h1>Hebrides Cyber — Security Score Report</h1>
+        ${headerHtml}
         <p><strong>Target:</strong> ${escapeHtml(targetUrl)}</p>
         <p><strong>Generated:</strong> ${new Date().toISOString()}</p>
         ${score !== undefined ? `<p><strong>Score:</strong> ${score} / 100</p>` : ""}
