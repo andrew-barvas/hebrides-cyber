@@ -17,6 +17,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
 import { isDomainVerified } from "../lib/ownership";
+import { isScanDue, type Plan } from "../lib/scanCadence";
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -36,7 +37,7 @@ async function main() {
 
   const { data: activeSubs, error: subsError } = await supabaseAdmin
     .from("subscriptions")
-    .select("owner")
+    .select("owner, plan")
     .eq("status", "active");
 
   if (subsError) {
@@ -49,6 +50,10 @@ async function main() {
     console.log("No active subscriptions — nothing to enqueue.");
     return;
   }
+
+  // owner -> plan, so the per-target interval check below knows which
+  // cadence (see src/lib/scanCadence.ts) applies without a second lookup.
+  const ownerPlans = new Map<string, Plan>((activeSubs ?? []).map((s) => [s.owner, s.plan as Plan]));
 
   const { data: targets, error: targetsError } = await supabaseAdmin
     .from("monitored_targets")
@@ -63,6 +68,7 @@ async function main() {
   let enqueued = 0;
   let skippedUnverified = 0;
   let skippedAlreadyQueued = 0;
+  let skippedTooRecent = 0;
 
   for (const target of targets ?? []) {
     if (!(await isDomainVerified(supabaseAdmin, target.owner, target.target_url))) {
@@ -83,6 +89,28 @@ async function main() {
       continue;
     }
 
+    // Plan-tier cadence gate (see src/lib/scanCadence.ts): skip targets that
+    // were completed too recently for their owner's plan. No new column —
+    // this just looks at the most recent completed `scans` row for this
+    // (owner, target_url) pair.
+    const plan = ownerPlans.get(target.owner);
+    if (plan) {
+      const { data: lastScan } = await supabaseAdmin
+        .from("scans")
+        .select("created_at")
+        .eq("owner", target.owner)
+        .eq("target_url", target.target_url)
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!isScanDue(plan, lastScan?.created_at ?? null, new Date())) {
+        skippedTooRecent++;
+        continue;
+      }
+    }
+
     const { error: insertError } = await supabaseAdmin
       .from("scan_jobs")
       .insert({ owner: target.owner, target_url: target.target_url });
@@ -96,7 +124,7 @@ async function main() {
 
   console.log(
     `Enqueued ${enqueued} scan job(s). Skipped ${skippedUnverified} unverified target(s), ` +
-      `${skippedAlreadyQueued} already-queued target(s).`
+      `${skippedAlreadyQueued} already-queued target(s), ${skippedTooRecent} not-yet-due target(s).`
   );
 }
 
