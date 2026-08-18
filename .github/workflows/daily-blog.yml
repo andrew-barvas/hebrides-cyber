@@ -1,0 +1,52 @@
+name: Daily Cyber Security Brief
+
+# Publishes the daily cyber security blog post (see src/lib/newsletter.ts's
+# generateDailyBlogPost and src/pages/api/generate-daily-blog.ts). Separate
+# from weekly-newsletter.yml — same underlying real-event sourcing (CISA's
+# KEV catalog, recent high-severity CVEs from NVD, and real breach/incident
+# coverage from a small set of established security news RSS feeds), but a
+# narrower day-by-day lookback window and its own slug, so the two never
+# collide even when both run on the same day. The product's own aggregate
+# scan stats appear as a short closing section here, not the main content.
+#
+# AI narrative write-up if Azure OpenAI is configured, otherwise a
+# deterministic templated post built from the same real fetched data —
+# either way, it publishes something rather than silently skipping the day.
+#
+# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
+# Static Web Apps), not a separate Functions app — see run-scan.ts's header
+# comment for why there's only one deployed surface now. Deliberately not a
+# Supabase Edge Function for the same reason: this app already has exactly
+# one pattern for scheduled work (GitHub Actions cron -> Next.js API route),
+# and a second execution environment with its own deploy/secrets to keep in
+# sync is a cost this app paid once already (the old standalone Azure
+# Functions app) and isn't worth reintroducing.
+#
+# Requires:
+#   NEXT_PUBLIC_SITE_URL     - the deployed site's own URL (repo variable)
+#   NEWSLETTER_SERVICE_TOKEN - shared secret sent as X-Service-Token (same
+#     one weekly-newsletter.yml uses — both routes write the same kind of
+#     public content). Not named GITHUB_ACTIONS_TOKEN (an earlier name) —
+#     GitHub rejects any repo secret starting with GITHUB_ as reserved for
+#     its own auto-generated ones.
+
+on:
+  schedule:
+    # Every day at 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger generate-daily-blog
+        run: |
+          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/generate-daily-blog" \
+            -H "X-Service-Token: ${{ secrets.NEWSLETTER_SERVICE_TOKEN }}")
+          cat /tmp/response.json
+          if [ "$status" != "200" ]; then
+            echo "generate-daily-blog failed with status $status"
+            exit 1
+          fi

@@ -99,7 +99,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
 
         {!error && posts.length === 0 && (
           <p className="font-mono text-sm text-cybertext/50">
-            {tag ? `No posts tagged "${tag}" yet.` : "// no posts yet — trigger the weekly-newsletter workflow to seed one."}
+            {tag ? `No posts tagged "${tag}" yet.` : "// no posts yet — trigger the daily-blog or weekly-newsletter workflow to seed one."}
           </p>
         )}
 
