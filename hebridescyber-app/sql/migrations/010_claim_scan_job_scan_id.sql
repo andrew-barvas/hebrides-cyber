@@ -15,6 +15,11 @@
 --
 -- All statements are safe to re-run, matching the convention established in
 -- 002_improvements.sql onward.
+--
+-- CREATE OR REPLACE cannot change a function's OUT-parameter row type
+-- (Postgres error 42P13) — adding scan_id to the RETURNS TABLE means the old
+-- signature has to be dropped first.
+drop function if exists public.claim_scan_job(text);
 
 create or replace function public.claim_scan_job(worker_id text)
 returns table (id uuid, owner uuid, target_url text, scan_id uuid)
