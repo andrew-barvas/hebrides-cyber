@@ -1008,9 +1008,11 @@ site just gets it flagged again within hours:**
 
 export const WP_PLUGIN_DETECTED = `This is an informational finding, not a vulnerability report — a WordPress
 plugin and its version were readable from the plugin's own public
-\`readme.txt\` file. No automated CVE match is attached because OSV.dev
-(this scanner's vulnerability data source) does not cover the WordPress
-plugin ecosystem.
+\`readme.txt\` file. No automated CVE match is attached to *this* finding
+because OSV.dev (this scanner's default vulnerability data source) does not
+cover the WordPress plugin ecosystem — if WPScan's vulnerability database is
+configured and finds a real match for this version, it appears as its own,
+separate finding rather than being folded into this one.
 
 **What to do with this:**
 
@@ -1040,6 +1042,38 @@ location ~ /wp-content/plugins/.*/readme\\.(txt|html)$ { deny all; return 404; }
 This doesn't replace keeping the plugin updated — it only removes one of the
 easiest ways for an automated scanner (including this one) to fingerprint the
 exact version remotely.`;
+
+/**
+ * A real, WPScan-confirmed CVE match against the detected plugin version —
+ * distinct from WP_PLUGIN_DETECTED above, which is purely informational.
+ * fixedIn null means still unpatched upstream, which changes the advice
+ * from "update" to "there is nothing to update to yet."
+ */
+export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: string | null, referenceUrl?: string): string {
+  const parts: string[] = [];
+
+  if (fixedIn) {
+    parts.push(
+      `Update **${pluginName}** to version **${fixedIn}** or later from the WordPress admin dashboard ` +
+        `(**Plugins → Update Available**) after taking a backup. This is a confirmed, disclosed vulnerability ` +
+        `in the specific version detected — not a general "keep plugins updated" reminder.`
+    );
+  } else {
+    parts.push(
+      `WPScan's vulnerability database shows no patched version yet for this issue in **${pluginName}** — updating ` +
+        `to the latest available release may still help if the maintainer has silently patched it since this ` +
+        `database entry was last updated, but is not guaranteed to close this specific vulnerability. Consider ` +
+        `whether the plugin's functionality is worth the current exposure, and watch the plugin's changelog for a ` +
+        `fix. A web application firewall rule may reduce risk in the meantime, depending on the vulnerability type.`
+    );
+  }
+
+  if (referenceUrl) {
+    parts.push(`Full advisory: ${referenceUrl}`);
+  }
+
+  return parts.join("\n\n");
+}
 
 // ---------------------------------------------------------------------------
 // Wayback historical path discovery (src/lib/scanners/waybackDiscovery.ts)

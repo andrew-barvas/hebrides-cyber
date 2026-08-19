@@ -86,6 +86,7 @@ Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_
 - `safeBrowsing.ts` — Google Safe Browsing malware/phishing check (needs `GOOGLE_SAFE_BROWSING_API_KEY`; `not_configured` without it)
 - `waybackDiscovery.ts` — checks historical URLs from the Wayback Machine CDX API that still resolve live, surfacing forgotten endpoints a fresh crawl can't find
 - `hibp.ts` — HaveIBeenPwned domain breach check (needs `HIBP_API_KEY`; `not_configured` without it)
+- `wpvdb.ts` — matches `webapp.ts`-detected WordPress plugin versions against the real WPScan Vulnerability Database (needs `WPSCAN_API_TOKEN`; `not_configured` without it). Runs after `webapp` resolves, not in the main `Promise.all` batch, since it needs `webapp.wordpress.plugins` as input — enrichment only, does no detection of its own.
 - `playwright.ts` — headless browser checks (needs Playwright's browser binaries installed — CI installs them explicitly; a bare local `tsx` run of this without `npx playwright install` will show `status: "error"`, not a real bug)
 - `zap.ts` (inline in `index.ts`, not its own file) — kicks off an async ZAP spider if `ZAP_API_URL` is set; the real active ZAP *scan* is a separate module below
 
