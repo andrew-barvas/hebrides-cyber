@@ -999,24 +999,48 @@ access to it if it doesn't need to be public.`
  * quote across every advisory, so this stays generic rather than fabricating
  * a specific target version we haven't independently verified.
  */
-export function dependencyVulnerableRemediation(packageName: string): string {
+const DEPENDENCY_ECOSYSTEM_COMMANDS: Record<
+  "npm" | "pip" | "composer",
+  { manifest: string; checkInstalled: (pkg: string) => string; commands: (pkg: string) => string }
+> = {
+  npm: {
+    manifest: "package.json",
+    checkInstalled: (pkg) => `npm ls ${pkg}`,
+    commands: (pkg) =>
+      `npm view ${pkg} versions --json   # see what's available\nnpm update ${pkg}\n# or pin a specific patched version directly:\nnpm install ${pkg}@<fixed-version>`,
+  },
+  pip: {
+    manifest: "requirements.txt",
+    checkInstalled: (pkg) => `pip show ${pkg}`,
+    commands: (pkg) => `pip install --upgrade ${pkg}\n# then pin the resolved version back into requirements.txt:\npip freeze | grep -i ${pkg}`,
+  },
+  composer: {
+    manifest: "composer.json",
+    checkInstalled: (pkg) => `composer show ${pkg}`,
+    commands: (pkg) => `composer update ${pkg}\n# or pin a specific patched version directly:\ncomposer require ${pkg}:^<fixed-version>`,
+  },
+};
+
+export function dependencyVulnerableRemediation(packageName: string, ecosystem: "npm" | "pip" | "composer" = "npm"): string {
+  const cfg = DEPENDENCY_ECOSYSTEM_COMMANDS[ecosystem];
+  const auditNote =
+    ecosystem === "npm"
+      ? " — `npm audit fix` applies it automatically when the fix doesn't require a major-version bump"
+      : "";
+
   return `Update **${packageName}** to a patched version.
 
 \`\`\`bash
-npm view ${packageName} versions --json   # see what's available
-npm update ${packageName}
-# or pin a specific patched version directly:
-npm install ${packageName}@<fixed-version>
+${cfg.commands(packageName)}
 \`\`\`
 
 Check the advisory OSV.dev matched (search \`${packageName}\` at
-https://osv.dev) for the exact patched range — \`npm audit fix\` applies it
-automatically when the fix doesn't require a major-version bump.
+https://osv.dev) for the exact patched range${auditNote}.
 
-The version checked here comes from the range declared in \`package.json\`,
+The version checked here comes from the range declared in \`${cfg.manifest}\`,
 not a lockfile, so it is an approximation of what's actually installed — run
-\`npm ls ${packageName}\` to confirm the real installed version before
-deciding whether this is already fixed.
+\`${cfg.checkInstalled(packageName)}\` to confirm the real installed version
+before deciding whether this is already fixed.
 
 After upgrading, run your test suite and re-scan to confirm the finding
 clears.`;
