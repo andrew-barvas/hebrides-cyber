@@ -5,15 +5,14 @@
 // live config. A human still reviews and merges — that's the point, not a
 // limitation.
 //
-// Requires GITHUB_PAT (a fine-grained personal access token, or a GitHub
-// App installation token — see TODO below) with contents:write and
-// pull-requests:write on whichever repos it's used against. The customer
-// must add the Hebrides Cyber bot account/App as a collaborator first.
-//
-// TODO: a shared PAT across all customers is a real blast-radius risk if it
-// leaks — before onboarding real customers, replace this with a GitHub App
-// (per-installation tokens, scoped to only the repos each customer
-// explicitly installs it on) rather than one long-lived PAT for everyone.
+// Requires GitHub access to whichever repo it's used against, with
+// contents:write and pull-requests:write. Resolved per-request through
+// src/lib/githubApp.ts's resolveGithubAuth(): a GitHub App installation
+// token if the customer has installed the App on this repo, else the
+// shared GITHUB_PAT — see that module's header for the blast-radius
+// reasoning behind preferring the App path. Whichever path applies, the
+// customer must have granted access first (installed the App, or added the
+// Hebrides Cyber bot account as a collaborator for the PAT path).
 //
 // Rebuilt as a Next.js API route alongside run-scan — see that file's header
 // for why.
@@ -22,13 +21,13 @@ import { buildRemediationMarkdown } from "@/lib/remediation";
 import type { Finding } from "@/lib/scanners";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { lookupOsvFixInfo } from "@/lib/scanners/osv";
+import { resolveGithubAuth } from "@/lib/githubApp";
 
-const githubPat = process.env.GITHUB_PAT ?? "";
 const githubApi = "https://api.github.com";
 
-function ghHeaders() {
+function ghHeaders(token: string) {
   return {
-    Authorization: `Bearer ${githubPat}`,
+    Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
@@ -36,10 +35,6 @@ function ghHeaders() {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  if (!githubPat) {
-    return res.status(501).json({ error: "GITHUB_PAT is not configured on this deployment — see .env.example." });
-  }
 
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
@@ -50,6 +45,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { scanId, githubRepo, baseBranch = "main" } = req.body as { scanId?: string; githubRepo?: string; baseBranch?: string };
   if (!scanId || !githubRepo) return res.status(400).json({ error: "scanId and githubRepo ('owner/repo') are required" });
   if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) return res.status(400).json({ error: "githubRepo must look like 'owner/repo'" });
+
+  const { token } = await resolveGithubAuth(githubRepo);
+  if (!token) {
+    return res.status(501).json({ error: "No GitHub access configured for this deployment (neither a GitHub App installation nor GITHUB_PAT) — see .env.example." });
+  }
 
   const { data: scan, error: scanError } = await supabaseAdmin
     .from("scans")
@@ -71,7 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let prUrl: string;
   try {
-    prUrl = await openRemediationPr(githubRepo, baseBranch, scanId, markdown);
+    prUrl = await openRemediationPr(githubRepo, baseBranch, scanId, markdown, token);
   } catch (err) {
     return res.status(502).json({ error: `GitHub API error: ${(err as Error).message}` });
   }
@@ -84,7 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   let dependencyBumpPrUrl: string | undefined;
   let dependencyBumpError: string | undefined;
   try {
-    const bumpResult = await openDependencyBumpPr(githubRepo, baseBranch, scanId);
+    const bumpResult = await openDependencyBumpPr(githubRepo, baseBranch, scanId, token);
     if (bumpResult) dependencyBumpPrUrl = bumpResult.prUrl;
   } catch (err) {
     dependencyBumpError = `dependency bump PR failed: ${(err as Error).message}`;
@@ -93,17 +93,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   return res.status(200).json({ ok: true, prUrl, dependencyBumpPrUrl, dependencyBumpError });
 }
 
-async function openRemediationPr(repo: string, baseBranch: string, scanId: string, markdown: string): Promise<string> {
+async function openRemediationPr(repo: string, baseBranch: string, scanId: string, markdown: string, token: string): Promise<string> {
   // 1. Get the SHA of the base branch's HEAD commit.
-  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders() });
-  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check GITHUB_PAT access to ${repo}`);
+  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders(token) });
+  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check that the GitHub App is installed (or GITHUB_PAT's bot is a collaborator) on ${repo}`);
   const baseRef = (await baseRefRes.json()) as { object: { sha: string } };
 
   // 2. Create a new branch from that commit.
   const branchName = `hebridescyber/security-fixes-${scanId.slice(0, 8)}`;
   const createRefRes = await fetch(`${githubApi}/repos/${repo}/git/refs`, {
     method: "POST",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }),
   });
   if (!createRefRes.ok && createRefRes.status !== 422) {
@@ -113,12 +113,12 @@ async function openRemediationPr(repo: string, baseBranch: string, scanId: strin
 
   // 3. Create (or update) SECURITY-FIXES.md on that branch.
   const path = "SECURITY-FIXES.md";
-  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders() });
+  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders(token) });
   const existingSha = existingRes.ok ? ((await existingRes.json()) as { sha: string }).sha : undefined;
 
   const putRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}`, {
     method: "PUT",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({
       message: "Add Hebrides Cyber security fix recommendations",
       content: Buffer.from(markdown, "utf-8").toString("base64"),
@@ -131,7 +131,7 @@ async function openRemediationPr(repo: string, baseBranch: string, scanId: strin
   // 4. Open the PR (or return the existing one if it's already open).
   const prRes = await fetch(`${githubApi}/repos/${repo}/pulls`, {
     method: "POST",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({
       title: "Security fixes from Hebrides Cyber scan",
       head: branchName,
@@ -140,7 +140,7 @@ async function openRemediationPr(repo: string, baseBranch: string, scanId: strin
     }),
   });
   if (prRes.status === 422) {
-    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders() });
+    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders(token) });
     const list = (await listRes.json()) as Array<{ html_url: string }>;
     if (list[0]) return list[0].html_url;
     throw new Error("PR creation returned 422 and no existing PR was found");
@@ -394,8 +394,8 @@ questions.*
  * doesn't parse, or nothing qualifies — all expected, non-exceptional
  * outcomes for a repo that simply has nothing safe to bump right now.
  */
-export async function openDependencyBumpPr(repo: string, baseBranch: string, scanId: string): Promise<{ prUrl: string; bumps: DependencyBumpCandidate[] } | null> {
-  const pkgRes = await fetch(`${githubApi}/repos/${repo}/contents/package.json?ref=${baseBranch}`, { headers: ghHeaders() });
+export async function openDependencyBumpPr(repo: string, baseBranch: string, scanId: string, token: string): Promise<{ prUrl: string; bumps: DependencyBumpCandidate[] } | null> {
+  const pkgRes = await fetch(`${githubApi}/repos/${repo}/contents/package.json?ref=${baseBranch}`, { headers: ghHeaders(token) });
   if (!pkgRes.ok) return null; // no package.json at the repo root — nothing for this feature to do
   const pkgFile = (await pkgRes.json()) as { content?: string; encoding?: string };
   if (!pkgFile.content) return null;
@@ -423,15 +423,15 @@ export async function openDependencyBumpPr(repo: string, baseBranch: string, sca
   const newRaw = JSON.stringify(updated, null, indent) + (rawPackageJson.endsWith("\n") ? "\n" : "");
 
   // 1. Base branch HEAD sha.
-  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders() });
-  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check GITHUB_PAT access to ${repo}`);
+  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders(token) });
+  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check that the GitHub App is installed (or GITHUB_PAT's bot is a collaborator) on ${repo}`);
   const baseRef = (await baseRefRes.json()) as { object: { sha: string } };
 
   // 2. A branch separate from openRemediationPr's — see module header.
   const branchName = `hebridescyber/dependency-bumps-${scanId.slice(0, 8)}`;
   const createRefRes = await fetch(`${githubApi}/repos/${repo}/git/refs`, {
     method: "POST",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }),
   });
   if (!createRefRes.ok && createRefRes.status !== 422) {
@@ -440,12 +440,12 @@ export async function openDependencyBumpPr(repo: string, baseBranch: string, sca
 
   // 3. Commit the bumped package.json on that branch.
   const path = "package.json";
-  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders() });
+  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}?ref=${branchName}`, { headers: ghHeaders(token) });
   const existingSha = existingRes.ok ? ((await existingRes.json()) as { sha: string }).sha : undefined;
 
   const putRes = await fetch(`${githubApi}/repos/${repo}/contents/${path}`, {
     method: "PUT",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({
       message: `Bump ${bumps.length} dependenc${bumps.length === 1 ? "y" : "ies"} to patch known CVEs`,
       content: Buffer.from(newRaw, "utf-8").toString("base64"),
@@ -458,7 +458,7 @@ export async function openDependencyBumpPr(repo: string, baseBranch: string, sca
   // 4. Open the PR (or return the existing one if it's already open).
   const prRes = await fetch(`${githubApi}/repos/${repo}/pulls`, {
     method: "POST",
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
     body: JSON.stringify({
       title: `Security: bump ${bumps.length} dependenc${bumps.length === 1 ? "y" : "ies"} (Hebrides Cyber)`,
       head: branchName,
@@ -467,7 +467,7 @@ export async function openDependencyBumpPr(repo: string, baseBranch: string, sca
     }),
   });
   if (prRes.status === 422) {
-    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders() });
+    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders(token) });
     const list = (await listRes.json()) as Array<{ html_url: string }>;
     if (list[0]) return { prUrl: list[0].html_url, bumps };
     throw new Error("dependency-bump PR creation returned 422 and no existing PR was found");

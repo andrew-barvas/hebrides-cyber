@@ -32,15 +32,15 @@
 // cosmetic bug — it is us leaking the customer's credentials.
 // ============================================================================
 //
-// GitHub access follows the precedent set by src/pages/api/generate-fix-pr.ts,
-// the only other GitHub integration in the codebase: a shared GITHUB_PAT, the
-// `owner/repo` format with the same validation regex, the customer having
-// added the Hebrides Cyber bot account as a collaborator, and plain `fetch`
-// against api.github.com with a small auth-header helper. That file's TODO
-// about a shared PAT being a blast-radius risk applies here with more force —
-// this module hands the token to `git` over the network — and is the reason
-// sanitiseForOutput() scrubs the token out of every string this module can
-// return.
+// GitHub access resolves through src/lib/githubApp.ts's resolveGithubAuth():
+// a GitHub App installation token when the customer has installed the App on
+// this repo, else the shared GITHUB_PAT. The blast-radius risk of a shared
+// PAT (flagged in generate-fix-pr.ts's original TODO) applies here with more
+// force than anywhere else in the codebase — this module hands the token to
+// `git` over the network — which is exactly why an installation token
+// (repo-scoped, expires in an hour) is worth the extra plumbing here first.
+// sanitiseForOutput() scrubs whichever token was used out of every string
+// this module can return, regardless of which auth path supplied it.
 //
 // Deliberately NOT wired to any table. The `repo_connections` table (owner /
 // github_repo / connected_at) is approved but unbuilt, so this is a pure
@@ -54,6 +54,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Finding } from "./index";
+import { resolveGithubAuth } from "../githubApp";
 
 const execFileAsync = promisify(execFile);
 
@@ -86,7 +87,7 @@ export type SecretScanResult =
 export type SecretScanOptions = {
   /** `owner/repo`, exactly as stored by the (unbuilt) repo_connections table. */
   githubRepo: string;
-  /** Defaults to process.env.GITHUB_PAT — same token as generate-fix-pr.ts. */
+  /** Defaults to src/lib/githubApp.ts's resolveGithubAuth() result (App token or GITHUB_PAT). Override only for tests/local verification. */
   githubToken?: string;
 };
 
@@ -450,7 +451,6 @@ async function fetchRepoSizeKb(githubRepo: string, token: string): Promise<{ ok:
  */
 export async function scanRepositoryForSecrets(options: SecretScanOptions): Promise<SecretScanResult> {
   const githubRepo = options.githubRepo;
-  const token = options.githubToken ?? process.env.GITHUB_PAT ?? "";
 
   // Same validation as src/pages/api/generate-fix-pr.ts. This value is
   // interpolated into a clone URL and a filesystem path, so it is checked
@@ -458,12 +458,14 @@ export async function scanRepositoryForSecrets(options: SecretScanOptions): Prom
   if (!githubRepo || !/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
     return { status: "error", repo: String(githubRepo ?? ""), findings: [], note: "githubRepo must look like 'owner/repo'" };
   }
+
+  const token = options.githubToken ?? (await resolveGithubAuth(githubRepo)).token;
   if (!token) {
     return {
       status: "not_configured",
       repo: githubRepo,
       findings: [],
-      note: "GITHUB_PAT is not set — skipping repository secret scan. See .env.example.",
+      note: "No GitHub access configured (neither a GitHub App installation nor GITHUB_PAT) — skipping repository secret scan. See .env.example.",
     };
   }
 

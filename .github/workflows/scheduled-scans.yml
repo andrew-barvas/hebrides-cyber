@@ -139,6 +139,18 @@ jobs:
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
           ZAP_API_KEY: changeme
+          # Was missing entirely before — secretScan.ts/dependencyManifest.ts/
+          # dockerBaseImage.ts (src/lib/scanExecution.ts's runExtendedTools)
+          # need GitHub access to run at all, and none of these three secrets
+          # were ever passed into this job, so every real scheduled scan with
+          # a connected repo silently got not_configured/not_applicable
+          # results for all three checks. src/lib/githubApp.ts prefers the
+          # App path when GITHUB_APP_ID/GITHUB_APP_PRIVATE_KEY are set, and
+          # falls back to GITHUB_PAT — set whichever of these secrets exist;
+          # an unset one just resolves to an empty string, same as today.
+          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
         run: npm run queue:run-worker
 
       - name: Stop ZAP daemon

@@ -3,10 +3,12 @@
 // GitHub repo to scan, verifying (once, at connect time) that the Hebrides
 // Cyber bot can actually reach it before we ever write a row.
 //
-// Follows the GitHub-integration precedent set by
-// src/pages/api/generate-fix-pr.ts: shared GITHUB_PAT env var, the same
-// `owner/repo` validation regex, and the same collaborator precondition —
-// the customer must add the bot account as a collaborator before connecting.
+// Access check follows src/lib/githubApp.ts's resolveGithubAuth(): a repo
+// with the GitHub App installed on it passes without ever touching
+// GITHUB_PAT, so "install the App" is now the primary onboarding step and
+// "add the bot account as a collaborator" (the PAT path) is the fallback
+// for a deployment that hasn't set up the App yet. Same `owner/repo`
+// validation regex as generate-fix-pr.ts either way.
 //
 // Writes go through supabaseAdmin (service role) because
 // sql/migrations/009_repo_connections.sql deliberately ships with no
@@ -18,14 +20,14 @@
 // src/app/account/page.tsx already reads `subscriptions` directly.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { resolveGithubAuth } from "@/lib/githubApp";
 
-const githubPat = process.env.GITHUB_PAT ?? "";
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 10_000;
 
-function ghHeaders() {
+function ghHeaders(token: string) {
   return {
-    Authorization: `Bearer ${githubPat}`,
+    Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
@@ -34,11 +36,6 @@ function ghHeaders() {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST" && req.method !== "DELETE") {
     return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  // Unset PAT is a deployment gap, not a client error and not a crash.
-  if (!githubPat) {
-    return res.status(503).json({ error: "GITHUB_PAT is not configured on this deployment — see .env.example." });
   }
 
   const caller = await authenticateApiRequest(req);
@@ -63,13 +60,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true });
   }
 
-  // POST — verify the bot can actually reach the repo before writing
+  // POST — verify access can actually reach the repo before writing
   // anything. Cheap and real evidence that access exists, rather than
-  // trusting the input string blindly.
+  // trusting the input string blindly. resolveGithubAuth tries the GitHub
+  // App installation first; a repo with the App installed proves access
+  // without needing GITHUB_PAT at all.
+  const { token, via } = await resolveGithubAuth(githubRepo);
+  if (!token) {
+    return res.status(503).json({ error: "No GitHub access configured on this deployment (neither a GitHub App nor GITHUB_PAT) — see .env.example." });
+  }
+
   let accessRes: Response;
   try {
     accessRes = await fetch(`${githubApi}/repos/${githubRepo}`, {
-      headers: ghHeaders(),
+      headers: ghHeaders(token),
       signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     });
   } catch (err) {
@@ -78,11 +82,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (accessRes.status === 404) {
     return res.status(400).json({
-      error: `GitHub returned 404 for ${githubRepo}. Either the repository doesn't exist, or the Hebrides Cyber bot hasn't been added as a collaborator yet — add it first, then try again.`,
+      error:
+        via === "app"
+          ? `GitHub returned 404 for ${githubRepo} even though a GitHub App installation was found — the installation may not include this repo. Check the App's repository access settings.`
+          : `GitHub returned 404 for ${githubRepo}. Either the repository doesn't exist, or you haven't installed the Hebrides Cyber GitHub App (or added the bot as a collaborator) yet.`,
     });
   }
   if (!accessRes.ok) {
-    return res.status(400).json({ error: `GitHub returned ${accessRes.status} for ${githubRepo} — check the repo name and that the bot has access.` });
+    return res.status(400).json({ error: `GitHub returned ${accessRes.status} for ${githubRepo} — check the repo name and that access has been granted.` });
   }
 
   // unique(owner, github_repo) makes this idempotent — reconnecting the same
