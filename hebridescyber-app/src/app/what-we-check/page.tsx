@@ -335,7 +335,7 @@ export default function WhatWeCheckPage() {
         </div>
 
         {/* How we avoid false positives */}
-        <div className="mt-16">
+        <div id="methodology" className="mt-16 scroll-mt-24">
           <div className="mb-5 flex items-center gap-3" aria-hidden="true">
             <span className="font-mono text-xs text-neon/60">// methodology</span>
             <div className="h-px flex-1 bg-cyberborder" />
