@@ -1,0 +1,3 @@
+Contact: mailto:security@hebridescyber.com
+Preferred-Languages: en
+Canonical: https://hebridescyber.com/.well-known/security.txt
