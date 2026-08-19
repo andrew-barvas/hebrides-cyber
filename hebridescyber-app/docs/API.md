@@ -106,6 +106,33 @@ finding types that don't get a CVE lookup at all (only outdated JS libraries
 are checked today — see `src/lib/scanners/osv.ts` for why that's scoped
 narrower than every finding type).
 
+### `GET /api/v1/targets/{host}/trend`
+
+Score history for every completed scan of `host` you own, oldest first — the
+same data the dashboard's score trend chart renders, exposed programmatically.
+`host` is a bare hostname (`example.com`, not a full URL), matched against the
+hostname of each stored `target_url` rather than an exact string match, since
+two scans of "the same" site aren't guaranteed byte-identical URLs.
+
+| Query param | Default | Notes |
+|-------------|---------|-------|
+| `limit` | 20 | Max 100 |
+
+```json
+{
+  "host": "example.com",
+  "points": [
+    { "date": "2026-07-20T09:02:11Z", "score": 61 },
+    { "date": "2026-07-27T09:03:02Z", "score": 68 },
+    { "date": "2026-08-03T09:01:47Z", "score": 72 }
+  ],
+  "count": 3
+}
+```
+
+An empty `points` array means no completed scans of that host exist yet on
+this account — not an error.
+
 ---
 
 ## Webhooks
