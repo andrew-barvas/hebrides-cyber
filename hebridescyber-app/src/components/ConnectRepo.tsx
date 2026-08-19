@@ -91,7 +91,9 @@ export default function ConnectRepo() {
       <div className="px-5 pb-5 pt-1 space-y-4">
         <p className="text-sm text-cybertext/60">
           Connect a GitHub repository so scans can check its{" "}
-          <code className="text-neon">package.json</code> dependencies against
+          <code className="text-neon">package.json</code>,{" "}
+          <code className="text-neon">requirements.txt</code>, and{" "}
+          <code className="text-neon">composer.json</code> dependencies against
           known vulnerabilities. Install the Hebrides Cyber GitHub App on the
           repo first (or add the bot account as a collaborator, if the App
           isn&rsquo;t set up on this deployment yet) — we verify access
