@@ -1,5 +1,6 @@
 // Web application checks: robots.txt, HTTP methods, error page disclosure,
-// WordPress deep scan (if detected), CORS reflected-origin, JS library versions.
+// WordPress deep scan (if detected), CORS reflected-origin, JS library
+// versions, Subresource Integrity on cross-origin scripts/stylesheets.
 // All checks are passive/safe read-only probes — no exploit code.
 import { npmPackageNameFor, lookupNpmCveIds, extractCveIdsFromText } from "./osv";
 import { type Baseline, normaliseBody, fetchBaseline, matchesBaselineHeaders, isCatchAllBody } from "./httpProbe";
@@ -15,6 +16,7 @@ export type WebAppResult =
       drupal: DrupalData | null;
       corsReflected: CorsReflectedData;
       jsLibraries: JsLibraryFinding[];
+      unprotectedResources: UnprotectedResource[];
     }
   | { status: "error"; note: string };
 
@@ -82,6 +84,13 @@ export type CorsReflectedData = {
   credentialsAllowed: boolean;
   testedOrigin: string;
 };
+
+// A cross-origin <script> or <link rel="stylesheet"> the page loads without
+// a Subresource Integrity hash. Same-origin resources are never checked —
+// SRI protects against a *third party* being compromised or MITM'd, not
+// against the site's own origin, so flagging a same-origin asset would be
+// noise with no real protection story attached.
+export type UnprotectedResource = { kind: "script" | "stylesheet"; url: string };
 
 export type JsLibraryFinding = {
   name: string;
@@ -538,19 +547,90 @@ async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> 
   }
 }
 
+// ── Subresource Integrity ─────────────────────────────────────────────────────
+//
+// A cross-origin <script>/<link rel="stylesheet"> with no integrity="..."
+// hash means the page trusts that third party completely — if the CDN is
+// compromised, has its DNS hijacked, or is MITM'd, it can serve arbitrary
+// JS/CSS to every visitor with no way for the browser to notice. This only
+// checks whether the attribute is *present*, never whether the hash is
+// correct — validating that would mean fetching and hashing every external
+// resource, a meaningfully heavier check than reading one HTML attribute,
+// and out of scope here. Presence alone is still real, evidenced signal:
+// a resource with no integrity attribute at all has zero SRI protection
+// regardless of what a correctness check might additionally find.
+//
+// Same regex-over-raw-HTML approach as checkJsLibraries below, not a real
+// HTML parser — consistent with the rest of this file, and sufficient for
+// pulling src/href + integrity out of a tag without needing a DOM.
+
+const SCRIPT_TAG_RE = /<script\b[^>]*>/gi;
+const LINK_STYLESHEET_RE = /<link\b[^>]*rel=["']stylesheet["'][^>]*>/gi;
+// Also matches <link ... href="..." rel="stylesheet" ...> where href comes
+// before rel — LINK_STYLESHEET_RE above only requires rel=stylesheet to
+// appear somewhere in the tag, order-independent.
+const SRC_ATTR_RE = /\bsrc=["']([^"']+)["']/i;
+const HREF_ATTR_RE = /\bhref=["']([^"']+)["']/i;
+const INTEGRITY_ATTR_RE = /\bintegrity=["'][^"']+["']/i;
+
+// Cap matches how every other module in this codebase bounds worst-case
+// output — a page with 200 third-party script tags must not produce 200
+// individual findings; see remediationText.ts's sriRemediation for the
+// rolled-up wording used once this cap is hit.
+const MAX_UNPROTECTED_RESOURCES = 15;
+
+function isCrossOrigin(rawUrl: string, pageOrigin: string): boolean {
+  try {
+    const resolved = new URL(rawUrl, pageOrigin);
+    return resolved.origin !== pageOrigin;
+  } catch {
+    return false; // unparseable (e.g. a data: URI) — not a cross-origin asset to flag
+  }
+}
+
+async function checkSubresourceIntegrity(targetUrl: string): Promise<UnprotectedResource[]> {
+  try {
+    const res = await fetch(targetUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const pageOrigin = new URL(targetUrl).origin;
+
+    const unprotected: UnprotectedResource[] = [];
+
+    for (const tag of html.match(SCRIPT_TAG_RE) ?? []) {
+      if (unprotected.length >= MAX_UNPROTECTED_RESOURCES) break;
+      const src = tag.match(SRC_ATTR_RE)?.[1];
+      if (!src || !isCrossOrigin(src, pageOrigin)) continue; // inline or same-origin script — not this check's concern
+      if (!INTEGRITY_ATTR_RE.test(tag)) unprotected.push({ kind: "script", url: src });
+    }
+
+    for (const tag of html.match(LINK_STYLESHEET_RE) ?? []) {
+      if (unprotected.length >= MAX_UNPROTECTED_RESOURCES) break;
+      const href = tag.match(HREF_ATTR_RE)?.[1];
+      if (!href || !isCrossOrigin(href, pageOrigin)) continue;
+      if (!INTEGRITY_ATTR_RE.test(tag)) unprotected.push({ kind: "stylesheet", url: href });
+    }
+
+    return unprotected;
+  } catch {
+    return [];
+  }
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function checkWebApp(targetUrl: string, cms: CmsFlags): Promise<WebAppResult> {
   try {
     const origin = new URL(targetUrl).origin;
 
-    const [robots, httpMethods, errorDisclosure, corsReflected, jsLibraries] =
+    const [robots, httpMethods, errorDisclosure, corsReflected, jsLibraries, unprotectedResources] =
       await Promise.all([
         checkRobots(origin),
         checkHttpMethods(targetUrl),
         checkErrorDisclosure(origin),
         checkCorsReflected(targetUrl),
         checkJsLibraries(targetUrl),
+        checkSubresourceIntegrity(targetUrl),
       ]);
 
     const [wordpress, joomla, drupal] = await Promise.all([
@@ -569,6 +649,7 @@ export async function checkWebApp(targetUrl: string, cms: CmsFlags): Promise<Web
       drupal,
       corsReflected,
       jsLibraries,
+      unprotectedResources,
     };
   } catch (err) {
     return { status: "error", note: `Web app check failed: ${(err as Error).message}` };

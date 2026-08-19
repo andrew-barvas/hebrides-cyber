@@ -477,6 +477,30 @@ update the \`integrity\` hash to match.
 Where an upgrade is genuinely blocked, confirm whether the vulnerable code path
 is reachable in your usage and document the decision.`;
 
+export function sriRemediation(kind: "script" | "stylesheet", url: string): string {
+  const tag = kind === "script" ? "script" : "link";
+  const attr = kind === "script" ? "src" : "href";
+
+  return `Add a Subresource Integrity hash to this ${kind}, so the browser refuses to
+run/apply it if the third-party origin ever serves something different from
+what you expect:
+
+\`\`\`bash
+curl -s ${url} | openssl dgst -sha384 -binary | openssl base64 -A
+\`\`\`
+
+\`\`\`html
+<${tag} ${attr}="${url}" integrity="sha384-<hash from above>" crossorigin="anonymous"></${tag}>
+\`\`\`
+
+\`crossorigin="anonymous"\` is required alongside \`integrity\` — without it the
+browser won't apply the check at all. Most CDNs (jsDelivr, cdnjs, unpkg)
+publish the correct \`integrity\` value directly on their site; copying theirs
+is safer than hand-computing it, since it's pinned to the exact file they
+serve. If you control the third-party resource yourself, consider serving it
+same-origin instead, which needs no SRI hash at all.`;
+}
+
 export const OPEN_PORT = `Close the port or restrict who can reach it. Administrative services should
 never be exposed to the whole internet.
 

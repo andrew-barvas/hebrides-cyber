@@ -162,6 +162,7 @@ const categories: CheckCategory[] = [
       "Error pages that leak stack traces or framework internals",
       "CORS reflected-Origin misconfiguration (with or without credentials allowed)",
       "JavaScript library versions (jQuery, Moment.js, Lodash, Bootstrap, AngularJS…) matched against live CVE data from OSV.dev",
+      "Cross-origin scripts and stylesheets loaded without a Subresource Integrity hash",
     ],
   },
   {

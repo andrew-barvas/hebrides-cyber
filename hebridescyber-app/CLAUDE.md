@@ -82,7 +82,7 @@ Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_
 - `fingerprint.ts` — technology detection (WordPress etc.)
 - `ports.ts` — common open ports via Shodan InternetDB
 - `recon.ts` — IP resolution, Shodan CVEs, crt.sh subdomain enumeration
-- `webapp.ts` — robots.txt, HTTP OPTIONS, error disclosure, WordPress/Joomla/Drupal deep scan, CORS reflected-origin, JS library versions (CVE-enriched via `osv.ts`)
+- `webapp.ts` — robots.txt, HTTP OPTIONS, error disclosure, WordPress/Joomla/Drupal deep scan, CORS reflected-origin, JS library versions (CVE-enriched via `osv.ts`), Subresource Integrity on cross-origin `<script>`/`<link rel=stylesheet>` tags (same-origin resources are never flagged — SRI protects against a compromised third party, not the site's own origin)
 - `safeBrowsing.ts` — Google Safe Browsing malware/phishing check (needs `GOOGLE_SAFE_BROWSING_API_KEY`; `not_configured` without it)
 - `waybackDiscovery.ts` — checks historical URLs from the Wayback Machine CDX API that still resolve live, surfacing forgotten endpoints a fresh crawl can't find
 - `hibp.ts` — HaveIBeenPwned domain breach check (needs `HIBP_API_KEY`; `not_configured` without it)

@@ -375,7 +375,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- Web App (robots / methods / disclosure / WP / CORS / JS libs) --------
   if (results.webapp.status === "checked") {
-    const { robots, httpMethods, errorDisclosure, wordpress, joomla, drupal, corsReflected, jsLibraries } =
+    const { robots, httpMethods, errorDisclosure, wordpress, joomla, drupal, corsReflected, jsLibraries, unprotectedResources } =
       results.webapp;
 
     // robots.txt interesting paths
@@ -573,6 +573,19 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           cveIds: lib.cveIds,
         });
       }
+    }
+
+    // Subresource Integrity — cross-origin scripts/stylesheets loaded
+    // without an integrity hash. Scripts are riskier than stylesheets (full
+    // code execution vs. CSS-level tampering), so severity differs.
+    for (const resource of unprotectedResources) {
+      findings.push({
+        checkId: `webapp.missing-sri:${resource.kind}:${resource.url}`,
+        severity: resource.kind === "script" ? "medium" : "low",
+        title: `Cross-origin ${resource.kind} loaded without Subresource Integrity`,
+        detail: `${resource.url} is loaded with no integrity attribute — if that origin is compromised, hijacked, or MITM'd, it can serve modified content with no way for the browser to detect it.`,
+        remediation: FIX.sriRemediation(resource.kind, resource.url),
+      });
     }
   }
 
