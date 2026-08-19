@@ -15,12 +15,13 @@ import { checkWebApp, type WebAppResult } from "./webapp";
 import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
 import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
+import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
 import * as FIX from "./remediationText";
 
 export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
-  CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult,
+  CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
 };
 
 export type ScanResults = {
@@ -40,6 +41,7 @@ export type ScanResults = {
   safeBrowsing: SafeBrowsingResult;
   waybackDiscovery: WaybackDiscoveryResult;
   hibp: HibpResult;
+  wpVulnDb: WpVulnDbResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -141,6 +143,12 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     checkZap(targetUrl),
   ]);
 
+  // Depends on webapp's WordPress plugin detection, so it can't join the
+  // Promise.all batches above — those run before webapp exists.
+  const wpVulnDb = await checkWpVulnDb(
+    webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : []
+  );
+
   return {
     target_url: targetUrl,
     checked_at: new Date().toISOString(),
@@ -158,6 +166,7 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     safeBrowsing,
     waybackDiscovery,
     hibp,
+    wpVulnDb,
     zap,
   };
 }
@@ -592,6 +601,24 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         detail: breach.description || `Data classes exposed: ${breach.dataClasses.join(", ") || "unknown"}.`,
         remediation: FIX.hibpBreachRemediation(breach.dataClasses),
       });
+    }
+  }
+
+  // --- WPScan Vulnerability Database (WordPress plugin CVE matches) ---------
+  if (results.wpVulnDb.status === "checked") {
+    for (const plugin of results.wpVulnDb.plugins) {
+      for (const vuln of plugin.vulnerabilities) {
+        findings.push({
+          checkId: `wpvdb.plugin-vulnerability:${plugin.slug}:${vuln.id}`,
+          severity: wpVulnSeverity(vuln.vulnType),
+          title: `${plugin.name} ${plugin.version} — ${vuln.title}`,
+          detail: vuln.fixedIn
+            ? `WPScan's vulnerability database lists this as fixed in version ${vuln.fixedIn} — the detected version ${plugin.version} predates that fix.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`
+            : `WPScan's vulnerability database lists this as still unpatched upstream as of its last update — no fixed version exists yet.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`,
+          remediation: FIX.wpPluginVulnerabilityRemediation(plugin.name, vuln.fixedIn, vuln.referenceUrls[0]),
+          cveIds: vuln.cveIds,
+        });
+      }
     }
   }
 
