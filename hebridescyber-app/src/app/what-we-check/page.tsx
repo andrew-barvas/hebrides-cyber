@@ -58,6 +58,8 @@ const categories: CheckCategory[] = [
       "SPF record present and correctly scoped",
       "DKIM key discovery across the default selectors used by major providers, plus key strength, revocation, and testing-mode checks",
       "DMARC record present, and enforcement policy (none / quarantine / reject)",
+      "MTA-STS policy published and enforced, for domains that receive mail",
+      "TLS-RPT reporting address configured, so failed mail-TLS connections are visible",
       "CAA records restricting which CAs can issue certificates for your domain",
       "DNSSEC signing status",
     ],

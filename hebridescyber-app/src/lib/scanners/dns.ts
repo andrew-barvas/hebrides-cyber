@@ -1,6 +1,8 @@
-// DNS security scanner — checks email authentication records (SPF, DMARC),
-// certificate authority authorisation (CAA), and DNSSEC deployment signals.
-// Uses Node's built-in dns/promises — no external tools or API keys needed.
+// DNS security scanner — checks email authentication records (SPF, DMARC,
+// DKIM), mail transport security (MTA-STS, TLS-RPT), certificate authority
+// authorisation (CAA), and DNSSEC deployment signals. Uses Node's built-in
+// dns/promises for DNS lookups — no external tools or API keys needed. The
+// MTA-STS policy-file fetch is the one exception, a plain HTTPS GET.
 import { resolveTxt, resolveCaa, resolve6, resolveMx, resolve } from "node:dns/promises";
 import type { CaaRecord } from "node:dns";
 
@@ -12,6 +14,8 @@ export type DnsResult =
       dmarc: DmarcAnalysis;
       caa: CaaAnalysis;
       dnssec: DnssecAnalysis;
+      mtaSts: MtaStsAnalysis;
+      tlsRpt: TlsRptAnalysis;
       ipv6: boolean;
       mxCount: number;
     }
@@ -259,6 +263,102 @@ async function checkDnssec(domain: string): Promise<DnssecAnalysis> {
   }
 }
 
+// ---- MTA-STS (RFC 8461) -----------------------------------------------------
+//
+// Two independent parts, both required for MTA-STS to actually do anything:
+// a `_mta-sts.<domain>` TXT record announcing a policy exists, and a policy
+// file served over HTTPS at `https://mta-sts.<domain>/.well-known/mta-sts.txt`
+// declaring the enforcement mode. A domain can publish the DNS record and
+// never serve the file (or serve it with mode: testing, which enforces
+// nothing) — both are real, evidenced gaps this checks for separately rather
+// than treating "the TXT record exists" as "MTA-STS is protecting this mail."
+//
+// Only meaningful for domains that receive mail at all, so the caller only
+// invokes this when mxCount > 0 — a domain with no MX records has no inbound
+// mail transport to protect, and reporting "no MTA-STS" on it would be noise
+// dressed up as a finding.
+
+type MtaStsAnalysis = {
+  dnsRecordPresent: boolean;
+  policyFetched: boolean;
+  mode: string | null; // "enforce" | "testing" | "none" | null (unfetched/unparseable)
+  issues: string[];
+};
+
+const HTTP_TIMEOUT_MS = 8_000;
+
+async function checkMtaSts(domain: string): Promise<MtaStsAnalysis> {
+  const txt = await resolveTxt(`_mta-sts.${domain}`).catch(() => [] as string[][]);
+  const flat = txt.flat();
+  const dnsRecordPresent = flat.some((r) => r.startsWith("v=STSv1"));
+
+  if (!dnsRecordPresent) {
+    return { dnsRecordPresent: false, policyFetched: false, mode: null, issues: [] };
+  }
+
+  try {
+    const res = await fetch(`https://mta-sts.${domain}/.well-known/mta-sts.txt`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      return {
+        dnsRecordPresent: true,
+        policyFetched: false,
+        mode: null,
+        issues: [`_mta-sts DNS record exists but the policy file returned HTTP ${res.status} — the record is a dangling pointer`],
+      };
+    }
+    const body = await res.text();
+    const modeMatch = body.match(/^\s*mode:\s*(\w+)/im);
+    const mode = modeMatch?.[1]?.toLowerCase() ?? null;
+    const issues: string[] = [];
+    if (!mode) {
+      issues.push("MTA-STS policy file fetched but has no parseable 'mode:' line");
+    } else if (mode === "none") {
+      issues.push("MTA-STS mode is 'none' — the policy is published but not enforced");
+    } else if (mode === "testing") {
+      issues.push("MTA-STS mode is 'testing' — failures are reported but mail is not rejected; upgrade to 'enforce' once confident");
+    }
+    return { dnsRecordPresent: true, policyFetched: true, mode, issues };
+  } catch (err) {
+    return {
+      dnsRecordPresent: true,
+      policyFetched: false,
+      mode: null,
+      issues: [`_mta-sts DNS record exists but the policy file could not be fetched: ${(err as Error).message}`],
+    };
+  }
+}
+
+// ---- TLS-RPT (RFC 8460) ------------------------------------------------------
+//
+// A `_smtp._tls.<domain>` TXT record telling other mail servers where to send
+// reports about failed opportunistic-TLS/MTA-STS connections. Pure reporting,
+// no enforcement of its own — but it's the only visibility a domain owner has
+// into whether inbound mail delivery is silently being downgraded to
+// plaintext by a receiving server that doesn't honour STARTTLS.
+
+type TlsRptAnalysis = {
+  present: boolean;
+  record: string | null;
+  issues: string[];
+};
+
+async function checkTlsRpt(domain: string): Promise<TlsRptAnalysis> {
+  const txt = await resolveTxt(`_smtp._tls.${domain}`).catch(() => [] as string[][]);
+  const flat = txt.flat();
+  const record = flat.find((r) => r.startsWith("v=TLSRPTv1")) ?? null;
+
+  if (!record) return { present: false, record: null, issues: [] };
+
+  const issues: string[] = [];
+  if (!record.includes("rua=")) {
+    issues.push("TLS-RPT record has no rua= reporting address — reports have nowhere to go");
+  }
+  return { present: true, record, issues };
+}
+
 // ---- Main ------------------------------------------------------------------
 
 export async function checkDns(targetUrl: string): Promise<DnsResult> {
@@ -286,7 +386,19 @@ export async function checkDns(targetUrl: string): Promise<DnsResult> {
     const mxCount = mxRecords.status === "fulfilled" ? mxRecords.value.length : 0;
     const dnssecResult = dnssec.status === "fulfilled" ? dnssec.value : { likelySigned: false, note: "DNSSEC check failed" };
 
-    return { status: "checked", spf, dkim, dmarc, caa, dnssec: dnssecResult, ipv6, mxCount };
+    // Only meaningful for a domain that actually receives mail — see
+    // checkMtaSts's header comment. Run after mxCount is known rather than
+    // joining the Promise.allSettled batch above, since whether to check at
+    // all depends on that result.
+    const [mtaSts, tlsRpt] =
+      mxCount > 0
+        ? await Promise.all([checkMtaSts(domain), checkTlsRpt(domain)])
+        : [
+            { dnsRecordPresent: false, policyFetched: false, mode: null, issues: [] } as MtaStsAnalysis,
+            { present: false, record: null, issues: [] } as TlsRptAnalysis,
+          ];
+
+    return { status: "checked", spf, dkim, dmarc, caa, dnssec: dnssecResult, mtaSts, tlsRpt, ipv6, mxCount };
   } catch (err) {
     return { status: "error", note: `DNS check failed: ${(err as Error).message}` };
   }

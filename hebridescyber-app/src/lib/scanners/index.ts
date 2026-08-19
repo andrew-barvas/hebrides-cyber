@@ -257,6 +257,20 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (!results.dns.dnssec.likelySigned) {
       findings.push({ checkId: "dns.dnssec-missing", severity: "info", title: "DNSSEC not detected", detail: results.dns.dnssec.note, remediation: FIX.DNSSEC_MISSING });
     }
+    // MTA-STS/TLS-RPT only get evaluated when the domain has MX records (see
+    // checkMtaSts's header comment) — dnsRecordPresent/present both default
+    // false when that gate wasn't met, so these blocks are naturally silent
+    // for a domain with no mail transport to protect.
+    if (results.dns.mxCount > 0 && !results.dns.mtaSts.dnsRecordPresent) {
+      findings.push({ checkId: "dns.mta-sts-missing", severity: "info", title: "MTA-STS not configured", detail: "No _mta-sts TXT record found — inbound mail delivery has no protection against downgrade or interception attacks on the SMTP connection itself.", remediation: FIX.MTA_STS_MISSING });
+    } else if (results.dns.mtaSts.issues.length > 0) {
+      findings.push({ checkId: "dns.mta-sts-issues", severity: "low", title: "MTA-STS misconfiguration", detail: results.dns.mtaSts.issues.join("; "), remediation: FIX.MTA_STS_ISSUES });
+    }
+    if (results.dns.mxCount > 0 && !results.dns.tlsRpt.present) {
+      findings.push({ checkId: "dns.tls-rpt-missing", severity: "info", title: "TLS-RPT not configured", detail: "No _smtp._tls TXT record found — no visibility into failed opportunistic-TLS connections for inbound mail.", remediation: FIX.TLS_RPT_MISSING });
+    } else if (results.dns.tlsRpt.issues.length > 0) {
+      findings.push({ checkId: "dns.tls-rpt-issues", severity: "low", title: "TLS-RPT misconfiguration", detail: results.dns.tlsRpt.issues.join("; "), remediation: FIX.TLS_RPT_ISSUES });
+    }
   }
 
   // --- Exposure -------------------------------------------------------------

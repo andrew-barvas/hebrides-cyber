@@ -75,7 +75,7 @@ Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_
 **Base passive suite** — always runs, on every scan regardless of plan or repo connection. Wired into `runAllChecks()`/`summariseResults()` in `src/lib/scanners/index.ts`:
 - `tls.ts` — certificate grade and expiry
 - `headers.ts` — security header presence, CSP grading, cookie flags, CORS, info disclosure
-- `dns.ts` — SPF, DMARC, DKIM (best-effort selector guessing), CAA, DNSSEC
+- `dns.ts` — SPF, DMARC, DKIM (best-effort selector guessing), MTA-STS (DNS record + live policy-file fetch), TLS-RPT, CAA, DNSSEC. MTA-STS/TLS-RPT only get evaluated when the domain has MX records — silent otherwise, not a false "missing"
 - `exposure.ts` — sensitive paths (.env, .git, phpinfo, etc.), security.txt presence
 - `directoryListing.ts` — autoindex detection, reuses `httpProbe.ts`'s baseline/masking
 - `cloudMisconfig.ts` — public S3/Azure Blob/GCS buckets, but only ones the target's own page source references
