@@ -62,14 +62,14 @@
 // error — plenty of repos aren't containerised. Never throws, matching every
 // other scanner module's contract.
 //
-// GitHub access follows the same precedent as generate-fix-pr.ts /
-// secretScan.ts / dependencyManifest.ts: shared GITHUB_PAT, `owner/repo`
-// format, plain fetch against api.github.com with a small auth-header
-// helper, and the customer having added the Hebrides Cyber bot as a
-// collaborator first.
+// GitHub access resolves through src/lib/githubApp.ts's resolveGithubAuth() —
+// a GitHub App installation token if the customer installed the App on this
+// repo, else the shared GITHUB_PAT. `owner/repo` format, plain fetch against
+// api.github.com.
 // ============================================================================
 
 import type { Finding } from "./index";
+import { resolveGithubAuth } from "../githubApp";
 import { dockerBaseImageOutdatedRemediation, DOCKER_BASE_IMAGE_UNPINNED } from "./remediationText";
 
 const githubApi = "https://api.github.com";
@@ -96,7 +96,7 @@ export type DockerBaseImageResult =
 export type DockerBaseImageOptions = {
   /** null/empty when the scan owner has no repo_connections row. */
   githubRepo: string | null | undefined;
-  /** Defaults to process.env.GITHUB_PAT — same token as generate-fix-pr.ts / dependencyManifest.ts. */
+  /** Defaults to src/lib/githubApp.ts's resolveGithubAuth() result (App token or GITHUB_PAT). Override only for tests/local verification. */
   githubToken?: string;
 };
 
@@ -479,7 +479,6 @@ export async function buildDockerBaseImageFindings(
  */
 export async function scanDockerBaseImage(options: DockerBaseImageOptions): Promise<DockerBaseImageResult> {
   const githubRepo = options.githubRepo || null;
-  const token = options.githubToken ?? process.env.GITHUB_PAT ?? "";
 
   if (!githubRepo) {
     return { status: "not_applicable", repo: "", findings: [], note: "no repository connected — see /account to connect one." };
@@ -487,8 +486,9 @@ export async function scanDockerBaseImage(options: DockerBaseImageOptions): Prom
   if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
     return { status: "not_applicable", repo: githubRepo, findings: [], note: "connected githubRepo is not a valid 'owner/repo' — reconnect via /account." };
   }
+  const token = options.githubToken ?? (await resolveGithubAuth(githubRepo)).token;
   if (!token) {
-    return { status: "not_configured", repo: githubRepo, findings: [], note: "GITHUB_PAT is not set — skipping Dockerfile base image scan. See .env.example." };
+    return { status: "not_configured", repo: githubRepo, findings: [], note: "No GitHub access configured (neither a GitHub App installation nor GITHUB_PAT) — skipping Dockerfile base image scan. See .env.example." };
   }
 
   try {

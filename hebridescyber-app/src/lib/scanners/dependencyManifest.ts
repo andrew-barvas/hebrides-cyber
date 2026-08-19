@@ -29,14 +29,16 @@
 // an error finding. Never throws, matching every other scanner module's
 // contract.
 //
-// GitHub access follows the same precedent as src/pages/api/generate-fix-pr.ts
-// and src/lib/scanners/secretScan.ts: shared GITHUB_PAT, `owner/repo` format,
-// plain fetch against api.github.com with a small auth-header helper, and the
-// customer having added the Hebrides Cyber bot as a collaborator first.
+// GitHub access resolves through src/lib/githubApp.ts's resolveGithubAuth():
+// a GitHub App installation token if the customer has installed the App on
+// this repo, else the shared GITHUB_PAT (the original, sole path — see that
+// module's header for why a shared PAT across every customer needed
+// narrowing). `owner/repo` format, plain fetch against api.github.com.
 
 import type { Finding } from "./index";
 import { lookupCveIds } from "./osv";
 import { dependencyVulnerableRemediation } from "./remediationText";
+import { resolveGithubAuth } from "../githubApp";
 
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 10_000;
@@ -71,7 +73,7 @@ export type DependencyManifestResult =
 export type DependencyManifestOptions = {
   /** null/empty when the scan owner has no repo_connections row. */
   githubRepo: string | null | undefined;
-  /** Defaults to process.env.GITHUB_PAT — same token as generate-fix-pr.ts / secretScan.ts. */
+  /** Defaults to src/lib/githubApp.ts's resolveGithubAuth() result (App token or GITHUB_PAT). Override only for tests/local verification. */
   githubToken?: string;
 };
 
@@ -203,7 +205,6 @@ export async function buildDependencyFindings(
  */
 export async function scanDependencyManifest(options: DependencyManifestOptions): Promise<DependencyManifestResult> {
   const githubRepo = options.githubRepo || null;
-  const token = options.githubToken ?? process.env.GITHUB_PAT ?? "";
 
   if (!githubRepo) {
     return { status: "not_applicable", repo: "", findings: [], note: "no repository connected — see /account to connect one." };
@@ -211,8 +212,9 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
   if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
     return { status: "not_applicable", repo: githubRepo, findings: [], note: "connected githubRepo is not a valid 'owner/repo' — reconnect via /account." };
   }
+  const token = options.githubToken ?? (await resolveGithubAuth(githubRepo)).token;
   if (!token) {
-    return { status: "not_configured", repo: githubRepo, findings: [], note: "GITHUB_PAT is not set — skipping dependency manifest scan. See .env.example." };
+    return { status: "not_configured", repo: githubRepo, findings: [], note: "No GitHub access configured (neither a GitHub App installation nor GITHUB_PAT) — skipping dependency manifest scan. See .env.example." };
   }
 
   try {
