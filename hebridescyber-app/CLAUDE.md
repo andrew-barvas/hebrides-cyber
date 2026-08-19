@@ -108,7 +108,11 @@ Import the base pipeline as `@/lib/scanners` (the directory). A single-file `src
 Three distinct, non-overlapping "help me fix this" features — don't conflate them:
 - `remediationText.ts` — static markdown, attached to every finding unconditionally (see above).
 - `src/lib/aiRemediation.ts` / `POST /api/scans/[id]/ai-fix` — on-demand, per-finding, sends the finding + detected tech stack to Azure OpenAI for a stack-specific fix (only live if `AZURE_OPENAI_*` is configured).
-- `POST /api/generate-fix-pr` — opens a real GitHub pull request. Requires `GITHUB_PAT` and the customer having added the Hebrides Cyber bot as a collaborator; for dependency findings it bumps the actual version in `package.json` (via `osv.ts`'s `lookupOsvFixInfo`), not just a recommendations file.
+- `POST /api/generate-fix-pr` — opens a real GitHub pull request. Auth resolves via `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` (see below); for dependency findings it bumps the actual version in `package.json` (via `osv.ts`'s `lookupOsvFixInfo`), not just a recommendations file.
+
+### GitHub access for customer repos
+
+`src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` is the one function every customer-repo-touching module calls (`generate-fix-pr.ts`, `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `connect-repo.ts`) — never read `process.env.GITHUB_PAT` directly in a new one. It tries a GitHub App installation token first (per-repo, expires in an hour, resolved live via `GET /repos/{owner}/{repo}/installation` — no webhook or install-callback flow needed), falling back to the shared `GITHUB_PAT` when the App isn't configured or isn't installed on that repo. `GITHUB_PAT` is also used, unrelated to any of this, by `src/lib/onDemandScanTrigger.ts` to dispatch this repo's own `on-demand-scan.yml` — don't conflate the two concerns when reasoning about that token's scope.
 
 ### Content generation: daily blog + weekly newsletter
 
