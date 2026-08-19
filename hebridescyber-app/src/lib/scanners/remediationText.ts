@@ -345,6 +345,66 @@ single toggle, then give you a DS record to add at your registrar.
 This is a defence-in-depth measure — lower priority than SPF/DMARC or missing
 headers.`;
 
+export const MTA_STS_MISSING = `MTA-STS (RFC 8461) lets other mail servers require TLS when delivering mail
+to this domain, closing the STARTTLS-downgrade gap that plain opportunistic
+TLS leaves open. Two pieces are required:
+
+**1. Publish the DNS record:**
+
+\`\`\`
+_mta-sts.example.com. IN TXT "v=STSv1; id=20260101000000Z"
+\`\`\`
+
+The \`id\` is any string you bump whenever the policy file changes — receivers
+use it to know when to re-fetch.
+
+**2. Serve the policy file** over HTTPS at
+\`https://mta-sts.example.com/.well-known/mta-sts.txt\`:
+
+\`\`\`
+version: STSv1
+mode: testing
+mx: mail.example.com
+max_age: 604800
+\`\`\`
+
+Start with \`mode: testing\` (failures are reported, nothing is rejected),
+confirm delivery still works normally, then switch to \`mode: enforce\`.`;
+
+export const MTA_STS_ISSUES = `The _mta-sts DNS record exists but the policy behind it isn't fully working —
+see the specific issue reported for this finding. A published-but-broken
+policy is worse than no policy at all if it's ever switched to \`mode:
+enforce\` without being fixed first, since receivers that see \`mode: none\` or
+\`testing\` simply don't enforce anything, and a 404/unreachable policy file
+is a dangling pointer some receivers may treat as \`mode: none\` too.
+
+Fetch \`https://mta-sts.<your-domain>/.well-known/mta-sts.txt\` yourself and
+confirm it returns a 200 with a valid \`mode:\` line before relying on it.`;
+
+export const TLS_RPT_MISSING = `TLS-RPT (RFC 8460) is pure visibility — it doesn't enforce anything on its
+own, but without it you have no way to know if inbound mail delivery is
+silently being downgraded to plaintext by a receiving server that ignores
+STARTTLS. Add:
+
+\`\`\`
+_smtp._tls.example.com. IN TXT "v=TLSRPTv1; rua=mailto:tls-reports@example.com"
+\`\`\`
+
+Reports arrive as periodic JSON summaries from participating mail providers
+(Google, Microsoft, and others send these). Worth pairing with MTA-STS —
+TLS-RPT is how you'd notice an MTA-STS policy is misbehaving in practice.`;
+
+export const TLS_RPT_ISSUES = `The _smtp._tls TXT record exists but is missing a \`rua=\` reporting address,
+so any provider that would otherwise send TLS failure reports has nowhere to
+send them. Add one:
+
+\`\`\`
+_smtp._tls.example.com. IN TXT "v=TLSRPTv1; rua=mailto:tls-reports@example.com"
+\`\`\`
+
+A mailbox is simplest to start; some providers also accept \`rua=https://...\`
+for automated ingestion once report volume makes that worthwhile.`;
+
 export const EXPOSED_FILE = `Block public access to this path immediately, then rotate anything it revealed.
 
 **1. Block it.**
