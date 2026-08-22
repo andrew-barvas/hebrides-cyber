@@ -151,11 +151,15 @@ jobs:
           GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
           GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
           GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
-          # checkWpVulnDb (src/lib/scanners/wpvdb.ts) runs inside the base
+          # checkWpVulnDb/checkSafeBrowsing/checkHibp (src/lib/scanners/
+          # wpvdb.ts, safeBrowsing.ts, hibp.ts) all run inside the base
           # passive suite, which this worker calls unconditionally — same
           # "was never wired into this job's env" gap as the GitHub secrets
-          # above, just discovered later.
+          # above, just discovered later. Each degrades to its own
+          # not_configured result when unset, same as an unset GITHUB_PAT.
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
+          GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
+          HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
         run: npm run queue:run-worker
 
       - name: Stop ZAP daemon
