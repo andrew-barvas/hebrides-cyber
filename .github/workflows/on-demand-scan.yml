@@ -1,0 +1,70 @@
+name: On-Demand Scan
+
+# The file that was missing entirely — referenced by name from four places
+# (src/lib/onDemandScanTrigger.ts, src/pages/api/run-scan.ts,
+# src/pages/api/v1/scans.ts, src/app/dashboard/page.tsx) as the workflow
+# that gets a "Run scan" click or a POST /api/v1/scans call picked up within
+# about a minute, instead of waiting for scheduled-scans.yml's once-a-day
+# cron. It never actually existed, so triggerOnDemandWorkflow()'s dispatch
+# call 404'd every time, silently fell back per its own design, and every
+# on-demand scan was quietly waiting up to 24 hours for the daily cron
+# regardless of what the UI/docs promised. Confirmed with `gh workflow list`
+# that GitHub had no record of it before this file existed.
+#
+# Deliberately lighter than scheduled-scans.yml's `work` job: no
+# nmap/sqlmap/nuclei install, no ZAP daemon, no enqueue step, no shard
+# matrix. On-demand jobs already have their scan_jobs row inserted (by
+# run-scan.ts / v1/scans.ts, with scan_id pre-set) before this workflow is
+# even dispatched, and src/scripts/run-queued-scan-jobs.ts's runOne() keys
+# runExtendedTools off exactly that (scan_id set = on-demand = passive-only,
+# per what /what-we-check tells customers an on-demand scan does) — so
+# there's nothing here to install, and one worker invocation is enough:
+# claim the one just-inserted job, run it (~10-30s for the passive suite),
+# exit when the queue's empty.
+#
+# No shared concurrency group with scheduled-scans.yml needed — both call
+# the same claim_scan_job() SKIP LOCKED RPC, which is what makes concurrent
+# runs across either workflow safe by construction.
+#
+# Requires the same base-suite secrets scheduled-scans.yml's `work` job
+# needs (minus the GitHub App/PAT ones, which only matter for the extended
+# tool suite this workflow never runs):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  - to claim/run/write the job
+#   AZURE_OPENAI_*                            - optional, AI scan summary
+#   WPSCAN_API_TOKEN                          - optional, WordPress plugin CVE match
+#   GOOGLE_SAFE_BROWSING_API_KEY              - optional, malware/phishing check
+#   HIBP_API_KEY                              - optional, breach exposure check
+# Every one of the optional secrets degrades to its own "not_configured"
+# result when unset — never blocks or fails the job.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+
+      - name: Work the scan job queue
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          WORKER_ID: gha-ondemand-${{ github.run_id }}
+          WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
+          GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
+          HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
+        run: npm run queue:run-worker
