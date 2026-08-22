@@ -67,7 +67,8 @@ const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
 async function runExtendedTools(
   targetUrl: string,
   githubRepo: string | null,
-  authCredential: AuthCredential | null
+  authCredential: AuthCredential | null,
+  detectedTechnologies: string[]
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   const [
     nucleiResult,
@@ -81,7 +82,7 @@ async function runExtendedTools(
     dockerBaseImageResult,
     authCheckResult,
   ] = await Promise.allSettled([
-    runNuclei(targetUrl),
+    runNuclei(targetUrl, detectedTechnologies),
     runZap(targetUrl),
     runSqlmap(targetUrl),
     runNmap(targetUrl),
@@ -258,7 +259,12 @@ export async function executeScan(
         }
       }
 
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential);
+      // Feeds nuclei's technology-scoped -tags filter (Sprint 5) — see
+      // src/worker/tools/nuclei.ts's header for why this replaced firing
+      // nuclei's entire default template set at every target.
+      const detectedTechnologies = results.fingerprint.status === "checked" ? results.fingerprint.technologies.map((t) => t.name) : [];
+
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
