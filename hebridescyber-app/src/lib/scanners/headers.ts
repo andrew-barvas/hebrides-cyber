@@ -162,36 +162,53 @@ function analyseInfoDisclosure(headers: Headers): InfoDisclosureAnalysis {
 
 // ---- Main ------------------------------------------------------------------
 
+/**
+ * The full header/CSP/cookie/CORS/info-disclosure analysis, given a
+ * already-fetched Response. Extracted so src/lib/scanners/authenticatedCheck.ts
+ * (Sprint 3's authenticated header/cookie recheck) can run the exact same
+ * analysis against a request carrying a customer-supplied session
+ * cookie/credential, without duplicating any of this logic — the only thing
+ * that differs between an unauthenticated and an authenticated check is
+ * which request produced the Response, never how the response is analysed.
+ */
+export type HeaderAnalysisBundle = {
+  httpStatus: number;
+  owasp: OwaspHeaderAnalysis;
+  csp: CspAnalysis;
+  cookies: CookieAnalysis[];
+  cors: CorsAnalysis;
+  infoDisclosure: InfoDisclosureAnalysis;
+};
+
+export function buildHeaderAnalysis(res: Response): HeaderAnalysisBundle {
+  const owaspHeaders: OwaspHeader[] = OWASP_HEADERS.map(({ name, recommendation }) => ({
+    name,
+    present: res.headers.has(name),
+    value: res.headers.get(name),
+    recommendation,
+  }));
+  const missingCount = owaspHeaders.filter((h) => !h.present).length;
+  const score = Math.round(((OWASP_HEADERS.length - missingCount) / OWASP_HEADERS.length) * 100);
+
+  // Collect all Set-Cookie headers — fetch() merges them, so split on comma
+  // sequences that look like separate cookies (heuristic: new name= after ;).
+  const rawSetCookie = res.headers.get("set-cookie") ?? "";
+  const setCookieHeaders = rawSetCookie ? rawSetCookie.split(/,(?=[^;]+=)/) : [];
+
+  return {
+    httpStatus: res.status,
+    owasp: { headers: owaspHeaders, missingCount, score },
+    csp: analyseCsp(res.headers.get("content-security-policy")),
+    cookies: analyseCookies(setCookieHeaders),
+    cors: analyseCors(res.headers.get("access-control-allow-origin"), res.headers.get("access-control-allow-credentials")),
+    infoDisclosure: analyseInfoDisclosure(res.headers),
+  };
+}
+
 export async function checkHeaders(targetUrl: string): Promise<HeadersResult> {
   try {
     const res = await fetch(targetUrl, { redirect: "follow", signal: AbortSignal.timeout(10_000) });
-
-    const owaspHeaders: OwaspHeader[] = OWASP_HEADERS.map(({ name, recommendation }) => ({
-      name,
-      present: res.headers.has(name),
-      value: res.headers.get(name),
-      recommendation,
-    }));
-    const missingCount = owaspHeaders.filter((h) => !h.present).length;
-    const score = Math.round(((OWASP_HEADERS.length - missingCount) / OWASP_HEADERS.length) * 100);
-
-    // Collect all Set-Cookie headers — fetch() merges them, so split on comma
-    // sequences that look like separate cookies (heuristic: new name= after ;).
-    const rawSetCookie = res.headers.get("set-cookie") ?? "";
-    const setCookieHeaders = rawSetCookie ? rawSetCookie.split(/,(?=[^;]+=)/) : [];
-
-    return {
-      status: "checked",
-      httpStatus: res.status,
-      owasp: { headers: owaspHeaders, missingCount, score },
-      csp: analyseCsp(res.headers.get("content-security-policy")),
-      cookies: analyseCookies(setCookieHeaders),
-      cors: analyseCors(
-        res.headers.get("access-control-allow-origin"),
-        res.headers.get("access-control-allow-credentials")
-      ),
-      infoDisclosure: analyseInfoDisclosure(res.headers),
-    };
+    return { status: "checked", ...buildHeaderAnalysis(res) };
   } catch (err) {
     return { status: "error", note: `Header check failed: ${(err as Error).message}` };
   }

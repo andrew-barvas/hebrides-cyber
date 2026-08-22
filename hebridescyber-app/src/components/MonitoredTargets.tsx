@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getSession } from "@/lib/auth";
 
 type Target = { id: string; target_url: string; created_at: string };
+type AuthStatus = { auth_type: "cookie" | "basic" };
 
 export default function MonitoredTargets() {
   const [targets, setTargets] = useState<Target[]>([]);
+  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus | null>>({});
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +20,24 @@ export default function MonitoredTargets() {
       .select("id, target_url, created_at")
       .order("created_at", { ascending: false });
     if (fetchError) setError(fetchError.message);
-    setTargets((data ?? []) as Target[]);
+    const list = (data ?? []) as Target[];
+    setTargets(list);
+
+    // Only non-secret column — see target_auth_credentials' own SELECT
+    // policy comment (sql/migrations/014_target_auth_credentials.sql) for
+    // why cookie_value/basic_username/basic_password are never requested
+    // back once saved.
+    if (list.length > 0) {
+      const { data: creds } = await supabase
+        .from("target_auth_credentials")
+        .select("monitored_target_id, auth_type")
+        .in("monitored_target_id", list.map((t) => t.id));
+      const map: Record<string, AuthStatus | null> = {};
+      for (const c of (creds ?? []) as Array<{ monitored_target_id: string; auth_type: "cookie" | "basic" }>) {
+        map[c.monitored_target_id] = { auth_type: c.auth_type };
+      }
+      setAuthStatus(map);
+    }
     setLoading(false);
   }
 
@@ -80,18 +100,196 @@ export default function MonitoredTargets() {
       ) : (
         <ul className="divide-y divide-cyberborder text-sm">
           {targets.map((t) => (
-            <li key={t.id} className="flex items-center justify-between py-2.5">
-              <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
-              <button
-                onClick={() => removeTarget(t.id)}
-                className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
-              >
-                Remove
-              </button>
+            <li key={t.id} className="py-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
+                <button
+                  onClick={() => removeTarget(t.id)}
+                  className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+              <AuthenticatedScanConfig
+                monitoredTargetId={t.id}
+                status={authStatus[t.id] ?? null}
+                onChange={load}
+              />
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * Per-target authenticated-scan credential — Sprint 3's "authenticated
+ * scanning, first slice" (src/lib/scanners/authenticatedCheck.ts). Collapsed
+ * by default so it doesn't crowd the common case (most targets never need
+ * this) — only expanded state shows the form.
+ */
+function AuthenticatedScanConfig({
+  monitoredTargetId,
+  status,
+  onChange,
+}: {
+  monitoredTargetId: string;
+  status: AuthStatus | null;
+  onChange: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [authType, setAuthType] = useState<"cookie" | "basic">("cookie");
+  const [cookieValue, setCookieValue] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function withToken(): Promise<string | null> {
+    const session = await getSession();
+    return session?.access_token ?? null;
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const token = await withToken();
+    if (!token) {
+      setError("Not signed in.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const body =
+        authType === "cookie"
+          ? { monitoredTargetId, authType, cookieValue: cookieValue.trim() }
+          : { monitoredTargetId, authType, username: username.trim(), password };
+      const res = await fetch("/api/account/target-auth", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const responseBody = await res.json();
+      if (!res.ok) throw new Error(responseBody.error ?? "Could not save credential");
+      setCookieValue("");
+      setPassword("");
+      setOpen(false);
+      await onChange();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setError(null);
+    const token = await withToken();
+    if (!token) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account/target-auth", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ monitoredTargetId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not remove credential");
+      await onChange();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-cybertext/40">
+        <span>
+          Authenticated scan connected ({status.auth_type === "cookie" ? "session cookie" : "Basic Auth"})
+        </span>
+        <button onClick={remove} disabled={busy} className="text-cybertext/30 hover:text-red-400 disabled:opacity-40 transition-colors">
+          Disconnect
+        </button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="mt-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+        + Add authenticated scan credential
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="mt-2 space-y-2 rounded-md border border-cyberborder bg-cyberbg/50 p-3">
+      <p className="text-[11px] text-cybertext/50">
+        Re-runs security header/cookie checks against this page using a session cookie or Basic Auth — not a full
+        crawl behind login. Stored credentials never appear in this UI again once saved.
+      </p>
+      <div className="flex gap-2">
+        {(["cookie", "basic"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setAuthType(t)}
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-mono border transition-colors ${
+              authType === t ? "bg-neon text-cyberbg border-neon" : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
+            }`}
+          >
+            {t === "cookie" ? "Session cookie" : "Basic Auth"}
+          </button>
+        ))}
+      </div>
+      {authType === "cookie" ? (
+        <input
+          type="text"
+          required
+          placeholder="e.g. session=abc123; other=xyz"
+          value={cookieValue}
+          onChange={(e) => setCookieValue(e.target.value)}
+          className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+        />
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            required
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+          />
+          <input
+            type="password"
+            required
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+          />
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          disabled={busy}
+          className="rounded-md bg-neon px-3 py-1.5 text-xs font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-md border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </form>
   );
 }

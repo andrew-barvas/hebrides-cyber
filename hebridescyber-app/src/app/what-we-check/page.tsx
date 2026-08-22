@@ -14,7 +14,7 @@ type CheckCategory = {
   id: string;
   icon: string;
   name: string;
-  badge?: "Runs on every scan" | "Runs when detected" | "Optional (ZAP)";
+  badge?: "Runs on every scan" | "Runs when detected" | "Optional (ZAP)" | "Optional (Agency)";
   desc: string;
   checks: string[];
 };
@@ -184,6 +184,18 @@ const categories: CheckCategory[] = [
     badge: "Optional (ZAP)",
     desc: "Where a ZAP instance is configured, an active spider/scan can be triggered against the target for deeper coverage than passive checks alone. Off by default — active scanning sends real attack payloads, so it only runs where explicitly enabled for a verified target.",
     checks: ["Spidering and active vulnerability scanning via a connected ZAP daemon"],
+  },
+  {
+    id: "authenticated",
+    icon: "🔑",
+    name: "Authenticated Scanning",
+    badge: "Optional (Agency)",
+    desc: "Connect a session cookie or Basic Auth credential for a monitored site and the same header/cookie/CSP/CORS checks re-run against the authenticated page — not a full crawl behind login, and not access-control (IDOR) testing. The one thing this uncovers that nothing else in this suite can: a real session cookie with insecure flags, which is invisible until you're actually logged in.",
+    checks: [
+      "Missing security headers on the authenticated page",
+      "Session cookies missing Secure/HttpOnly/SameSite — graded more seriously than the same issue on a public page",
+      "CSP and CORS misconfiguration on authenticated responses",
+    ],
   },
 ];
 
@@ -425,10 +437,13 @@ export default function WhatWeCheckPage() {
               <li className="flex gap-3">
                 <span className="flex-shrink-0 text-amber-400">▸</span>
                 <span>
-                  <strong className="text-cybertext">Authenticated, logged-in-user testing</strong> —
-                  every scan here is unauthenticated (black-box against the public site). Access-control
-                  bugs that only show up once you&apos;re logged in as one user trying to reach another
-                  user&apos;s data (IDOR) aren&apos;t covered.
+                  <strong className="text-cybertext">Deep authenticated testing</strong> — every
+                  scan here is unauthenticated (black-box against the public site) by default. Connecting a
+                  session cookie or Basic Auth credential (Agency plan) re-runs header/cookie/CSP/CORS
+                  checks against the logged-in page, but that&apos;s a narrow recheck, not a crawl behind
+                  login. Access-control bugs that only show up once you&apos;re logged in as one user trying
+                  to reach another user&apos;s data (IDOR), and multi-step auth flows (OAuth, MFA), aren&apos;t
+                  covered.
                 </span>
               </li>
               <li className="flex gap-3">
