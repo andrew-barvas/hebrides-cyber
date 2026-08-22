@@ -23,6 +23,7 @@ import { runDeepTls } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
+import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
 import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { sendCriticalAlertEmail } from "./scanAlerts";
@@ -65,9 +66,21 @@ const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
  */
 async function runExtendedTools(
   targetUrl: string,
-  githubRepo: string | null
+  githubRepo: string | null,
+  authCredential: AuthCredential | null
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
-  const [nucleiResult, zapResult, sqlmapResult, nmapResult, subdomainsResult, deepTlsResult, secretScanResult, dependencyManifestResult, dockerBaseImageResult] = await Promise.allSettled([
+  const [
+    nucleiResult,
+    zapResult,
+    sqlmapResult,
+    nmapResult,
+    subdomainsResult,
+    deepTlsResult,
+    secretScanResult,
+    dependencyManifestResult,
+    dockerBaseImageResult,
+    authCheckResult,
+  ] = await Promise.allSettled([
     runNuclei(targetUrl),
     runZap(targetUrl),
     runSqlmap(targetUrl),
@@ -88,6 +101,10 @@ async function runExtendedTools(
     githubRepo
       ? scanDockerBaseImage({ githubRepo })
       : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+    // Sprint 3, first slice — same "pure function over an explicit input"
+    // shape as the GitHub-backed checks above, so this call site is the only
+    // place that needs to know where the credential comes from.
+    checkAuthenticated(targetUrl, authCredential),
   ]);
 
   const extended = {
@@ -100,6 +117,7 @@ async function runExtendedTools(
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
     dependencyManifest: dependencyManifestResult.status === "fulfilled" ? dependencyManifestResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dependencyManifestResult.reason) },
     dockerBaseImage: dockerBaseImageResult.status === "fulfilled" ? dockerBaseImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dockerBaseImageResult.reason) },
+    authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -166,6 +184,7 @@ async function runExtendedTools(
   if (extended.dockerBaseImage.status === "completed") {
     findings.push(...extended.dockerBaseImage.findings);
   }
+  findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
   // recon.ts's base checkDns pass already reports a single "N subdomains
   // found via crt.sh" finding (recon.subdomains-found). When Subfinder also
@@ -213,7 +232,33 @@ export async function executeScan(
         .eq("owner", ownerId)
         .maybeSingle();
 
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null);
+      // target_auth_credentials is keyed by monitored_target_id, not
+      // (owner, target_url) directly — a scan only ever gets here via the
+      // scheduled path (runExtendedTools is scheduled-scan-only), which
+      // always originates from a monitored_targets row, so this join is
+      // real, not speculative.
+      const { data: monitoredTarget } = await supabaseAdmin
+        .from("monitored_targets")
+        .select("id")
+        .eq("owner", ownerId)
+        .eq("target_url", targetUrl)
+        .maybeSingle();
+
+      let authCredential: AuthCredential | null = null;
+      if (monitoredTarget) {
+        const { data: credRow } = await supabaseAdmin
+          .from("target_auth_credentials")
+          .select("auth_type, cookie_value, basic_username, basic_password")
+          .eq("monitored_target_id", monitoredTarget.id)
+          .maybeSingle();
+        if (credRow?.auth_type === "cookie" && credRow.cookie_value) {
+          authCredential = { type: "cookie", cookieValue: credRow.cookie_value };
+        } else if (credRow?.auth_type === "basic" && credRow.basic_username && credRow.basic_password) {
+          authCredential = { type: "basic", username: credRow.basic_username, password: credRow.basic_password };
+        }
+      }
+
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");

@@ -131,6 +131,12 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "dependency-manifest.additional-vulnerable": [CE_PATCHING, OWASP_A06, CIS_7],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7],
+
+  // --- Authenticated scanning (Sprint 3) ---
+  "auth-check.missing-headers": [CE_SECURE_CONFIG, OWASP_A05, CIS_4],
+  "auth-check.csp-absent": [OWASP_A05, CIS_4],
+  "auth-check.session-cookie-insecure": [CE_ACCESS, OWASP_A05, OWASP_A01, CIS_4],
+  "auth-check.cors-wildcard": [CE_ACCESS, OWASP_A01, OWASP_A05, CIS_4],
 };
 
 /** The part of a checkId before its first ":" — see module header. */
