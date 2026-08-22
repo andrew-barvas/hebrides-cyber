@@ -148,9 +148,21 @@ jobs:
           # App path when GITHUB_APP_ID/GITHUB_APP_PRIVATE_KEY are set, and
           # falls back to GITHUB_PAT — set whichever of these secrets exist;
           # an unset one just resolves to an empty string, same as today.
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
-          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          #
+          # The secrets on the right are named GH_* not GITHUB_* — GitHub
+          # hard-rejects (HTTP 422) any Actions secret whose name starts with
+          # "GITHUB_", reserved for its own auto-generated ones (the exact
+          # reason NEWSLETTER_SERVICE_TOKEN was never called
+          # GITHUB_ACTIONS_TOKEN). The env var name on the left stays
+          # GITHUB_PAT/GITHUB_APP_ID/GITHUB_APP_PRIVATE_KEY because that's
+          # what src/lib/githubApp.ts and every scanner module actually read
+          # via process.env — only the *secret store's* name had to change,
+          # confirmed the hard way when `gh secret set GITHUB_PAT` itself
+          # 422'd. Azure app settings have no such restriction, so those can
+          # (and do) keep the GITHUB_* name unchanged.
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
           # checkWpVulnDb/checkSafeBrowsing/checkHibp (src/lib/scanners/
           # wpvdb.ts, safeBrowsing.ts, hibp.ts) all run inside the base
           # passive suite, which this worker calls unconditionally — same

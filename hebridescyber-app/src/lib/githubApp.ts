@@ -32,8 +32,11 @@
 //        (Read & write), Metadata (Read-only, mandatory)
 //      - No webhook subscription needed — this module never receives one
 //   2. Generate a private key on the App's settings page (downloads a .pem)
-//      — set its full contents as GITHUB_APP_PRIVATE_KEY
+//      — set its full contents as GITHUB_APP_PRIVATE_KEY (Azure app setting
+//      / .env.local name; the GitHub Actions secret name is different —
+//      see the NAMING NOTE at the top of .env.example)
 //   3. Set the App's ID (shown on the same settings page) as GITHUB_APP_ID
+//      (same naming caveat as step 2)
 //   4. Each customer installs the App on their repo(s) via
 //      https://github.com/apps/<your-app-slug>/installations/new — this
 //      replaces "add the bot account as a collaborator" as the access step
