@@ -13,6 +13,7 @@ import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary, t
 import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanReport";
 import { dispatchScanCompletedWebhooks } from "./webhooks";
 import { sendSlackAlert } from "./slack";
+import { sendTeamsAlert } from "./msTeams";
 import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
@@ -299,11 +300,13 @@ export async function executeScan(
 }
 
 /**
- * Slack "change alert" — fires only when this scan found something new
+ * Slack/Teams "change alert" — fires only when this scan found something new
  * compared to the last one, so nightly monitoring doesn't spam a channel
  * with an identical "all clear" message every night. Gated to Pro/Agency
  * plans, matching what the services page advertises ("Slack alerts on score
- * change (Pro/Agency plan)").
+ * change (Pro/Agency plan)"). Slack and Teams are independent — a customer
+ * with both webhooks configured gets both, and either can be set without
+ * the other.
  */
 async function sendChangeAlertIfDue(
   supabaseAdmin: SupabaseClient,
@@ -315,18 +318,18 @@ async function sendChangeAlertIfDue(
 
   const { data: sub } = await supabaseAdmin
     .from("subscriptions")
-    .select("plan, status, slack_webhook_url")
+    .select("plan, status, slack_webhook_url, ms_teams_webhook_url")
     .eq("owner", ownerId)
     .maybeSingle();
 
-  if (!sub?.slack_webhook_url) return;
-  if (sub.status !== "active") return;
+  if (!sub || sub.status !== "active") return;
   if (sub.plan !== "pro" && sub.plan !== "agency") return;
+  if (!sub.slack_webhook_url && !sub.ms_teams_webhook_url) return;
 
   const criticalCount = findings.filter((f) => f.severity === "critical").length;
   const highCount = findings.filter((f) => f.severity === "high").length;
 
-  await sendSlackAlert(sub.slack_webhook_url, {
+  const alertPayload = {
     scanId: report.scan_id,
     targetUrl: report.target_url,
     score: report.score ?? 0,
@@ -336,5 +339,16 @@ async function sendChangeAlertIfDue(
     newFindingsCount: report.new_finding_count,
     fixedFindingsCount: report.fixed_finding_count ?? 0,
     dashboardUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com",
-  }).catch((err) => console.error("[scanExecution] slack change alert failed:", (err as Error).message));
+  };
+
+  if (sub.slack_webhook_url) {
+    await sendSlackAlert(sub.slack_webhook_url, alertPayload).catch((err) =>
+      console.error("[scanExecution] slack change alert failed:", (err as Error).message)
+    );
+  }
+  if (sub.ms_teams_webhook_url) {
+    await sendTeamsAlert(sub.ms_teams_webhook_url, alertPayload).catch((err) =>
+      console.error("[scanExecution] teams change alert failed:", (err as Error).message)
+    );
+  }
 }

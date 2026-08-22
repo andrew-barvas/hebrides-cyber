@@ -101,6 +101,7 @@ export default function ScanDetailPage() {
   const [diff, setDiff] = useState<FindingsDiff | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
+  const [hasTicketIntegration, setHasTicketIntegration] = useState(false);
   // Kept fresh via onAuthStateChange — reading it once on mount left this page
   // holding an expired token after a few hours idle, which silently 401'd the
   // share-link and AI-fix buttons while the page still looked signed in.
@@ -146,6 +147,24 @@ export default function ScanDetailPage() {
       .catch(() => {
         // Non-fatal — the report still renders fully without the trend chart.
       });
+  }, [result]);
+
+  // Gates the "Create ticket" button (ScanReportView.tsx's FindingCard) —
+  // read straight through the browser's own session, same as
+  // TicketIntegration.tsx's own status check, rather than a second API
+  // route just to answer "does one exist."
+  useEffect(() => {
+    if (!result) return;
+    supabase
+      .from("ticket_integrations")
+      .select("provider")
+      .maybeSingle()
+      .then(
+        ({ data }) => setHasTicketIntegration(Boolean(data)),
+        () => {
+          // Non-fatal — findings just render without the "Create ticket" button.
+        }
+      );
   }, [result]);
 
   if (loading) {
@@ -352,6 +371,7 @@ export default function ScanDetailPage() {
                       finding={f}
                       scanId={result.scan_id}
                       token={sessionToken ?? undefined}
+                      hasTicketIntegration={hasTicketIntegration}
                     />
                   ))}
                 </div>

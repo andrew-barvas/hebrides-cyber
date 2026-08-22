@@ -56,6 +56,9 @@ export default function DashboardPage() {
   const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
   const [slackSaving, setSlackSaving] = useState(false);
   const [slackMessage, setSlackMessage] = useState<string | null>(null);
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
+  const [teamsSaving, setTeamsSaving] = useState(false);
+  const [teamsMessage, setTeamsMessage] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
 
   const [targetUrl, setTargetUrl] = useState("");
@@ -75,7 +78,7 @@ export default function DashboardPage() {
   const loadPlan = useCallback(async () => {
     const { data } = await supabase
       .from("subscriptions")
-      .select("plan, status, slack_webhook_url")
+      .select("plan, status, slack_webhook_url, ms_teams_webhook_url")
       .maybeSingle();
     if (data?.status === "active") {
       setPlan(data.plan as Plan);
@@ -84,6 +87,7 @@ export default function DashboardPage() {
     }
     setPlanStatus(data?.status ?? null);
     setSlackWebhookUrl(data?.slack_webhook_url ?? "");
+    setTeamsWebhookUrl(data?.ms_teams_webhook_url ?? "");
   }, []);
 
   const loadScans = useCallback(async (currentUserId: string) => {
@@ -271,6 +275,17 @@ export default function DashboardPage() {
       .update({ slack_webhook_url: slackWebhookUrl || null });
     setSlackSaving(false);
     setSlackMessage(updateError ? updateError.message : "Saved — alerts will post to this channel when scans complete.");
+  }
+
+  async function saveTeamsWebhook(e: React.FormEvent) {
+    e.preventDefault();
+    setTeamsSaving(true);
+    setTeamsMessage(null);
+    const { error: updateError } = await supabase
+      .from("subscriptions")
+      .update({ ms_teams_webhook_url: teamsWebhookUrl || null });
+    setTeamsSaving(false);
+    setTeamsMessage(updateError ? updateError.message : "Saved — alerts will post to this channel when scans complete.");
   }
 
   if (loading) {
@@ -526,6 +541,42 @@ export default function DashboardPage() {
               </button>
             </form>
             {slackMessage && <p className="mt-2 text-xs text-neon">{slackMessage}</p>}
+          </div>
+        )}
+
+        {/* Microsoft Teams alerts — Pro/Agency only, independent of Slack */}
+        {(plan === "pro" || plan === "agency") && (
+          <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+            <h2 className="mb-1 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// microsoft teams alerts</h2>
+            <p className="mb-3 text-xs text-cybertext/60">
+              Post scan results to a Teams channel. Add an{" "}
+              <a
+                href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
+                target="_blank"
+                rel="noreferrer"
+                className="text-neon underline hover:text-cybertext"
+              >
+                incoming webhook
+              </a>{" "}
+              to the channel and paste its URL below. Independent of Slack — set either, both, or neither.
+            </p>
+            <form onSubmit={saveTeamsWebhook} className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                placeholder="https://outlook.office.com/webhook/…"
+                value={teamsWebhookUrl}
+                onChange={(e) => setTeamsWebhookUrl(e.target.value)}
+                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              />
+              <button
+                type="submit"
+                disabled={teamsSaving}
+                className="rounded-md border border-cyberborder px-4 py-2.5 text-sm text-cybertext/70 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+              >
+                {teamsSaving ? "Saving…" : "Save"}
+              </button>
+            </form>
+            {teamsMessage && <p className="mt-2 text-xs text-neon">{teamsMessage}</p>}
           </div>
         )}
       </div>

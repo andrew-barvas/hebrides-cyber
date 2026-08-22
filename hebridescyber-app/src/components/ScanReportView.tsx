@@ -229,15 +229,82 @@ function AiTailoredFix({ scanId, token, checkId }: { scanId: string; token: stri
   );
 }
 
+/**
+ * "Create ticket" — only rendered when the caller has already confirmed a
+ * ticket integration exists (hasTicketIntegration), so this component itself
+ * never needs to know whether it's Jira or Linear underneath — see
+ * src/pages/api/scans/[id]/create-ticket.ts, which picks that up server-side
+ * from the owner's saved integration. Dashboard-only, same reasoning as
+ * AiTailoredFix.
+ */
+function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token: string; checkId: string }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [ticketUrl, setTicketUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function request() {
+    setStatus("loading");
+    setError(null);
+    try {
+      const res = await fetch(`/api/scans/${scanId}/create-ticket`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ checkId }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not create ticket");
+      setTicketUrl(body.url);
+      setStatus("done");
+    } catch (err) {
+      setError((err as Error).message);
+      setStatus("error");
+    }
+  }
+
+  if (status === "idle") {
+    return (
+      <button onClick={request} className="mt-3 ml-4 text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
+        🎫 Create ticket
+      </button>
+    );
+  }
+  if (status === "loading") {
+    return <p className="mt-3 ml-4 text-xs text-cybertext/40 print:hidden">Creating ticket…</p>;
+  }
+  if (status === "error") {
+    return (
+      <div className="mt-3 ml-4 print:hidden">
+        <p className="text-xs text-red-400">{error}</p>
+        <button onClick={request} className="mt-1 text-xs font-medium text-neon hover:underline">
+          Try again
+        </button>
+      </div>
+    );
+  }
+  return (
+    <a
+      href={ticketUrl ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-3 ml-4 inline-block text-xs font-semibold text-neon hover:underline print:hidden"
+    >
+      🎫 Ticket created — view it ↗
+    </a>
+  );
+}
+
 export function FindingCard({
   finding,
   scanId,
   token,
+  hasTicketIntegration,
 }: {
   finding: ViewFinding;
   /** Owner-only — omit on the public share page. Enables the AI-tailored-fix button. */
   scanId?: string;
   token?: string;
+  /** Owner-only, and only true once GET-confirmed a Jira/Linear integration exists. Enables the "Create ticket" button. */
+  hasTicketIntegration?: boolean;
 }) {
   const meta = SEVERITY_META[finding.severity] ?? SEVERITY_META.info;
 
@@ -310,6 +377,9 @@ export function FindingCard({
           </div>
           {scanId && token && finding.checkId && (
             <AiTailoredFix scanId={scanId} token={token} checkId={finding.checkId} />
+          )}
+          {scanId && token && finding.checkId && hasTicketIntegration && (
+            <CreateTicketButton scanId={scanId} token={token} checkId={finding.checkId} />
           )}
         </details>
       )}
