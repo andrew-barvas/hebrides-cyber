@@ -1,29 +1,28 @@
 name: Weekly Newsletter
 
-# Publishes the weekly cybersecurity newsletter (see
-# src/lib/newsletter.ts's generateWeeklyNewsletterPost and
-# src/pages/api/generate-newsletter.ts). Separate from daily-blog.yml — same
-# underlying real-event sourcing (CISA's KEV catalog, recent high-severity
-# CVEs from NVD, and real breach/incident coverage from a small set of
-# established security news RSS feeds), but a full 7-day lookback window, a
-# broader roundup framing, and a fuller look at the product's own aggregate
-# scan stats. Own slug (week-of-YYYY-MM-DD vs the daily post's
-# cyber-brief-YYYY-MM-DD), so the two never collide even when both run on
-# the same day.
+# Publishes the weekly cybersecurity newsletter (see src/lib/newsletter.ts's
+# generateWeeklyNewsletterPost and src/scripts/generate-weekly-newsletter.ts).
+# Separate from daily-blog.yml — same underlying real-event sourcing (CISA's
+# KEV catalog, recent high-severity CVEs from NVD, and real breach/incident
+# coverage from a small set of established security news RSS feeds), but a
+# full 7-day lookback window, a broader roundup framing, and a fuller look
+# at the product's own aggregate scan stats. Own slug (week-of-YYYY-MM-DD vs
+# the daily post's cyber-brief-YYYY-MM-DD), so the two never collide even
+# when both run on the same day.
 #
 # AI narrative write-up if Azure OpenAI is configured, otherwise a
 # deterministic templated post built from the same real fetched data —
 # either way, it publishes something rather than silently skipping the week.
 #
-# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
-# Static Web Apps), not a separate Functions app — see run-scan.ts's header
-# comment for why there's only one deployed surface now.
+# Runs src/scripts/generate-weekly-newsletter.ts directly against Supabase —
+# see daily-blog.yml's header for why this moved off curling an Azure-hosted
+# API route (the same "Backend call failure" execution-ceiling failure this
+# session already diagnosed and fixed once for run-scan.ts).
+# src/pages/api/generate-newsletter.ts is deleted, not kept as a fallback.
 #
 # Requires:
-#   NEXT_PUBLIC_SITE_URL     - the deployed site's own URL (repo variable)
-#   NEWSLETTER_SERVICE_TOKEN - shared secret sent as X-Service-Token. Not
-#     named GITHUB_ACTIONS_TOKEN (an earlier name) — GitHub rejects any repo
-#     secret starting with GITHUB_ as reserved for its own auto-generated ones.
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   AZURE_OPENAI_*                            - optional, AI narrative write-up
 
 on:
   schedule:
@@ -35,13 +34,21 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger generate-newsletter
-        run: |
-          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/generate-newsletter" \
-            -H "X-Service-Token: ${{ secrets.NEWSLETTER_SERVICE_TOKEN }}")
-          cat /tmp/response.json
-          if [ "$status" != "200" ]; then
-            echo "generate-newsletter failed with status $status"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Generate and publish the weekly newsletter
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+        run: npm run newsletter:weekly
