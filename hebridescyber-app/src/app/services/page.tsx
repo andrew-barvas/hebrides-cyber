@@ -82,7 +82,7 @@ const managedServices: Service[] = [
       "Sensitive path exposure scan (.env, .git, config files)",
       "Score out of 100 with trend tracking over time",
       "Plain-English AI summary — no jargon",
-      "Slack alerts on score change (Pro/Agency plan)",
+      "Slack or Microsoft Teams alerts on score change (Pro/Agency plan)",
     ],
     meta: "First scan runs within 24 hours of sign-up",
   },

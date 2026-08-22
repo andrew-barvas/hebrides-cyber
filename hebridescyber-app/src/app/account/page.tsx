@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth";
 import ApiKeys from "@/components/ApiKeys";
 import Webhooks from "@/components/Webhooks";
 import ConnectRepo from "@/components/ConnectRepo";
+import TicketIntegration from "@/components/TicketIntegration";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
 import BrandingSection from "@/components/BrandingSection";
@@ -174,6 +175,9 @@ export default function AccountPage() {
 
         {/* Connect a repository (dependency manifest scanning) */}
         <ConnectRepo />
+
+        {/* Ticket integration (Jira/Linear) */}
+        <TicketIntegration />
 
         {/* Team */}
         {token && userId && <TeamSection token={token} currentUserId={userId} />}

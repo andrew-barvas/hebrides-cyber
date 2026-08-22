@@ -108,10 +108,11 @@ Import the base pipeline as `@/lib/scanners` (the directory). A single-file `src
 
 ### Real remediation PRs vs AI-tailored fixes vs static remediation text
 
-Three distinct, non-overlapping "help me fix this" features — don't conflate them:
+Four distinct, non-overlapping "help me fix this" features — don't conflate them:
 - `remediationText.ts` — static markdown, attached to every finding unconditionally (see above).
 - `src/lib/aiRemediation.ts` / `POST /api/scans/[id]/ai-fix` — on-demand, per-finding, sends the finding + detected tech stack to Azure OpenAI for a stack-specific fix (only live if `AZURE_OPENAI_*` is configured).
 - `POST /api/generate-fix-pr` — opens a real GitHub pull request. Auth resolves via `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` (see below); for dependency findings it bumps the actual version in `package.json` (via `osv.ts`'s `lookupOsvFixInfo`), not just a recommendations file.
+- `POST /api/scans/[id]/create-ticket` — opens a real Jira issue or Linear issue from one finding, via `src/lib/ticketIntegrations.ts`. Reuses the finding's own detail/remediation text as the ticket body rather than generating new prose — the point of this feature is "send existing guidance to where my team tracks work," not a fifth kind of write-up. Requires a saved `ticket_integrations` row (`sql/migrations/013_ticket_integrations.sql`, one per owner+provider, written only by `src/pages/api/account/ticket-integration.ts` after a real validate call against Jira/Linear's own API — same "verify before saving" precedent as `connect-repo.ts`). The "Create ticket" button in `ScanReportView.tsx`'s `FindingCard` only renders when the caller has already confirmed an integration exists (`hasTicketIntegration` prop) — it never has to know which provider is behind it.
 
 ### GitHub access for customer repos
 
@@ -163,7 +164,8 @@ Rules when adding UI:
 
 Key tables (all in `sql/migrations/`):
 - `users` — profile data keyed to `auth.users`; `is_admin` grants admin panel access
-- `subscriptions` — plan, status, slack_webhook_url, brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
+- `subscriptions` — plan, status, slack_webhook_url, ms_teams_webhook_url (`src/lib/msTeams.ts` — independent of Slack, either/both/neither), brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
+- `ticket_integrations` — one row per owner+provider (`jira`/`linear`); no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`)
 - `scans` + `scan_results` — scan records and findings/score; RLS-protected by owner
 - `scan_jobs` — the on-demand + scheduled queue (`008_scan_jobs.sql`); `claim_scan_job()` RPC does the `SKIP LOCKED` claim
 - `repo_connections` — one GitHub repo per user, gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)
