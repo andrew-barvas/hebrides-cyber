@@ -245,20 +245,31 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `NEWSLETTER_SERVICE_TOKEN` | `weekly-newsletter.yml` (`/api/generate-newsletter`) and `daily-blog.yml` (`/api/generate-daily-blog`) — same shared secret, both routes gate on `X-Service-Token`. Not named `GITHUB_ACTIONS_TOKEN` — GitHub rejects any repo secret starting with `GITHUB_` |
-| `SUPABASE_URL` | `scheduled-scans.yml` — enqueue/worker scripts query Supabase directly |
-| `SUPABASE_SERVICE_ROLE_KEY` | `scheduled-scans.yml` — same, plus needed by any CI step that seeds/reads data |
+| `NEWSLETTER_SERVICE_TOKEN` | `monthly-digest.yml` (`/api/send-monthly-digest`) — that route stays HTTP-gated (it sends real customer email); the daily blog and weekly newsletter don't use this anymore, see below. Not named `GITHUB_ACTIONS_TOKEN` — GitHub rejects any repo secret starting with `GITHUB_` |
+| `SUPABASE_URL` | `scheduled-scans.yml`, `daily-blog.yml`, `weekly-newsletter.yml` — all three run scripts that query/write Supabase directly, no API route in between |
+| `SUPABASE_SERVICE_ROLE_KEY` | same three workflows, plus needed by any CI step that seeds/reads data |
+| `WPSCAN_API_TOKEN`, `GOOGLE_SAFE_BROWSING_API_KEY`, `HIBP_API_KEY` | `scheduled-scans.yml` — optional, each check degrades to `not_configured` when unset |
 
 Also set a `NEXT_PUBLIC_SITE_URL` repo **variable** (Settings > Secrets and
 variables > Actions > Variables — not a secret, it's just this app's own
-public URL) — used by `weekly-newsletter.yml`/`daily-blog.yml` to call this
-app's own API routes, and baked into the build for Slack alert links.
+public URL) — used by `scheduled-scans.yml`'s worker (baked into Slack alert
+links) and the build.
+
+The daily blog and weekly newsletter (`daily-blog.yml` /
+`weekly-newsletter.yml`) run `src/scripts/generate-daily-blog.ts` /
+`generate-weekly-newsletter.ts` directly against Supabase — they used to
+curl `POST /api/generate-daily-blog` / `POST /api/generate-newsletter`, but
+a real production run of that hit Azure Static Web Apps' Free-tier
+Functions execution ceiling (`"Backend call failure"` after 46s, the exact
+failure already fixed once for the scan pipeline — see
+`src/scripts/generate-daily-blog.ts`'s header). Both API routes are deleted.
 
 Server-only secrets used by the API routes themselves
 (`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `AZURE_OPENAI_KEY`, `AZURE_STORAGE_CONNECTION_STRING`, `GITHUB_PAT`) belong
 in the Static Web App's own application settings, not GitHub Secrets — see
-`docs/security.md`. The `SUPABASE_*` / `NEWSLETTER_SERVICE_TOKEN` GitHub
+`docs/security.md`. The `SUPABASE_*` / `NEWSLETTER_SERVICE_TOKEN` /
+`WPSCAN_API_TOKEN` / `GOOGLE_SAFE_BROWSING_API_KEY` / `HIBP_API_KEY` GitHub
 Secrets above are the exception: they're used directly *inside* a GitHub
 Actions job (not deployed anywhere), which is a reasonable place for them,
 but rotate them the same as any other service-role credential if the

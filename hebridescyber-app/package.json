@@ -14,7 +14,9 @@
     "scan:local": "tsx src/scripts/scan-local.ts",
     "seed:users": "tsx src/scripts/seed-users.ts",
     "queue:enqueue-scheduled-scans": "tsx src/scripts/enqueue-scheduled-scans.ts",
-    "queue:run-worker": "tsx src/scripts/run-queued-scan-jobs.ts"
+    "queue:run-worker": "tsx src/scripts/run-queued-scan-jobs.ts",
+    "newsletter:daily": "tsx src/scripts/generate-daily-blog.ts",
+    "newsletter:weekly": "tsx src/scripts/generate-weekly-newsletter.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",

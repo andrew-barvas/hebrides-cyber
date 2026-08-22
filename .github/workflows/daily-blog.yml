@@ -1,7 +1,7 @@
 name: Daily Cyber Security Brief
 
 # Publishes the daily cyber security blog post (see src/lib/newsletter.ts's
-# generateDailyBlogPost and src/pages/api/generate-daily-blog.ts). Separate
+# generateDailyBlogPost and src/scripts/generate-daily-blog.ts). Separate
 # from weekly-newsletter.yml — same underlying real-event sourcing (CISA's
 # KEV catalog, recent high-severity CVEs from NVD, and real breach/incident
 # coverage from a small set of established security news RSS feeds), but a
@@ -13,22 +13,27 @@ name: Daily Cyber Security Brief
 # deterministic templated post built from the same real fetched data —
 # either way, it publishes something rather than silently skipping the day.
 #
-# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
-# Static Web Apps), not a separate Functions app — see run-scan.ts's header
-# comment for why there's only one deployed surface now. Deliberately not a
-# Supabase Edge Function for the same reason: this app already has exactly
-# one pattern for scheduled work (GitHub Actions cron -> Next.js API route),
-# and a second execution environment with its own deploy/secrets to keep in
-# sync is a cost this app paid once already (the old standalone Azure
-# Functions app) and isn't worth reintroducing.
+# Runs src/scripts/generate-daily-blog.ts directly against Supabase, rather
+# than curling a Next.js API route on Azure Static Web Apps — a real
+# production run (run 32561015093) came back "Backend call failure" after
+# 46s, Azure SWA's own proxy error for its Free-tier managed Functions layer
+# killing a request. The same signature already diagnosed and fixed once
+# this session for run-scan.ts; fixed here the same way, by not asking a
+# once-a-day cold-started Azure Function to survive external fetches plus an
+# unbounded Supabase query inside one HTTP request/response cycle.
+# src/pages/api/generate-daily-blog.ts is deleted, not kept as a manual
+# fallback — nothing else called it, and it's the thing that was breaking.
+#
+# Still deliberately not a Supabase Edge Function: this app has exactly one
+# pattern for scheduled work (GitHub Actions running a script directly
+# against Supabase, same as scheduled-scans.yml), and a second execution
+# environment with its own secrets to keep in sync is a cost this app paid
+# once already (the old standalone Azure Functions app) and isn't worth
+# reintroducing.
 #
 # Requires:
-#   NEXT_PUBLIC_SITE_URL     - the deployed site's own URL (repo variable)
-#   NEWSLETTER_SERVICE_TOKEN - shared secret sent as X-Service-Token (same
-#     one weekly-newsletter.yml uses — both routes write the same kind of
-#     public content). Not named GITHUB_ACTIONS_TOKEN (an earlier name) —
-#     GitHub rejects any repo secret starting with GITHUB_ as reserved for
-#     its own auto-generated ones.
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   AZURE_OPENAI_*                            - optional, AI narrative write-up
 
 on:
   schedule:
@@ -40,13 +45,21 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger generate-daily-blog
-        run: |
-          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/generate-daily-blog" \
-            -H "X-Service-Token: ${{ secrets.NEWSLETTER_SERVICE_TOKEN }}")
-          cat /tmp/response.json
-          if [ "$status" != "200" ]; then
-            echo "generate-daily-blog failed with status $status"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Generate and publish the daily blog post
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+        run: npm run newsletter:daily
