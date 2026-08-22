@@ -16,6 +16,7 @@ import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
 import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
+import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import * as FIX from "./remediationText";
 
 export type {
@@ -80,6 +81,16 @@ export type Finding = {
    * checked and found nothing" from "we never checked" if that ever matters.
    */
   cveIds?: string[];
+  /**
+   * Compliance/framework references (Cyber Essentials, OWASP Top 10, CIS
+   * Controls v8) this finding maps to — see src/lib/scanners/compliance.ts.
+   * Applied as a final pass in summariseResults(), not set at push time by
+   * any individual check, so it's never present on findings from a scan
+   * stored before this field existed. Absent/empty means either "not yet
+   * categorised" or genuinely not applicable to any framework — the module
+   * header explains why those are deliberately not distinguished.
+   */
+  complianceRefs?: ComplianceRef[];
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
@@ -651,6 +662,13 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   if (findings.length === 0) {
     findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });
+  }
+
+  // Compliance mapping is a final pass over the whole set, not something any
+  // individual push site needs to know about — see compliance.ts's header.
+  for (const finding of findings) {
+    const refs = getComplianceRefs(finding.checkId);
+    if (refs.length > 0) finding.complianceRefs = refs;
   }
 
   const topTitles = findings.slice(0, 3).map((f) => f.title).join("; ");

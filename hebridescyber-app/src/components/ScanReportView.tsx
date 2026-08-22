@@ -13,6 +13,7 @@
 // view by design, not a 1:1 mirror of the owner's dashboard.
 import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
+import { COMPLIANCE_FRAMEWORK_LABELS, type ComplianceRef } from "@/lib/scanners/compliance";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -24,6 +25,7 @@ export type ViewFinding = {
   checkId?: string;
   status?: DiffStatus;
   cveIds?: string[];
+  complianceRefs?: ComplianceRef[];
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -281,6 +283,20 @@ export function FindingCard({
         </div>
       )}
 
+      {finding.complianceRefs && finding.complianceRefs.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {finding.complianceRefs.map((ref) => (
+            <span
+              key={`${ref.framework}:${ref.control}`}
+              title={ref.control}
+              className="rounded-full border border-cyberborder bg-cyberbg/60 px-1.5 py-0.5 text-[10px] text-cybertext/50 print:text-slate-500"
+            >
+              {COMPLIANCE_FRAMEWORK_LABELS[ref.framework]}
+            </span>
+          ))}
+        </div>
+      )}
+
       {finding.remediation && (
         // .remediation-details is force-expanded in print — see globals.css, so
         // the PDF export always contains the fix steps.
@@ -297,6 +313,66 @@ export function FindingCard({
           )}
         </details>
       )}
+    </div>
+  );
+}
+
+// Cyber Essentials' own 5 control themes (NCSC scheme) — not this codebase's
+// invention, so listed verbatim rather than derived from anything else.
+const CYBER_ESSENTIALS_CONTROLS = [
+  "Firewalls and internet gateways",
+  "Secure configuration",
+  "Security update management",
+  "User access control",
+  "Malware protection",
+];
+
+/**
+ * Cyber Essentials-specific breakdown — singled out from the general
+ * complianceRefs badges on each finding because it's the one framework with
+ * genuine UK small-business relevance for this product. Deliberately worded
+ * as an "automated indicator," never a certification claim: real Cyber
+ * Essentials certification is a formal self-assessment (or Plus, an
+ * external audit) against NCSC's own questionnaire, which this scan does
+ * not perform and cannot substitute for.
+ *
+ * Returns null when no open finding maps to any framework yet (e.g. a scan
+ * stored before complianceRefs existed) — a report with the section but
+ * zero real data behind it would be misleading, not just incomplete.
+ */
+export function ComplianceSummary({ findings }: { findings: ViewFinding[] }) {
+  // A fixed finding shouldn't count against a control area that's since
+  // been addressed — only open findings inform this breakdown.
+  const open = findings.filter((f) => f.status !== "fixed");
+  const anyMapped = open.some((f) => (f.complianceRefs?.length ?? 0) > 0);
+  if (!anyMapped) return null;
+
+  const controlHasFinding = new Map<string, boolean>(CYBER_ESSENTIALS_CONTROLS.map((c) => [c, false]));
+  for (const f of open) {
+    for (const ref of f.complianceRefs ?? []) {
+      if (ref.framework === "cyber-essentials") controlHasFinding.set(ref.control, true);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+      <p className="mb-1 text-sm font-semibold text-cybertext">Cyber Essentials control areas</p>
+      <p className="mb-4 text-xs text-cybertext/50">
+        An automated indicator based on this scan&rsquo;s findings — not a Cyber Essentials certification. Real
+        certification is a formal self-assessment (or, for Plus, an external audit) against NCSC&rsquo;s own
+        questionnaire.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {CYBER_ESSENTIALS_CONTROLS.map((control) => {
+          const hasFinding = controlHasFinding.get(control);
+          return (
+            <div key={control} className="flex items-center gap-2 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
+              <span className={`text-sm font-bold ${hasFinding ? "text-red-400" : "text-neon"}`}>{hasFinding ? "✗" : "✓"}</span>
+              <span className="text-xs text-cybertext/70">{control}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
