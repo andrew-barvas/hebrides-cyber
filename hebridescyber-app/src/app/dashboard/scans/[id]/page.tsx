@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
@@ -35,6 +35,63 @@ type ScanResult = {
 // findScoreHistoryClient) — extracted so the dashboard overview
 // (src/app/dashboard/page.tsx) can reuse the exact same hostname-matching
 // logic rather than a second, drifting copy.
+
+// Dashboard-only, same reasoning as AiTailoredFix in ScanReportView.tsx not
+// appearing on the public share page: this needs the owner's session token
+// (GET /api/v1/scans/{id}/export requires Authorization), which a public
+// share-link viewer never has and shouldn't need for a reduced view. Fetches
+// with an explicit Authorization header rather than a plain <a href> — a
+// browser GET from a link click can't attach that header itself.
+function ExportButton({
+  scanId,
+  token,
+  format,
+  targetUrl,
+}: {
+  scanId: string;
+  token: string | null;
+  format: "csv" | "json";
+  targetUrl: string;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function download() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/v1/scans/${scanId}/export?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeHost = targetUrl.replace(/^https?:\/\//, "").replace(/[^a-z0-9.-]/gi, "-");
+      a.href = url;
+      a.download = `${safeHost}-findings.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Non-fatal — the report itself already rendered fine; a failed
+      // export attempt shouldn't need its own visible error state for a
+      // secondary action like this one.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={download}
+      disabled={!token || busy}
+      className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-40"
+    >
+      {busy ? "Exporting…" : `↓ Export ${format.toUpperCase()}`}
+    </button>
+  );
+}
 
 export default function ScanDetailPage() {
   const params = useParams<{ id: string }>();
@@ -166,12 +223,15 @@ export default function ScanDetailPage() {
                 <h1 className="text-2xl font-bold text-cybertext break-all print:text-slate-800">{targetUrl}</h1>
                 <p className="mt-1 text-sm text-cybertext/40 print:text-slate-500">Security scan report · {checkedAt}</p>
               </div>
-              <button
-                onClick={() => window.print()}
-                className="no-print shrink-0 rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
-              >
-                ↓ Download PDF
-              </button>
+              <div className="no-print flex shrink-0 gap-2">
+                <ExportButton scanId={result.scan_id} token={sessionToken} format="csv" targetUrl={targetUrl} />
+                <button
+                  onClick={() => window.print()}
+                  className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+                >
+                  ↓ Download PDF
+                </button>
+              </div>
             </div>
           </div>
 
@@ -206,6 +266,9 @@ export default function ScanDetailPage() {
               <ScoreTrend points={scoreHistory} />
             </div>
           )}
+
+          {/* Compliance mapping */}
+          <ComplianceSummary findings={taggedOrdered} />
 
           {/* Check breakdown */}
           <div>

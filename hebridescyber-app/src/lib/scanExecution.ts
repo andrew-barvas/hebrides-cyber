@@ -23,6 +23,7 @@ import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
+import { getComplianceRefs } from "./scanners/compliance";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { logAuditEvent } from "./audit";
 
@@ -217,6 +218,15 @@ export async function executeScan(
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
       }
       findings = [...findings, ...toolOutcome.findings];
+      // summariseResults() already ran its own compliance-mapping pass over
+      // the base-suite findings; extended-tool findings are appended after
+      // that returns, so they need the same pass applied here — see
+      // src/lib/scanners/compliance.ts's header for why this is a final
+      // pass over checkId rather than something each push site sets itself.
+      for (const finding of toolOutcome.findings) {
+        const refs = getComplianceRefs(finding.checkId);
+        if (refs.length > 0) finding.complianceRefs = refs;
+      }
     }
 
     summary = await generateAiSummary(results, findings);

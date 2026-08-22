@@ -106,6 +106,27 @@ finding types that don't get a CVE lookup at all (only outdated JS libraries
 are checked today — see `src/lib/scanners/osv.ts` for why that's scoped
 narrower than every finding type).
 
+### `GET /api/v1/scans/{id}/export`
+
+Flat, tabular export of one scan's findings — for a spreadsheet or your own
+reporting/ticketing pipeline, as opposed to `GET /api/v1/scans/{id}`'s nested
+report shape with New/Fixed diffing.
+
+| Query param | Default | Notes |
+|-------------|---------|-------|
+| `format` | `csv` | `csv` or `json` |
+
+CSV columns: `severity, title, detail, check_id, cve_ids, compliance_refs` —
+the last two are `;`-joined lists within a single cell. JSON returns
+`{ scan_id, target_url, findings }` with each finding's full shape (severity,
+title, detail, remediation, check_id, cve_ids, compliance_refs).
+
+`compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
+Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
+applicable. Deliberately not exhaustive: a finding with no compliance refs
+either hasn't been categorised yet or doesn't map cleanly to any of the
+three frameworks — never force-fitted.
+
 ### `GET /api/v1/targets/{host}/trend`
 
 Score history for every completed scan of `host` you own, oldest first — the
