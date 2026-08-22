@@ -69,6 +69,16 @@ const PROBE_TARGETS: ProbeTarget[] = [
   { path: "/config/database.yml", name: "Database config exposed", severity: "critical", hint: "Rails/other DB credentials in plaintext.", bodyContains: "adapter:" },
   { path: "/wp-config.php.bak", name: "WordPress config backup", severity: "critical", hint: "WordPress DB credentials in backup file.", bodyContains: "DB_" },
   { path: "/wp-config.php~", name: "WordPress config backup", severity: "critical", hint: "WordPress DB credentials in editor backup.", bodyContains: "DB_" },
+  // Sprint 5 CMS parity: the live /configuration.php (Joomla) was already
+  // checked above, but not the editor/backup variants — the exact gap
+  // wp-config.php.bak/~ already closed for WordPress. Same for Drupal,
+  // which had no settings.php coverage at all (only Django's unrelated
+  // settings.py was checked).
+  { path: "/configuration.php.bak", name: "Joomla config backup", severity: "critical", hint: "Joomla DB credentials in backup file.", bodyContains: "<?php" },
+  { path: "/configuration.php~", name: "Joomla config backup", severity: "critical", hint: "Joomla DB credentials in editor backup.", bodyContains: "<?php" },
+  { path: "/sites/default/settings.php", name: "Drupal settings.php exposed", severity: "critical", hint: "Drupal DB credentials readable — settings.php should never be served, PHP-processed or not.", bodyContains: "$databases" },
+  { path: "/sites/default/settings.php.bak", name: "Drupal settings.php backup", severity: "critical", hint: "Drupal DB credentials in backup file.", bodyContains: "$databases" },
+  { path: "/sites/default/settings.php~", name: "Drupal settings.php backup", severity: "critical", hint: "Drupal DB credentials in editor backup.", bodyContains: "$databases" },
   { path: "/settings.py", name: "Django settings exposed", severity: "high", hint: "May contain SECRET_KEY and DB credentials.", bodyContains: "SECRET_KEY" },
 
   // ---- Backup archives -------------------------------------------------------
