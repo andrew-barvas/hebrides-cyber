@@ -1,0 +1,196 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { buildHeaderAnalysis, checkHeaders } from "./headers";
+
+function makeResponse(headers: Record<string, string> = {}, status = 200): Response {
+  return new Response(null, { status, headers });
+}
+
+describe("buildHeaderAnalysis", () => {
+  it("reports every OWASP header missing and scores 0 for a bare response", () => {
+    const result = buildHeaderAnalysis(makeResponse());
+    expect(result.owasp.missingCount).toBe(10);
+    expect(result.owasp.score).toBe(0);
+    expect(result.owasp.headers.every((h) => !h.present)).toBe(true);
+  });
+
+  it("scores 100 when every OWASP header is present", () => {
+    const result = buildHeaderAnalysis(
+      makeResponse({
+        "strict-transport-security": "max-age=63072000",
+        "content-security-policy": "default-src 'self'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "permissions-policy": "geolocation=()",
+        "cross-origin-embedder-policy": "require-corp",
+        "cross-origin-opener-policy": "same-origin",
+        "cross-origin-resource-policy": "same-origin",
+        "cache-control": "no-store",
+      })
+    );
+    expect(result.owasp.missingCount).toBe(0);
+    expect(result.owasp.score).toBe(100);
+  });
+
+  describe("CSP analysis", () => {
+    it("grades F and flags missing when there is no CSP header", () => {
+      const result = buildHeaderAnalysis(makeResponse());
+      expect(result.csp.present).toBe(false);
+      expect(result.csp.grade).toBe("F");
+    });
+
+    it("grades A for a tight policy with no dangerous directives", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'none'" })
+      );
+      expect(result.csp.grade).toBe("A");
+      expect(result.csp.issues).toEqual([]);
+    });
+
+    it("flags 'unsafe-inline' and 'unsafe-eval'", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "script-src 'self' 'unsafe-inline' 'unsafe-eval'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("unsafe-inline"))).toBe(true);
+      expect(result.csp.issues.some((i) => i.includes("unsafe-eval"))).toBe(true);
+    });
+
+    it("flags a wildcard script-src", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "content-security-policy": "script-src *" }));
+      expect(result.csp.issues.some((i) => i.includes("Wildcard"))).toBe(true);
+    });
+
+    // Regression test: the object-src pattern used to be
+    // /object-src[^;']*(?!none)/i, a negative-lookahead-after-star bug that
+    // matched "object-src 'none'" too (backtracking always finds a position
+    // where "none" isn't immediately next), so a correctly locked-down
+    // policy got falsely flagged as "Missing object-src 'none'".
+    it("does not flag object-src 'none' as missing", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'none'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(false);
+    });
+
+    it("does flag object-src set to something other than 'none'", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'self'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(true);
+    });
+
+    it("degrades to grade C or worse with three or more issues", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src *; script-src 'unsafe-inline' 'unsafe-eval' data:" })
+      );
+      expect(["C", "F"]).toContain(result.csp.grade);
+    });
+  });
+
+  describe("cookie analysis", () => {
+    it("flags every missing security attribute on a bare cookie", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "set-cookie": "session=abc123" }));
+      expect(result.cookies).toHaveLength(1);
+      expect(result.cookies[0].secure).toBe(false);
+      expect(result.cookies[0].httpOnly).toBe(false);
+      expect(result.cookies[0].issues).toHaveLength(3);
+    });
+
+    it("reports no issues for a fully-locked-down cookie", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "set-cookie": "session=abc123; Secure; HttpOnly; SameSite=Strict" })
+      );
+      expect(result.cookies[0].secure).toBe(true);
+      expect(result.cookies[0].httpOnly).toBe(true);
+      expect(result.cookies[0].sameSite).toBe("strict");
+      expect(result.cookies[0].issues).toEqual([]);
+    });
+
+    it("recognises the __Host- and __Secure- name prefixes", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "set-cookie": "__Host-session=abc; Secure; HttpOnly; SameSite=Strict; Path=/" })
+      );
+      expect(result.cookies[0].hasHostPrefix).toBe(true);
+    });
+
+    it("returns an empty array when there is no Set-Cookie header at all", () => {
+      const result = buildHeaderAnalysis(makeResponse());
+      expect(result.cookies).toEqual([]);
+    });
+  });
+
+  describe("CORS analysis", () => {
+    it("flags a wildcard Access-Control-Allow-Origin", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "access-control-allow-origin": "*" }));
+      expect(result.cors.wildcardOrigin).toBe(true);
+      expect(result.cors.issues.length).toBeGreaterThan(0);
+    });
+
+    it("flags wildcard origin combined with allow-credentials as a misconfiguration signal", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "access-control-allow-origin": "*", "access-control-allow-credentials": "true" })
+      );
+      expect(result.cors.allowCredentialsWithWildcard).toBe(true);
+    });
+
+    it("does not flag a specific, non-wildcard origin", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "access-control-allow-origin": "https://trusted.example.com" }));
+      expect(result.cors.wildcardOrigin).toBe(false);
+      expect(result.cors.issues).toEqual([]);
+    });
+  });
+
+  describe("information disclosure", () => {
+    it("flags a Server header containing a version number", () => {
+      const result = buildHeaderAnalysis(makeResponse({ server: "nginx/1.18.0" }));
+      expect(result.infoDisclosure.issues.some((i) => i.includes("Server header"))).toBe(true);
+    });
+
+    it("does not flag a Server header with no version digits", () => {
+      const result = buildHeaderAnalysis(makeResponse({ server: "nginx" }));
+      expect(result.infoDisclosure.issues).toEqual([]);
+    });
+
+    it("flags X-Powered-By and X-Generator", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "x-powered-by": "PHP/8.1", "x-generator": "WordPress" }));
+      expect(result.infoDisclosure.issues).toHaveLength(2);
+    });
+  });
+
+  it("carries through the response's HTTP status", () => {
+    const result = buildHeaderAnalysis(makeResponse({}, 403));
+    expect(result.httpStatus).toBe(403);
+  });
+});
+
+describe("checkHeaders", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches the target and returns a checked result", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 200, headers: { "x-frame-options": "DENY" } }))
+    );
+
+    const result = await checkHeaders("https://example.com");
+
+    expect(result.status).toBe("checked");
+    if (result.status === "checked") {
+      expect(result.httpStatus).toBe(200);
+      expect(result.owasp.headers.find((h) => h.name === "x-frame-options")?.present).toBe(true);
+    }
+  });
+
+  it("returns a status: error result when the fetch fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND")));
+
+    const result = await checkHeaders("https://does-not-resolve.invalid");
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.note).toContain("ENOTFOUND");
+    }
+  });
+});
