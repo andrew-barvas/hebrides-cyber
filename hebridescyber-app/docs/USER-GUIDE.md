@@ -67,8 +67,10 @@ reported as "detected" with no risk signal.
 **Extended active-tool suite** — runs only on the scheduled monitoring path
 (nightly, via GitHub Actions, where real binaries can run): nmap, nuclei
 (template set scoped to the target's actual detected technologies, not the
-entire default template library), sqlmap, Subfinder subdomain takeover
-detection, testssl.sh deep TLS analysis. A connected GitHub repository
+entire default template library), sqlmap, XSSer (dedicated cross-site
+scripting confirmation), commix (dedicated OS command injection
+confirmation), Subfinder subdomain takeover detection, testssl.sh deep TLS
+analysis. A connected GitHub repository
 additionally unlocks Gitleaks secret scanning, real dependency-manifest
 vulnerability scanning (npm/pip/Composer, checked against OSV.dev), and
 Dockerfile base-image freshness checks.
@@ -291,8 +293,9 @@ the concrete needs each feature area above exists to satisfy.
 Worth stating plainly, since it shapes several design decisions above:
 
 - **No brute-forcing, no destructive payloads.** Every passive check is
-  read-only; the active-tool suite (nuclei/sqlmap/nmap/ZAP) only runs
-  against domains that have already passed real ownership verification.
+  read-only; the active-tool suite (nuclei/sqlmap/xsser/commix/nmap/ZAP)
+  only runs against domains that have already passed real ownership
+  verification.
 - **No fabricated findings.** A check that can't evidence something
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms

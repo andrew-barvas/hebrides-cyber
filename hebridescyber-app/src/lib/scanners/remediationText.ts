@@ -937,6 +937,59 @@ export function sqlmapRemediation(dbms: string | null): string {
   return SQLMAP_SQLI_BASE + (match ? snippets[match] : "");
 }
 
+export const XSSER_XSS_BASE = `XSSer confirmed this parameter reflects attacker-controlled markup or
+script back into the page unescaped — an attacker can run arbitrary
+JavaScript in another user's browser session (steal cookies/session tokens,
+act as that user, deface the page). Treat this as urgent.
+
+**The fix is always the same: never trust user input to become HTML/JS.**
+
+- Escape output for the context it lands in — HTML-entity-encode for HTML
+  body content, JS-string-encode for inline scripts, attribute-encode for
+  HTML attributes. Use your framework's built-in escaping (React/Vue/Angular
+  all escape by default) rather than hand-rolled string building.
+- Never use \`dangerouslySetInnerHTML\`, \`v-html\`, \`innerHTML\`, or
+  equivalents on anything derived from user input without passing it through
+  a sanitiser (e.g. DOMPurify) first.
+- Add a Content-Security-Policy that restricts \`script-src\` — even a
+  successful reflection is far less exploitable without inline-script
+  execution allowed.
+- Set cookies \`HttpOnly\` so a successful XSS still can't read the session
+  cookie directly.`;
+
+/** Same as XSSER_XSS_BASE — XSS remediation doesn't vary by target the way sqlmap's DBMS-specific syntax does, so this is a plain export with no per-target variant function. */
+export function xsserRemediation(): string {
+  return XSSER_XSS_BASE;
+}
+
+export const COMMIX_COMMAND_INJECTION_BASE = `commix confirmed this parameter reaches a shell command on the server —
+an attacker can run arbitrary operating-system commands with the
+application's own privileges. This is typically a direct path to full
+server compromise. Treat this as critical.
+
+**The fix is always the same: stop passing user input to a shell.**
+
+- Avoid shell execution of user-controlled input entirely where possible —
+  use a language-native API instead of \`exec\`/\`system\`/backticks (e.g. a
+  library for the specific task rather than shelling out to a CLI tool).
+- If shelling out is unavoidable, use the array/argument-list form of your
+  language's process-spawning API (e.g. Node's \`execFile\` with an args
+  array, Python's \`subprocess.run([...])\` with \`shell=False\`) so arguments
+  are never concatenated into a single shell string, which is what makes
+  injection possible.
+- Never build a shell command via string concatenation or template
+  literals with user input, even with manual escaping — allowlisting exact
+  expected values (not blocklisting characters) is the only reliable
+  defence when shell execution truly can't be avoided.
+- Apply least privilege to the account the application process runs as, so
+  a successful injection here does less damage even before the code fix
+  ships.`;
+
+/** Same as COMMIX_COMMAND_INJECTION_BASE — no per-target variant, matching xsserRemediation()'s reasoning. */
+export function commixRemediation(): string {
+  return COMMIX_COMMAND_INJECTION_BASE;
+}
+
 /**
  * The small fixed set of ports scanExecution.ts's DANGEROUS_TOOL_PORTS
  * escalates to critical regardless of nmap's service-guess — each one is

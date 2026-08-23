@@ -62,7 +62,7 @@ no Azure/queue involved — useful for iterating on scanner logic. Prints
 JSON + a 0–100 score to the console. Set `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, and `SCAN_OWNER_ID` to also persist the run
 (handy for seeding test data). The extended active-tool suite
-(nmap/nuclei/sqlmap/ZAP, secret/dependency/Docker scanning) needs the real
+(nmap/nuclei/sqlmap/xsser/commix/ZAP, secret/dependency/Docker scanning) needs the real
 binaries installed locally to do anything — see
 `.github/workflows/scheduled-scans.yml` for exactly what it installs and
 how, since that's the only environment that runs them today.
