@@ -15,6 +15,7 @@ type IntegrationStatus = {
   jira_base_url: string | null;
   jira_project_key: string | null;
   linear_team_id: string | null;
+  auto_close_enabled: boolean | null;
 };
 
 export default function TicketIntegration() {
@@ -37,13 +38,46 @@ export default function TicketIntegration() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // Ordered + limited rather than a bare .maybeSingle(): the table is
+    // unique on (owner, provider), so an owner who connected both Jira and
+    // Linear has two rows and maybeSingle() would error on exactly that
+    // account. Newest connection wins, matching create-ticket.ts.
     const { data } = await supabase
       .from("ticket_integrations")
-      .select("provider, jira_base_url, jira_project_key, linear_team_id")
+      .select("provider, jira_base_url, jira_project_key, linear_team_id, auto_close_enabled")
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     setStatus((data as IntegrationStatus | null) ?? null);
     setLoading(false);
   }, []);
+
+  async function setAutoClose(enabled: boolean) {
+    setError(null);
+    setMessage(null);
+    const token = await withToken();
+    if (!token || !status) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account/ticket-integration", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: status.provider, autoCloseEnabled: enabled }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not update auto-close");
+      setMessage(
+        enabled
+          ? "Auto-close on. Tickets will be closed automatically once a later scan confirms the finding is gone."
+          : "Auto-close off. Tickets stay open until you close them yourself."
+      );
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -119,20 +153,40 @@ export default function TicketIntegration() {
         {loading ? (
           <p className="font-mono text-xs text-cybertext/30">// loading…</p>
         ) : status ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3">
-            <div className="text-sm text-cybertext/70">
-              Connected to <span className="font-semibold text-neon">{status.provider === "jira" ? "Jira" : "Linear"}</span>
-              {status.provider === "jira" && status.jira_project_key && (
-                <span className="text-cybertext/40"> — project {status.jira_project_key}</span>
-              )}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3">
+              <div className="text-sm text-cybertext/70">
+                Connected to <span className="font-semibold text-neon">{status.provider === "jira" ? "Jira" : "Linear"}</span>
+                {status.provider === "jira" && status.jira_project_key && (
+                  <span className="text-cybertext/40"> — project {status.jira_project_key}</span>
+                )}
+              </div>
+              <button
+                onClick={() => disconnect(status.provider)}
+                disabled={busy}
+                className="text-xs text-cybertext/40 hover:text-red-400 disabled:opacity-40 transition-colors"
+              >
+                Disconnect
+              </button>
             </div>
-            <button
-              onClick={() => disconnect(status.provider)}
-              disabled={busy}
-              className="text-xs text-cybertext/40 hover:text-red-400 disabled:opacity-40 transition-colors"
-            >
-              Disconnect
-            </button>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-cyberborder p-3">
+              <input
+                type="checkbox"
+                checked={Boolean(status.auto_close_enabled)}
+                disabled={busy}
+                onChange={(e) => setAutoClose(e.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-neon"
+              />
+              <span className="text-sm text-cybertext/70">
+                Close tickets automatically when fixed
+                <span className="mt-0.5 block text-xs text-cybertext/40">
+                  When a later scan of the same site no longer finds the issue, we move its ticket to your
+                  workflow&apos;s done status and add a comment saying when it was verified. Off by default —
+                  nothing in {status.provider === "jira" ? "Jira" : "Linear"} moves unless you turn this on.
+                </span>
+              </span>
+            </label>
           </div>
         ) : (
           <>

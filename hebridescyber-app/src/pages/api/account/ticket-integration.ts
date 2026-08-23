@@ -19,9 +19,10 @@ import { validateJiraCredentials, validateLinearCredentials } from "@/lib/ticket
 
 type JiraBody = { provider: "jira"; baseUrl: string; email: string; apiToken: string; projectKey: string };
 type LinearBody = { provider: "linear"; apiKey: string; teamId: string };
+type SettingsBody = { provider: "jira" | "linear"; autoCloseEnabled: boolean };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST" && req.method !== "DELETE") {
+  if (req.method !== "POST" && req.method !== "PATCH" && req.method !== "DELETE") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -29,6 +30,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
   if (caller.via !== "session") {
     return res.status(403).json({ error: "Ticket integrations can only be managed from a logged-in session, not with an API key." });
+  }
+
+  // PATCH toggles behaviour on an already-connected integration, separate
+  // from POST's credential save so flipping auto-close doesn't require
+  // re-entering an API token that is never sent back to the browser.
+  if (req.method === "PATCH") {
+    const { provider, autoCloseEnabled } = req.body as SettingsBody;
+    if (provider !== "jira" && provider !== "linear") {
+      return res.status(400).json({ error: "provider must be 'jira' or 'linear'" });
+    }
+    if (typeof autoCloseEnabled !== "boolean") {
+      return res.status(400).json({ error: "autoCloseEnabled must be a boolean" });
+    }
+    const { data, error } = await supabaseAdmin
+      .from("ticket_integrations")
+      .update({ auto_close_enabled: autoCloseEnabled })
+      .eq("owner", caller.ownerId)
+      .eq("provider", provider)
+      .select("provider")
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: `No ${provider} integration is connected.` });
+    return res.status(200).json({ ok: true, provider, autoCloseEnabled });
   }
 
   if (req.method === "DELETE") {

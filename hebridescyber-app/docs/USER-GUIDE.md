@@ -119,6 +119,13 @@ three," never a forced mapping.
    version fix.
 4. **Ticket creation** — turns a finding into a real Jira issue or Linear
    issue, reusing the same remediation text rather than writing new prose.
+   Ticketing the same finding twice adds a "re-detected" comment to the
+   existing issue instead of opening a duplicate, and if that issue was
+   deleted in your tracker a fresh one is opened rather than silently
+   nothing. Optionally (off by default, per integration), a later scan that
+   no longer finds the issue moves its ticket to your workflow's done status
+   and comments when it was verified — nothing in your tracker moves unless
+   you turn that on.
 
 ### 3.5 Notifications
 

@@ -29,6 +29,7 @@ import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } f
 import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { sendCriticalAlertEmail } from "./scanAlerts";
+import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
 
 export type ScanExecutionResult =
@@ -377,6 +378,9 @@ export async function executeScan(
     await dispatchScanCompletedWebhooks(supabaseAdmin, ownerId, report);
     await sendChangeAlertIfDue(supabaseAdmin, ownerId, report, findings);
     await sendCriticalAlertEmail(supabaseAdmin, ownerId, report);
+    // Opt-in and off by default — no-ops entirely unless the owner enabled
+    // auto-close on their Jira/Linear integration.
+    await autoCloseFixedFindingTickets(supabaseAdmin, ownerId, report);
   } catch (err) {
     console.error(`[scanExecution] post-completion notifications failed for scan ${scanId}:`, (err as Error).message);
   }
