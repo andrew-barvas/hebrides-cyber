@@ -14,10 +14,18 @@ name: Terraform Security Scan (Checkov)
 # following the same pattern already there, rather than loosening this
 # gate.
 #
-# "Use output" beyond pass/fail: results upload as SARIF to GitHub's own
-# Security > Code scanning tab, so findings (including future ones, and any
-# skip that later needs revisiting) are visible there, not just in this
-# job's console log.
+# "Use output" beyond pass/fail: output_format is cli,sarif, so the full
+# per-check breakdown (not just pass/fail) is printed to this job's console
+# log every run. NOT also uploaded as SARIF to GitHub's Security > Code
+# scanning tab — that was tried first and failed with "Resource not
+# accessible by integration": this repo is private, and Code Scanning
+# requires GitHub Advanced Security on a private repo (a paid, per-committer
+# feature this account doesn't have — confirmed via
+# `gh api repos/andrew-barvas/hebrides-cyber` returning
+# `security_and_analysis: null`). The failure has nothing to do with the
+# workflow's own `permissions:` block; no combination of scopes fixes it
+# without enabling GHAS. If GHAS is ever enabled on this repo, re-add an
+# `upload-sarif` step to get the same findings surfaced in the Security tab.
 
 on:
   push:
@@ -35,7 +43,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write # required to upload SARIF to the Security tab
     steps:
       - uses: actions/checkout@v4
 
@@ -47,9 +54,3 @@ jobs:
           output_format: cli,sarif
           output_file_path: console,results.sarif
           soft_fail: false
-
-      - name: Upload SARIF to GitHub code scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
