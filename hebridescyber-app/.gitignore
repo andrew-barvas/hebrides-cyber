@@ -16,6 +16,9 @@ out/
 /blob-report/
 /playwright/.cache/
 
+# Vitest coverage
+/coverage/
+
 # Misc
 .DS_Store
 *.log

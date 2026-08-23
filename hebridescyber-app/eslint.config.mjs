@@ -23,6 +23,7 @@ const eslintConfig = [
       ".next/**",
       "node_modules/**",
       "out/**",
+      "coverage/**", // vitest's --coverage HTML/lcov output — generated, not source
       "playwright-report/**",
       "test-results/**",
       "next-env.d.ts",
