@@ -17,6 +17,8 @@ import { sendTeamsAlert } from "./msTeams";
 import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
+import { runXsser } from "../worker/tools/xsser";
+import { runCommix } from "../worker/tools/commix";
 import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runDeepTls } from "./scanners/deepTls";
@@ -24,7 +26,7 @@ import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
-import { nucleiRemediation, sqlmapRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { logAuditEvent } from "./audit";
@@ -74,6 +76,8 @@ async function runExtendedTools(
     nucleiResult,
     zapResult,
     sqlmapResult,
+    xsserResult,
+    commixResult,
     nmapResult,
     subdomainsResult,
     deepTlsResult,
@@ -85,6 +89,10 @@ async function runExtendedTools(
     runNuclei(targetUrl, detectedTechnologies),
     runZap(targetUrl),
     runSqlmap(targetUrl),
+    // Same "dedicated tool beyond ZAP's generic active-scan rules" precedent
+    // as sqlmap above, applied to XSS and OS command injection respectively.
+    runXsser(targetUrl),
+    runCommix(targetUrl),
     runNmap(targetUrl),
     runSubdomainDiscovery(targetUrl),
     runDeepTls(targetUrl),
@@ -112,6 +120,8 @@ async function runExtendedTools(
     nuclei: nucleiResult.status === "fulfilled" ? nucleiResult.value : { status: "error", findings: [], note: String(nucleiResult.reason) },
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
+    xsser: xsserResult.status === "fulfilled" ? xsserResult.value : { status: "error", vulnerable: false, findings: [], note: String(xsserResult.reason) },
+    commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
@@ -150,6 +160,30 @@ async function runExtendedTools(
         title: `[sqlmap] SQL injection — param: ${f.parameter}`,
         detail: `DBMS: ${f.dbms ?? "unknown"}. Parameter "${f.parameter}" is vulnerable to SQL injection.`,
         remediation: sqlmapRemediation(f.dbms),
+      });
+    }
+  }
+
+  if (extended.xsser.status === "completed" && extended.xsser.vulnerable) {
+    for (const f of extended.xsser.findings) {
+      findings.push({
+        checkId: `xsser.xss:${f.url}`,
+        severity: "critical",
+        title: `[XSSer] Cross-site scripting confirmed`,
+        detail: `A reflected/injectable XSS point was confirmed at ${f.url}.`,
+        remediation: xsserRemediation(),
+      });
+    }
+  }
+
+  if (extended.commix.status === "completed" && extended.commix.vulnerable) {
+    for (const f of extended.commix.findings) {
+      findings.push({
+        checkId: `commix.command-injection:${f.parameter}`,
+        severity: "critical",
+        title: `[commix] OS command injection — param: ${f.parameter}`,
+        detail: `Parameter "${f.parameter}" is vulnerable to OS command injection.`,
+        remediation: commixRemediation(),
       });
     }
   }

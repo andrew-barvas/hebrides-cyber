@@ -123,6 +123,8 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
 
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16],
+  "xsser.xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16],
+  "commix.command-injection": [OWASP_A03, CE_SECURE_CONFIG, CIS_16],
   "nmap.dangerous-port": [CE_FIREWALLS, OWASP_A05, CIS_12],
   "secretScan.exposed-secret": [OWASP_A02, CE_SECURE_CONFIG, CIS_3, CIS_16],
   "dependency-manifest.npm": [CE_PATCHING, OWASP_A06, CIS_7],

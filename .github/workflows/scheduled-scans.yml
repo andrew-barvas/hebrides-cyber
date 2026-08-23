@@ -98,6 +98,23 @@ jobs:
           sudo apt-get install -y --no-install-recommends nmap python3 python3-pip
           pip3 install --break-system-packages sqlmap
 
+      - name: Install xsser and commix
+        # Packaging for these two is less consistent than nmap/sqlmap/nuclei
+        # above (see the CONFIDENCE NOTE in src/worker/tools/xsser.ts and
+        # commix.ts) — xsser is a Debian/Ubuntu apt package, commix has no
+        # official PyPI release and is normally run from a git checkout.
+        # Both failure modes are handled: a missing binary makes
+        # runXsser()/runCommix() return status "not_configured" rather than
+        # throwing, so a failed install here degrades this one check, not
+        # the whole job.
+        run: |
+          sudo apt-get install -y --no-install-recommends xsser || echo "xsser apt install failed — xsser.ts will report status: not_configured"
+          sudo git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix || echo "commix clone failed — commix.ts will report status: not_configured"
+          if [ -f /opt/commix/commix.py ]; then
+            sudo ln -sf /opt/commix/commix.py /usr/local/bin/commix
+            sudo chmod +x /usr/local/bin/commix
+          fi
+
       - name: Install nuclei
         env:
           NUCLEI_VERSION: v3.3.9
