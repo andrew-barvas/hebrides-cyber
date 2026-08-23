@@ -23,6 +23,7 @@ type Props = {
 export default function ScanList({ scans, onDelete }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
     if (confirmId !== id) {
@@ -31,8 +32,14 @@ export default function ScanList({ scans, onDelete }: Props) {
     }
     setDeletingId(id);
     setConfirmId(null);
+    setDeleteError(null);
     try {
       await onDelete?.(id);
+    } catch (err) {
+      // Previously uncaught — a delete failure (e.g. a policy or network
+      // error) silently left the row sitting in the list with no
+      // indication anything went wrong. Surface it instead.
+      setDeleteError((err as Error).message || "Could not delete this scan — try again.");
     } finally {
       setDeletingId(null);
     }
@@ -50,6 +57,7 @@ export default function ScanList({ scans, onDelete }: Props) {
     <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
       <div className="px-5 py-3 border-b border-cyberborder">
         <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent scans</h2>
+        {deleteError && <p className="mt-1.5 text-xs text-red-400">{deleteError}</p>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">

@@ -175,7 +175,9 @@ export default function DashboardPage() {
   }, [router, loadScans, loadPlan, loadOverview]);
 
   async function deleteScan(scanId: string) {
-    await supabase.from("scan_results").delete().eq("scan_id", scanId);
+    // scan_results.scan_id has `on delete cascade` (001_init.sql), so
+    // deleting the scans row alone also removes its scan_results row — no
+    // separate manual delete needed.
     const { error } = await supabase.from("scans").delete().eq("id", scanId);
     if (error) throw new Error(error.message);
     setScans((prev) => prev.filter((s) => s.id !== scanId));
