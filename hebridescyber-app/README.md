@@ -197,6 +197,13 @@ Two options, see `azure/`:
   manual pass, including the GitHub-linked Static Web App setup that
   Terraform's provider doesn't fully cover.
 
+`.github/workflows/terraform-security-scan.yml` runs Checkov against
+`azure/terraform/` on every change to it, uploading results as SARIF to
+GitHub's Security > Code scanning tab. Every current finding is triaged
+directly in `main.tf`'s own comments (fixed, mitigated, or explicitly
+accepted with a reason) — the scan passes clean, so a red run means a real,
+untriaged finding.
+
 There is also a ready-to-use prompt for handing this provisioning step to
 a Claude agent with shell access: see `09-azure-provisioning-prompt.md`
 one level up from this folder.

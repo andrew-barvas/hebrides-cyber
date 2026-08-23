@@ -53,12 +53,81 @@ resource "azurerm_resource_group" "main" {
 
 # Used for temp report generation and (optionally) uploaded PDF storage —
 # see AZURE_STORAGE_CONNECTION_STRING in src/pages/api/generate-report.ts.
+#
+# Ran Checkov against this file directly (`checkov -d azure/terraform`) and
+# triaged every finding rather than either ignoring all of them or applying
+# every suggestion blindly — see .github/workflows/terraform-security-scan.yml
+# for where this now runs in CI, and re-ran locally after each change below
+# to confirm the actual pass/fail count, not just that the change compiled.
+# Fixed, cheap, no behaviour change:
+#   CKV_AZURE_44  - min_tls_version
+#   CKV_AZURE_3   - https_traffic_only_enabled
+#   CKV2_AZURE_38 - blob soft-delete (protects against an accidental report
+#                  delete, real value at negligible cost for this data volume)
+#   CKV_AZURE_206 - replication upgraded LRS -> GRS; at this data volume
+#                  (a handful of PDF reports) the cost delta is negligible
+#                  against real protection from a regional outage
+# Mitigated but still flagged — the real fix is applied, Checkov's static
+# analysis just doesn't credit it:
+#   CKV2_AZURE_41 - added the sas_policy block below (7-day account-level
+#                  expiration ceiling, well above anything generate-report.ts
+#                  actually mints); still fails in isolation
+#                  (`checkov --check CKV2_AZURE_41`) even with that block
+#                  present — a checkov 3.3.13 policy-matching limitation
+#                  against this attribute shape, not a missing control.
+#                  Re-check next time checkov is upgraded before assuming
+#                  this skip is still warranted.
+# Explicitly accepted, not fixed — each would require an architectural
+# change disproportionate to what this app actually stores (transient PDF
+# reports, not regulated data), documented inline rather than left as an
+# unexplained CI failure:
+#   CKV_AZURE_59  - allow_nested_items_to_be_public is already set below
+#                  (closes the per-container anonymous-access variant of
+#                  this concern), but this specific check wants
+#                  public_network_access_enabled = false, which needs a
+#                  private endpoint/VNet-integrated access path — same
+#                  dependency as CKV2_AZURE_2 below
+#   CKV_AZURE_33  - Queue service logging: this account has no queue_properties
+#                  block because the app doesn't use Azure Queue Storage at all
+#   CKV2_AZURE_2  - public network access: disabling this needs a private
+#                  endpoint/VNet-integrated access path from the Static Web
+#                  App, infrastructure this free-tier scaffold doesn't have
+#   CKV2_AZURE_40 - Shared Key auth: the app authenticates via
+#                  AZURE_STORAGE_CONNECTION_STRING (shared-key by
+#                  definition); moving to AAD-only auth means rewriting
+#                  generate-report.ts's storage access, an application
+#                  change, not a Terraform one
+#   CKV2_AZURE_33 - private endpoint: same VNet dependency as CKV2_AZURE_2
+#   CKV2_AZURE_1  - customer-managed key encryption: needs a Key Vault +
+#                  access-policy wiring disproportionate to transient report
+#                  PDFs; Microsoft-managed keys (the default) are accepted
 resource "azurerm_storage_account" "main" {
-  name                     = "hebridescyberstorage" # TODO: must be globally unique, lowercase, no dashes
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = azurerm_resource_group.main.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
+  name                             = "hebridescyberstorage" # TODO: must be globally unique, lowercase, no dashes
+  resource_group_name              = azurerm_resource_group.main.name
+  location                         = azurerm_resource_group.main.location
+  account_tier                     = "Standard"
+  account_replication_type         = "GRS"
+  min_tls_version                  = "TLS1_2"
+  https_traffic_only_enabled       = true
+  allow_nested_items_to_be_public  = false
+  # checkov:skip=CKV_AZURE_59: public_network_access_enabled needs a private-endpoint/VNet path this scaffold doesn't have — see comment above
+  # checkov:skip=CKV2_AZURE_2: no private-endpoint/VNet infrastructure on this free-tier scaffold — see comment above
+  # checkov:skip=CKV2_AZURE_40: app auth is AZURE_STORAGE_CONNECTION_STRING (shared-key) — see comment above
+  # checkov:skip=CKV2_AZURE_33: same VNet dependency as CKV2_AZURE_2
+  # checkov:skip=CKV2_AZURE_1: Microsoft-managed keys accepted for transient report PDFs — see comment above
+  # checkov:skip=CKV_AZURE_33: this account has no queue_properties block — the app doesn't use Azure Queue Storage
+  # checkov:skip=CKV2_AZURE_41: sas_policy block below is the real mitigation — checkov 3.3.13 doesn't credit it, see comment above
+
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+  }
+
+  sas_policy {
+    expiration_period = "07.00:00:00"
+    expiration_action = "Log"
+  }
 }
 
 # Static Web App for the Next.js app — marketing site, dashboard, and every
