@@ -8,6 +8,17 @@
 // Each entry is Markdown. The report UI renders it as plain text with fenced
 // blocks styled as code, so keep lines short and avoid nested formatting.
 
+// Every header headers.ts's OWASP_HEADERS list can report missing must have
+// an entry here — a gap falls back to the literal, useless "<value>"
+// placeholder below rather than a real header value. This previously
+// happened for the three cross-origin-* headers and cache-control (only
+// the 6 originally-"critical" headers were covered), so a "recommended
+// headers" finding for any of those four rendered an unusable snippet.
+// Deliberately NOT derived from OWASP_HEADERS's own `recommendation`
+// field — that field is human-readable guidance for the report's header
+// table ("DENY (or SAMEORIGIN if framing needed)", "Define explicit
+// allow-lists; avoid 'unsafe-inline'/'unsafe-eval'"), not always a literal
+// value that's valid to paste into a `key: value` header directive.
 export const HEADER_VALUES: Record<string, string> = {
   "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
   "content-security-policy":
@@ -16,6 +27,10 @@ export const HEADER_VALUES: Record<string, string> = {
   "x-frame-options": "DENY",
   "referrer-policy": "strict-origin-when-cross-origin",
   "permissions-policy": "geolocation=(), microphone=(), camera=()",
+  "cross-origin-embedder-policy": "require-corp",
+  "cross-origin-opener-policy": "same-origin",
+  "cross-origin-resource-policy": "same-origin",
+  "cache-control": "no-store",
 };
 
 /** Platform-specific instructions for adding response headers. */

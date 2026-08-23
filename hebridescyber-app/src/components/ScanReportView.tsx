@@ -118,6 +118,55 @@ function RemediationBody({ markdown }: { markdown: string }) {
               .map((block, j) => {
                 const lines = block.split("\n").filter((l) => l.trim());
                 const isList = lines.every((l) => /^\s*[-*\d]/.test(l));
+                // GFM-style pipe table: every line starts with "|", and the
+                // second line is a header/body separator ("|---|---|",
+                // optionally with ":" alignment markers). Used by
+                // remediationText.ts's SPF_ISSUES/DKIM_NOT_DETECTED
+                // provider-reference tables — without this, a table falls
+                // through to the plain-paragraph branch below and renders
+                // as one garbled run-on line of pipe characters.
+                const isTable =
+                  lines.length >= 2 &&
+                  lines.every((l) => l.trim().startsWith("|")) &&
+                  /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?$/.test(lines[1].trim());
+
+                if (isTable) {
+                  const cellsOf = (line: string) =>
+                    line
+                      .trim()
+                      .replace(/^\|/, "")
+                      .replace(/\|$/, "")
+                      .split("|")
+                      .map((cell) => cell.trim());
+                  const [headerRow, , ...bodyRows] = lines.map(cellsOf);
+
+                  return (
+                    <div key={j} className="overflow-x-auto">
+                      <table className="w-full border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-cyberborder text-left">
+                            {headerRow.map((cell, ci) => (
+                              <th key={ci} className="py-1 pr-4 font-semibold text-cybertext/80 print:text-slate-900">
+                                {renderInline(cell)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bodyRows.map((row, ri) => (
+                            <tr key={ri} className="border-b border-cyberborder/40 last:border-0">
+                              {row.map((cell, ci) => (
+                                <td key={ci} className="py-1 pr-4 text-cybertext/70 print:text-slate-700">
+                                  {renderInline(cell)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                }
 
                 if (isList) {
                   return (
