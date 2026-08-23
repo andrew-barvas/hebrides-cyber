@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import ScanList, { type Scan } from "./ScanList";
 
 function scan(overrides: Partial<Scan> = {}): Scan {
@@ -71,6 +71,37 @@ describe("ScanList", () => {
 
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByTitle("Delete scan")).toBeInTheDocument();
+  });
+
+  // Regression test: a delete failure (e.g. an RLS policy silently
+  // matching zero rows, or a real network error) used to be swallowed
+  // completely — no catch existed, so the row just sat there forever with
+  // no indication anything went wrong. This is exactly the real production
+  // bug fixed alongside this test: 015_scans_delete_policy.sql adds the
+  // RLS delete policy that was missing entirely for the scans table.
+  it("shows an error and keeps the row when onDelete rejects", async () => {
+    const onDelete = vi.fn().mockRejectedValue(new Error("permission denied"));
+    render(<ScanList scans={[scan({ id: "scan-42" })]} onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByTitle("Delete scan"));
+    fireEvent.click(await screen.findByText("Confirm"));
+
+    expect(await screen.findByText("permission denied")).toBeInTheDocument();
+    expect(screen.getByText("https://example.com")).toBeInTheDocument();
+  });
+
+  it("clears a previous delete error once a retry succeeds", async () => {
+    const onDelete = vi.fn().mockRejectedValueOnce(new Error("network error")).mockResolvedValueOnce(undefined);
+    render(<ScanList scans={[scan({ id: "scan-42" })]} onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByTitle("Delete scan"));
+    fireEvent.click(await screen.findByText("Confirm"));
+    expect(await screen.findByText("network error")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Delete scan"));
+    fireEvent.click(await screen.findByText("Confirm"));
+
+    await waitFor(() => expect(screen.queryByText("network error")).not.toBeInTheDocument());
   });
 
   it("renders each scan in its own row, independent of the others", () => {
