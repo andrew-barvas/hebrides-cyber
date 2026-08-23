@@ -69,16 +69,25 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     return res.status(403).json({ error: "Scans can only be run from a logged-in session, not with an API key — use POST /api/v1/scans instead." });
   }
 
-  const limit = await checkRateLimit(caller.ownerId);
-  if (!limit.allowed) {
-    res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
-    return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
-  }
-
   const { targetUrl, scanId } = req.body as { targetUrl?: string; scanId?: string };
 
   // --- Step 1: create a new scan, return a proof token -----------------
   if (!scanId) {
+    // Rate-limited here, not for the whole handler — step 2 below is
+    // polled by the dashboard every 4s for up to ~3 minutes while a scan
+    // runs (see startScan() in src/app/dashboard/page.tsx), which alone
+    // needs up to 45 calls. Applying MAX_REQUESTS=10/hr across both steps
+    // meant a single scan's own legitimate status polling could exhaust
+    // the limit before the scan even finished, returning 429 on a request
+    // that did nothing but ask "is it done yet." Only scan *creation* is
+    // rate-limited; polling an already-queued scan isn't a new unit of
+    // work and shouldn't count against the same budget.
+    const limit = await checkRateLimit(caller.ownerId);
+    if (!limit.allowed) {
+      res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
+      return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
+    }
+
     if (!targetUrl) return res.status(400).json({ error: "targetUrl is required to create a scan" });
 
     if (await isFreeTierExhausted(supabaseAdmin, caller.ownerId)) {
