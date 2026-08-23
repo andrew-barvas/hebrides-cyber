@@ -36,8 +36,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (new Date(s.created_at).getTime() > now - 30 * 86_400_000) scansLast30d++;
   }
 
-  // Rough MRR estimate based on plan counts × hardcoded prices.
-  const PLAN_PRICE: Record<string, number> = { basic: 19, pro: 49, agency: 99 };
+  // Rough MRR estimate based on plan counts × hardcoded prices. Must match
+  // the real prices in src/app/dashboard/page.tsx's PLAN_LABELS (and
+  // /pricing) — these had drifted out of sync (19/49/99 here vs the real
+  // 20/35/75), silently understating MRR on every load.
+  const PLAN_PRICE: Record<string, number> = { basic: 20, pro: 35, agency: 75 };
   const mrr = activeSubscriptions.reduce((sum, s) => sum + (PLAN_PRICE[s.plan] ?? 0), 0);
 
   return res.status(200).json({

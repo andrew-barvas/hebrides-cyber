@@ -57,7 +57,13 @@ const DANGEROUS_CSP_PATTERNS: Array<{ pattern: RegExp; issue: string }> = [
   { pattern: /script-src[^;]*\*/i, issue: "Wildcard (*) in script-src allows scripts from any origin" },
   { pattern: /default-src[^;]*\*/i, issue: "Wildcard (*) in default-src negates most CSP protections" },
   { pattern: /script-src[^;]*data:/i, issue: "'data:' URIs in script-src can be abused for XSS" },
-  { pattern: /object-src[^;']*(?!none)/i, issue: "Missing object-src 'none' allows Flash/plugin injection" },
+  // NOT `/object-src[^;']*(?!none)/` — that looked right but a negative
+  // lookahead after a `*` doesn't mean "never contains none" the way it
+  // reads; backtracking finds SOME position where "none" isn't immediately
+  // next, so it matched "object-src 'none'" too and flagged a correctly
+  // locked-down policy as a false positive. This only fires when object-src
+  // is actually declared with something other than 'none' as its first value.
+  { pattern: /object-src\s+(?!'none')/i, issue: "Missing object-src 'none' allows Flash/plugin injection" },
 ];
 
 function analyseCsp(value: string | null): CspAnalysis {
