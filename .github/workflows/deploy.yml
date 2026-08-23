@@ -33,11 +33,35 @@ jobs:
         working-directory: hebridescyber-app
         run: npm ci
 
+      - name: Lint
+        working-directory: hebridescyber-app
+        run: npm run lint
+
+      - name: Type check
+        working-directory: hebridescyber-app
+        run: npx tsc --noEmit
+
+      # Unit + integration tests (Vitest — pure lib functions, API routes
+      # with a mocked Supabase client, component render/interaction tests).
+      # Coverage thresholds live in vitest.config.mts and are a calibrated
+      # floor, not an aspirational target — see that file's comment. Report
+      # uploaded as a build artifact so the HTML breakdown is inspectable
+      # per run, not just the pass/fail number in this log.
+      - name: Unit tests with coverage
+        working-directory: hebridescyber-app
+        run: npm run test:unit:coverage
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: hebridescyber-app/coverage
+
       - name: Install Playwright browsers
         working-directory: hebridescyber-app
         run: npx playwright install --with-deps chromium
 
-      - name: Run tests
+      - name: E2E tests
         working-directory: hebridescyber-app
         run: npm run test
 

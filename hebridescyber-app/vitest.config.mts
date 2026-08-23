@@ -32,6 +32,20 @@ export default defineConfig({
         "src/**/*.d.ts",
         "src/scripts/**", // standalone GitHub Actions scripts — need real Supabase, out of unit scope
       ],
+      // This is a large, mostly-untested-until-now codebase (25k+ LOC) — the
+      // thresholds below are a calibrated FLOOR set to the actual numbers
+      // achieved as of the first real test-writing pass, not an aspirational
+      // target. CI fails on any regression below this floor. Never lower
+      // these; raise them (to match, not exceed, whatever `npm run
+      // test:unit:coverage` reports) whenever a PR adds real coverage — see
+      // the sibling WorldCup2026Predictions project's CLAUDE.md for the
+      // same convention this mirrors.
+      thresholds: {
+        statements: 7,
+        branches: 5,
+        functions: 8,
+        lines: 7,
+      },
     },
   },
 });
