@@ -26,6 +26,7 @@
 // scanner module's contract.
 import { buildHeaderAnalysis, type HeaderAnalysisBundle } from "./headers";
 import type { Finding } from "./index";
+import * as FIX from "./remediationText";
 
 export type AuthCredential =
   | { type: "cookie"; cookieValue: string }
@@ -78,6 +79,11 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
 
   const findings: Finding[] = [];
 
+  // Remediation is reused verbatim from remediationText.ts rather than
+  // written fresh here — the fix for "add HSTS" or "set Secure/HttpOnly on
+  // this cookie" is identical whether the header was observed on the public
+  // page or the authenticated one; only which request surfaced it differs,
+  // and that's already covered by the detail text.
   const missing = result.owasp.headers.filter((h) => !h.present).map((h) => h.name);
   if (missing.length > 0) {
     findings.push({
@@ -85,6 +91,7 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
       severity: "medium",
       title: `Missing security headers on the authenticated page (${missing.length})`,
       detail: `${missing.join(", ")} — checked against a request using your saved authentication credential, not the public logged-out page.`,
+      remediation: FIX.headerRemediation(missing),
     });
   }
 
@@ -94,6 +101,7 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
       severity: "high",
       title: "Content Security Policy absent on the authenticated page",
       detail: result.csp.issues.join("; "),
+      remediation: FIX.CSP_MISSING,
     });
   }
 
@@ -104,6 +112,7 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
         severity: "high",
         title: `Cookie "${cookie.name}" set after authentication has insecure flags`,
         detail: `${cookie.issues.join("; ")} This cookie was only observed after authenticating, so it is more likely to be a real session identifier than anything visible on the logged-out page.`,
+        remediation: FIX.COOKIE_FLAGS,
       });
     }
   }
@@ -114,6 +123,7 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
       severity: "critical",
       title: "CORS wildcard origin on an authenticated response",
       detail: "Access-Control-Allow-Origin: * on a response returned to an authenticated request means any site can potentially read authenticated data.",
+      remediation: FIX.CORS_WILDCARD,
     });
   }
 
