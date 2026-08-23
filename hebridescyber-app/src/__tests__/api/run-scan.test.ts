@@ -173,6 +173,24 @@ describe("POST /api/run-scan", () => {
       expect(res._getStatusCode()).toBe(403);
     });
 
+    // Regression test for a real production bug: the dashboard polls this
+    // route with { scanId } every 4s for up to ~3 minutes while a scan is
+    // running (see startScan() in src/app/dashboard/page.tsx) — up to 45
+    // calls, all against a MAX_REQUESTS=10/hr limiter. When the rate-limit
+    // check covered the whole handler, a scan's own status polling
+    // exhausted the limit before the scan finished, and the user saw
+    // "Rate limit exceeded" on a request that only asked "is it done yet."
+    it("never rate-limits step 2 (status polling), even when the limiter would deny a new scan", async () => {
+      checkRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+      queues.scans = [{ data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "running" }, error: null }];
+      const { req, res } = mockReqRes({ scanId: "scan-1" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(202);
+      expect(res._getStatusCode()).not.toBe(429);
+    });
+
     it("replays a cached result for an already-completed scan without re-verifying or re-queuing", async () => {
       queues.scans = [{ data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "completed" }, error: null }];
       queues.scan_results = [{ data: { score: 87, summary: { findingsCount: 3 } }, error: null }];
