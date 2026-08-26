@@ -48,8 +48,16 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
-  // Deployed as Azure Static Web Apps "hybrid" mode (managed Functions),
-  // not a pure static export — see CLAUDE.md's Deployment section.
+  // Deployed as Azure Static Web Apps "hybrid" mode (managed Functions) by
+  // default — not a pure static export — see CLAUDE.md's Deployment
+  // section. `output: 'standalone'` only turns on for the container build
+  // (Dockerfile sets NEXT_OUTPUT_MODE=standalone before `npm run build`);
+  // Oryx's SWA build never sets that var, so its build output is
+  // unaffected. Standalone mode traces only the server code actually
+  // reachable from a route, which is also why it's off by default — Oryx's
+  // Next.js detection for SWA hybrid mode expects the regular `.next`
+  // build output, not a standalone server bundle.
+  output: process.env.NEXT_OUTPUT_MODE === "standalone" ? "standalone" : undefined,
 };
 
 export default nextConfig;
