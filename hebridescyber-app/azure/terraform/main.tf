@@ -157,11 +157,29 @@ output "static_web_app_url" {
 # adopting a second cloud. Same TODO-scaffold caveats as the rest of this
 # file apply: fill in secret values, review with `terraform plan` before
 # `apply`, and this is not wired to auto-apply from any workflow.
+#
+# IMPORTANT: the azurerm_resource_group/azurerm_storage_account/
+# azurerm_static_site resources above are a NEVER-APPLIED scaffold — the
+# real production infrastructure was provisioned by hand via
+# azure/cli-scripts/provision.sh into resource group "rg-hebrides-cyber"
+# (eastus2), not "hebridescyber-rg" (uksouth) as this file assumes; the real
+# storage account is "hebridescyberstor", not "hebridescyberstorage". Do not
+# `terraform apply` the whole file — it would stand up a second, duplicate
+# resource group/storage/SWA next to the real ones. The Container Apps
+# resources below are scoped to sit inside the REAL resource group via the
+# data source immediately below, specifically to avoid that trap. See
+# docs/ENHANCEMENTS.md for reconciling the rest of this file (importing the
+# real resources into state, or deleting the unapplied scaffold) — out of
+# scope for the container-deploy work itself.
+
+data "azurerm_resource_group" "existing" {
+  name = "rg-hebrides-cyber"
+}
 
 resource "azurerm_container_registry" "main" {
-  name                = "hebridescyberacr" # TODO: must be globally unique, alphanumeric only
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
+  name                = "hebridescyberacr" # confirmed globally available via `az acr check-name` on 2026-08-27
+  resource_group_name = data.azurerm_resource_group.existing.name
+  location            = data.azurerm_resource_group.existing.location
   sku                 = "Basic"
   admin_enabled       = true
   # checkov:skip=CKV_AZURE_137: admin credentials are the push credential
@@ -175,16 +193,16 @@ resource "azurerm_container_registry" "main" {
 
 resource "azurerm_log_analytics_workspace" "container_apps" {
   name                = "hebridescyber-caenv-logs"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.existing.name
+  location            = data.azurerm_resource_group.existing.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
 }
 
 resource "azurerm_container_app_environment" "main" {
   name                       = "hebridescyber-caenv"
-  resource_group_name        = azurerm_resource_group.main.name
-  location                   = azurerm_resource_group.main.location
+  resource_group_name        = data.azurerm_resource_group.existing.name
+  location                   = data.azurerm_resource_group.existing.location
   log_analytics_workspace_id = azurerm_log_analytics_workspace.container_apps.id
 }
 
@@ -209,7 +227,7 @@ variable "next_public_supabase_anon_key" {
 
 resource "azurerm_container_app" "main" {
   name                         = "hebridescyber-app"
-  resource_group_name          = azurerm_resource_group.main.name
+  resource_group_name          = data.azurerm_resource_group.existing.name
   container_app_environment_id = azurerm_container_app_environment.main.id
   revision_mode                = "Single"
 
