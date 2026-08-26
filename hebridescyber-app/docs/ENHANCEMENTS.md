@@ -423,3 +423,36 @@ partially-failed batch rather than assuming every field is always present.
 **Category**: code. **Source**: roadmap (harvested from the frozen
 engineering log — flagged there as "still worth doing separately," never
 completed).
+
+## E-26 — Terraform base scaffold doesn't match real infrastructure
+
+**What**: `azure/terraform/main.tf`'s `azurerm_resource_group.main`,
+`azurerm_storage_account.main`, and `azurerm_static_site.main` blocks (and
+`azure/cli-scripts/provision.sh`'s equivalent variables) describe resources
+that were never actually applied through Terraform — the real production
+resource group is `rg-hebrides-cyber` in `eastus2`, not `hebridescyber-rg`
+in `uksouth`; the real storage account is `hebridescyberstor`, not
+`hebridescyberstorage`; the real Static Web App is named `hebrides-cyber`,
+not `hebridescyber-app`. Confirmed via `az group list`/`az resource list`
+on 2026-08-27, and via a real `terraform plan` (with no prior state) that
+showed it would create all 3 as brand-new resources — right alongside the
+real ones — rather than recognizing them as already existing. The Container
+Apps resources added alongside this item route around the problem via a
+`data "azurerm_resource_group" "existing"` block pointing at the real
+group, specifically so a plan/apply of the container path doesn't also
+create the phantom duplicates.
+**Why**: as written, a plain `terraform apply` against this file (no
+`-target`) creates a second, parallel resource group + storage account +
+Static Web App next to the real, currently-serving ones — real cost, and a
+serious risk of confusion about which resources are actually live if anyone
+(including a future Claude Code session) ever runs it without reading this
+item first.
+**Impact/effort**: medium — either `terraform import` the 3 real resources
+into state under their real names (making the file describe reality, so
+`plan` shows 0 changes), or delete the 3 blocks entirely and note that the
+SWA path is CLI-managed only, not Terraform-managed. Both are safe,
+non-destructive changes to the `.tf` file; neither touches real Azure
+resources by itself.
+**Depends on**: none.
+**Category**: code. **Source**: production-readiness audit (found while
+scoping the Container Apps deploy path's Terraform additions).

@@ -11,18 +11,46 @@ path in any way; both can exist at once.
 
 ## First-time provisioning (skip if infrastructure already exists)
 
-1. Fill in the TODOs in `azure/terraform/main.tf`'s "Container Apps deploy
-   path" block — globally-unique `azurerm_container_registry` name, a
-   remote state backend (same TODO the file's top already flags for the
-   Static Web App resources), and the `supabase_service_role_key` /
-   `next_public_supabase_url` / `next_public_supabase_anon_key` Terraform
-   variables (no defaults on purpose — never commit real values into the
-   `.tf` file itself; pass via `-var` or a gitignored `.tfvars`).
-2. `terraform plan` then `terraform apply` from `azure/terraform/` — **ask
-   the user to confirm before running `apply`**, it provisions real,
-   billed Azure resources (ACR + Container Apps Environment + Log
-   Analytics workspace + Container App).
-3. Set the GitHub Secrets `deploy-containerapp.yml`'s header comment
+**Never run a bare `terraform apply` against this file** — see
+`docs/ENHANCEMENTS.md` E-26. The file's `azurerm_resource_group.main`/
+`azurerm_storage_account.main`/`azurerm_static_site.main` blocks describe
+resources that don't match what's actually deployed (real resource group is
+`rg-hebrides-cyber` in `eastus2`, not `hebridescyber-rg` in `uksouth`) and
+have never been applied or imported — a bare `apply` creates 3 unwanted
+duplicate resources alongside the real, currently-serving ones. Confirmed
+via a real `terraform plan` on 2026-08-27: 7 resources planned, only 4 of
+which (the container ones) are wanted. Always scope with `-target`:
+
+```
+terraform plan \
+  -target=data.azurerm_resource_group.existing \
+  -target=azurerm_container_registry.main \
+  -target=azurerm_log_analytics_workspace.container_apps \
+  -target=azurerm_container_app_environment.main \
+  -target=azurerm_container_app.main
+```
+
+Review the plan output, then re-run the same command with `apply` in place
+of `plan` **only after the user explicitly confirms** — it provisions real,
+billed Azure resources (ACR + Container Apps Environment + Log Analytics
+workspace + Container App) inside the real `rg-hebrides-cyber` group.
+
+1. Bootstrap remote state first (one-time, real but cheap Azure resources —
+   confirm with the user before running):
+   `azure/cli-scripts/bootstrap-tfstate.sh`, then uncomment the
+   `backend "azurerm" {}` block at the top of `main.tf` with the values the
+   script prints, and run `terraform init` to migrate.
+2. Supply the `supabase_service_role_key` / `next_public_supabase_url` /
+   `next_public_supabase_anon_key` Terraform variables via `-var` or a
+   gitignored `.tfvars` — no defaults on purpose, never commit real values
+   into the `.tf` file itself. `ARM_SUBSCRIPTION_ID` env var (or
+   `provider "azurerm" { subscription_id = ... }`) must also be set — this
+   subscription's ID is `0efed950-a227-41af-b0a6-f76e9d4e41c6` ("Microsoft
+   Azure Sponsorship"), confirmed via `az account show` on 2026-08-27.
+   `azurerm_container_registry.main`'s name (`hebridescyberacr`) was
+   confirmed globally available the same day.
+3. Run the `-target`-scoped `plan`/`apply` above from `azure/terraform/`.
+4. Set the GitHub Secrets `deploy-containerapp.yml`'s header comment
    lists: `AZURE_CREDENTIALS`, `ACR_LOGIN_SERVER`, `ACR_USERNAME`,
    `ACR_PASSWORD` (from the Terraform outputs / `az acr credential show`),
    `AZURE_RESOURCE_GROUP`, `AZURE_CONTAINER_APP_NAME`, plus the same
