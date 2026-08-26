@@ -204,7 +204,12 @@ function OverviewTab({ token }: { token: string }) {
         <StatCard label="Customers" value={metrics.totalCustomers} />
         <StatCard label="Active subscriptions" value={metrics.activeSubscriptions} />
         <StatCard label="Total scans" value={metrics.totalScans} sub={`${metrics.scansLast30d} last 30 days`} />
-        <StatCard label="Est. MRR" value={`$${metrics.mrrUsd.toLocaleString()}`} sub="basic $19 · pro $49 · agency $99" />
+        {/* mrrUsd is a legacy field name from before pricing was set in
+            GBP — the API's real prices (£20/£35/£75, see admin/metrics.ts)
+            were already correct; this caption was the one place still
+            showing the old $19/$49/$99 figures and the wrong currency
+            symbol, silently contradicting its own API response. */}
+        <StatCard label="Est. MRR" value={`£${metrics.mrrUsd.toLocaleString()}`} sub="basic £20 · pro £35 · agency £75" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
