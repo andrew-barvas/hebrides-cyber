@@ -13,8 +13,17 @@ export default function MonitoredTargets() {
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // null while loading — the cap is read from monitored_targets_cap()
+  // (sql/migrations/018_monitored_targets_plan_cap.sql) rather than
+  // duplicated here, so the displayed number can never drift from what
+  // the RLS policy actually enforces.
+  const [cap, setCap] = useState<number | null>(null);
 
   async function load() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     const { data, error: fetchError } = await supabase
       .from("monitored_targets")
       .select("id, target_url, created_at")
@@ -22,6 +31,11 @@ export default function MonitoredTargets() {
     if (fetchError) setError(fetchError.message);
     const list = (data ?? []) as Target[];
     setTargets(list);
+
+    if (user) {
+      const { data: capValue } = await supabase.rpc("monitored_targets_cap", { p_owner: user.id });
+      setCap(typeof capValue === "number" ? capValue : 0);
+    }
 
     // Only non-secret column — see target_auth_credentials' own SELECT
     // policy comment (sql/migrations/014_target_auth_credentials.sql) for
@@ -55,12 +69,22 @@ export default function MonitoredTargets() {
 
     const { error: insertError } = await supabase.from("monitored_targets").insert({ owner: user.id, target_url: newUrl });
     if (insertError) {
-      setError(insertError.message);
+      // A cap rejection surfaces as a bare RLS policy-violation message
+      // (Postgres code 42501) — translate it rather than showing raw SQL
+      // wording to a customer. Any other insert error (bad URL, duplicate,
+      // etc.) is shown as-is.
+      setError(
+        insertError.code === "42501"
+          ? `You've reached your plan's limit of ${cap} monitored site${cap === 1 ? "" : "s"}. Upgrade your plan to add more.`
+          : insertError.message
+      );
       return;
     }
     setNewUrl("");
     await load();
   }
+
+  const atCap = cap !== null && targets.length >= cap;
 
   async function removeTarget(id: string) {
     await supabase.from("monitored_targets").delete().eq("id", id);
@@ -69,23 +93,31 @@ export default function MonitoredTargets() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-0.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// monitored sites (agency)</h2>
+      <h2 className="mb-0.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// monitored sites</h2>
       <p className="mb-4 text-xs text-cybertext/50">
-        Scanned automatically every night — see .github/workflows/scheduled-scans.yml.
+        Scanned automatically on your plan&apos;s schedule (weekly on Basic, daily on Pro/Agency)
+        {cap !== null && (
+          <>
+            {" "}
+            — {targets.length} of {cap} site{cap === 1 ? "" : "s"} used.
+          </>
+        )}
       </p>
 
       <form onSubmit={addTarget} className="mb-4 flex flex-col gap-2 sm:flex-row">
         <input
           type="url"
           required
-          placeholder="https://client-site.com"
+          disabled={atCap}
+          placeholder={atCap ? "Upgrade your plan to add more sites" : "https://client-site.com"}
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors disabled:opacity-50"
         />
         <button
           type="submit"
-          className="rounded-md bg-neon px-4 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 shadow-glowsm transition-opacity"
+          disabled={atCap}
+          className="rounded-md bg-neon px-4 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 shadow-glowsm transition-opacity disabled:opacity-50"
         >
           Add site
         </button>

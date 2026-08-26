@@ -471,7 +471,11 @@ export default function DashboardPage() {
 
         <PlanUpsell plan={plan} />
 
-        {plan === "agency" && <MonitoredTargets />}
+        {/* Basic/Pro/Agency all get scheduled monitoring (E-01, docs/ENHANCEMENTS.md)
+            — cadence and per-plan target cap are enforced server-side
+            (scanCadence.ts, sql/migrations/018_monitored_targets_plan_cap.sql),
+            this is just the UI gate matching that. */}
+        {plan !== "none" && <MonitoredTargets />}
 
         <DomainVerification />
 
