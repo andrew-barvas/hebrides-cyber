@@ -5,13 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev          # Start dev server (Next.js 16 + Turbopack, port 3000)
-npm run build        # Production build
-npm run lint         # ESLint
-npx tsc --noEmit     # TypeScript check — build does NOT run tsc, always run this separately
-npm test             # Playwright e2e (builds app + starts server automatically — slow, hermetic)
-npm run scan:local   # Run a real scan against a URL and persist to Supabase (needs SCAN_OWNER_ID)
-npm run seed:users   # Create demo accounts in Supabase (admin, basic/pro/agency/no-plan)
+npm run dev                  # Start dev server (Next.js 16 + Turbopack, port 3000)
+npm run build                # Production build
+npm run lint                 # ESLint
+npx tsc --noEmit             # TypeScript check — build does NOT run tsc, always run this separately
+npm test                     # Playwright e2e (builds app + starts server automatically — slow, hermetic)
+npm run test:unit            # Vitest unit/integration tests
+npm run test:unit:coverage   # Same, with a coverage report — thresholds in vitest.config.mts are a
+                              # calibrated floor, never lowered; raise them when a change adds real coverage
+npm run scan:local           # Run a real scan against a URL and persist to Supabase (needs SCAN_OWNER_ID)
+npm run seed:users           # Create demo accounts in Supabase (admin, basic/pro/agency/no-plan)
+npm run queue:enqueue-scheduled-scans  # Manually run the scheduled-scan enqueue step locally
+npm run queue:run-worker               # Manually claim + run one batch of queued scan_jobs locally
+npm run newsletter:daily               # Run the daily blog generation script directly (no HTTP hop)
+npm run newsletter:weekly              # Run the weekly newsletter generation script directly
 ```
 
 ## Environment
@@ -29,7 +36,7 @@ Without those, the app boots but all auth/data calls fail. The Supabase client l
 
 ### One API layer
 
-**`src/pages/api/`** — every server-side route, including the scan pipeline (`run-scan`, `verify-ownership`, `generate-report`, `generate-fix-pr`), Stripe webhooks/checkout/portal, admin panel endpoints, and the contact form. Runs as Next.js API routes deployed to Azure Static Web Apps (Oryx auto-deploys them as managed Functions behind the CDN) — there is no separate standalone Azure Functions app. The daily blog and weekly newsletter are **not** API routes — see "Content generation" below for why. There used to be one (`src/functions/`); it was never actually deployable (no `host.json`, no real `@azure/functions` registration) and got fully consolidated here — see `src/pages/api/run-scan.ts`'s header comment and `docs/PLATFORM-ROADMAP.md`'s "17 Aug" note. All of `src/pages/api/` has access to `NEXT_PUBLIC_*` env vars alongside server-only vars, and uses `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server-only) directly for privileged operations — never the anon key.
+**`src/pages/api/`** — every server-side route, including the scan pipeline (`run-scan`, `verify-ownership`, `generate-report`, `generate-fix-pr`), Stripe webhooks/checkout/portal, admin panel endpoints, and the contact form. Runs as Next.js API routes deployed to Azure Static Web Apps (Oryx auto-deploys them as managed Functions behind the CDN) — there is no separate standalone Azure Functions app. The daily blog and weekly newsletter are **not** API routes — see "Content generation" below for why. There used to be one (`src/functions/`); it was never actually deployable (no `host.json`, no real `@azure/functions` registration) and got fully consolidated here — see `src/pages/api/run-scan.ts`'s header comment and `docs/decisions/ENGINEERING-LOG-2026-08.md`'s "17 Aug" note. All of `src/pages/api/` has access to `NEXT_PUBLIC_*` env vars alongside server-only vars, and uses `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server-only) directly for privileged operations — never the anon key.
 
 ### Two routers in one Next.js app
 
@@ -61,7 +68,7 @@ Without those, the app boots but all auth/data calls fail. The Supabase client l
 
 Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_scan_jobs.sql`) worked by ephemeral GitHub Actions runners — deliberately not BullMQ/Redis (an earlier `src/worker/` attempt along those lines was built, never wired to a real Redis instance, and later deleted once this replaced it).
 
-- **Scheduled**: `.github/workflows/scheduled-scans.yml` cron → `src/scripts/enqueue-scheduled-scans.ts` inserts one `scan_jobs` row per verified target that's due (see "Scan cadence by plan" below), then a matrix of worker shards (`src/scripts/run-queued-scan-jobs.ts`) claim jobs via the `claim_scan_job()` RPC (`SELECT ... FOR UPDATE SKIP LOCKED` — needed because PostgREST can't express locking clauses) and run them with `runExtendedTools: true`. This is the only place the real active-scanning tools run — the workflow installs nmap/sqlmap/nuclei/testssl.sh/gitleaks and starts a ZAP daemon fresh each time.
+- **Scheduled**: `.github/workflows/scheduled-scans.yml` cron → `src/scripts/enqueue-scheduled-scans.ts` inserts one `scan_jobs` row per verified target that's due (see "Scan cadence by plan" below), then a matrix of worker shards (`src/scripts/run-queued-scan-jobs.ts`) claim jobs via the `claim_scan_job()` RPC (`SELECT ... FOR UPDATE SKIP LOCKED` — needed because PostgREST can't express locking clauses) and run them with `runExtendedTools: true`. This is the only place the real active-scanning tools run — the workflow installs nmap/sqlmap/nuclei/xsser/commix/testssl.sh/gitleaks and starts a ZAP daemon fresh each time.
 - **On-demand**: `.github/workflows/on-demand-scan.yml`, a lighter sibling that skips those tool installs, dispatched immediately by `triggerOnDemandWorkflow()` (see above). Jobs it picks up run passive-only.
 
 ### Scan cadence by plan
@@ -70,7 +77,12 @@ Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_
 
 ### Scanner pipeline
 
-`src/lib/scanners/` — two tiers, not one flat list.
+`src/lib/scanners/` — two tiers, not one flat list. Writing or extending a
+check must follow `docs/SCANNER-CONVENTIONS.md`'s five rules (evidence
+discipline, `checkId`, `AbortSignal.timeout()`, etc.) — six existing modules
+reference that file directly. For which checks are plan-gated, credential-
+dependent, or tested, see `docs/FUNCTIONALITY-MATRIX.md` rather than this
+section, which covers what each check does, not how it's gated.
 
 **Base passive suite** — always runs, on every scan regardless of plan or repo connection. Wired into `runAllChecks()`/`summariseResults()` in `src/lib/scanners/index.ts`:
 - `tls.ts` — certificate grade and expiry
@@ -91,7 +103,7 @@ Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_
 - `zap.ts` (inline in `index.ts`, not its own file) — kicks off an async ZAP spider if `ZAP_API_URL` is set; the real active ZAP *scan* is a separate module below
 
 **Extended active-tool suite** — opt-in only, via `runExtendedTools()` in `src/lib/scanExecution.ts`, gated behind `ExecuteScanOptions.runExtendedTools` (only `run-queued-scan-jobs.ts` sets it, only for scheduled jobs — see "Scan flow" above). Real binaries/daemons that only exist in that GitHub Actions job:
-- `src/worker/tools/{nuclei,zap,sqlmap,nmap}.ts` — real active scans, ported out of the deleted BullMQ worker. `nuclei.ts` is scoped by `-tags` (Sprint 5) rather than firing nuclei's entire default template set — a fixed baseline (`cve`/`exposure`/`misconfig`/`default-login`/`takeover`) plus tags mapped from whatever `fingerprint.ts` detected (`TECH_TAG_MAP`), fed in from `scanExecution.ts`'s `results.fingerprint`. An unmapped or wrong tag just contributes nothing to nuclei's OR-match — never an error, never a reason to fall back to the unscoped scan
+- `src/worker/tools/{nuclei,zap,sqlmap,nmap,xsser,commix}.ts` — real active scans, ported out of the deleted BullMQ worker (xsser/commix are newer additions, scoped from a review of eccouncil.org's pentest tool list — see their own file headers for a CONFIDENCE NOTE: both were written without a real binary available to verify against, unlike the others). `nuclei.ts` is scoped by `-tags` (Sprint 5) rather than firing nuclei's entire default template set — a fixed baseline (`cve`/`exposure`/`misconfig`/`default-login`/`takeover`) plus tags mapped from whatever `fingerprint.ts` detected (`TECH_TAG_MAP`), fed in from `scanExecution.ts`'s `results.fingerprint`. An unmapped or wrong tag just contributes nothing to nuclei's OR-match — never an error, never a reason to fall back to the unscoped scan
 - `subdomains.ts` — Subfinder subdomain discovery (supersedes `recon.ts`'s lighter crt.sh-only finding when it finds anything)
 - `deepTls.ts` — testssl.sh
 - `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts` — all three require a connected GitHub repo (`repo_connections` table, `sql/migrations/009_repo_connections.sql`, set via `src/pages/api/account/connect-repo.ts`); each returns a clean `not_applicable`/`not_configured` result with no repo rather than an error. `secretScan.ts` runs Gitleaks against repo contents; `dependencyManifest.ts` checks whichever of `package.json` (npm), `requirements.txt` (pip), and `composer.json` (Composer) exist at the repo root — all three independently, findings combined — reading each manifest's declared ranges (no lockfile fetch) and checking the lowest resolvable version against OSV.dev via `lookupCveIds(ecosystem, ...)`, which accepts any OSV ecosystem string (`"npm"`/`"PyPI"`/`"Packagist"`); `dockerBaseImage.ts` extracts a `Dockerfile`'s base image tag and checks it the same OSV.dev-backed way.
@@ -136,7 +148,7 @@ Two genuinely separate, independently-scheduled posts — not one replacing the 
 
 Both real-event sources, no fabrication: CISA's Known Exploited Vulnerabilities catalog (`fetchRecentKevEntries`), high-severity CVEs from the NVD API (`fetchRecentHighSeverityCves`, CVSS ≥ 7.0, no key needed at this volume), and a curated set of security-news RSS feeds parsed with hand-rolled regex extraction, not a dependency (`fetchRecentSecurityNews` — The Hacker News, BleepingComputer, Krebs on Security), de-duplicated by normalised title across feeds. AI narrative write-up if `AZURE_OPENAI_*` is configured, otherwise a deterministic templated post from the same fetched data — either path always publishes something rather than silently skipping a day/week.
 
-**Not API routes.** Both used to be `POST /api/generate-daily-blog` / `POST /api/generate-newsletter`, curled from their workflows with a shared `NEWSLETTER_SERVICE_TOKEN` — the same "GitHub Actions → Next.js API route on Azure" pattern the scan pipeline used before it hit Azure Static Web Apps' Free-tier Functions execution ceiling. A real run of `daily-blog.yml` hit the identical failure (`"Backend call failure"` after 46s — see `src/scripts/generate-daily-blog.ts`'s header), so both were converted the same way `run-scan.ts` was: the workflow runs the script directly against Supabase (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, same credentials pattern as `run-queued-scan-jobs.ts`), no HTTP hop through Azure at all. The two API routes are deleted, not kept as a fallback. `NEWSLETTER_SERVICE_TOKEN` is still live — `send-monthly-digest.ts` uses it for a different, deliberately-still-HTTP route (it sends real customer email, so stays gated behind an endpoint rather than becoming a bare script).
+**Not API routes.** Both used to be `POST /api/generate-daily-blog` / `POST /api/generate-newsletter`, curled from their workflows with a shared service token — the same "GitHub Actions → Next.js API route on Azure" pattern the scan pipeline used before it hit Azure Static Web Apps' Free-tier Functions execution ceiling. A real run of `daily-blog.yml` hit the identical failure (`"Backend call failure"` after 46s — see `src/scripts/generate-daily-blog.ts`'s header), so both were converted the same way `run-scan.ts` was: the workflow runs the script directly against Supabase (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, same credentials pattern as `run-queued-scan-jobs.ts`), no HTTP hop through Azure at all. The two API routes and their service token are fully deleted — not kept as a fallback, and not read by any code today (its old name lingered as a stale doc reference until this pass). `DIGEST_SERVICE_TOKEN` is the one still-live service token — `send-monthly-digest.ts` uses it for a different, deliberately-still-HTTP route (it sends real customer email, so stays gated behind an endpoint rather than becoming a bare script).
 
 Deliberately not a Supabase Edge Function either: this app has exactly one pattern for scheduled work now (GitHub Actions running a script directly against Supabase — matches `scheduled-scans.yml`), and a second execution environment with its own secrets to keep in sync is a cost already paid once (the deleted standalone Azure Functions app) and not worth reintroducing.
 

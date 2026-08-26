@@ -6,9 +6,14 @@ for anyone who needs the product picture without reading source code —
 teammates, stakeholders, or a new contributor before they dive into
 `CLAUDE.md`'s technical reference.
 
-For "how do I run this locally / deploy it," see the root `README.md`. For
-API details, see `docs/API.md`. For the technical architecture and security
-model, see `docs/architecture.md` and `docs/security.md`.
+For "how do I run this locally / deploy it," see this same folder's
+`README.md` (not the git root — see `docs/README.md` for the full doc map
+and why this repo has two roots). For API details, see `docs/API.md`. For
+the technical architecture and security model, see `docs/architecture.md`
+and `docs/security.md`. For exactly what's gated by plan and how, see
+`docs/FUNCTIONALITY-MATRIX.md` — this guide describes intended behaviour;
+that file describes what the code actually enforces, and the two don't
+always agree yet (flagged inline below where they don't).
 
 ---
 
@@ -42,6 +47,11 @@ SaaS teams, and agencies managing multiple client sites.
 - **The developer** — wants security checks wired into CI so a pull
   request fails on a newly introduced high-severity issue, not a manual
   dashboard visit.
+- **The admin/operator** — runs the platform itself, not a scan target.
+  Needs cross-customer visibility (who's on what plan, which scans are
+  stuck, what's in the queue), the ability to intervene on a specific
+  customer's behalf (retry/cancel a scan), and an audit trail of every
+  privileged action taken, their own or another admin's.
 
 ## 3. Feature overview
 
@@ -138,12 +148,19 @@ building their own integration), and the monthly digest email.
 
 Scans run on-demand (dashboard button or `POST /api/v1/scans`, queued and
 usually complete within about a minute) or on a nightly schedule for
-monitored targets (Agency plan), cadence tiered by plan (Basic weekly,
-Pro/Agency daily). The public REST API (`docs/API.md`) supports listing
-scans, fetching a full report with New/Fixed diffing, exporting findings,
-and reading score trends — authenticated by session or API key. A packaged
-GitHub Action wraps the API for CI, gating a build on newly introduced
-findings above a configurable severity.
+monitored targets, cadence tiered by plan (Basic weekly, Pro/Agency daily —
+the cadence logic itself has no Agency-only restriction). **Known gap, as
+of this writing**: the only dashboard UI to actually register a monitored
+target renders for the Agency plan alone
+(`docs/FUNCTIONALITY-MATRIX.md` §5), so in practice only Agency accounts can
+add one today — a Basic or Pro subscriber has no in-product way to receive
+the scheduled scans their tier advertises. Tracked as
+`docs/ENHANCEMENTS.md` E-01 and `docs/ROADMAP.md` POC-1. The public REST
+API (`docs/API.md`) supports listing scans, fetching a full report with
+New/Fixed diffing, exporting findings, and reading score trends —
+authenticated by session or API key. A packaged GitHub Action wraps the API
+for CI, gating a build on newly introduced findings above a configurable
+severity.
 
 ### 3.7 Billing and plans
 
@@ -151,6 +168,15 @@ Free (one scan, ever), Basic (weekly automated scans), Pro (daily scans,
 dependency monitoring, Slack/Teams alerts), Agency (multi-site monitoring,
 white-label reports, authenticated scanning, team collaboration). Stripe
 Checkout + webhooks keep subscription state in sync.
+
+**What's actually enforced vs. advertised**: server-side plan gating today
+covers the free-tier scan cap, scan cadence, Slack/Teams alerts, and
+white-label branding — see the previous section's gap on scheduled-scan
+access, and `docs/FUNCTIONALITY-MATRIX.md` §5/§6 for the complete picture
+of which other tier differences (dependency monitoring, multi-site
+monitoring, authenticated scanning, team collaboration) are not currently
+server-enforced. This section describes what the product is *designed* and
+*sold* to do; the matrix describes what the code actually checks.
 
 ### 3.8 Content
 
@@ -182,9 +208,12 @@ management — gated behind `is_admin`, server-side.
 ### 4.2 Paying customer, ongoing monitoring
 
 1. Subscribe (Basic/Pro/Agency) via Stripe Checkout.
-2. Add the site under monitored targets (Agency) or continue scanning
-   on-demand (Basic/Pro) at the plan's cadence.
-3. Scheduled scans run automatically; a change since the last scan
+2. Add the site under monitored targets. **As currently shipped, this step
+   is Agency-only** — see §3.6/§3.7's gap note. A Basic or Pro subscriber
+   has no equivalent today; running scans by clicking "Run scan" on-demand
+   is the only option, which is manual, not on the plan's advertised
+   cadence.
+3. For an Agency-monitored target: scheduled scans run automatically; a change since the last scan
    triggers a critical-alert email and, if configured, a Slack/Teams post.
 4. Re-scan after fixing something → the report shows it under "Fixed,"
    not just a fresh, unrelated finding list.
@@ -229,6 +258,41 @@ management — gated behind `is_admin`, server-side.
    "Create ticket" to open a Jira/Linear issue, or request a remediation
    PR if it's dependency-related.
 4. Re-scan to confirm the finding clears.
+
+### 4.7 Unhappy paths
+
+What actually happens when something doesn't go to plan — per the
+docs-describe-reality rule this guide follows throughout, including where
+"nothing happens yet" is the honest answer.
+
+- **A scan fails.** `scans.status` moves to `'failed'`; the dashboard shows
+  it as a failed row with no further detail — there's no error-message
+  column on the scan itself, and (per `docs/architecture.md`'s
+  Observability section) no error tracking exists yet to look one up after
+  the fact. The customer's only recourse today is deleting the failed scan
+  (`ScanList`'s delete button — fixed this session, see migration `015`;
+  previously the delete button silently did nothing due to a missing RLS
+  policy) and trying again.
+- **Domain verification never completes.** No timeout, no reminder email,
+  no expiry — the `verifications` row just sits with `verified_at` null
+  indefinitely. DNS propagation can genuinely take minutes to hours;
+  `src/lib/ownership.ts`'s own comment already flags that the dashboard
+  should say so explicitly and let the customer retry, which it doesn't
+  clearly do today.
+- **A subscription lapses or is cancelled.** Stripe's
+  `customer.subscription.deleted` webhook flips `subscriptions.status` to
+  `'cancelled'`. From that point, `enqueue-scheduled-scans.ts` simply stops
+  including that account's targets in future scheduled runs — no explicit
+  notification, no grace-period messaging, and any Agency-only monitored
+  targets stay in the database (just never scanned again) rather than
+  being archived or flagged.
+- **A customer asks to delete their data.** `/privacy` §7 commits to
+  responding within 30 days, which is a real, legally sufficient process
+  today — email the address in `/privacy`. There is **no self-service or
+  automated path**: no dashboard "delete my account" action, no admin
+  one-click deletion, no scheduled retention cleanup at all. See
+  `docs/security.md`'s Data Retention section and `docs/ENHANCEMENTS.md`
+  E-10 for the full gap.
 
 ---
 
@@ -283,6 +347,20 @@ the concrete needs each feature area above exists to satisfy.
 - As a developer integrating via API, I want to export findings as CSV/
   JSON so that I can pipe results into my own reporting or ticketing
   system without scraping a UI.
+
+**Admin/operator**
+- As an operator, I want a cross-customer overview (plan mix, scan volume,
+  MRR) so that I can see the business's health without querying the
+  database directly.
+- As an operator, I want to retry or cancel a specific customer's stuck
+  scan so that I can resolve a support request without a database console.
+- As an operator, I want every privileged action — mine or another admin's —
+  recorded in an audit log so that "who changed this and when" is always
+  answerable.
+- As an operator, I want the admin check itself to be a single, consistently
+  used piece of code rather than reimplemented per route, so that a future
+  security fix to it can't silently miss a route that rolled its own check
+  (see `docs/ENHANCEMENTS.md` E-08 — this was a real gap, not hypothetical).
 
 **Everyone**
 - As any customer, I want to know which of my findings actually matter

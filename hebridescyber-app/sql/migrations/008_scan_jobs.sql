@@ -1,8 +1,9 @@
 -- Free-tier job queue for scheduled/bulk scanning: a Postgres table plus a
 -- SKIP LOCKED claim function, worked by ephemeral GitHub Actions runners
--- instead of a long-lived container or Redis — see docs/PLATFORM-ROADMAP.md
--- §4 for why (Azure Static Web Apps + Consumption Functions can't run
--- either, and this repo is deliberately kept free-tier).
+-- instead of a long-lived container or Redis — see
+-- docs/decisions/ENGINEERING-LOG-2026-08.md §4 for why (Azure Static Web
+-- Apps + Consumption Functions can't run either, and this repo is
+-- deliberately kept free-tier).
 --
 -- Scope: this queue only replaces the SCHEDULED monitoring path
 -- (.github/workflows/scheduled-scans.yml). The dashboard's synchronous

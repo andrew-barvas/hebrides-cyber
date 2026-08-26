@@ -1,5 +1,5 @@
 -- Minimal "connect a repository" table. Created ahead of the full dependency-
--- manifest-scanning feature (see docs/PLATFORM-ROADMAP.md) because
+-- manifest-scanning feature (see docs/decisions/ENGINEERING-LOG-2026-08.md) because
 -- src/lib/scanners/secretScan.ts already needs somewhere to read a customer's
 -- `owner/repo` from — it's a pure `{ githubRepo }` function by design so it
 -- composes with this table without changes.

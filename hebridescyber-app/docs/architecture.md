@@ -2,8 +2,9 @@
 
 Current, as of the live production system — not an aspirational or MVP
 description. For the day-to-day technical reference (what to read before
-editing which file), see the root `CLAUDE.md`; this doc is the higher-level
-picture.
+editing which file), see this same folder's `CLAUDE.md` (not the git
+root — this repo has two roots; see `docs/README.md`); this doc is the
+higher-level picture.
 
 ## One deployed surface
 
@@ -126,6 +127,28 @@ the same way, by removing the HTTP hop entirely.
   which is why `GITHUB_PAT`/`GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY` are
   stored there under different names and remapped in each workflow's own
   `env:` block).
+
+## Observability
+
+Honestly, there isn't much yet — this is a real gap, not an omission by
+oversight, tracked as `docs/ENHANCEMENTS.md` E-03/E-04:
+
+- **No error tracking.** No Sentry, no Application Insights, nothing
+  aggregating exceptions. `src/app/error.tsx`'s own comment says "wire to
+  Application Insights / Sentry here later" and that's still true. The
+  entire logging strategy today is `console.*` calls, which on Azure Static
+  Web Apps' managed Functions means whatever the platform's own log
+  retention happens to keep — not a real observability story.
+- **No health check endpoint.** Nothing external can determine whether the
+  app is up, or whether Supabase/Stripe/the scan queue are degraded, short
+  of loading a page and hoping.
+- **No request correlation IDs.** Tracing one customer's request across the
+  dashboard → API route → queue worker → `executeScan()` today means
+  reading logs and guessing from timestamps and target URLs.
+- **Practical consequence**: if a customer's scan fails in production right
+  now, there is genuinely no way to find out *why* after the fact beyond
+  what the scan itself recorded in `scans.status = 'failed'` (no error
+  detail column exists there either).
 
 ## Scaling notes
 

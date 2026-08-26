@@ -44,7 +44,7 @@
 const HIBP_API_BASE = "https://haveibeenpwned.com/api/v3";
 
 // Every outbound request in this codebase carries AbortSignal.timeout() so a
-// hung third party can't hang a scan (docs/PLATFORM-ROADMAP.md Appendix).
+// hung third party can't hang a scan (docs/SCANNER-CONVENTIONS.md).
 const REQUEST_TIMEOUT_MS = 8_000;
 
 // HIBP has required a User-Agent header on every API request since June

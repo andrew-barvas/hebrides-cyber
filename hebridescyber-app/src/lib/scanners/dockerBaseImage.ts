@@ -7,7 +7,7 @@
 // ============================================================================
 // APPROACH CHOSEN: end-of-life tag heuristic via https://endoflife.date, NOT
 // OSV.dev CVE matching. Documented reasoning, per this codebase's rule that a
-// finding must be evidenced (see docs/PLATFORM-ROADMAP.md's Appendix):
+// finding must be evidenced (see docs/SCANNER-CONVENTIONS.md):
 //
 // OSV.dev's OS-ecosystem support is real, not the gap. Its schema documents
 // ecosystems for Debian, Alpine, Ubuntu, Red Hat, and others (see

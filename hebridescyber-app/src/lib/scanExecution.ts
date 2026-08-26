@@ -65,7 +65,7 @@ const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
  * never set, so none of these findings could ever participate in the
  * New/Fixed scan-to-scan diff. Ported here rather than left in runner.ts
  * because runner.ts's queue (BullMQ+Redis) was never wired to anything —
- * see docs/PLATFORM-ROADMAP.md.
+ * see docs/decisions/ENGINEERING-LOG-2026-08.md.
  */
 async function runExtendedTools(
   targetUrl: string,

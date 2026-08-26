@@ -90,7 +90,7 @@ const MAX_FINDINGS = 15;
  *   --severity LOW     only write findings rated LOW or above to the JSON.
  *                      Everything left in the file is a rated defect, which is
  *                      what lets this module honour "never report a finding you
- *                      cannot evidence" (docs/PLATFORM-ROADMAP.md).
+ *                      cannot evidence" (docs/SCANNER-CONVENTIONS.md).
  *   --disable-rating   suppresses the overall_grade entry, which would
  *                      double-count every other finding as one more CRITICAL.
  *   --ip one           test the first resolved address only, not every A record

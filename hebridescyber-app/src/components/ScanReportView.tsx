@@ -4,7 +4,7 @@
 // (src/app/dashboard/scans/[id]/page.tsx) and the public share page
 // (src/app/share/[token]/page.tsx). Extracted rather than duplicated once a
 // second consumer needed the exact same finding-card/remediation-markdown
-// rendering — see docs/PLATFORM-ROADMAP.md's shareable-report-links entry.
+// rendering — see docs/decisions/ENGINEERING-LOG-2026-08.md's shareable-report-links entry.
 //
 // Deliberately NOT exported here: the "check breakdown" section (TLS/headers/
 // DNS/exposure pass-fail rows). That data lives in the raw scan_results.results
