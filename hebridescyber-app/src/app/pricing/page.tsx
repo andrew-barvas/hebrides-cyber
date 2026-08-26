@@ -132,6 +132,18 @@ export default function PricingPage() {
           ))}
         </div>
 
+        <p className="mt-4 text-xs text-cybertext/50">
+          By subscribing you agree to our{" "}
+          <Link href="/terms" className="text-neon hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-neon hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+
         <p className="mt-6 font-mono text-xs text-cybertext/60">
           Not signed in?{" "}
           <Link href="/login" className="text-neon hover:underline">

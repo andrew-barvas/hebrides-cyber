@@ -36,7 +36,7 @@ entry).
   verifiable exit criteria | [`ROADMAP.md`](ROADMAP.md) |
 | ...get oriented as a new contributor | [`ONBOARDING.md`](ONBOARDING.md) |
 | ...know the rules for writing or extending a scanner check | [`SCANNER-CONVENTIONS.md`](SCANNER-CONVENTIONS.md) |
-| ...find the Terms of Service starting draft (not yet published — needs a solicitor and every `[PLACEHOLDER]` resolved first, see `docs/ROADMAP.md` BETA-B1) | [`legal/terms-of-service-draft.md`](legal/terms-of-service-draft.md) |
+| ...read the Terms of Service, or see the reasoning behind it and what still needs solicitor review | live at `/terms` (`src/app/terms/page.tsx`); reasoning and open items in [`legal/terms-of-service-draft.md`](legal/terms-of-service-draft.md) — see `docs/ROADMAP.md` BETA-B1 |
 | ...understand *why* a past architectural decision was made (BullMQ
   deletion, Azure Container Apps rejection, etc.) | [`decisions/ENGINEERING-LOG-2026-08.md`](decisions/ENGINEERING-LOG-2026-08.md) (frozen — historical only, see its own banner) |
 | ...see day-to-day coding conventions and the deep technical reference | [`../CLAUDE.md`](../CLAUDE.md) |
