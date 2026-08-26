@@ -146,3 +146,142 @@ resource "azurerm_static_site" "main" {
 output "static_web_app_url" {
   value = azurerm_static_site.main.default_host_name
 }
+
+# --- Container Apps deploy path (alternative to the Static Web App above) ---
+#
+# Parallel scaffold, not a replacement — see Dockerfile and
+# .github/workflows/deploy-containerapp.yml (manual workflow_dispatch, does
+# not touch deploy.yml's push-to-master SWA path). Exists to get off Azure
+# SWA's Free-tier Functions execution ceiling that already forced the
+# scan-queue workaround (see CLAUDE.md's "Scan flow" section) without
+# adopting a second cloud. Same TODO-scaffold caveats as the rest of this
+# file apply: fill in secret values, review with `terraform plan` before
+# `apply`, and this is not wired to auto-apply from any workflow.
+
+resource "azurerm_container_registry" "main" {
+  name                = "hebridescyberacr" # TODO: must be globally unique, alphanumeric only
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  sku                 = "Basic"
+  admin_enabled       = true
+  # checkov:skip=CKV_AZURE_137: admin credentials are the push credential
+  # for deploy-containerapp.yml, stored in the ACR_PASSWORD GitHub Secret
+  # the same way AZURE_STATIC_WEB_APPS_API_TOKEN already is for the SWA
+  # path above — a per-repo service principal + OIDC federated credential
+  # would remove this, but is disproportionate infra for one deploy
+  # pipeline at this scale. Revisit if a second consumer of this registry
+  # ever appears.
+}
+
+resource "azurerm_log_analytics_workspace" "container_apps" {
+  name                = "hebridescyber-caenv-logs"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
+
+resource "azurerm_container_app_environment" "main" {
+  name                       = "hebridescyber-caenv"
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.container_apps.id
+}
+
+# Secret values for the container app. Left as sensitive variables with no
+# default (see variables.tf-style TODO pattern above) rather than hardcoded
+# — same secrets already listed in README.md's "Server-only secrets" table
+# and GitHub Secrets table; add the rest there the same way as this app
+# needs them (Stripe, GitHub App, Azure OpenAI, Upstash, etc.).
+variable "supabase_service_role_key" {
+  sensitive = true
+  default   = null
+}
+
+variable "next_public_supabase_url" {
+  default = null
+}
+
+variable "next_public_supabase_anon_key" {
+  sensitive = true
+  default   = null
+}
+
+resource "azurerm_container_app" "main" {
+  name                         = "hebridescyber-app"
+  resource_group_name          = azurerm_resource_group.main.name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  revision_mode                = "Single"
+
+  registry {
+    server               = azurerm_container_registry.main.login_server
+    username             = azurerm_container_registry.main.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.main.admin_password
+  }
+
+  secret {
+    name  = "supabase-service-role-key"
+    value = var.supabase_service_role_key
+  }
+
+  secret {
+    name  = "next-public-supabase-anon-key"
+    value = var.next_public_supabase_anon_key
+  }
+
+  template {
+    # min_replicas = 0 scales to zero when idle — free-tier friendly, but
+    # means a cold start on the next request. Bump to 1 if dashboard
+    # latency after idle periods becomes a real complaint.
+    min_replicas = 0
+    max_replicas = 2
+
+    container {
+      name = "hebridescyber-app"
+      # TODO: :latest is a placeholder — deploy-containerapp.yml pins this
+      # to the actual pushed tag (git SHA) via `az containerapp update
+      # --image` rather than relying on Terraform to track image versions.
+      image  = "${azurerm_container_registry.main.login_server}/hebridescyber-app:latest"
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "NEXT_PUBLIC_SUPABASE_URL"
+        value = var.next_public_supabase_url
+      }
+      env {
+        name        = "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+        secret_name = "next-public-supabase-anon-key"
+      }
+      env {
+        name        = "SUPABASE_SERVICE_ROLE_KEY"
+        secret_name = "supabase-service-role-key"
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 3000
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  lifecycle {
+    # deploy-containerapp.yml updates the image tag directly via `az
+    # containerapp update` between applies — don't let a later `terraform
+    # apply` snap it back to the :latest placeholder above.
+    ignore_changes = [template[0].container[0].image]
+  }
+}
+
+output "container_app_url" {
+  value = azurerm_container_app.main.latest_revision_fqdn
+}
