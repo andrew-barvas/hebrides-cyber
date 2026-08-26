@@ -1,0 +1,235 @@
+# Competitive analysis
+
+Scope: automated web-security-scanning SaaS for UK SMEs and agencies. This
+compares **Hebrides Cyber the product** against other products and
+substitutes that win the same buying decision. For consultancy service-line
+market pricing (manual pen tests, IR retainers, compliance advisory), see
+`../marketing/09-competitor-services-catalogue.md` — that's a different
+question with a different answer, and this file doesn't duplicate it.
+
+For what Hebrides Cyber actually does today (as opposed to what's claimed
+below), see `docs/FUNCTIONALITY-MATRIX.md` — every advantage claimed in §5
+is checked against that file, not against marketing copy.
+
+---
+
+## 1. Method, as-of date, refresh procedure
+
+**As of: 2026-08-23.** Competitor cells below carry their own verified-on
+date; a cell without one has not been independently checked and should be
+treated as unverified until it is.
+
+**Refresh procedure** (do this quarterly, or before any pricing/positioning
+decision that leans on this doc):
+1. For each competitor in §2, load their current pricing page and feature
+   page; note the date.
+2. Re-score only the dimensions in §3 whose evidence has changed — don't
+   re-score everything from memory each time, that's how rubric drift
+   happens. Update the cell's evidence line and date.
+3. Re-check §6's "structurally unfixable solo" list — a solo-operator
+   constraint (no 24/7 team, no formal certs) doesn't change quarter to
+   quarter, so this section should be the most stable part of the document.
+   If it *has* changed (e.g. a co-founder joins, SOC 2 gets started), that's
+   worth flagging explicitly since it unblocks segments §9 currently rules
+   out.
+4. Anything more than 2 quarters old anywhere in §4 should be treated as
+   stale for a pricing decision, even if nobody's gotten round to refreshing
+   it — this doc degrading *visibly* (a stale date) is the point; it must
+   never be edited to remove a date without re-verifying the claim.
+
+This document should never assert a price or a competitor limitation
+without a source and a date attached to the specific cell.
+
+---
+
+## 2. The competitive frame
+
+### Head-on (same product category)
+
+| Competitor | Positioning |
+|---|---|
+| **Intruder.io** | UK, SME-focused automated vulnerability scanning. The direct competitor — sets both the price ceiling and the credibility bar for this segment. |
+| **Probely** | DAST, API-first, developer-shaped. Closest to Hebrides Cyber on CI/API positioning. |
+| **Astra Security** | SME scanner + VAPT hybrid, aggressive pricing, strong on the certificate/trust-badge play. |
+| **Pentest-Tools.com** | Closest on *price floor*. Tool-menu shaped (pick individual scanners) rather than product-shaped (one score, one report). |
+| **Beagle Security** | SME automated DAST, similar price band to Hebrides Cyber. |
+| **Detectify** | Has moved upmarket into External Attack Surface Management (EASM). Included as a trajectory reference — where this category tends to go once it has funding — not a head-to-head at today's price point. |
+| **Invicti / Acunetix** | Enterprise DAST. A ceiling comparison only — they define what "real DAST" means to a technical buyer, useful for calibrating D2 below, not a segment Hebrides Cyber competes for today. |
+
+### Substitutes that actually win the deal
+
+More relevant than the head-on list for a £20/mo product, because these are
+what a UK SME actually compares against, whether or not they think of it as
+"a competitor":
+
+| Substitute | Why it wins the deal instead |
+|---|---|
+| **NCSC Web Check + Early Warning** | Free, UK government, credible. For a UK SME, the single most under-rated competitor — "the government already checks this" is a real objection. |
+| **Free point tools** (SSL Labs, Mozilla Observatory, securityheaders.com, OWASP ZAP, Nuclei) | The direct "why would I pay for this" objection — someone technical enough to ask can assemble a rough equivalent for free. |
+| **Snyk / Dependabot / GitHub Advanced Security** | Dependency-side only, but owns the developer's attention and budget line before Hebrides Cyber gets a look. |
+| **Cloudflare** (already installed) | Does WAF + basic hygiene; *feels* like coverage even where it isn't equivalent. |
+| **The incumbent web agency / MSP** | The existing relationship, and the default answer to "who handles our website security" for a non-technical buyer. |
+| **IASME Cyber Essentials assessment bodies** | "We need CE for a contract" is a real UK SME buying trigger, and the assessor's fee is the competing spend, not a security-scanner subscription. |
+| **Do nothing** | The most common actual outcome. Any positioning argument that doesn't address this directly is incomplete. |
+
+---
+
+## 3. Rubric — 12 dimensions, scored 0–3
+
+Chosen to be **structural**, not feature-tick or price-based, so this
+section doesn't need re-doing every refresh — only §4's cells do.
+
+| # | Dimension | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|---|
+| D1 | **Buying trigger served** | none identifiable | one trigger, weakly | one trigger, clearly | multiple triggers (compliance + dev hygiene + agency reporting) |
+| D2 | **Scan depth ladder** | passive-only | + unauthenticated active | + authenticated recheck | + full crawl-behind-login |
+| D3 | **Evidence discipline / FP posture** | no stated policy | claims accuracy, unevidenced | some FP-reduction mechanism | explicit "never report what you can't evidence" + documented mechanism |
+| D4 | **Change over time** | one-shot report only | re-scan, no diff | New/Fixed diffing | + trend graphs over time |
+| D5 | **Remediation depth ladder** | none | generic advice | stack-tailored advice | + ticket creation + merged PR |
+| D6 | **Workflow integration surface** | none | CI gate only | + REST API/webhooks | + chat (Slack/Teams) + ticketing (Jira/Linear) |
+| D7 | **Compliance framing** | none | generic "security score" | one framework mapped | multiple frameworks, UK-specific (Cyber Essentials) |
+| D8 | **Agency/multi-tenant ergonomics** | single-tenant only | multiple targets, one report style | + white-label | + reseller/billing tooling |
+| D9 | **Commercial shape** | enterprise-only, quote-gated | mid-market, annual contract | monthly, per-seat | monthly, per-target, real free tier |
+| D10 | **Onboarding friction / time-to-first-value** | sales call required | signup + setup call | signup + manual config | scan within minutes of signup |
+| D11 | **Trust apparatus** | none published | a company page | + published methodology, sample reports | + SOC 2/ISO, verifiable company track record |
+| D12 | **Support model** | none | self-serve docs only | + human triage | + retainer/SLA |
+
+---
+
+## 4. Scored matrix
+
+Format per cell: **level — evidence — source — verified-on**.
+
+| | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | D9 | D10 | D11 | D12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Hebrides Cyber** | 3 — compliance (CE mapping) + breach scare (score/badge) + dev hygiene (CI gate) + agency reporting (white-label) — internal, `docs/FUNCTIONALITY-MATRIX.md` — 2026-08-23 | 2 — passive suite + extended active-tool suite (scheduled only) + authenticated header/cookie recheck; no crawl-behind-login — internal — 2026-08-23 | 3 — explicit rule in `docs/SCANNER-CONVENTIONS.md` §4, baseline-diffing false-positive machinery in `httpProbe.ts` — internal — 2026-08-23 | 3 — `findingsDiff.ts` New/Fixed + `ScoreTrend.tsx` — internal — 2026-08-23 | 3 — generic → AI-tailored (`ai-fix.ts`) → ticket (`create-ticket.ts`) → merged PR (`generate-fix-pr.ts`, dependency bumps) — internal — 2026-08-23; **note**: no UI entry point for the PR step, see `docs/ENHANCEMENTS.md` E-15 | 3 — CI Action, REST API, webhooks, Slack, Teams, Jira, Linear — internal — 2026-08-23 | 3 — Cyber Essentials + OWASP Top 10 + CIS Controls v8 — internal — 2026-08-23 | 2 — multi-site + white-label; no reseller billing — internal — 2026-08-23; **note**: multi-site is client-gated only, `FUNCTIONALITY-MATRIX.md` §5 | 3 — £20/mo, per-account not per-seat, 1 free scan — `../marketing/03-pricing-page.md` — 2026-08-23 | 3 — one-click scan post-signup, domain-ownership verification required before results (real, not decorative) — internal — 2026-08-23 | 1 — no published methodology page beyond `/what-we-check`, no sample report gallery, no SOC 2/ISO, solo-operator — internal — 2026-08-23 | 1 — self-serve only, no human triage or SLA today — internal — 2026-08-23 |
+| Intruder.io | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Probely | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Astra Security | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Pentest-Tools.com | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Beagle Security | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Detectify (trajectory only) | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+| Invicti/Acunetix (ceiling only) | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
+
+**Competitor rows are deliberately left unscored rather than filled from
+memory.** Scoring a competitor without checking their current site is
+exactly the kind of unevidenced claim this document's own D3 dimension
+penalises — and this product's stated discipline (`docs/SCANNER-CONVENTIONS.md`
+§4) is "never report a finding you cannot evidence." An LLM-recalled guess
+at Intruder.io's current CI integration or Astra's current pricing tier is
+not evidence; it's exactly the kind of claim that goes stale silently and
+gets repeated as fact. **Filling in a row is a ~15-minute task per
+competitor** (load their pricing + features pages, score against §3's
+rubric, cite + date each cell) — do it as a deliberate pass using the
+refresh procedure in §1, not as part of a documentation sweep.
+
+---
+
+## 5. Genuine advantages (checked against the code, not marketing copy)
+
+- **Four-rung remediation ladder** (D5=3) — generic text, AI-tailored fix,
+  ticket creation with dedupe/auto-close, and a real merged PR for safe
+  dependency bumps. Rare below enterprise price points; most SME-tier
+  competitors stop at "here's what to fix," not "here's a PR that fixes it."
+- **New/Fixed diffing at a £20/mo entry price** (D4=3) — most tools in this
+  price band re-report the same findings every scan; the diff is what makes
+  a repeat scan worth running.
+- **CI gate scoped to newly-introduced findings only** — the packaged
+  GitHub Action fails a build only on findings not present in the prior
+  scan of that target, specifically to avoid the "red-lines on day one, gets
+  disabled" failure mode common to naive CI security gates.
+- **Cyber Essentials mapping as a first-class output** (D7=3) — genuinely
+  differentiated for the UK SME segment specifically; most of the head-on
+  competitor list is US-headquartered and doesn't lead with UK-specific
+  compliance framing.
+- **Tech-scoped nuclei templates** rather than the tool's full default
+  set — narrower, faster, less noisy per scan than a naive integration.
+- **Documented evidence discipline** (D3=3) — not just a claim; enforced by
+  a written convention (`docs/SCANNER-CONVENTIONS.md`) and concrete
+  mechanisms (`httpProbe.ts`'s baseline/catch-all detection).
+
+---
+
+## 6. Genuine disadvantages — three categories
+
+### (a) Fixable by code
+
+- Plan enforcement barely exists (`docs/FUNCTIONALITY-MATRIX.md` §6) — most
+  advertised tier differences aren't actually gated.
+- No published sample-report gallery or `/methodology` depth beyond
+  `/what-we-check` — a code+content task, not a structural one.
+- Near-zero observability — can't currently debug a production failure
+  after the fact.
+
+### (b) Fixable by money/time, not urgent code work
+
+- No SOC 2/ISO 27001 — meaningful for enterprise trust (D11) but not for
+  the SME segment this product actually targets; expensive and slow to
+  pursue, and arguably the wrong investment before Beta-stage basics are
+  solid (see `docs/ROADMAP.md`).
+- No sample-report-driven case studies — needs real paying customers first.
+
+### (c) Structurally unfixable solo (bounds which segments to *not* chase)
+
+- **No 24/7 monitoring or MDR** — D12's top tier requires a team; a solo
+  operator cannot credibly offer this without partnering it out (as
+  `../marketing/09-competitor-services-catalogue.md` §2 already proposes for
+  the consultancy side).
+- **No formal incident-response SLA** at scale — a retainer for one or two
+  clients is credible; "guaranteed response window" as a general product
+  feature is not, without headcount.
+- **No enterprise procurement apparatus** (security questionnaires, DPA
+  templates, SOC 2) — this is the wall between "SME self-serve" and
+  "mid-market sales-assisted," and it's a headcount/capital problem, not a
+  roadmap item.
+
+**This split is the actual output of the competitive analysis**: it says
+where to compete (SME self-serve, UK-compliance-triggered, developer-adjacent)
+and where not to (enterprise, 24/7 MDR, anything requiring a trust
+apparatus a solo operator can't credibly build).
+
+---
+
+## 7. Missing/weak features → enhancement backlog
+
+Every genuine gap identified above or during the production-readiness audit
+is tracked with a stable ID in `docs/ENHANCEMENTS.md`, tagged with its §6
+category (fixable-by-code / fixable-by-money-time / structurally-unfixable-solo).
+Not restated here — see that file for the itemised list, and
+`docs/ROADMAP.md` for which of them are sequenced into a stage.
+
+---
+
+## 8. Anti-features — what NOT to build
+
+Pairs with `docs/USER-GUIDE.md` §6 ("what this product deliberately does
+not do"). Some competitors' features are deliberately not worth matching:
+
+- **Full crawl-behind-login / IDOR testing** — real value, but turns this
+  from an automated scanner into a manual-pentest-adjacent liability surface
+  a solo operator can't safely support at scale (false positives on
+  business logic are expensive to get wrong, and the legal/consent surface
+  gets much larger).
+- **Brute-forcing or destructive payloads** — several competitors' "deep
+  scan" modes do this; explicitly ruled out here (`docs/USER-GUIDE.md` §6)
+  because it risks actually breaking a customer's production site, which is
+  a worse outcome than a missed finding.
+- **Cloud IAM auditing (ScoutSuite/Prowler-style)** — acknowledged gap, but
+  building it before a real credential-onboarding-with-consent flow exists
+  would mean asking for cloud account access before the product has earned
+  that level of trust.
+
+---
+
+## 9. Positioning conclusion
+
+Hebrides Cyber's honest position is **the developer-and-agency-friendly
+automated scanner for UK SMEs who have a compliance trigger (Cyber
+Essentials, procurement) or a dev-hygiene habit (CI, GitHub) but no
+security budget for a human pentest** — not a challenger to enterprise DAST,
+not an MDR provider, and not (yet) a trust-apparatus-first buy for a
+risk-averse enterprise buyer. The product's genuine structural advantages
+(remediation ladder, diffing, CI-gate-on-new-findings, CE mapping) all serve
+that exact buyer; the genuine gaps (plan enforcement, observability, trust
+apparatus) are the right things to fix before trying to move upmarket, not
+before trying to serve that buyer better.

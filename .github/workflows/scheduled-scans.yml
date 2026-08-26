@@ -168,9 +168,9 @@ jobs:
           #
           # The secrets on the right are named GH_* not GITHUB_* — GitHub
           # hard-rejects (HTTP 422) any Actions secret whose name starts with
-          # "GITHUB_", reserved for its own auto-generated ones (the exact
-          # reason NEWSLETTER_SERVICE_TOKEN was never called
-          # GITHUB_ACTIONS_TOKEN). The env var name on the left stays
+          # "GITHUB_", reserved for its own auto-generated ones (the same
+          # reason DIGEST_SERVICE_TOKEN isn't named GITHUB_ACTIONS_TOKEN
+          # either — see .env.example). The env var name on the left stays
           # GITHUB_PAT/GITHUB_APP_ID/GITHUB_APP_PRIVATE_KEY because that's
           # what src/lib/githubApp.ts and every scanner module actually read
           # via process.env — only the *secret store's* name had to change,

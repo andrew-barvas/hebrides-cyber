@@ -32,7 +32,7 @@ import type { DetectedPlugin } from "./webapp";
 
 const WPSCAN_API_BASE = "https://wpscan.com/api/v3";
 // Every outbound request in this codebase carries AbortSignal.timeout() so a
-// hung third party can't hang a scan (docs/PLATFORM-ROADMAP.md Appendix).
+// hung third party can't hang a scan (docs/SCANNER-CONVENTIONS.md).
 const REQUEST_TIMEOUT_MS = 8_000;
 const QUERY_CONCURRENCY = 5;
 

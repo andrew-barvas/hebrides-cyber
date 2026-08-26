@@ -17,7 +17,7 @@
 const SAFE_BROWSING_ENDPOINT = "https://safebrowsing.googleapis.com/v4/threatMatches:find";
 
 // Every outbound request in this codebase carries AbortSignal.timeout() so a
-// hung third party can't hang a scan (docs/PLATFORM-ROADMAP.md Appendix).
+// hung third party can't hang a scan (docs/SCANNER-CONVENTIONS.md).
 const REQUEST_TIMEOUT_MS = 8_000;
 
 export type SafeBrowsingThreatType = "MALWARE" | "SOCIAL_ENGINEERING" | "UNWANTED_SOFTWARE";

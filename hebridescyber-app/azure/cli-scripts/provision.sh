@@ -14,7 +14,8 @@
 # on the Static Web App alone; Oryx auto-deploys the Next.js API routes as
 # managed Functions behind the CDN. See
 # src/pages/api/run-scan.ts's header comment for why that consolidation
-# happened, and docs/PLATFORM-ROADMAP.md for the "17 Aug" note on it.
+# happened, and docs/decisions/ENGINEERING-LOG-2026-08.md for the "17 Aug"
+# note on it.
 
 set -euo pipefail
 

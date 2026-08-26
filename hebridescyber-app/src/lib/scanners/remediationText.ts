@@ -1178,8 +1178,8 @@ site just gets it flagged again within hours:**
 // readme.txt; it is not itself a vulnerability claim. OSV.dev has no
 // "WordPress" ecosystem (verified against its published ecosystem list), so
 // unlike the npm-backed JS library findings above, no automated CVE id can be
-// attached here — forcing one would risk a false match, which the appendix
-// convention in docs/PLATFORM-ROADMAP.md explicitly rules out.
+// attached here — forcing one would risk a false match, which
+// docs/SCANNER-CONVENTIONS.md explicitly rules out.
 // ---------------------------------------------------------------------------
 
 export const WP_PLUGIN_DETECTED = `This is an informational finding, not a vulnerability report — a WordPress

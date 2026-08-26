@@ -59,6 +59,16 @@ Website security, email authentication (SPF/DKIM/DMARC), backups, staff training
 
 > "Hebrides Cyber found issues our dev team missed and gave fixes we could apply in hours." — Local SaaS founder
 
+**Footer/pricing social-proof strapline** (also placeholder, same
+gate — real customers first): "Used by developers, agencies, and in-house
+security teams." An unsubstantiated social-proof claim on a security
+product is the fastest way to lose a technical buyer, so this stays unused
+until it's true. (Carried over from the archived engineering roadmap's
+trust-signals section — everything else proposed there has since shipped:
+the hero tagline is live on the homepage, the `/methodology` goal shipped
+as `/what-we-check`, and the ownership-verification line is live on the
+dashboard's scan form.)
+
 ## Pricing Snapshot
 
 From £300 for a small site audit. Monthly Security Score plans from £20/mo. [View full pricing →](./03-pricing-page.md)

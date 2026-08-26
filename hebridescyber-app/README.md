@@ -7,15 +7,18 @@ Marketing site, client dashboard, and every API route are one Next.js app
 on Supabase, deployed to Azure Static Web Apps (Oryx auto-deploys the API
 routes as managed Functions behind the CDN — no separate Functions app).
 
-This is a live, production system, not a prototype. For what it actually
-does — features, workflows, user stories — see
-**[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md)**. For the technical
-architecture, see [`docs/architecture.md`](docs/architecture.md). For the
-security model, see [`docs/security.md`](docs/security.md). For the public
-API, see [`docs/API.md`](docs/API.md). For day-to-day development
-conventions (what to read before editing which file), see the root
-`CLAUDE.md`. The `marketing/` folder (one level up, outside this app
-folder) has homepage copy, pricing, and branding source material.
+This is a live, production system, not a prototype. **See
+[`docs/README.md`](docs/README.md) for a full documentation map** — which
+doc answers which question. Quick pointers: what it actually does
+(features, workflows, user stories) is
+**[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md)**; technical architecture is
+[`docs/architecture.md`](docs/architecture.md); the security model is
+[`docs/security.md`](docs/security.md); the public API is
+[`docs/API.md`](docs/API.md); day-to-day development conventions are in
+this same folder's `CLAUDE.md` (not the git root — this repo has two
+roots, see below). The `marketing/` folder (one level up, outside this app
+folder, alongside the primary `.github/workflows/`) has homepage copy,
+pricing, and branding source material.
 
 ## Local Development
 
@@ -86,16 +89,21 @@ so the dashboard's plan-aware upsell renders differently for each.
 
 ```bash
 npx playwright install --with-deps chromium   # first time only
-npm run test          # Playwright e2e
-npm run test:unit     # Jest unit/integration tests (see below)
+npm run test                 # Playwright e2e
+npm run test:unit            # Vitest unit/integration tests (see below)
+npm run test:unit:coverage   # same, with a coverage report — see the
+                              # threshold comment in vitest.config.mts
 ```
 
 Playwright starts its own `next dev` server and runs against it — no
 separate dev server or real Supabase project required for the
-unauthenticated flows it covers. See `tests/e2e/` for what's exercised, and
-`src/__tests__/` for unit/integration coverage of pure logic (compliance
-mapping, findings diffing, scan cadence, dependency-manifest parsing, and
-more) and mocked API-route behaviour.
+unauthenticated flows it covers. See `tests/e2e/` for what's exercised.
+Vitest unit/integration tests are colocated as `*.test.ts`/`*.test.tsx`
+next to the module they cover (e.g. `src/lib/scanCadence.test.ts`), except
+API-route tests, which live under `src/__tests__/api/` — Next.js's Pages
+Router treats every file under `src/pages/api/` as a route candidate
+regardless of extension, so a test file can't live there without breaking
+`npm run build`.
 
 ## Running a Scan via curl (the run-scan flow)
 
@@ -198,8 +206,12 @@ Two options, see `azure/`:
   Terraform's provider doesn't fully cover.
 
 `.github/workflows/terraform-security-scan.yml` runs Checkov against
-`azure/terraform/` on every change to it, uploading results as SARIF to
-GitHub's Security > Code scanning tab. Every current finding is triaged
+`azure/terraform/` on every change to it, printing the full per-check
+breakdown to the job's console log. **Not** also uploaded as SARIF to
+GitHub's Security > Code scanning tab — that was tried and failed, because
+Code Scanning requires GitHub Advanced Security on a private repo (a paid,
+per-committer feature this account doesn't have); see the workflow file's
+own header comment for the full story. Every current finding is triaged
 directly in `main.tf`'s own comments (fixed, mitigated, or explicitly
 accepted with a reason) — the scan passes clean, so a red run means a real,
 untriaged finding.
@@ -217,7 +229,7 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `NEWSLETTER_SERVICE_TOKEN` | `monthly-digest.yml` (`/api/send-monthly-digest`) — that route stays HTTP-gated (it sends real customer email); the daily blog and weekly newsletter don't use this, see below |
+| `DIGEST_SERVICE_TOKEN` | `monthly-digest.yml` (`/api/send-monthly-digest`) — that route stays HTTP-gated (it sends real customer email); the daily blog and weekly newsletter don't use this, see below |
 | `SUPABASE_URL` | `scheduled-scans.yml`, `on-demand-scan.yml`, `daily-blog.yml`, `weekly-newsletter.yml` — all run scripts that query/write Supabase directly, no API route in between |
 | `SUPABASE_SERVICE_ROLE_KEY` | same workflows, plus needed by any CI step that seeds/reads data |
 | `GH_PAT`, `GH_APP_ID`, `GH_APP_PRIVATE_KEY` | `scheduled-scans.yml`'s extended tool suite (Gitleaks/dependency-manifest/Docker-base-image checks). **Not** named `GITHUB_PAT`/`GITHUB_APP_*` — GitHub hard-rejects any Actions secret starting with `GITHUB_`, so the workflow remaps these to that env var name internally. `GH_APP_ID`/`GH_APP_PRIVATE_KEY` are optional (GitHub App path, preferred); `GH_PAT` is the fallback |
@@ -241,7 +253,7 @@ Server-only secrets used by the API routes themselves
 own application settings, not GitHub Secrets — note these use the real
 `GITHUB_*` names there, since Azure has no equivalent naming restriction;
 only the GitHub Actions secret store does. See `docs/security.md`. The
-`SUPABASE_*`/`NEWSLETTER_SERVICE_TOKEN`/`WPSCAN_API_TOKEN`/
+`SUPABASE_*`/`DIGEST_SERVICE_TOKEN`/`WPSCAN_API_TOKEN`/
 `GOOGLE_SAFE_BROWSING_API_KEY`/`HIBP_API_KEY`/`GH_*` GitHub Secrets above
 are the exception: used directly *inside* a GitHub Actions job, never
 deployed anywhere — a reasonable place for them, but rotate them the same
@@ -282,3 +294,20 @@ not a "getting started" list, since this system is already live:
 - [ ] Business/legal: professional indemnity insurance before selling
       manual pen-test engagements, NDA/MSA templates, VAT/registration
       status confirmed before publishing prices
+- [ ] Confirm `STRIPE_PRICE_BASIC`/`PRO`/`AGENCY` are real Stripe Dashboard
+      Price IDs — unset, paid signup 500s end to end (`docs/ROADMAP.md`
+      POC-B1, `docs/ENHANCEMENTS.md` E-07)
+- [ ] Publish Terms of Service and link it from checkout — currently
+      doesn't exist while the app takes card payments
+      (`docs/ROADMAP.md` BETA-B1, `docs/ENHANCEMENTS.md` E-09)
+- [ ] Confirm error tracking is wired up (Sentry/App Insights) — today a
+      failed scan in production leaves no way to find out why after the
+      fact (`docs/ROADMAP.md` BETA-1, `docs/ENHANCEMENTS.md` E-03)
+- [ ] Confirm a data-deletion path exists matching what `/privacy` promises
+      customers — it doesn't yet, and `docs/security.md`'s retention figure
+      currently disagrees with `/privacy`'s (`docs/ROADMAP.md` BETA-3/BETA-B2,
+      `docs/ENHANCEMENTS.md` E-10)
+
+See `docs/ROADMAP.md` for the full readiness ladder this checklist is a
+summary of, and `docs/FUNCTIONALITY-MATRIX.md` for exactly which advertised
+plan features are (and mostly aren't) actually server-enforced today.

@@ -1,9 +1,20 @@
-# Competitor & Market Services Catalogue
+# Consultancy Services & Market Pricing Catalogue
+
+**This is consultancy service-line market intel — manual pen tests, IR
+retainers, compliance advisory, MDR — not a SaaS product comparison.** For
+how Hebrides Cyber the *product* compares against other automated
+scanners (Intruder.io, Probely, Astra, etc.), see
+`hebridescyber-app/docs/COMPETITIVE-ANALYSIS.md` instead — different
+question, different answer, not duplicated here.
 
 Reference catalogue of services UK/global SME-focused security consultancies
 and MSSPs commonly offer, with typical packaging, pricing, and tooling —
-for comparing against and prioritising the Hebrides Cyber roadmap
-(`marketing/08-business-plan.md`, `hebridescyber-app/PRODUCTION-ROADMAP.md`).
+for comparing against and prioritising Hebrides Cyber's consultancy-side
+offerings (`marketing/08-business-plan.md`; the engineering-side roadmap
+lives at `hebridescyber-app/docs/ROADMAP.md`, its history at
+`hebridescyber-app/docs/decisions/ENGINEERING-LOG-2026-08.md` — the old
+`PRODUCTION-ROADMAP.md` this originally pointed at was deleted as
+misleading early in the product's life).
 
 ## 1. Core offensive & assurance services (high demand, high margin)
 
@@ -112,42 +123,9 @@ hybrid — clear one-offs to attract clients, plus a simple subscription
 6. Low-friction onboarding: one-click scans, clear proof-of-ownership flow, fast turnaround (24–72h) — the two-step `run-scan` flow in `src/functions/run-scan/index.ts` is the current stub of this.
 7. Transparent pricing & sample reports on the site.
 
-## 10. Competitive feature checklist mapped to the current build
+## 10-11. (removed — stale code claims)
 
-**MVP (largely built as of this doc):** Security Score SaaS shape,
-Small Website Audit, Automated PDF report generation
-(`generate-report`), Dependency-scan placeholder, Stripe billing webhook,
-Local business package (pricing tier), Dashboard scan runner.
-
-**Not yet built — short term (3–6 months):** real manual pen test
-delivery workflow, automated remediation PR generation, Slack/Jira
-integrations, white-label report toggle, Cyber Essentials prep package.
-
-**Medium term (6–12 months):** real DNS/file ownership verification
-(currently a token-echo stub — see `docs/security.md`), agency reseller
-program, basic MDR/monitoring offering (likely via partner), incident
-response retainer.
-
-**Long term (12+ months):** full MDR, forensics partnerships, advanced
-supply-chain security services, enterprise pricing.
-
-## 11. Practical next steps not yet reflected in the codebase
-
-- Add productised PR fixes to the Security Score deliverable (high
-  perceived value, low marginal cost once dependency scanning is real).
-- Create vertical landing pages (Tourism, Churches, Local Trades) with
-  tailored packages and case studies — new `src/app/<vertical>/page.tsx`
-  routes following the existing marketing page pattern.
-- Build a white-label report toggle in the dashboard (config flag passed
-  to `generate-report`'s HTML template).
-- Offer Cyber Essentials prep as an upsell for local businesses bidding
-  for contracts.
-- Define a simple IR retainer with clear scope and pricing.
-- Integrate Snyk/Dependabot for real dependency monitoring in the Pro
-  tier (replaces `checkDependencies()` stub in `src/lib/scanners.ts`).
-- Publish sample reports & pricing on the marketing site to reduce
-  friction and increase conversions.
-
+*Both sections here referenced code that no longer exists — `checkDependencies()` in a `src/lib/scanners.ts` that was never the real module structure, `src/functions/run-scan`, "ownership verification is a token-echo stub" (it's real DNS/file verification now), and "vertical pages/white-label/Slack+Jira not built" (all shipped). For current, code-verified product capability, see `hebridescyber-app/docs/FUNCTIONALITY-MATRIX.md`; for what's actually still open, `hebridescyber-app/docs/ENHANCEMENTS.md`.*
 ## 12. Example packaged offerings for the site
 
 - **Starter Security Score** — £20/mo or £30 one-off: automated scan,

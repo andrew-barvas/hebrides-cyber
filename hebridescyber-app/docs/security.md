@@ -62,7 +62,7 @@ Suggested legal consent template (have a solicitor review before use):
 
 **Done, via ephemeral GitHub Actions runners rather than Azure Container
 Instances** (ACA/ACI were considered and rejected — see
-`docs/PLATFORM-ROADMAP.md`'s "17 Aug" note — since GitHub Actions already
+`docs/decisions/ENGINEERING-LOG-2026-08.md`'s "17 Aug" note — since GitHub Actions already
 gives fresh, destroyed-after-each-run compute for free, and installing
 real tools per run avoids maintaining a second infra surface). ZAP, nmap,
 nuclei, sqlmap, XSSer, and commix only ever run inside
@@ -87,7 +87,7 @@ interactive request:
   Azure OpenAI key, `GITHUB_PAT`, storage connection strings) as **Static
   Web App application settings** — `az staticwebapp appsettings set` or the
   Portal. Never paste raw values into `.env.local`, Terraform files, or
-  GitHub Actions YAML (the `NEWSLETTER_SERVICE_TOKEN`/`SUPABASE_*` GitHub
+  GitHub Actions YAML (the `DIGEST_SERVICE_TOKEN`/`SUPABASE_*` GitHub
   Secrets used directly inside CI jobs — see `README.md` — are the
   intentional exception).
 - `.env.example` in this repo lists required variable names only — no
@@ -97,13 +97,36 @@ interactive request:
 
 ## Data Retention
 
-- Default retention for scan artifacts (raw results, PDF reports): **90
-  days**, after which they should be deleted automatically.
-- **TODO:** implement a scheduled cleanup job (e.g. a nightly Azure
-  Function or Supabase cron job) that deletes `scan_results` rows and any
-  stored PDFs older than 90 days.
-- Provide a deletion API / dashboard action so users can request early
-  deletion of their data (relevant for GDPR "right to erasure" requests).
+**Neither of the following is implemented in code.** This is a live gap,
+not a future nice-to-have — tracked as `docs/ENHANCEMENTS.md` E-10 and
+`docs/ROADMAP.md` BETA-3/BETA-B2. No scheduled cleanup job, lifecycle rule,
+or deletion API exists anywhere in this repo; nothing has ever actually
+been deleted by either promise below.
+
+**This section previously stated a 90-day figure for scan results that
+contradicted `/privacy`'s published 12-month figure** — an internal
+inconsistency on top of the missing implementation. `/privacy` is the
+customer-facing legal document and is the one that matters if the two ever
+disagree again; this section now just repeats it rather than maintaining a
+second, driftable copy of the same numbers:
+
+- Scan results (raw findings, `scan_results` rows): promised **12 months**
+  on `/privacy`, then automatic purge.
+- PDF reports (Azure Blob Storage): promised **90 days**, then deletion.
+- Contact enquiries: promised **12 months**, then deletion.
+
+**Before implementing the cleanup job**, confirm these figures are still
+the intended policy (they were never verified against any actual legal or
+business requirement, just chosen when `/privacy` was written) — don't
+build automation around them without that check. Once confirmed:
+
+- A scheduled cleanup job (matching the `daily-blog.yml`/`weekly-newsletter.yml`
+  pattern — a script run directly by GitHub Actions against Supabase, no
+  HTTP hop) that deletes `scan_results` rows and Blob Storage PDFs past
+  their respective windows.
+- A deletion API / dashboard action so a customer can request *early*
+  deletion (the GDPR "right to erasure" case `/privacy` §7 already commits
+  to a 30-day response on, with no code path behind that commitment yet).
 
 ## Rate Limiting & Concurrency
 
@@ -122,4 +145,4 @@ interactive request:
   Postgres-backed queue (`sql/migrations/008_scan_jobs.sql`), worked by a
   fixed, bounded set of GitHub Actions shards (`src/scripts/run-queued-scan-jobs.ts`,
   itself capped per run by `MAX_JOBS_PER_RUN`/`TIME_BUDGET_MS`) rather than
-  one HTTP call per target — see `docs/PLATFORM-ROADMAP.md` §4.
+  one HTTP call per target — see `docs/decisions/ENGINEERING-LOG-2026-08.md` §4.
