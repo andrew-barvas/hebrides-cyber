@@ -1,14 +1,18 @@
-# Terms of Service — DRAFT, not published, not legal advice
+# Terms of Service — SUPERSEDED, now live at src/app/terms/page.tsx
 
-> **This is a starting draft for a solicitor to review, not a finished
-> legal document.** It is not linked from checkout, `/pricing`, or anywhere
-> else on the live site — nothing here takes effect until it's reviewed,
-> corrected, and actually published as `src/app/terms/page.tsx` with a
-> link from checkout (`docs/ENHANCEMENTS.md` E-09, `docs/ROADMAP.md`
-> BETA-B1). I'm not a solicitor and this isn't legal advice — treat every
-> clause below as a placeholder for one to check, not as settled wording.
-> `[PLACEHOLDER]` markers are facts only the business owner can confirm —
-> don't publish with any of them still unresolved.
+> **Published 27 August 2026 per explicit owner instruction, ahead of
+> solicitor review.** The live page (`src/app/terms/page.tsx`, linked from
+> the footer and `/pricing`) resolved every `[PLACEHOLDER]` below by
+> either omitting the unconfirmed fact entirely (company registration
+> number, VAT treatment, professional-indemnity-insurance status — none of
+> these are stated on the live page, rather than guessed) or using
+> standard, defensible boilerplate (§8's liability cap, §12's Scotland
+> governing-law choice) rather than leaving visible placeholder text on a
+> production legal page. **This still isn't a substitute for solicitor
+> review** — §4 (authorisation/indemnification) and §8 (liability cap
+> sizing) in particular should still get a real legal read before this is
+> relied on in a dispute. Kept here for that review and for the original
+> reasoning; the live page is the current, actual terms.
 
 **Why this exists now**: the live site takes Stripe Checkout payments and
 the product fires real attack payloads (sqlmap, commix, XSSer, nuclei)
@@ -174,22 +178,24 @@ Privacy Policy.
 
 ### 14. Contact
 
-Hebrides Cyber, Isle of Lewis, Scotland, UK —
-`[PLACEHOLDER: contact email, matching /privacy's CONTACT_EMAIL constant]`.
+Hebrides Cyber, Isle of Lewis, Scotland, UK — hello@hebridescyber.com
+(matching `/privacy`'s `CONTACT_EMAIL` constant; used as-is on the live page).
 
 ---
 
-## Before publishing (checklist for whoever takes this to a solicitor)
+## Still open (checklist for whoever takes this to a solicitor)
 
-- [ ] Resolve every `[PLACEHOLDER]` above with a real, confirmed value —
-      do not publish with any left in.
-- [ ] Solicitor review, focused especially on §4 (authorisation/
-      indemnification — the clause doing the most work for a product that
-      fires real attack payloads) and §8 (liability cap sizing).
-- [ ] Confirm professional indemnity insurance status before §8's
-      pen-test reference goes live, or pull manual pen-test pricing from
-      `/pricing` until it's in place (README.md's operational checklist).
-- [ ] Once approved: create `src/app/terms/page.tsx` following
-      `src/app/privacy/page.tsx`'s existing structure/styling, link it
-      from the Stripe Checkout flow and the footer, and check this item
-      off `docs/ROADMAP.md`'s BETA-B1.
+- [x] Live page created (`src/app/terms/page.tsx`), linked from the footer
+      and `/pricing`'s subscribe section — `docs/ROADMAP.md` BETA-B1's
+      *publication* half is done.
+- [ ] Solicitor review of the live page, focused especially on §4
+      (authorisation/indemnification — the clause doing the most work for
+      a product that fires real attack payloads) and §8 (liability cap
+      sizing) — BETA-B1's *review* half is still open.
+- [ ] If the business becomes VAT-registered or incorporates formally,
+      add that to the live page (currently omitted rather than guessed).
+- [ ] Manual pen-test engagements (£300/£800/£1,800 on `/pricing`) are
+      still being sold without confirmed professional indemnity insurance
+      — README.md's operational checklist has this unticked. The live
+      Terms page doesn't reference insurance status either way; this is
+      a business-readiness gap independent of the Terms page itself.

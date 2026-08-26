@@ -75,8 +75,8 @@ marketing-site work, support tooling. Explicitly parked, not forgotten.
 
 | ID | Assertion | Verify |
 |---|---|---|
-| BETA-B1 | Terms of Service is published and linked from checkout | Manual check + `docs/ENHANCEMENTS.md` E-09 |
-| BETA-B2 | Retention promises in `docs/security.md` and `/privacy` agree with each other and with what the code actually does | Diff the two documents' retention sections; `docs/ENHANCEMENTS.md` E-10 |
+| BETA-B1 | Terms of Service is published and linked from checkout | Manual check + `docs/ENHANCEMENTS.md` E-09. **Published** (`src/app/terms/page.tsx`, linked from the footer and `/pricing`'s subscribe section, 27 Aug 2026) — **not yet solicitor-reviewed**, see that page's caveats and `docs/legal/terms-of-service-draft.md`'s "still open" checklist. Treat the publication half as done, the review half as still open |
+| BETA-B2 | Retention promises in `docs/security.md` and `/privacy` agree with each other | Diff the two documents' retention sections. **Docs agree** as of the `docs/decisions/ENGINEERING-LOG-2026-08.md` split — `security.md` now defers to `/privacy`'s figures rather than stating its own. The *code* implementing either promise still doesn't exist (`docs/ENHANCEMENTS.md` E-10, blocks BETA-3) — that's this criterion's dependency, not this criterion itself |
 | BETA-B3 | Manual pen-test engagements (£300/£800/£1,800 on `/pricing`) are backed by professional indemnity insurance and a signed contract template, **or** are pulled from public pricing until they are | Confirm with the owner directly — README's own ops checklist has this unticked as of this writing. **Flagged here deliberately**: this roadmap treats the pricing as live per the owner's explicit instruction, but "live" and "insured" are different claims, and this criterion exists so the gap doesn't get silently forgotten because it was "already decided" |
 
 ### Product criteria
