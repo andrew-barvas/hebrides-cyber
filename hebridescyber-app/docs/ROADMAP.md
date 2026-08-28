@@ -25,6 +25,10 @@ when *every* listed criterion is green, not "mostly." Criteria reference
 linked item for the actual scope. No dates, no effort estimates anywhere in
 this file (those live in `ENHANCEMENTS.md`, where they're cheap to revise).
 
+For a concrete, sprint-by-sprint execution order that gets you toward the
+criteria below, see `docs/SPRINT-PLAN.md` — this file states what "done"
+looks like, that one states what to actually work on next.
+
 ---
 
 ## Stage 0 — where we actually are
