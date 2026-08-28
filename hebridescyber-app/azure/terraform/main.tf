@@ -24,13 +24,13 @@ terraform {
     }
   }
 
-  # TODO: configure a remote backend, e.g.:
-  # backend "azurerm" {
-  #   resource_group_name  = "hebridescyber-tfstate-rg"
-  #   storage_account_name = "hebridescybertfstate"
-  #   container_name       = "tfstate"
-  #   key                  = "hebridescyber.tfstate"
-  # }
+  # Provisioned via azure/cli-scripts/bootstrap-tfstate.sh on 2026-08-27.
+  backend "azurerm" {
+    resource_group_name  = "hebridescyber-tfstate-rg"
+    storage_account_name = "hebridescybertfstate"
+    container_name       = "tfstate"
+    key                  = "hebridescyber.tfstate"
+  }
 }
 
 provider "azurerm" {
