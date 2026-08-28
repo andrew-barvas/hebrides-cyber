@@ -34,6 +34,7 @@ entry).
   ID to reference | [`ENHANCEMENTS.md`](ENHANCEMENTS.md) |
 | ...see what's actually blocking this from being safe to sell/scale, with
   verifiable exit criteria | [`ROADMAP.md`](ROADMAP.md) |
+| ...know what to actually work on next, sprint by sprint | [`SPRINT-PLAN.md`](SPRINT-PLAN.md) |
 | ...get oriented as a new contributor | [`ONBOARDING.md`](ONBOARDING.md) |
 | ...know the rules for writing or extending a scanner check | [`SCANNER-CONVENTIONS.md`](SCANNER-CONVENTIONS.md) |
 | ...read the Terms of Service, or see the reasoning behind it and what still needs solicitor review | live at `/terms` (`src/app/terms/page.tsx`); reasoning and open items in [`legal/terms-of-service-draft.md`](legal/terms-of-service-draft.md) — see `docs/ROADMAP.md` BETA-B1 |
@@ -51,8 +52,12 @@ entry).
   it*. **`CLAUDE.md`** owns *how the code implements it*. Never restate one
   in another — link instead.
 - **`ENHANCEMENTS.md`** owns *what could be built and why*, no commitment,
-  no dates. **`ROADMAP.md`** owns *what's actually sequenced*, referencing
-  `ENHANCEMENTS.md` items by `E-nn` ID only, never restating their content.
+  no dates. **`ROADMAP.md`** owns *stage-gate readiness* (POC/Beta/Live exit
+  criteria). **`SPRINT-PLAN.md`** owns *near-term execution ordering* — the
+  next 3 sprints, concretely sequenced. All three reference `ENHANCEMENTS.md`
+  items by `E-nn` ID only, never restating their content; where
+  `SPRINT-PLAN.md` and `ROADMAP.md` conflict on priority, `ROADMAP.md`'s
+  business-readiness blocks win.
 - **`COMPETITIVE-ANALYSIS.md`** owns SaaS product comparison (Intruder,
   Probely, Astra, etc.). **`../../marketing/09-competitor-services-catalogue.md`**
   owns consultancy service-line market pricing (pen tests, IR retainers).

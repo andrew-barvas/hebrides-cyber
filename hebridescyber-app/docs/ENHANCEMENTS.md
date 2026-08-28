@@ -456,3 +456,49 @@ resources by itself.
 **Depends on**: none.
 **Category**: code. **Source**: production-readiness audit (found while
 scoping the Container Apps deploy path's Terraform additions).
+
+## E-27 — Multi-target "fleet" rollup on the dashboard
+
+**What**: the dashboard's "Security Overview" (`dashboard/page.tsx`) shows
+only the most-recently-completed scan across every monitored target — its
+own comment says so explicitly ("not an aggregate across every monitored
+target... a multi-target selector is a bigger, separate design question").
+An Agency account with up to 15 targets (post-E-01's caps) has no way to see
+all of them at a glance — worst score, most recent New/Fixed diff per
+target, which ones haven't scanned recently — only whichever one happened to
+finish last.
+**Why**: this is the single biggest gap between "Agency = multi-site
+monitoring" (the pricing-page differentiator) and what the dashboard
+actually shows. A customer paying for fleet monitoring currently manages
+that fleet by mentally tracking which target's data they're looking at.
+**Impact/effort**: medium-high — a genuinely new view (per-target score/
+status cards or a table, sortable by score/last-scanned/open-findings), not
+a small tweak to the existing single-scan overview. Reuses existing data
+(`scan_results`, `monitored_targets`) — no new scanning or backend logic
+needed, this is a dashboard/query-shape problem.
+**Depends on**: E-01 (done) — this is the natural next step now that
+multi-target access itself exists.
+**Category**: code. **Source**: product/dashboard review.
+
+## E-28 — Findings-by-category and compliance-coverage trend reporting
+
+**What**: `ScoreTrend.tsx` charts one number (score) over time per target.
+There's no view of *what kind* of findings are trending up/down (TLS vs.
+headers vs. dependency CVEs vs. exposure, etc.) or how Cyber Essentials/
+OWASP/CIS coverage (`src/lib/scanners/compliance.ts` already computes this
+per scan) changes scan-over-scan — that mapping is computed and stored but
+never visualised as a trend, only as a per-scan snapshot in the report.
+**Why**: "is our security posture actually improving, and in which areas"
+is a more useful question for a repeat customer than a single score number,
+and the compliance-trend view specifically reinforces the Cyber Essentials
+positioning (`docs/COMPETITIVE-ANALYSIS.md` §9) with real data rather than a
+one-off report page.
+**Impact/effort**: medium — the compliance-mapping data already exists per
+scan; this is aggregation + a new chart, not new scanning logic. Category
+breakdown needs grouping `scan_results` findings by check category, which
+doesn't currently have a stable taxonomy — worth deciding that grouping
+once, not per-chart.
+**Depends on**: none technically, but sequenced after E-27 since both touch
+the same dashboard area and a shared "which target(s) am I looking at"
+selector should probably be built once for both.
+**Category**: code. **Source**: product/dashboard review.
