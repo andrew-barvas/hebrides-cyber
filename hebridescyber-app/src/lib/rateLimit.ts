@@ -7,6 +7,20 @@
 // fine for local dev but does NOT work correctly across multiple Function
 // instances or after a cold start — see the warning below.
 
+import type { NextApiRequest } from "next";
+
+// Best-effort client IP for unauthenticated routes that have no ownerId to
+// key on (e.g. contact.ts). Azure Static Web Apps' Oryx-managed Functions
+// sit behind Azure's CDN, which sets x-forwarded-for as
+// "client, proxy1, proxy2, ..." — the first entry is the original client.
+// Falls back to the socket address for local dev, where no proxy is present.
+export function getClientIp(req: NextApiRequest): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (forwardedValue) return forwardedValue.split(",")[0].trim();
+  return req.socket.remoteAddress ?? "unknown";
+}
+
 const WINDOW_SECONDS = 60 * 60; // 1 hour
 const MAX_REQUESTS = 10; // per key, per window
 
@@ -15,11 +29,16 @@ const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
-export async function checkRateLimit(key: string): Promise<RateLimitResult> {
+// namespace keeps unrelated callers from sharing a bucket by accident —
+// run-scan.ts and v1/scans.ts deliberately share "run-scan" (one combined
+// scan-creation quota per owner regardless of entry point); a caller with a
+// different purpose (e.g. contact.ts's spam protection) should pass its own.
+export async function checkRateLimit(key: string, namespace: string = "run-scan"): Promise<RateLimitResult> {
+  const namespacedKey = `${namespace}:${key}`;
   if (upstashUrl && upstashToken) {
-    return checkRateLimitRedis(key);
+    return checkRateLimitRedis(namespacedKey);
   }
-  return checkRateLimitInMemory(key);
+  return checkRateLimitInMemory(namespacedKey);
 }
 
 /**
@@ -34,7 +53,7 @@ export async function checkRateLimit(key: string): Promise<RateLimitResult> {
  * a real problem in practice.
  */
 async function checkRateLimitRedis(key: string): Promise<RateLimitResult> {
-  const redisKey = `ratelimit:run-scan:${key}`;
+  const redisKey = `ratelimit:${key}`;
 
   try {
     const incrRes = await fetch(`${upstashUrl}/incr/${encodeURIComponent(redisKey)}`, {

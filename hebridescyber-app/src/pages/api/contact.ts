@@ -1,9 +1,21 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendEmail, escapeHtml } from "@/lib/email";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
+// E-05 (docs/ENHANCEMENTS.md): this was the only fully-open, unauthenticated
+// write path in the app with zero abuse protection. Keyed by IP (no
+// ownerId exists pre-auth) under its own "contact" namespace so it can't
+// share a bucket with run-scan.ts/v1/scans.ts's owner-keyed scan-creation
+// limit — see rateLimit.ts's namespace comment.
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const limit = await checkRateLimit(getClientIp(req), "contact");
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Too many messages sent — please try again later." });
+  }
 
   const { name, email, url, message } = req.body as Record<string, unknown>;
 

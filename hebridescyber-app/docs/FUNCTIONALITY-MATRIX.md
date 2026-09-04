@@ -153,7 +153,7 @@ hand-roll their own admin check instead of calling `requireAdmin()` — see
 |---|---|
 | `badge/[scanId].ts` | Public SVG badge, service-role read, exposes only the score. Never 500s — renders a "no data" badge on failure |
 | `reports/[token].ts` | Token *is* the credential; expiry-checked, audit-logged |
-| `contact.ts` | **No rate limit, no CAPTCHA, no honeypot** — see `docs/ENHANCEMENTS.md` E-05 |
+| `contact.ts` | Rate-limited by IP (10/hour, own `"contact"` namespace — `docs/ENHANCEMENTS.md` E-05, fixed). No CAPTCHA/honeypot beyond that, judged sufficient for current volume |
 
 ### Service-token (cron)
 
