@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,8 +24,14 @@ const SECURITY_HEADERS = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   {
     key: "Content-Security-Policy",
+    // connect-src includes https://*.sentry.io for E-03 (docs/ENHANCEMENTS.md)
+    // -- the browser-side Sentry SDK (instrumentation-client.ts) posts
+    // directly to Sentry's ingest endpoint from the client; without this the
+    // existing strict CSP would silently block every client-side error
+    // report with no visible error beyond a CSP console warning. Harmless
+    // to keep even before SENTRY_DSN is actually configured.
     value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in; connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://www.google-analytics.com https://region1.google-analytics.com; font-src 'self' data:; frame-src https://js.stripe.com https://checkout.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in; connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://www.google-analytics.com https://region1.google-analytics.com https://*.sentry.io; font-src 'self' data:; frame-src https://js.stripe.com https://checkout.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com",
   },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
@@ -60,4 +67,24 @@ const nextConfig = {
   output: process.env.NEXT_OUTPUT_MODE === "standalone" ? "standalone" : undefined,
 };
 
-export default nextConfig;
+// E-03 (docs/ENHANCEMENTS.md): wraps the build with Sentry's webpack plugin
+// for source-map upload — needs SENTRY_ORG/SENTRY_PROJECT/SENTRY_AUTH_TOKEN
+// to actually upload anything; all three are optional and the plugin skips
+// the upload step (silently, since `silent: true` below) rather than
+// failing the build when they're unset. Safe to leave wrapped unconditionally.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: true,
+  // No tunnel route — this app's CSP already allowlists Sentry's ingest
+  // domain directly (see connect-src above) rather than proxying error
+  // reports through a first-party route to dodge ad-blockers, which isn't
+  // a problem this product has.
+  widenClientFileUpload: true,
+  // disableLogger/automaticVercelMonitors deliberately omitted, not just
+  // set to their old defaults — both are deprecated in favour of nested
+  // webpack.* options that only apply under webpack, and this project
+  // builds with Turbopack (next.config.mjs's own comment above), where
+  // neither the old nor new option does anything.
+});

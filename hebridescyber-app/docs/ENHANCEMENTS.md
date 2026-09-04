@@ -100,6 +100,49 @@ per-account cap instead — a product decision, not just an enforcement one).
 
 ## E-03 — Observability: error tracking
 
+**Status: fixed (2026-09-04), needs your own Sentry account to actually
+activate.** Wired `@sentry/nextjs` — `src/instrumentation.ts` (server/edge
+registration + `onRequestError` for API-route/server-component errors),
+`src/instrumentation-client.ts` (browser), `src/sentry.server.config.ts`/
+`sentry.edge.config.ts`, and `src/app/error.tsx`/`global-error.tsx` (route
+errors and root-layout errors respectively — the two were previously
+console.error-only, `error.tsx`'s comment literally said "wire to Sentry
+here later"). `next.config.mjs` wrapped with `withSentryConfig` for
+optional source-map upload.
+
+**Genuinely optional, not fake-optional**: `Sentry.init({ dsn: undefined
+})` is a real no-op (captures nothing, throws nothing) when
+`SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` aren't set — matches every other
+optional external service in this codebase (Upstash, Resend/SendGrid,
+HIBP/Safe Browsing). Ships safely with zero required action; starts
+working the moment a DSN is set. **You'll need to create a Sentry account
+yourself** (free Developer plan, 5k errors/month) — account creation on a
+third-party service isn't something this session does regardless of
+context, same as the earlier Stripe/domain-registration boundaries.
+
+Redaction: new `src/lib/sentryScrub.ts`, shared across all three runtime
+entry points (one implementation, not three copies that could drift) —
+scrubs target-auth credentials and anything key-name-matching
+password/token/secret/api_key/service_role/authorization from
+request/extra/contexts recursively. Scan **findings themselves are
+deliberately not scrubbed** — they're the customer's own security data
+about their own site, not a credential, and stripping them would defeat
+the point of capturing a scan-processing error in the first place.
+
+CSP fix found along the way: `connect-src` didn't allowlist Sentry's
+ingest domain — without this, the browser SDK's error reports would have
+been silently blocked by this app's own strict CSP with no visible error
+beyond a console warning. Fixed in the same change.
+
+Tests: `sentryScrub.test.ts` — first-ever coverage for that file. Full
+suite (419 tests), `tsc`, lint (`npm run build` surfaced two Sentry SDK
+deprecation warnings — `withSentryConfig` import path and two Turbopack-
+inapplicable webpack-only options — fixed rather than shipped stale), and
+build all verified clean. `npm audit` picked up one new moderate
+transitive vulnerability from the Sentry install (`qs`, via an unrelated
+`stripe` dependency actually) — fixed via a `package.json` `overrides`
+entry per this project's own stated convention, not `audit fix --force`.
+
 **What**: wire Sentry or Application Insights. Today: 80 `console.*` calls
 across 26 files is the entire logging strategy; `src/app/error.tsx:14`'s own
 comment says "wire to Application Insights / Sentry here later."
@@ -114,6 +157,26 @@ data can be sensitive).
 **Source**: audit.
 
 ## E-04 — Health check endpoint
+
+**Status: fixed (2026-09-04).** New `GET /api/health`, public and
+unauthenticated (a standard uptime-monitor convention — an external
+monitor has no credential to send). Returns only booleans/counts, never a
+raw error message or stack trace, since the response is public by
+design — verified with a test asserting a deliberately-injected secret-
+looking error message never appears in the response body.
+
+Three sub-checks, run in parallel: a real Supabase query (not just "is the
+client constructed"), a real Stripe API call (`balance.retrieve()` — same
+lesson as E-07: an unset/invalid key should be visibly broken, not
+silently trusted), and `scan_jobs` queue depth. Queue depth is
+**informational only** — a large backlog isn't the same failure class as
+"can't reach Supabase," so it never flips overall health on its own, only
+if the count query itself fails to run (tested as two distinct cases).
+200 when every check passes, 503 otherwise.
+
+Tests: `health.test.ts` — first-ever coverage for this route. Verified
+alongside E-03's changes (same commit) — full suite, `tsc`, lint, build
+all clean.
 
 **What**: `GET /api/health` — Supabase/Stripe/queue-depth sub-checks, 200
 when healthy, 503 when degraded. Doesn't exist today.

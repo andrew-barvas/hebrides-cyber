@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 
 export default function GlobalError({
   error,
@@ -11,8 +12,13 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log to console (wire to Application Insights / Sentry here later).
+    // E-03 (docs/ENHANCEMENTS.md): was console.error-only with a comment
+    // saying "wire to Application Insights / Sentry here later" — this is
+    // that wiring. captureException is a safe no-op when SENTRY_DSN isn't
+    // configured (see sentry.server.config.ts), so console.error stays as
+    // a genuine fallback, not dead code.
     console.error("[global error]", error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (
