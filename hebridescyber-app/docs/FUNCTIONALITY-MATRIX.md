@@ -123,13 +123,13 @@ required) · **key-or-session** (either credential) · **admin**
 
 | Route | Auth | Plan gate | Enforcement |
 |---|---|---|---|
-| `keys.ts` | session only | max 20 keys | ❌ no plan gate |
-| `webhooks.ts` | session only | max 20 | ❌ no plan gate |
-| `account/connect-repo.ts` | session only | — | ❌ no plan gate |
-| `account/ticket-integration.ts` | session only | — | ❌ no plan gate |
-| `account/target-auth.ts` | session only | — | ❌ **no plan gate** despite "Optional (Agency)" labelling |
+| `keys.ts` | session only | max 20 keys | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision if that's meant to change (`docs/ENHANCEMENTS.md` E-02) |
+| `webhooks.ts` | session only | max 20 | ✅ **intentional, not a gap** — `docs/USER-GUIDE.md` §3.5 explicitly documents outbound webhooks as "for anyone building their own integration," unlike Slack/Teams alerts (Pro/Agency) on the same page |
+| `account/connect-repo.ts` | session only | Pro/Agency (POST only) | ✅ **server** (E-02, fixed) — `subscription?.plan` must be `"pro"`/`"agency"`; DELETE stays available regardless of plan |
+| `account/ticket-integration.ts` | session only | — | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision |
+| `account/target-auth.ts` | session only | Agency (POST only) | ✅ **server** (E-02, fixed) — `subscription?.plan !== "agency"` → 403; DELETE stays available regardless of plan |
 | `account/branding-logo.ts` | session only | Agency | ✅ **server** — `subscription?.plan !== "agency"` → 403 |
-| `team.ts` / `team/members.ts` | session only | max 25 members | ❌ no plan gate |
+| `team.ts` / `team/members.ts` | session only | max 25 members; Agency (create/invite only) | ✅ **server** (E-02, fixed) — `team.ts`'s `createTeam` and `team/members.ts`'s `invite` both check `plan === "agency"` (the latter checks the team *owner's* plan, not the caller's, since an admin-role member could invite on an owner's behalf); role changes/removal/viewing stay available regardless of plan |
 
 ### Billing
 

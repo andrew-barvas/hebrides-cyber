@@ -60,6 +60,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true });
   }
 
+  // E-02 (docs/ENHANCEMENTS.md): "dependency monitoring" is advertised as a
+  // Pro-and-up feature (docs/USER-GUIDE.md §3.7) but connecting a repo — the
+  // gate for all of dependencyManifest.ts/secretScan.ts/dockerBaseImage.ts,
+  // not just dependency scanning specifically — was enforced nowhere. Only
+  // gates the connection (POST); DELETE stays available regardless of plan.
+  const { data: subscription, error: subError } = await supabaseAdmin
+    .from("subscriptions")
+    .select("plan")
+    .eq("owner", caller.ownerId)
+    .maybeSingle();
+  if (subError) return res.status(500).json({ error: subError.message });
+  if (subscription?.plan !== "pro" && subscription?.plan !== "agency") {
+    return res.status(403).json({ error: "Connecting a repository for dependency/secret scanning is a Pro-and-up feature." });
+  }
+
   // POST — verify access can actually reach the repo before writing
   // anything. Cheap and real evidence that access exists, rather than
   // trusting the input string blindly. resolveGithubAuth tries the GitHub

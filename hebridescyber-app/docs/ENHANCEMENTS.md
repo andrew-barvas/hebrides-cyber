@@ -44,6 +44,42 @@ differentiator becomes count/multi-site scale, not raw access).
 
 ## E-02 — Server-side plan enforcement audit (teams, webhooks, keys, shares, AI fix, target-auth)
 
+**Status: partially fixed (2026-08-28).** Closed the 3 gaps that were
+already advertised on a real page but enforced nowhere, following the
+`branding-logo.ts` pattern (session-only, re-checks the caller's — or for
+team invites, the team *owner's* — current `subscriptions.plan` server-side,
+never trusts a client claim):
+- `account/target-auth.ts` — POST now requires `plan === "agency"`
+  (matches "Optional (Agency)" on `/what-we-check`). DELETE stays ungated
+  so a downgraded account can still remove a credential it can no longer add.
+- `team.ts` (`createTeam`) and `team/members.ts` (`invite`) — both now
+  require `plan === "agency"` (matches `docs/USER-GUIDE.md` §3.7's "Agency
+  ... team collaboration"). `invite` checks the **team owner's** plan, not
+  the caller's, since an admin-role member could be inviting on the owner's
+  behalf. Role changes, removal, and viewing the team stay ungated.
+- `account/connect-repo.ts` — POST now requires `plan` to be `"pro"` or
+  `"agency"` (matches "Pro ... dependency monitoring" in the same
+  USER-GUIDE section; the connection gates Gitleaks/dockerBaseImage.ts too,
+  not just dependency-manifest scanning, since all three currently share one
+  connection). DELETE stays ungated.
+
+Also reclassified `webhooks.ts` from "gap" to **intentional, not a gap** —
+`docs/USER-GUIDE.md` §3.5 already documents outbound webhooks as "for
+anyone building their own integration," unlike Slack/Teams alerts which the
+same paragraph does gate to Pro/Agency. The matrix previously listed it
+alongside the real gaps without noting this; fixed there too.
+
+**What's still open, deliberately not touched**: `keys.ts`, `webhooks.ts`'s
+own key/count limits, `account/ticket-integration.ts`, AI-tailored fix
+(`scans/[id]/ai-fix.ts`), remediation PRs (`generate-fix-pr.ts`), ticket
+ceation (`scans/[id]/create-ticket.ts`), share-link tier differentiation
+(`scans/[id]/shares.ts`), and `generate-report.ts`'s base PDF-generation
+cost. None of these are advertised as tier-specific anywhere in current
+copy — gating them would mean inventing new product policy, not fixing a
+documented mismatch, which is exactly the distinction this item's own
+"Depends on" line below was already flagging. Left open pending the
+account owner's decision on which (if any) should become tier-exclusive.
+
 **What**: per `docs/FUNCTIONALITY-MATRIX.md` §5, 14 dashboard/API
 capabilities have **no plan gate at all** — including AI-tailored fix
 (pays Azure OpenAI per click, any tier, uncapped), remediation PRs, ticket
