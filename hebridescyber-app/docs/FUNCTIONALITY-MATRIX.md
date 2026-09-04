@@ -154,6 +154,7 @@ required) · **key-or-session** (either credential) · **admin**
 | `badge/[scanId].ts` | Public SVG badge, service-role read, exposes only the score. Never 500s — renders a "no data" badge on failure |
 | `reports/[token].ts` | Token *is* the credential; expiry-checked, audit-logged |
 | `contact.ts` | Rate-limited by IP (10/hour, own `"contact"` namespace — `docs/ENHANCEMENTS.md` E-05, fixed). No CAPTCHA/honeypot beyond that, judged sufficient for current volume |
+| `health.ts` | Supabase/Stripe/queue-depth sub-checks, 200/503, booleans and counts only — never a raw error message. Fixed (`docs/ENHANCEMENTS.md` E-04, 2026-09-04) |
 
 ### Service-token (cron)
 

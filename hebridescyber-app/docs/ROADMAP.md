@@ -46,7 +46,11 @@ looks like, that one states what to actually work on next.
 - 326 unit/integration tests, coverage floor 18/16/18/19
   (statements/branches/functions/lines) — a genuine floor, not a target,
   and it only moves up.
-- Zero production error visibility (`docs/ENHANCEMENTS.md` E-03).
+- Error-tracking code shipped (`docs/ENHANCEMENTS.md` E-03, 2026-09-04) but
+  **not yet actually capturing anything in production** — needs a real
+  Sentry account and `SENTRY_DSN` set, neither of which exist yet. Don't
+  treat this as "done" until that's confirmed; the code shipping and the
+  capability existing are two different facts.
 
 ---
 
@@ -87,8 +91,8 @@ marketing-site work, support tooling. Explicitly parked, not forgotten.
 
 | ID | Assertion | Verify | Status |
 |---|---|---|---|
-| BETA-1 | Every unhandled server error in the last 24h is visible in one place with a request/correlation id | Trigger a canary error, locate it in the tracker within 60s | Blocked on `docs/ENHANCEMENTS.md` E-03 |
-| BETA-2 | `GET /api/health` returns 200 with Supabase/Stripe/queue-depth sub-checks, 503 when any is degraded | `curl` in CI immediately post-deploy | Blocked on E-04 |
+| BETA-1 | Every unhandled server error in the last 24h is visible in one place with a request/correlation id | Trigger a canary error, locate it in the tracker within 60s | Code shipped (E-03, 2026-09-04) — **not yet verifiable**, needs a real Sentry account + `SENTRY_DSN` before this row can actually go green |
+| BETA-2 | `GET /api/health` returns 200 with Supabase/Stripe/queue-depth sub-checks, 503 when any is degraded | `curl` in CI immediately post-deploy | **Done** (E-04, 2026-09-04) — verified via unit tests; the "curl in CI immediately post-deploy" verify method itself hasn't been added to `deploy.yml`, worth doing as a follow-up |
 | BETA-3 | A customer can request deletion; every row keyed to their account is gone within the window stated on `/privacy` | Script + re-query test against a seeded account | Blocked on BETA-B2 (the window must be decided first) + E-10 |
 | BETA-4 | Every plan-gated capability in `docs/FUNCTIONALITY-MATRIX.md`'s Enforcement column reads ✅ server — zero ⚠️/❌ rows | Re-generate the matrix's enforcement column from the code, count non-✅ rows, assert zero | Currently 14 ❌ + 3 ⚠️ rows — this is why the matrix exists: it makes this criterion countable. Blocked on E-01, E-02 |
 | BETA-5 | `deploy.yml`'s quality gates run on `pull_request`, and a failing check blocks merge, not just deploy | A deliberately-failing PR cannot merge (branch protection configured) | Blocked on E-20 |

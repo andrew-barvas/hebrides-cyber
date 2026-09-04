@@ -130,25 +130,30 @@ the same way, by removing the HTTP hop entirely.
 
 ## Observability
 
-Honestly, there isn't much yet — this is a real gap, not an omission by
-oversight, tracked as `docs/ENHANCEMENTS.md` E-03/E-04:
+**Updated 2026-09-04** — E-03/E-04 (`docs/ENHANCEMENTS.md`) shipped, but
+read the distinction below carefully before treating this as solved.
 
-- **No error tracking.** No Sentry, no Application Insights, nothing
-  aggregating exceptions. `src/app/error.tsx`'s own comment says "wire to
-  Application Insights / Sentry here later" and that's still true. The
-  entire logging strategy today is `console.*` calls, which on Azure Static
-  Web Apps' managed Functions means whatever the platform's own log
-  retention happens to keep — not a real observability story.
-- **No health check endpoint.** Nothing external can determine whether the
-  app is up, or whether Supabase/Stripe/the scan queue are degraded, short
-  of loading a page and hoping.
-- **No request correlation IDs.** Tracing one customer's request across the
-  dashboard → API route → queue worker → `executeScan()` today means
-  reading logs and guessing from timestamps and target URLs.
-- **Practical consequence**: if a customer's scan fails in production right
-  now, there is genuinely no way to find out *why* after the fact beyond
-  what the scan itself recorded in `scans.status = 'failed'` (no error
-  detail column exists there either).
+- **Error tracking**: `@sentry/nextjs` is wired (`src/instrumentation.ts`,
+  `instrumentation-client.ts`, `sentry.server.config.ts`/`sentry.edge.config.ts`,
+  `src/app/error.tsx`/`global-error.tsx`) with redaction via
+  `src/lib/sentryScrub.ts`. **But it captures nothing yet** — like every
+  other optional external service in this app, it initializes into a real
+  no-op until `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` are actually set,
+  which needs a real Sentry account that doesn't exist yet (see the
+  Operational Checklist in `../README.md`). The code shipping and the
+  capability existing are two different facts — don't conflate them.
+- **Health check endpoint**: `GET /api/health` exists now — Supabase,
+  Stripe, and `scan_jobs` queue-depth sub-checks, 200/503. This one is
+  fully live today, no external account needed.
+- **No request correlation IDs** — still genuinely absent. Tracing one
+  customer's request across the dashboard → API route → queue worker →
+  `executeScan()` still means reading logs and guessing from timestamps
+  and target URLs. Not part of E-03/E-04's scope; still open.
+- **Practical consequence, updated**: once a Sentry DSN is actually set, a
+  failed scan's underlying exception becomes visible for the first time.
+  Until then, the original gap still holds exactly as before — no error
+  detail column exists on `scans` either, so a failure is still only
+  visible as `scans.status = 'failed'` with nothing about why.
 
 ## Scaling notes
 

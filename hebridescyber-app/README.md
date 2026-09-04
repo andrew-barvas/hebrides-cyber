@@ -297,6 +297,9 @@ not a "getting started" list, since this system is already live:
 - [ ] Confirm `STRIPE_PRICE_BASIC`/`PRO`/`AGENCY` are real Stripe Dashboard
       Price IDs — unset, paid signup 500s end to end (`docs/ROADMAP.md`
       POC-B1, `docs/ENHANCEMENTS.md` E-07)
+- [ ] Confirm `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` are set — error tracking
+      code is live (`docs/ENHANCEMENTS.md` E-03) but silently captures
+      nothing until a real Sentry account/DSN exists
 - [ ] Publish Terms of Service and link it from checkout — currently
       doesn't exist while the app takes card payments
       (`docs/ROADMAP.md` BETA-B1, `docs/ENHANCEMENTS.md` E-09)

@@ -68,8 +68,13 @@ work.
 |---|---|---|---|---|
 | 1 | **E-27** | Multi-target "fleet" rollup dashboard | ✅ done (2026-09-04) — not yet manually verified in a browser against a real staging Agency account | The Security Overview currently shows only the most-recently-completed scan across *all* monitored targets — an Agency account with up to 15 targets has no fleet view. Direct product gap against the "Agency = multi-site monitoring" pricing differentiator, and the highest-value of the two new dashboard items since it's the only way multi-site customers can actually use what they're paying for. |
 | 2 | **E-28** | Findings-by-category and compliance-coverage trend reporting | ✅ done (2026-09-04) — not yet manually verified in a browser | Extends `ScoreTrend.tsx` beyond a single score number to "which categories are improving," using data `compliance.ts` already computes but never charts. Sequenced after E-27 since both need the same per-target/all-targets selector — build that selector once, not twice. |
-| 3 | **E-03** | Observability: error tracking (Sentry / App Insights) | ⬜ not started | `docs/ROADMAP.md`'s own stated exception — this is allowed to land before its nominal Beta slot because Sprint 2 is adding real new dashboard surface area, and right now a failure in it is invisible. Bring forward, don't skip. |
-| 4 | **E-04** | Health check endpoint | ⬜ not started | Small, pairs directly with E-03 (an alert needs something to alert *from*), same rationale for pulling it forward. |
+| 3 | **E-03** | Observability: error tracking (Sentry / App Insights) | 🔄 code done (2026-09-04) — ⛔ not actually capturing anything until you create a Sentry account and set `SENTRY_DSN` | `docs/ROADMAP.md`'s own stated exception — this is allowed to land before its nominal Beta slot because Sprint 2 is adding real new dashboard surface area, and right now a failure in it is invisible. Bring forward, don't skip. |
+| 4 | **E-04** | Health check endpoint | ✅ done (2026-09-04) | Small, pairs directly with E-03 (an alert needs something to alert *from*), same rationale for pulling it forward. |
+
+**Sprint 2 is now fully complete** as far as code goes — E-03's activation
+is the one item still needing you, same shape as E-07's Stripe blocker in
+Sprint 1: the code ships safely either way, but the actual capability
+needs an external account only you can create.
 
 **Since this plan was written, also shipped (not originally in Sprint 2,
 noting here so the todo list stays honest)**: technical SEO infrastructure
