@@ -56,6 +56,25 @@ without a source and a date attached to the specific cell.
 | **Detectify** | Has moved upmarket into External Attack Surface Management (EASM). Included as a trajectory reference — where this category tends to go once it has funding — not a head-to-head at today's price point. |
 | **Invicti / Acunetix** | Enterprise DAST. A ceiling comparison only — they define what "real DAST" means to a technical buyer, useful for calibrating D2 below, not a segment Hebrides Cyber competes for today. |
 
+### Local, direct competitor (different category, same town)
+
+Found 2026-09-04, not part of the original analysis pass — a real gap, not
+a minor omission, given the location match:
+
+| Competitor | Positioning |
+|---|---|
+| **Closed Door Security** (`cdsec.co.uk`) | Founded in Stornoway — same town as Hebrides Cyber. 15+ years, 1070+ assessments, 320+ clients, CREST-certified, three global offices, NHS/UK-banking/manufacturing client base. Manual/enterprise-assurance pentesting + a PTaaS platform (real-time findings dashboard, on-demand retest booking, live remediation validation loop), not automated SME self-serve scanning — a genuinely different category from the head-on list above, not a rescoring of it. |
+
+This is **not** a company to out-rank on generic "cyber security Stornoway"
+search terms as a brand-new entrant — 15 years of backlinks, case studies,
+and CREST credibility win that outright. The differentiated lane is the one
+already established in §9: automated, affordable, SME/compliance-triggered
+self-serve, not enterprise-assurance consultancy — go after long-tail,
+differentiated search terms (e.g. "affordable Cyber Essentials scan UK
+small business"), not head-to-head on their exact terms. See §6 for how the
+account owner's own background changes what's actually reachable here
+beyond pure SEO positioning.
+
 ### Substitutes that actually win the deal
 
 More relevant than the head-on list for a £20/mo product, because these are
@@ -171,22 +190,57 @@ refresh procedure in §1, not as part of a documentation sweep.
 
 ### (c) Structurally unfixable solo (bounds which segments to *not* chase)
 
-- **No 24/7 monitoring or MDR** — D12's top tier requires a team; a solo
-  operator cannot credibly offer this without partnering it out (as
-  `../marketing/09-competitor-services-catalogue.md` §2 already proposes for
-  the consultancy side).
-- **No formal incident-response SLA** at scale — a retainer for one or two
-  clients is credible; "guaranteed response window" as a general product
-  feature is not, without headcount.
-- **No enterprise procurement apparatus** (security questionnaires, DPA
-  templates, SOC 2) — this is the wall between "SME self-serve" and
-  "mid-market sales-assisted," and it's a headcount/capital problem, not a
-  roadmap item.
+**Revised 2026-09-04** — the original version of this section assumed a
+generic solo founder with no prior enterprise track record. That's not
+accurate here: the account owner has 15+ years SecDevOps/cloud delivery and
+transformation at Lockheed Martin and Leidos, plus 15 years in Scottish
+public-sector digital transformation delivery. That background doesn't
+change the *technical* constraints below, but it directly crosses the
+*trust* wall that made them "structural" in the first place — the whole
+reason this list existed was that a generic solo operator has no track
+record an enterprise or public-sector buyer would credit. This owner
+already has one, and specifically in Scottish public sector, which is a
+real, narrow advantage neither Closed Door Security's generic UK/global
+positioning nor any of the head-on SME-scanner competitors can claim.
 
-**This split is the actual output of the competitive analysis**: it says
-where to compete (SME self-serve, UK-compliance-triggered, developer-adjacent)
-and where not to (enterprise, 24/7 MDR, anything requiring a trust
-apparatus a solo operator can't credibly build).
+- **CREST accreditation** — the technical exams (CPSA → CRT) test hands-on
+  offensive/exploitation skill specifically, a different skill from
+  delivery/transformation management; still needs real dedicated technical
+  prep regardless of this background (see
+  `marketing/10-formalisation-and-funding-roadmap.md` §4). **But**
+  company-level CREST accreditation (what actually matters for competing on
+  tenders) doesn't require the founder personally hold CRT — it requires
+  *employing or subcontracting* CREST-certified testers under a documented
+  methodology. That's a realistic structure now: this owner's credibility
+  drives the sales/delivery relationship, CREST-level testing is
+  subcontracted or built out over time. Reclassified from "unfixable" to
+  **(b) fixable by money/time** — a genuine near-term roadmap item, not a
+  permanently closed door.
+- **Enterprise procurement apparatus** (security questionnaires, DPA
+  templates, SOC 2) — still real paperwork/process work, but no longer
+  blocked on *credibility* to even get in the room; the owner's own
+  delivery track record substitutes for the "no track record" problem a
+  generic solo founder has. Reclassified to **(b)**.
+- **No 24/7 monitoring or MDR** — this one **stays structurally unfixed for
+  now**: it's a genuine headcount/coverage problem (someone has to be awake
+  at 3am), independent of anyone's credibility or delivery background.
+  Partnering it out (`../marketing/09-competitor-services-catalogue.md` §2)
+  remains the right answer until there's real headcount.
+- **No formal incident-response SLA at scale** — same reasoning as 24/7:
+  a retainer for one or two clients is credible now; a general "guaranteed
+  response window" product feature still needs headcount, not just trust.
+
+**Revised output of this section**: the SME self-serve/compliance-triggered
+positioning in §9 remains correct as the *product's* near-term lane — none
+of this changes what `docs/SPRINT-PLAN.md` should build next. But the
+*business's* addressable market is wider than "solo indie SaaS" implied:
+Scottish public-sector and enterprise-assurance work are realistic
+medium-term targets specifically because of who's running this, not just
+what the product does. Worth reflecting in
+`marketing/10-formalisation-and-funding-roadmap.md`'s HIE funding case
+(a founder with this pedigree is a materially stronger funding
+application) and in future positioning work — not something to silently
+fold into the current sprint's automated-scanner roadmap.
 
 ---
 

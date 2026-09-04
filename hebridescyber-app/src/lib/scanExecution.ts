@@ -427,7 +427,7 @@ async function sendChangeAlertIfDue(
     highCount,
     newFindingsCount: report.new_finding_count,
     fixedFindingsCount: report.fixed_finding_count ?? 0,
-    dashboardUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com",
+    dashboardUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk",
   };
 
   if (sub.slack_webhook_url) {

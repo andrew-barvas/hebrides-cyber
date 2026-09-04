@@ -17,7 +17,7 @@ export type SendEmailInput = {
 
 export type SendEmailResult = { ok: boolean; error?: string };
 
-const DEFAULT_FROM = "Hebrides Cyber <noreply@hebridescyber.com>";
+const DEFAULT_FROM = "Hebrides Cyber <noreply@hebridescyber.co.uk>";
 
 /**
  * Sends one email via Resend (https://resend.com). Set RESEND_API_KEY to

@@ -73,7 +73,12 @@ async function lookupSubscriptionOwner(stripeSubscriptionId: string): Promise<{ 
 async function sendWelcomeEmail(email: string, plan: string) {
   const key = process.env.SENDGRID_API_KEY;
   if (!key) return;
-  const from = process.env.SENDGRID_FROM_EMAIL ?? "hello@hebridescyber.com";
+  const from = process.env.SENDGRID_FROM_EMAIL ?? "hello@hebridescyber.co.uk";
+  // Was hardcoded to hebridescyber.com (never-registered domain) instead of
+  // reading NEXT_PUBLIC_SITE_URL like every other outbound-link site in this
+  // codebase does — fixed alongside the real hebridescyber.co.uk domain going
+  // live.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
   await fetch("https://api.sendgrid.com/v3/mail/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -91,9 +96,9 @@ Thanks for subscribing to the Hebrides Cyber ${plan} plan.
 Your first automated security scan will run within the next 24 hours. You'll receive a Security Score report by email once it's complete.
 
 In the meantime, you can:
-- Add sites to monitor: https://hebridescyber.com/dashboard
-- View your scan history: https://hebridescyber.com/dashboard/scans
-- Manage your billing: https://hebridescyber.com/dashboard (click "Manage billing")
+- Add sites to monitor: ${siteUrl}/dashboard
+- View your scan history: ${siteUrl}/dashboard/scans
+- Manage your billing: ${siteUrl}/dashboard (click "Manage billing")
 
 If you have any questions, just reply to this email.
 

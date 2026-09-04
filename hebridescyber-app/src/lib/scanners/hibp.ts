@@ -52,7 +52,7 @@ const REQUEST_TIMEOUT_MS = 8_000;
 // level from an unverified domain. Always sending one here means a 403 this
 // module sees is (barring a HIBP-side bug) genuinely the domain-verification
 // case, not a missing-header mistake.
-const USER_AGENT = "HebridesCyberScanner/1.0 (+https://hebridescyber.com)";
+const USER_AGENT = "HebridesCyberScanner/1.0 (+https://hebridescyber.co.uk)";
 
 export type HibpBreach = {
   /** Stable HIBP breach identifier (e.g. "Adobe") — use this, not title, for diffing/keys. */

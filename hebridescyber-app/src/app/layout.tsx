@@ -15,10 +15,17 @@ const jetbrainsMono = JetBrains_Mono({
   preload: true,
 });
 
+// Used both by metadataBase below (so relative OG images/canonical URLs
+// resolve to an absolute URL instead of silently falling back to
+// localhost) and by the LocalBusiness JSON-LD in the body. Same fallback
+// value as every other NEXT_PUBLIC_SITE_URL read in this codebase.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
+
 export const metadata: Metadata = {
-  title: "Hebrides Cyber — Professional security for SaaS teams and growing businesses",
+  metadataBase: new URL(SITE_URL),
+  title: "Hebrides Cyber — Security Scanning & Penetration Testing, Stornoway, Scotland",
   description:
-    "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in the Isle of Lewis.",
+    "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in Stornoway, Isle of Lewis, Scotland.",
   icons: {
     icon: "/favicon.svg",
   },
@@ -50,11 +57,45 @@ const ThemeScript = () => (
   />
 );
 
+// LocalBusiness structured data — no equivalent existed before this. Local
+// competitors (see docs/COMPETITIVE-ANALYSIS.md's Stornoway-based-competitor
+// note) already establish location trust through years of backlinks/case
+// studies; structured data is one of the few levers a brand-new site has to
+// signal the same "genuinely local" fact to search engines from day one.
+// addressLocality/addressRegion match this session's own domain work
+// (hebridescyber.co.uk, wired up 2026-09-04) — keep in sync if the
+// registered business address ever changes.
+function LocalBusinessJsonLd() {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "ProfessionalService",
+    name: "Hebrides Cyber",
+    description:
+      "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams.",
+    url: SITE_URL,
+    address: {
+      "@type": "PostalAddress",
+      addressLocality: "Stornoway",
+      addressRegion: "Isle of Lewis",
+      addressCountry: "GB",
+    },
+    areaServed: ["GB", "Scotland", "Outer Hebrides"],
+    sameAs: [],
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={jetbrainsMono.variable}>
       <head>
         <ThemeScript />
+        <LocalBusinessJsonLd />
       </head>
       <body className="flex min-h-screen flex-col">
         <Suspense fallback={null}>

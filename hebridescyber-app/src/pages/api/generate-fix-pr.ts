@@ -382,7 +382,7 @@ Nothing else in this repo was touched.
 ---
 
 *Generated automatically from a Hebrides Cyber Security Score scan. See
-https://hebridescyber.com for details, or reply to your scan email with
+https://hebridescyber.co.uk for details, or reply to your scan email with
 questions.*
 `;
 }

@@ -134,7 +134,7 @@ async function sendDigestForOwner(ownerId: string): Promise<"sent" | "skipped"> 
 
   summaries.sort((a, b) => a.targetUrl.localeCompare(b.targetUrl));
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
   const monthLabel = new Date().toLocaleString("en-GB", { month: "long", year: "numeric" });
   const html = buildDigestHtml(summaries, siteUrl);
 

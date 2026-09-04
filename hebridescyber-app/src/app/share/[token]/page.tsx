@@ -61,7 +61,7 @@ export default function SharedReportPage() {
       <div className="bg-cyberbg min-h-screen flex items-center justify-center text-center px-6">
         <div>
           <p className="text-sm text-red-400">{error ?? "This share link is invalid or has expired."}</p>
-          <Link href="/" className="mt-4 inline-block text-sm text-neon underline">← hebridescyber.com</Link>
+          <Link href="/" className="mt-4 inline-block text-sm text-neon underline">← hebridescyber.co.uk</Link>
         </div>
       </div>
     );
