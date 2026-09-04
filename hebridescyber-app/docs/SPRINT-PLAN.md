@@ -29,14 +29,23 @@ this file will drift the same way `ROADMAP.md`'s own status columns do.
 broken or the Basic/Pro/Agency ladder doesn't actually gate anything. This
 sprint fixes what's already sold before building what's new.
 
-| Priority | ID | What | Why this sprint |
-|---|---|---|---|
-| 1 | **E-07** | Configure live Stripe Price IDs | Blocks the entire paid funnel end to end — highest-priority item in the whole backlog. **Not a dev task** — needs the account owner's Stripe Dashboard access (Claude Code's sandbox is authenticated to a different Stripe account and can't do this). Do this on day 1, in parallel with everything else below. |
-| 2 | **E-02** | Server-side plan enforcement audit (teams, webhooks, keys, shares, AI fix, target-auth) | 14 capabilities currently have zero plan gate — the Basic/Pro/Agency ladder exists in Stripe and marketing copy but mostly not in the product. `docs/ROADMAP.md` BETA-4's exit criterion depends on this directly. |
-| 3 | **E-16** | In-app first-run onboarding checklist (verify domain → run first scan → read report → set an alert channel) | The explicit "user signup attention" ask — naturally sequenced after E-01 (already done) since there's no point checklisting "add a target" for a plan that couldn't before. |
-| 4 | **E-05** | Rate-limit the public contact form | Only fully-open unauthenticated write path in the app; `checkRateLimit()` already exists, this is applying an existing pattern. Cheap, do it this sprint rather than let it sit. |
-| 5 | **E-08** | Consolidate admin auth checks onto `requireAdmin()` | Two hand-rolled, differently-implemented admin checks are how the `is_admin` RLS-class of bug recurs. Small, mechanical, worth doing before Sprint 2 touches admin-adjacent dashboard code. |
-| 6 | **E-19** | Delete the stale duplicate `on-demand-scan.yml` | Trivial, zero-risk cleanup; bundle with the above rather than schedule its own slot. |
+**Status legend**: ✅ done · 🔄 in progress · ⛔ blocked (not a dev task, or
+waiting on someone else) · ⬜ not started. This column is a live todo list —
+update it as work lands, don't let it drift from `git log`.
+
+| Priority | ID | What | Status | Why this sprint |
+|---|---|---|---|---|
+| 1 | **E-07** | Configure live Stripe Price IDs | ⛔ blocked — needs owner's Stripe Dashboard access | Blocks the entire paid funnel end to end — highest-priority item in the whole backlog. **Not a dev task** — needs the account owner's Stripe Dashboard access (Claude Code's sandbox is authenticated to a different Stripe account and can't do this). Do this on day 1, in parallel with everything else below. |
+| 2 | **E-02** | Server-side plan enforcement audit (teams, webhooks, keys, shares, AI fix, target-auth) | 🔄 partially done (2026-08-28) — the 3 advertised-but-unenforced gaps fixed (target-auth, team create/invite, connect-repo); AI-fix/keys/webhooks-limits/tickets/shares left open pending an owner decision, see E-02's own entry | 14 capabilities currently have zero plan gate — the Basic/Pro/Agency ladder exists in Stripe and marketing copy but mostly not in the product. `docs/ROADMAP.md` BETA-4's exit criterion depends on this directly. |
+| 3 | **E-16** | In-app first-run onboarding checklist (verify domain → run first scan → read report → set an alert channel) | ⬜ not started, next up | The explicit "user signup attention" ask — naturally sequenced after E-01 (already done) since there's no point checklisting "add a target" for a plan that couldn't before. |
+| 4 | **E-05** | Rate-limit the public contact form | ✅ done (2026-08-28) | Only fully-open unauthenticated write path in the app; `checkRateLimit()` already exists, this is applying an existing pattern. Cheap, do it this sprint rather than let it sit. |
+| 5 | **E-08** | Consolidate admin auth checks onto `requireAdmin()` | ⬜ not started | Two hand-rolled, differently-implemented admin checks are how the `is_admin` RLS-class of bug recurs. Small, mechanical, worth doing before Sprint 2 touches admin-adjacent dashboard code. |
+| 6 | **E-19** | Delete the stale duplicate `on-demand-scan.yml` | ✅ already done (predates this sprint plan) | Trivial, zero-risk cleanup; bundle with the above rather than schedule its own slot. |
+
+**Since this plan was written, also shipped (not originally in Sprint 1,
+noting here so the todo list stays honest about what's actually left)**:
+E-29 (Go/Maven dependency-manifest coverage — raised mid-sprint from a
+competitive-gap question, not originally scoped, done 2026-08-28).
 
 **Sprint 1 exit check**: `docs/FUNCTIONALITY-MATRIX.md` §6's "❌ No gate at
 all" count drops from 14 toward 0 (won't hit 0 in one sprint — re-run the

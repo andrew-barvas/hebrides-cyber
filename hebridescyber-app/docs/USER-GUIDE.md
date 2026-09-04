@@ -149,13 +149,13 @@ building their own integration), and the monthly digest email.
 Scans run on-demand (dashboard button or `POST /api/v1/scans`, queued and
 usually complete within about a minute) or on a nightly schedule for
 monitored targets, cadence tiered by plan (Basic weekly, Pro/Agency daily —
-the cadence logic itself has no Agency-only restriction). **Known gap, as
-of this writing**: the only dashboard UI to actually register a monitored
-target renders for the Agency plan alone
-(`docs/FUNCTIONALITY-MATRIX.md` §5), so in practice only Agency accounts can
-add one today — a Basic or Pro subscriber has no in-product way to receive
-the scheduled scans their tier advertises. Tracked as
-`docs/ENHANCEMENTS.md` E-01 and `docs/ROADMAP.md` POC-1. The public REST
+the cadence logic itself has no Agency-only restriction). **Fixed as of
+2026-08-28** (`docs/ENHANCEMENTS.md` E-01): the dashboard's "add a target"
+UI now renders for any active plan, with server-enforced per-plan caps
+(Basic 1 / Pro 3 / Agency 15). `docs/ROADMAP.md` POC-1's own verify step
+(a real scheduled-scan run against a staging account) hasn't been re-run
+since the fix landed — don't treat this as fully proven until that's done.
+The public REST
 API (`docs/API.md`) supports listing scans, fetching a full report with
 New/Fixed diffing, exporting findings, and reading score trends —
 authenticated by session or API key. A packaged GitHub Action wraps the API

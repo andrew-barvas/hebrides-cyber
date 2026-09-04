@@ -55,6 +55,23 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
     return res.status(403).json({ error: "Only the team owner or an admin can invite members" });
   }
 
+  // E-02 (docs/ENHANCEMENTS.md): team collaboration is advertised as an
+  // Agency feature (team.ts already gates creation the same way). Checked
+  // against the team OWNER's current plan, not the caller's — the caller
+  // inviting may be an admin-role member, not the owner, and it's the
+  // owner's subscription that determines whether the team can keep growing.
+  // Only gates new growth (inviting); role changes/removal on an existing
+  // team stay available even if the owner has since downgraded.
+  const { data: ownerSub, error: ownerSubError } = await supabaseAdmin
+    .from("subscriptions")
+    .select("plan")
+    .eq("owner", team.owner_id)
+    .maybeSingle();
+  if (ownerSubError) return res.status(500).json({ error: ownerSubError.message });
+  if (ownerSub?.plan !== "agency") {
+    return res.status(403).json({ error: "Team collaboration is an Agency-plan feature." });
+  }
+
   const normalizedEmail = email.trim().toLowerCase();
   const { data: invitee } = await supabaseAdmin
     .from("users")

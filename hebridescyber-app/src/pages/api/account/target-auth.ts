@@ -42,6 +42,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!target) return res.status(404).json({ error: "Monitored target not found" });
   if (target.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
 
+  // E-02 (docs/ENHANCEMENTS.md): authenticated scanning is advertised as
+  // "Optional (Agency)" on /what-we-check but was enforced nowhere. Only
+  // gating the write (POST) — DELETE stays available regardless of plan, so
+  // an account that's since downgraded can still remove a credential it can
+  // no longer add.
+  if (req.method === "POST") {
+    const { data: subscription, error: subError } = await supabaseAdmin
+      .from("subscriptions")
+      .select("plan")
+      .eq("owner", caller.ownerId)
+      .maybeSingle();
+    if (subError) return res.status(500).json({ error: subError.message });
+    if (subscription?.plan !== "agency") {
+      return res.status(403).json({ error: "Authenticated scanning is an Agency-plan feature." });
+    }
+  }
+
   if (req.method === "DELETE") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").delete().eq("monitored_target_id", monitoredTargetId);
     if (error) return res.status(500).json({ error: error.message });

@@ -80,6 +80,20 @@ async function getTeamInfo(res: NextApiResponse, userId: string) {
 }
 
 async function createTeam(req: NextApiRequest, res: NextApiResponse, userId: string) {
+  // E-02 (docs/ENHANCEMENTS.md): team collaboration is advertised as Agency
+  // only (docs/USER-GUIDE.md §3.7) but was enforced nowhere. Only gates
+  // creation, not team.ts's GET — a downgraded owner/member should still be
+  // able to see who they're teamed with.
+  const { data: subscription, error: subError } = await supabaseAdmin
+    .from("subscriptions")
+    .select("plan")
+    .eq("owner", userId)
+    .maybeSingle();
+  if (subError) return res.status(500).json({ error: subError.message });
+  if (subscription?.plan !== "agency") {
+    return res.status(403).json({ error: "Team collaboration is an Agency-plan feature." });
+  }
+
   const { name } = req.body as { name?: string };
   const teamName = (name ?? "").trim();
   if (!teamName) return res.status(400).json({ error: "name is required" });
