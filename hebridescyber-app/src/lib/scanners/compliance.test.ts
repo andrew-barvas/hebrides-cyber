@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getComplianceRefs, COMPLIANCE_FRAMEWORK_LABELS } from "./compliance";
+import { getComplianceRefs, COMPLIANCE_FRAMEWORK_LABELS, ALL_CONTROLS_BY_FRAMEWORK } from "./compliance";
 
 describe("getComplianceRefs", () => {
   it("returns an empty array for an undefined checkId", () => {
@@ -44,5 +44,28 @@ describe("COMPLIANCE_FRAMEWORK_LABELS", () => {
       expect(COMPLIANCE_FRAMEWORK_LABELS[framework]).toBeTruthy();
     }
     expect(Object.keys(COMPLIANCE_FRAMEWORK_LABELS)).toEqual(["cyber-essentials", "owasp-top-10", "cis-controls-v8"]);
+  });
+});
+
+describe("ALL_CONTROLS_BY_FRAMEWORK", () => {
+  it("has one entry per framework, none empty", () => {
+    expect(Object.keys(ALL_CONTROLS_BY_FRAMEWORK)).toEqual(["cyber-essentials", "owasp-top-10", "cis-controls-v8"]);
+    for (const controls of Object.values(ALL_CONTROLS_BY_FRAMEWORK)) {
+      expect(controls.size).toBeGreaterThan(0);
+    }
+  });
+
+  it("includes every control a real mapped checkId cites", () => {
+    for (const ref of getComplianceRefs("sqlmap.sqli")) {
+      expect(ALL_CONTROLS_BY_FRAMEWORK[ref.framework].has(ref.control)).toBe(true);
+    }
+  });
+
+  it("is derived from COMPLIANCE_MAP, not a hand-maintained duplicate that could omit a control", () => {
+    // A03:2021 is cited by sqlmap.sqli/xsser.xss/commix.command-injection —
+    // confirms the derivation actually walks every entry, not just the
+    // first one found per framework.
+    expect(ALL_CONTROLS_BY_FRAMEWORK["owasp-top-10"].has("A03:2021 – Injection")).toBe(true);
+    expect(ALL_CONTROLS_BY_FRAMEWORK["cyber-essentials"].has("Secure configuration")).toBe(true);
   });
 });

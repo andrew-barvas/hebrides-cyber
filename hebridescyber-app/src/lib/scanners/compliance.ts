@@ -158,3 +158,24 @@ export const COMPLIANCE_FRAMEWORK_LABELS: Record<ComplianceFramework, string> = 
   "owasp-top-10": "OWASP Top 10",
   "cis-controls-v8": "CIS Controls v8",
 };
+
+/**
+ * The full set of controls this app's mapping ever cites per framework —
+ * derived from COMPLIANCE_MAP itself (never a hand-maintained second list
+ * that could drift out of sync with it). Used as a fixed denominator for
+ * "coverage" calculations (e.g. E-28's compliance-trend chart): "how many
+ * of the controls we actually check for are currently clean" needs a
+ * stable universe of controls to divide by, not just whichever ones
+ * happen to appear in one scan's findings.
+ */
+export const ALL_CONTROLS_BY_FRAMEWORK: Record<ComplianceFramework, ReadonlySet<string>> = (() => {
+  const byFramework: Record<ComplianceFramework, Set<string>> = {
+    "cyber-essentials": new Set(),
+    "owasp-top-10": new Set(),
+    "cis-controls-v8": new Set(),
+  };
+  for (const refs of Object.values(COMPLIANCE_MAP)) {
+    for (const ref of refs) byFramework[ref.framework].add(ref.control);
+  }
+  return byFramework;
+})();

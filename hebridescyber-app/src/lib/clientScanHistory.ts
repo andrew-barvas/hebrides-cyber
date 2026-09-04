@@ -11,6 +11,7 @@
 import { supabase } from "./supabaseClient";
 import type { Finding } from "./scanners";
 import type { ScorePoint } from "@/components/ScoreTrend";
+import { getComplianceRefs, ALL_CONTROLS_BY_FRAMEWORK, type ComplianceFramework } from "./scanners/compliance";
 
 /**
  * Finds the most recent completed scan of the same target that predates this
@@ -114,6 +115,92 @@ export async function findScoreHistoryClient(
   }
 
   if (currentScore !== null) points.push({ date: currentCreatedAt, score: currentScore });
+
+  return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+// E-28 (docs/ENHANCEMENTS.md): per-framework compliance coverage over time,
+// alongside the existing score trend above. "Coverage" for a given scan is
+// the fraction of ALL_CONTROLS_BY_FRAMEWORK's controls that have zero open
+// (non-info-severity) findings citing them in that scan -- a fixed
+// denominator across scans, not just "however many controls this scan's
+// findings happen to touch," so 100% genuinely means "every control this
+// app checks for is currently clean," not "no findings mapped anything."
+export type CompliancePoint = { date: string; coverage: Record<ComplianceFramework, number> };
+
+// Structural, not the full Finding type — callers pass either Finding[]
+// (server-shaped) or ScanReportView.tsx's ViewFinding[] (dashboard-shaped,
+// what dashboard/page.tsx's overviewFindings actually is), and both already
+// carry exactly this much.
+type FindingLike = { severity: string; checkId?: string };
+
+export function coverageForFindings(findings: FindingLike[]): Record<ComplianceFramework, number> {
+  const atRisk: Record<ComplianceFramework, Set<string>> = {
+    "cyber-essentials": new Set(),
+    "owasp-top-10": new Set(),
+    "cis-controls-v8": new Set(),
+  };
+  for (const f of findings) {
+    if (f.severity === "info") continue;
+    for (const ref of getComplianceRefs(f.checkId)) atRisk[ref.framework].add(ref.control);
+  }
+
+  const coverage = {} as Record<ComplianceFramework, number>;
+  for (const framework of Object.keys(atRisk) as ComplianceFramework[]) {
+    const total = ALL_CONTROLS_BY_FRAMEWORK[framework].size;
+    coverage[framework] = total === 0 ? 1 : 1 - atRisk[framework].size / total;
+  }
+  return coverage;
+}
+
+/**
+ * Compliance-coverage history for every completed scan of the same target
+ * (by hostname, same convention as findScoreHistoryClient above), oldest
+ * first, including the current scan. Capped at 10 points -- coverage moves
+ * slower than score scan-to-scan, so a shorter window reads more clearly
+ * than the 20-point score trend would.
+ */
+export async function findComplianceHistoryClient(
+  currentScanId: string,
+  currentTargetUrl: string,
+  currentFindings: FindingLike[],
+  currentCreatedAt: string
+): Promise<CompliancePoint[]> {
+  let hostname: string;
+  try {
+    hostname = new URL(currentTargetUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("id, target_url, created_at, scan_results(results, created_at)")
+    .eq("status", "completed")
+    .neq("id", currentScanId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const points: CompliancePoint[] = [];
+  for (const c of (candidates ?? []) as Array<{
+    target_url: string;
+    scan_results: { results: { findings?: Finding[] } | null; created_at: string }[];
+  }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    const result = c.scan_results?.[0];
+    const findings = result?.results?.findings;
+    if (!result || !findings) continue;
+    points.push({ date: result.created_at, coverage: coverageForFindings(findings) });
+    if (points.length >= 9) break; // + the current scan = 10
+  }
+
+  points.push({ date: currentCreatedAt, coverage: coverageForFindings(currentFindings) });
 
   return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
