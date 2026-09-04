@@ -600,6 +600,32 @@ multi-target access itself exists.
 
 ## E-28 — Findings-by-category and compliance-coverage trend reporting
 
+**Status: fixed (2026-09-04).** New `ComplianceTrend.tsx`, rendered on the
+dashboard right after `ScoreTrend`, with two views sharing one data source:
+- **Open findings by category** — current scan's non-info findings grouped
+  by their checkId's module prefix (`tls`, `headers`, `dns`, etc. — already
+  a stable taxonomy per `compliance.ts`'s own header comment, reused rather
+  than inventing a second scheme), rendered as a simple bar list.
+- **Compliance coverage trend** — % of each framework's controls (Cyber
+  Essentials/OWASP/CIS) with zero open findings, across the same scan
+  history window `ScoreTrend` uses. New `ALL_CONTROLS_BY_FRAMEWORK` export
+  on `compliance.ts` gives a *fixed* denominator derived from
+  `COMPLIANCE_MAP` itself (never a hand-maintained second list), so 100%
+  genuinely means "every control this app checks for is clean," not "no
+  findings happened to map to anything."
+
+New `findComplianceHistoryClient()` in `clientScanHistory.ts`, matching
+`findScoreHistoryClient`'s existing hostname-matching convention exactly —
+one more data point derived from the same per-scan fetch pattern, not a
+second copy of the matching logic. Capped at 10 points (vs. score's 20) —
+coverage moves slower scan-to-scan than a single score number, so a
+shorter window reads more clearly.
+
+Tests: `clientScanHistory.test.ts` and `ComplianceTrend.test.tsx` (both
+first-ever coverage for their files), plus 3 new tests on `compliance.ts`'s
+new export. Full suite (405 tests), `tsc`, lint, and build all verified
+clean. Same not-yet-browser-verified caveat as E-16/E-27.
+
 **What**: `ScoreTrend.tsx` charts one number (score) over time per target.
 There's no view of *what kind* of findings are trending up/down (TLS vs.
 headers vs. dependency CVEs vs. exposure, etc.) or how Cyber Essentials/

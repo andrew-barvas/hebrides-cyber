@@ -13,8 +13,9 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
+import ComplianceTrend from "@/components/ComplianceTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
-import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
+import { findPreviousFindingsClient, findScoreHistoryClient, findComplianceHistoryClient, type CompliancePoint } from "@/lib/clientScanHistory";
 
 const OVERVIEW_FINDINGS_PREVIEW = 5;
 
@@ -84,6 +85,7 @@ export default function DashboardPage() {
   const [overviewFindings, setOverviewFindings] = useState<ViewFinding[]>([]);
   const [overviewDiff, setOverviewDiff] = useState<FindingsDiff | null>(null);
   const [overviewScoreHistory, setOverviewScoreHistory] = useState<ScorePoint[]>([]);
+  const [overviewComplianceHistory, setOverviewComplianceHistory] = useState<CompliancePoint[]>([]);
   const [overviewFilter, setOverviewFilter] = useState<FindingsFilter>("all");
 
   const loadPlan = useCallback(async () => {
@@ -161,13 +163,15 @@ export default function DashboardPage() {
     setOverviewScan({ id: latest.id, target_url: latest.target_url, score: resultRow.score ?? 0, created_at: createdAt });
     setOverviewFindings(findings);
 
-    const [previousFindings, history] = await Promise.all([
+    const [previousFindings, history, complianceHistory] = await Promise.all([
       findPreviousFindingsClient(latest.id, latest.target_url, createdAt),
       findScoreHistoryClient(latest.id, latest.target_url, resultRow.score, createdAt),
+      findComplianceHistoryClient(latest.id, latest.target_url, findings, createdAt),
     ]);
 
     setOverviewDiff(previousFindings ? diffFindings(findings, previousFindings) : null);
     setOverviewScoreHistory(history);
+    setOverviewComplianceHistory(complianceHistory);
   }, []);
 
   // E-16 (docs/ENHANCEMENTS.md): both queries are existence checks only —
@@ -399,6 +403,10 @@ export default function DashboardPage() {
                 <ScoreTrend points={overviewScoreHistory} />
               </div>
             )}
+
+            <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+              <ComplianceTrend findings={overviewFindings} history={overviewComplianceHistory} />
+            </div>
 
             <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
