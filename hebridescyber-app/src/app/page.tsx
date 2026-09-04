@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ProductPreview from "@/components/ProductPreview";
 
 export default function HomePage() {
   return (
@@ -36,6 +37,13 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
+      </section>
+
+      {/* Product preview — device mockups showing the real dashboard
+          (illustrative data), not just prose claims about what it does. */}
+      <section className="bg-cyberbg px-6 py-16">
+        <h2 className="sr-only">See the dashboard</h2>
+        <ProductPreview />
       </section>
 
       {/* Why us — sr-only h2 keeps heading hierarchy: h1 → h2 → h3 */}
