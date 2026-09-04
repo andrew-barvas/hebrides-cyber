@@ -92,7 +92,7 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 | `src/lib/scanners/subdomains.ts` | Subfinder passive enumeration, takeover candidates | `subfinder` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/lib/scanners/deepTls.ts` | testssl.sh: protocol/cipher/FS/named-CVE suite | `TESTSSL_PATH` or on PATH | `not_configured` | ⚠️ path-gated | no |
 | `src/lib/scanners/secretScan.ts` | Gitleaks over a connected repo | connected repo + GitHub access + `git` | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
-| `src/lib/scanners/dependencyManifest.ts` | npm/pip/Composer manifests → OSV.dev | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
+| `src/lib/scanners/dependencyManifest.ts` | npm/pip/Composer/Go/Maven manifests → OSV.dev | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | yes — parsers only (`src/__tests__/scanners/dependencyManifest.test.ts`); OSV-querying paths still need local/manual verification, matching the module's own stated verification method |
 | `src/lib/scanners/dockerBaseImage.ts` | Dockerfile base-image EOL via endoflife.date | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
 | `src/lib/scanners/authenticatedCheck.ts` | Header/cookie recheck against an authenticated request | saved credential on a monitored target | `not_applicable` | ❌ **no plan check** despite being labelled "Optional (Agency)" on `/what-we-check` | no |
 
