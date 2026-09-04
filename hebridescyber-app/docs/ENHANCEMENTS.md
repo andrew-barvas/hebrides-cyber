@@ -90,6 +90,21 @@ something to alert *from*).
 
 ## E-05 — Rate limit / abuse-protect the public contact form
 
+**Status: fixed (2026-08-28).** `POST /api/contact` now calls
+`checkRateLimit(getClientIp(req), "contact")` before touching the database —
+10 requests/hour per IP, 429 + `Retry-After` on rejection.
+`checkRateLimit()` previously hardcoded its Redis key to a `run-scan:`
+prefix regardless of caller; reusing it for a second, unrelated purpose
+surfaced that, so it now takes an explicit `namespace` parameter
+(`run-scan.ts`/`v1/scans.ts` keep sharing `"run-scan"`, their existing
+combined-quota behaviour is unchanged). A new `getClientIp()` helper reads
+`x-forwarded-for` (Azure's CDN sets this ahead of Oryx's managed Functions),
+falling back to the socket address for local dev. No CAPTCHA/honeypot added
+— judged sufficient for current volume; revisit if the IP-based limit proves
+insufficient in practice. Tests: `src/__tests__/api/contact.test.ts`,
+`src/__tests__/rateLimit.test.ts` (the latter is rateLimit.ts's first-ever
+test coverage).
+
 **What**: `POST /api/contact` is public, unauthenticated, and has zero rate
 limiting, CAPTCHA, or honeypot — the only fully open write path in the app
 with no abuse protection.
