@@ -551,6 +551,32 @@ scoping the Container Apps deploy path's Terraform additions).
 
 ## E-27 — Multi-target "fleet" rollup on the dashboard
 
+**Status: fixed (2026-09-04).** New `FleetOverview.tsx`, rendered on the
+dashboard just above the existing single-scan Security Overview — one row
+per monitored target (site, score, open-findings count, last-scanned,
+linking through to that target's latest report), sorted worst-score-first
+so the sites needing attention surface at the top rather than insertion
+order. Matched to each target's latest scan by hostname, reusing the exact
+convention `clientScanHistory.ts` already established (`target_url` isn't
+byte-identical across scans of "the same" site). One batch fetch of the
+200 most recent completed scans across all targets, matched client-side —
+same shape as the existing single-target history fetch, just scoped to
+every target in one pass instead of one target at a time.
+
+Deliberately renders nothing for 0-1 targets: a single-target account
+already gets an equivalent (arguably richer, since it includes trend/diff
+data) view from the existing Security Overview immediately below it, and a
+one-row fleet table would just duplicate it, not add anything.
+
+Open-findings count excludes `info`-severity findings, matching the same
+"actionable findings" filter `remediation.ts`'s PR-body builder already
+uses, not a new counting convention.
+
+Tests: `src/components/FleetOverview.test.tsx` — the component's
+first-ever coverage. Full suite (387 tests), `tsc`, lint, and build all
+verified clean. **Not yet manually verified in a browser against a real
+staging Agency account with multiple targets** — same caveat as E-16.
+
 **What**: the dashboard's "Security Overview" (`dashboard/page.tsx`) shows
 only the most-recently-completed scan across every monitored target — its
 own comment says so explicitly ("not an aggregate across every monitored

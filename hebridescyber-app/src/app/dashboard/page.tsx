@@ -10,6 +10,7 @@ import PlanUpsell, { Plan } from "@/components/PlanUpsell";
 import DomainVerification from "@/components/DomainVerification";
 import MonitoredTargets from "@/components/MonitoredTargets";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
+import FleetOverview from "@/components/FleetOverview";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
@@ -352,6 +353,8 @@ export default function DashboardPage() {
             All scans →
           </Link>
         </div>
+
+        <FleetOverview />
 
         {/* Security overview — most recently completed scan */}
         {overviewScan && (

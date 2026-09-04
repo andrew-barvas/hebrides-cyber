@@ -62,12 +62,22 @@ data the product already computes (`scan_results`, `compliance.ts`'s
 per-scan mapping) — this is a dashboard/query-shape sprint, not new scanning
 work.
 
-| Priority | ID | What | Why this sprint |
-|---|---|---|---|
-| 1 | **E-27** | Multi-target "fleet" rollup dashboard | The Security Overview currently shows only the most-recently-completed scan across *all* monitored targets — an Agency account with up to 15 targets has no fleet view. Direct product gap against the "Agency = multi-site monitoring" pricing differentiator, and the highest-value of the two new dashboard items since it's the only way multi-site customers can actually use what they're paying for. |
-| 2 | **E-28** | Findings-by-category and compliance-coverage trend reporting | Extends `ScoreTrend.tsx` beyond a single score number to "which categories are improving," using data `compliance.ts` already computes but never charts. Sequenced after E-27 since both need the same per-target/all-targets selector — build that selector once, not twice. |
-| 3 | **E-03** | Observability: error tracking (Sentry / App Insights) | `docs/ROADMAP.md`'s own stated exception — this is allowed to land before its nominal Beta slot because Sprint 2 is adding real new dashboard surface area, and right now a failure in it is invisible. Bring forward, don't skip. |
-| 4 | **E-04** | Health check endpoint | Small, pairs directly with E-03 (an alert needs something to alert *from*), same rationale for pulling it forward. |
+**Status legend**: same as Sprint 1's.
+
+| Priority | ID | What | Status | Why this sprint |
+|---|---|---|---|---|
+| 1 | **E-27** | Multi-target "fleet" rollup dashboard | ✅ done (2026-09-04) — not yet manually verified in a browser against a real staging Agency account | The Security Overview currently shows only the most-recently-completed scan across *all* monitored targets — an Agency account with up to 15 targets has no fleet view. Direct product gap against the "Agency = multi-site monitoring" pricing differentiator, and the highest-value of the two new dashboard items since it's the only way multi-site customers can actually use what they're paying for. |
+| 2 | **E-28** | Findings-by-category and compliance-coverage trend reporting | ⬜ not started, next up | Extends `ScoreTrend.tsx` beyond a single score number to "which categories are improving," using data `compliance.ts` already computes but never charts. Sequenced after E-27 since both need the same per-target/all-targets selector — build that selector once, not twice. |
+| 3 | **E-03** | Observability: error tracking (Sentry / App Insights) | ⬜ not started | `docs/ROADMAP.md`'s own stated exception — this is allowed to land before its nominal Beta slot because Sprint 2 is adding real new dashboard surface area, and right now a failure in it is invisible. Bring forward, don't skip. |
+| 4 | **E-04** | Health check endpoint | ⬜ not started | Small, pairs directly with E-03 (an alert needs something to alert *from*), same rationale for pulling it forward. |
+
+**Since this plan was written, also shipped (not originally in Sprint 2,
+noting here so the todo list stays honest)**: technical SEO infrastructure
+(sitemap.xml, robots.txt, metadataBase, LocalBusiness structured data) and
+a stale-domain cleanup across 16 files (never-registered `hebridescyber.com`
+→ the real, live `hebridescyber.co.uk`) — raised from the domain-wiring and
+"improve our SEO" conversation, not originally scoped. E-30 (per-finding
+retest button) logged as a new backlog item, not yet built.
 
 **Sprint 2 exit check**: an Agency test account with 3+ monitored targets
 can see all of them (score, last-scanned, open-findings count) in one view
