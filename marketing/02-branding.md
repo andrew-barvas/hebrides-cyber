@@ -1,7 +1,7 @@
 # Hebrides Cyber — Branding & Logo Concept
 
 ## Brand name & domain
-Hebrides Cyber — hebridescyber.com
+Hebrides Cyber — hebridescyber.co.uk
 
 ## Tagline
 Developer-grade security from the Isle of Lewis

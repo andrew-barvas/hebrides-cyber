@@ -1,5 +1,11 @@
 # Marketing Plan — First 6 Months
 
+**For platform-specific social media setup (LinkedIn/Facebook/X bios,
+content calendar, local press outreach), see
+`11-social-media-and-local-press-playbook.md`** — that doc owns the
+tactical how; this one owns channel priority and KPIs, not duplicated
+between them.
+
 **Rewritten 2026-08-28** — the original draft predated real product state: it
 assumed manual blog posting (the daily-blog + weekly-newsletter pipeline is
 now automated — see `hebridescyber-app/docs/architecture.md`), had no KPI

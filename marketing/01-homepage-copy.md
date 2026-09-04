@@ -1,5 +1,5 @@
 # Hebrides Cyber — Homepage Copy
-`hebridescyber.com`
+`hebridescyber.co.uk`
 
 ## Hero
 

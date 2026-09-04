@@ -14,7 +14,7 @@ Would you like me to run it for you this week?
 
 Best,
 Andrew
-Hebrides Cyber — hebridescyber.com
+Hebrides Cyber — hebridescyber.co.uk
 
 ---
 
@@ -67,4 +67,4 @@ Andrew
 
 ## TODO
 - [ ] Build the actual local business contact list before sending template A
-- [ ] Set up a proper sending domain (SPF/DKIM/DMARC on hebridescyber.com) before any cold outreach campaign, to avoid spam flags
+- [ ] Set up a proper sending domain (SPF/DKIM/DMARC on hebridescyber.co.uk) before any cold outreach campaign, to avoid spam flags
