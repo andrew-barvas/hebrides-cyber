@@ -225,7 +225,8 @@ management — gated behind `is_admin`, server-side.
 2. Connect the repo in Account settings — access is verified against the
    real GitHub API before the connection is saved.
 3. Scheduled scans now also run Gitleaks, dependency-manifest scanning
-   (npm/pip/Composer), and Dockerfile base-image checks against that repo.
+   (npm, pip, Composer, Go, Maven), and Dockerfile base-image checks against
+   that repo.
 4. From a finding, request an automated remediation PR — for a safe
    dependency bump, it lands as a real PR with the version already changed.
 

@@ -1,19 +1,19 @@
 // Real dependency manifest scanning — npm (package.json), pip
-// (requirements.txt), and Composer (composer.json). Closes the gap between
-// what the pricing/services pages claim ("dependency scan (npm, pip,
-// composer)") and what previously existed: src/lib/scanners/webapp.ts only
-// ever did client-side JS library *detection* (HTML/global pattern
+// (requirements.txt), Composer (composer.json), Go (go.mod), and Maven
+// (pom.xml). Closes the gap between what the pricing/services pages claim
+// ("dependency scan") and what previously existed: src/lib/scanners/webapp.ts
+// only ever did client-side JS library *detection* (HTML/global pattern
 // matching), never a server-side manifest scan of any ecosystem.
 //
 // v1 shipped npm-only, matching what src/lib/scanners/osv.ts already
-// supported (lookupCveIds's ecosystem param). pip and composer are added
-// here on the same OSV.dev-backed foundation — OSV.dev's query API accepts
-// any ecosystem string in the same request shape ("PyPI", "Packagist" work
-// identically to "npm"), so extending coverage needed new manifest parsing,
-// not a new data source.
+// supported (lookupCveIds's ecosystem param). pip, composer, go, and maven
+// were each added on the same OSV.dev-backed foundation — OSV.dev's query
+// API accepts any ecosystem string in the same request shape ("PyPI",
+// "Packagist", "Go", "Maven" all work identically to "npm"), so extending
+// coverage needed new manifest parsing, not a new data source.
 //
-// All three manifests at the repo root are checked independently and their
-// findings combined — a polyglot repo (say, a Django backend with an npm
+// All five manifests at the repo root are checked independently and their
+// findings combined — a polyglot repo (say, a Go service with an npm
 // frontend) gets both, not just whichever is found first.
 //
 // NO LOCKFILE, for any ecosystem. Each parser reads the manifest's declared
@@ -97,10 +97,12 @@ export type DependencyManifestOptions = {
 
 type DeclaredDependency = { name: string; declaredRange: string; version: string };
 
-const ECOSYSTEM_SLUG: Record<"npm" | "PyPI" | "Packagist", "npm" | "pip" | "composer"> = {
+const ECOSYSTEM_SLUG: Record<"npm" | "PyPI" | "Packagist" | "Go" | "Maven", "npm" | "pip" | "composer" | "go" | "maven"> = {
   npm: "npm",
   PyPI: "pip",
   Packagist: "composer",
+  Go: "go",
+  Maven: "maven",
 };
 
 /**
@@ -111,7 +113,7 @@ const ECOSYSTEM_SLUG: Record<"npm" | "PyPI" | "Packagist", "npm" | "pip" | "comp
  * into findings," not three copies that can drift.
  */
 async function buildFindingsForDeps(
-  ecosystem: "npm" | "PyPI" | "Packagist",
+  ecosystem: "npm" | "PyPI" | "Packagist" | "Go" | "Maven",
   manifestPath: string,
   deps: DeclaredDependency[],
   totalDeclaredCount: number
@@ -310,11 +312,149 @@ async function fetchComposerJson(githubRepo: string, token: string): Promise<Com
   }
 }
 
+// ---- Go (go.mod) ---------------------------------------------------------
+
+// go.mod's `require` block pins exact versions (no ranges/carets — Go
+// modules don't have that concept), so there is no minVersionFromRange-style
+// reduction needed here: the declared version already is a concrete version.
+// Matches both the block form:
+//   require (
+//       github.com/pkg/errors v0.9.1
+//       golang.org/x/net v0.17.0 // indirect
+//   )
+// and single-line form: `require github.com/pkg/errors v0.9.1`. `// indirect`
+// dependencies are kept, not skipped — they're real entries in the module
+// graph OSV.dev can meaningfully be queried against, the same way npm's
+// devDependencies are included alongside dependencies.
+//
+// OSV.dev's Go ecosystem expects versions without the leading "v" Go module
+// version strings always carry — stripped for the query, kept in
+// declaredRange for the finding's own display text.
+// The version must be immediately followed by end-of-line or a "//"
+// comment — a pre-release/build suffix (v1.2.3-rc.1, v1.2.3+incompatible)
+// makes the whole line fail to match rather than being silently stripped
+// down to "1.2.3", which would query OSV.dev against a different (and
+// possibly not-yet-vulnerable, or differently-vulnerable) version than the
+// one actually declared.
+const GO_REQUIRE_LINE_RE = /^(\S+)\s+v(\d+\.\d+\.\d+)(?:\s*\/\/.*)?$/;
+
+export function parseGoModRequire(raw: string): DeclaredDependency[] {
+  const deps: DeclaredDependency[] = [];
+  const lines = raw.split(/\r?\n/);
+  let inBlock = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (line === "require (") {
+      inBlock = true;
+      continue;
+    }
+    if (inBlock && line === ")") {
+      inBlock = false;
+      continue;
+    }
+
+    const candidate = inBlock ? line : line.replace(/^require\s+/, "");
+    if (!inBlock && candidate === line) continue; // not a require line at all outside a block
+
+    const m = GO_REQUIRE_LINE_RE.exec(candidate);
+    if (!m) continue;
+    deps.push({ name: m[1], declaredRange: candidate, version: m[2] });
+  }
+  return deps;
+}
+
+async function fetchGoMod(githubRepo: string, token: string): Promise<string | null> {
+  return fetchRawFile(githubRepo, "go.mod", token);
+}
+
+// ---- Maven (pom.xml) ------------------------------------------------------
+
+// No XML parser dependency, matching every other manifest here — a targeted
+// regex extraction, same discipline as the JSON manifests' "only look at the
+// shape we need" approach. Deliberately narrow: only <dependency> blocks
+// directly inside <dependencies> (not <dependencyManagement>, whose entries
+// aren't necessarily all actually used — claiming they are would overstate
+// what's really in the build). Property-substituted versions (the extremely
+// common Maven pattern of `<version>${foo.version}</version>` resolved from
+// a sibling <properties> block) are resolved against that block when
+// possible; anything that still isn't a literal version afterward is
+// skipped rather than guessed, same as every other ecosystem here.
+const MAVEN_PROPERTY_RE = /<([\w.-]+)>([^<>]+)<\/\1>/g;
+const MAVEN_DEPENDENCIES_BLOCK_RE = /<dependencies>([\s\S]*?)<\/dependencies>/;
+const MAVEN_DEPENDENCY_BLOCK_RE = /<dependency>([\s\S]*?)<\/dependency>/g;
+
+function extractMavenProperties(raw: string): Record<string, string> {
+  const propsMatch = /<properties>([\s\S]*?)<\/properties>/.exec(raw);
+  if (!propsMatch) return {};
+  const props: Record<string, string> = {};
+  let m: RegExpExecArray | null;
+  MAVEN_PROPERTY_RE.lastIndex = 0;
+  while ((m = MAVEN_PROPERTY_RE.exec(propsMatch[1])) !== null) {
+    props[m[1]] = m[2].trim();
+  }
+  return props;
+}
+
+function resolveMavenVersion(raw: string, properties: Record<string, string>): string | null {
+  const trimmed = raw.trim();
+  const propRef = /^\$\{([\w.-]+)\}$/.exec(trimmed);
+  const resolved = propRef ? properties[propRef[1]] : trimmed;
+  if (!resolved) return null;
+  // Only a literal, fully-numeric release version is queryable with
+  // confidence — a range ("[1.0,2.0)"), another unresolved "${...}", or a
+  // qualifier-only string ("RELEASE", "LATEST") is skipped.
+  return /^\d+(\.\d+){0,3}([.-][\w]+)?$/.test(resolved) ? resolved : null;
+}
+
+/**
+ * The real, top-level <dependencies> block content, or null if there isn't
+ * one. <dependencyManagement> has its own nested <dependencies><dependency>
+ * block with the exact same shape — stripped out first, or a naive regex
+ * would find that one instead of (or as well as) the real one. Shared by
+ * parsePomXmlDependencies and scanDependencyManifest's own declared-count,
+ * so the two can't drift out of sync on what "declared" means.
+ */
+export function extractMavenDependenciesBlock(raw: string): string | null {
+  const withoutManagement = raw.replace(/<dependencyManagement>[\s\S]*?<\/dependencyManagement>/, "");
+  return MAVEN_DEPENDENCIES_BLOCK_RE.exec(withoutManagement)?.[1] ?? null;
+}
+
+export function parsePomXmlDependencies(raw: string): DeclaredDependency[] {
+  const properties = extractMavenProperties(raw);
+  const depsBlock = extractMavenDependenciesBlock(raw);
+  if (depsBlock === null) return [];
+
+  const deps: DeclaredDependency[] = [];
+  let m: RegExpExecArray | null;
+  MAVEN_DEPENDENCY_BLOCK_RE.lastIndex = 0;
+  while ((m = MAVEN_DEPENDENCY_BLOCK_RE.exec(depsBlock)) !== null) {
+    const block = m[1];
+    const groupId = /<groupId>([^<]+)<\/groupId>/.exec(block)?.[1]?.trim();
+    const artifactId = /<artifactId>([^<]+)<\/artifactId>/.exec(block)?.[1]?.trim();
+    const rawVersion = /<version>([^<]+)<\/version>/.exec(block)?.[1];
+    if (!groupId || !artifactId || !rawVersion) continue;
+
+    const version = resolveMavenVersion(rawVersion, properties);
+    if (!version) continue;
+
+    deps.push({ name: `${groupId}:${artifactId}`, declaredRange: rawVersion.trim(), version });
+  }
+  return deps;
+}
+
+async function fetchPomXml(githubRepo: string, token: string): Promise<string | null> {
+  return fetchRawFile(githubRepo, "pom.xml", token);
+}
+
 // ---- Entry point ---------------------------------------------------------
 
 /**
- * Scans whichever of package.json / requirements.txt / composer.json exist
- * at the connected repo's root against OSV.dev. Never throws.
+ * Scans whichever of package.json / requirements.txt / composer.json /
+ * go.mod / pom.xml exist at the connected repo's root against OSV.dev.
+ * Never throws.
  */
 export async function scanDependencyManifest(options: DependencyManifestOptions): Promise<DependencyManifestResult> {
   const githubRepo = options.githubRepo || null;
@@ -331,18 +471,20 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
   }
 
   try {
-    const [pkg, requirementsTxt, composer] = await Promise.all([
+    const [pkg, requirementsTxt, composer, goMod, pomXml] = await Promise.all([
       fetchPackageJson(githubRepo, token),
       fetchRequirementsTxt(githubRepo, token),
       fetchComposerJson(githubRepo, token),
+      fetchGoMod(githubRepo, token),
+      fetchPomXml(githubRepo, token),
     ]);
 
-    if (!pkg && !requirementsTxt && !composer) {
+    if (!pkg && !requirementsTxt && !composer && !goMod && !pomXml) {
       return {
         status: "not_applicable",
         repo: githubRepo,
         findings: [],
-        note: "No package.json, requirements.txt, or composer.json found at the repository root — nothing to scan.",
+        note: "No package.json, requirements.txt, composer.json, go.mod, or pom.xml found at the repository root — nothing to scan.",
       };
     }
 
@@ -389,6 +531,31 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
       const { findings, note } = await buildFindingsForDeps("Packagist", "composer.json", deps, names.length);
       allFindings.push(...findings);
       dependenciesDeclared += names.length;
+      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
+      if (note) notes.push(note);
+    }
+
+    if (goMod) {
+      manifestsScanned.push("go.mod");
+      const deps = parseGoModRequire(goMod);
+      const { findings, note } = await buildFindingsForDeps("Go", "go.mod", deps, deps.length);
+      allFindings.push(...findings);
+      dependenciesDeclared += deps.length;
+      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
+      if (note) notes.push(note);
+    }
+
+    if (pomXml) {
+      manifestsScanned.push("pom.xml");
+      const deps = parsePomXmlDependencies(pomXml);
+      // extractMavenDependenciesBlock is the same scoping parsePomXmlDependencies
+      // itself uses, so this count matches what was actually considered (not
+      // inflated by <dependencyManagement>'s own <dependency> blocks).
+      const depsBlock = extractMavenDependenciesBlock(pomXml);
+      const totalDeclared = depsBlock !== null ? (depsBlock.match(MAVEN_DEPENDENCY_BLOCK_RE) ?? []).length : deps.length;
+      const { findings, note } = await buildFindingsForDeps("Maven", "pom.xml", deps, totalDeclared);
+      allFindings.push(...findings);
+      dependenciesDeclared += totalDeclared;
       dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
       if (note) notes.push(note);
     }

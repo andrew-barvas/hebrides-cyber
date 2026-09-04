@@ -1068,7 +1068,7 @@ access to it if it doesn't need to be public.`
  * a specific target version we haven't independently verified.
  */
 const DEPENDENCY_ECOSYSTEM_COMMANDS: Record<
-  "npm" | "pip" | "composer",
+  "npm" | "pip" | "composer" | "go" | "maven",
   { manifest: string; checkInstalled: (pkg: string) => string; commands: (pkg: string) => string }
 > = {
   npm: {
@@ -1087,9 +1087,20 @@ const DEPENDENCY_ECOSYSTEM_COMMANDS: Record<
     checkInstalled: (pkg) => `composer show ${pkg}`,
     commands: (pkg) => `composer update ${pkg}\n# or pin a specific patched version directly:\ncomposer require ${pkg}:^<fixed-version>`,
   },
+  go: {
+    manifest: "go.mod",
+    checkInstalled: (pkg) => `go list -m ${pkg}`,
+    commands: (pkg) => `go get ${pkg}@latest\n# or pin a specific patched version directly:\ngo get ${pkg}@<fixed-version>\ngo mod tidy`,
+  },
+  maven: {
+    manifest: "pom.xml",
+    checkInstalled: (pkg) => `mvn dependency:tree -Dincludes=${pkg}`,
+    commands: (pkg) =>
+      `# ${pkg} is "groupId:artifactId" — update the <version> in pom.xml directly, then:\nmvn versions:display-dependency-updates -Dincludes=${pkg}\nmvn clean install`,
+  },
 };
 
-export function dependencyVulnerableRemediation(packageName: string, ecosystem: "npm" | "pip" | "composer" = "npm"): string {
+export function dependencyVulnerableRemediation(packageName: string, ecosystem: "npm" | "pip" | "composer" | "go" | "maven" = "npm"): string {
   const cfg = DEPENDENCY_ECOSYSTEM_COMMANDS[ecosystem];
   const auditNote =
     ecosystem === "npm"

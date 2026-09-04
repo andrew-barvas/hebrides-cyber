@@ -517,3 +517,38 @@ once, not per-chart.
 the same dashboard area and a shared "which target(s) am I looking at"
 selector should probably be built once for both.
 **Category**: code. **Source**: product/dashboard review.
+
+## E-29 — Dependency-manifest scanning: Go and Maven ecosystem coverage
+
+**Status: fixed (2026-08-28).** `dependencyManifest.ts` now also scans
+`go.mod` and `pom.xml`, on the same OSV.dev-backed foundation as npm/pip/
+Composer — OSV.dev's `Go` and `Maven` ecosystem strings work identically to
+the existing three. Go modules pin exact versions (no range reduction
+needed, unlike npm/Composer's carets); Maven's `pom.xml` gets a
+regex-only extraction (no XML parser dependency, matching every other
+manifest here) that resolves `${property}` version references against a
+sibling `<properties>` block and deliberately ignores
+`<dependencyManagement>`'s own `<dependency>` entries (its own nested
+`<dependencies>` block has the exact same shape as the real one, and a
+first version of this fix wrongly matched it — caught while writing this
+item's own tests, fixed via a shared `extractMavenDependenciesBlock()` used
+by both the parser and the entry point's declared-count, rather than two
+copies that could drift). `remediationText.ts`'s
+`dependencyVulnerableRemediation()` gained `go`/`maven` command sets
+(`go get`/`go mod tidy`, `mvn versions:display-dependency-updates`).
+Tests: `src/__tests__/scanners/dependencyManifest.test.ts` — the parsers'
+first-ever test coverage (none existed for npm/pip/Composer either; not
+backfilled here, out of scope for this change).
+
+**What**: `dependencyManifest.ts` covered only npm/pip/Composer via OSV.dev
+— no Go or Java/Maven support, both common ecosystems OSV.dev already
+indexes.
+**Why**: raised while comparing against Snyk's ecosystem breadth
+(`docs/COMPETITIVE-ANALYSIS.md` §2 lists Snyk as a substitute that wins
+deals on the dependency side specifically) — this was flagged as the
+single lowest-effort, highest-value gap to close, since it extends an
+existing pattern rather than requiring new architecture.
+**Impact/effort**: was low-medium — reused the existing OSV.dev query path
+and `buildFindingsForDeps` entirely; only new manifest parsing was needed.
+**Depends on**: none.
+**Category**: code. **Source**: competitive gap (Snyk comparison).
