@@ -143,9 +143,9 @@ required) · **key-or-session** (either credential) · **admin**
 
 `admin/overview.ts`, `customers.ts`, `scans.ts`, `queue.ts`, `metrics.ts`,
 `audit.ts`, `contacts.ts`, `blog.ts`, `blog/[slug].ts`,
-`blog/upload-image.ts`. Two of these (`overview.ts`, `contacts.ts`)
-hand-roll their own admin check instead of calling `requireAdmin()` — see
-`docs/ENHANCEMENTS.md` E-08.
+`blog/upload-image.ts`. All now call the shared `requireAdmin()` —
+`overview.ts`/`contacts.ts` previously hand-rolled their own check, fixed
+(`docs/ENHANCEMENTS.md` E-08, 2026-08-28).
 
 ### Public / unauthenticated
 

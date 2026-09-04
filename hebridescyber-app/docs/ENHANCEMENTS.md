@@ -186,6 +186,15 @@ partially — verify before treating as a from-scratch task).
 
 ## E-08 — Consolidate admin auth checks onto `requireAdmin()`
 
+**Status: fixed (2026-08-28).** Both routes now call the shared
+`requireAdmin()`. `admin/contacts.ts` lost its own anon-`createClient` JWT
+verification entirely (no behaviour change — every failure mode already
+returned 403). `admin/overview.ts`'s failure responses changed from
+one-off 401s to 403, matching `requireAdmin()`'s actual contract and every
+other correctly-implemented admin route (`admin/customers.ts` etc.) —
+tests updated to match. Full suite (375 tests), `tsc`, lint, and build all
+verified clean.
+
 **What**: `admin/overview.ts` and `admin/contacts.ts` each hand-roll their
 own inline admin check instead of calling the shared
 `src/lib/adminAuth.ts`'s `requireAdmin()` — and do it *differently* from

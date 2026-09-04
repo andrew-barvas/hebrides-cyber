@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 
 // Service-role-backed admin API — deliberately NOT just a client-side
 // Supabase query, because RLS on `users`/`subscriptions`/`scans` only lets
@@ -14,34 +14,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end("Method Not Allowed");
   }
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing Authorization Bearer token" });
-  }
-
-  // supabaseAdmin is constructed lazily on first property access — a missing
-  // SUPABASE_URL/SERVICE_ROLE_KEY throws here rather than at import, so it's
-  // caught and returned as a clean 401 instead of an unhandled 500.
-  try {
-    const { data: callerData, error: callerError } = await supabaseAdmin.auth.getUser(
-      authHeader.slice("Bearer ".length)
-    );
-    if (callerError || !callerData.user) {
-      return res.status(401).json({ error: "Invalid session" });
-    }
-
-    const { data: callerProfile } = await supabaseAdmin
-      .from("users")
-      .select("is_admin")
-      .eq("id", callerData.user.id)
-      .maybeSingle();
-
-    if (!callerProfile?.is_admin) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-  } catch {
-    return res.status(401).json({ error: "Invalid session" });
-  }
+  // E-08 (docs/ENHANCEMENTS.md): previously hand-rolled this exact check
+  // inline (a fresh auth.getUser() + users.is_admin lookup) instead of
+  // calling the shared requireAdmin() — two implementations of the same
+  // security control drifting apart is exactly how the is_admin RLS gap
+  // this session's migration 017 fixed nearly went unnoticed a second way.
+  const adminId = await requireAdmin(req);
+  if (!adminId) return res.status(403).json({ error: "Admin access required" });
 
   // TODO: this is three round-trips merged in JS rather than one SQL join
   // (via an RPC/view) — fine at seed-data scale, revisit if the customer

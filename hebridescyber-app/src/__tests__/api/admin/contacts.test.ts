@@ -6,15 +6,15 @@ import { makeAdminSupabaseMock } from "./_supabaseQueueMock";
 const { getUserMock } = vi.hoisted(() => ({ getUserMock: vi.fn() }));
 const mock = makeAdminSupabaseMock();
 
-// contacts.ts builds its own anon createClient() inline (not
-// @/lib/adminAuth's requireAdmin) to verify the caller's JWT — mock the
-// @supabase/supabase-js factory itself rather than a project module.
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => ({ auth: { getUser: getUserMock } }),
-}));
-
+// E-08 (docs/ENHANCEMENTS.md): contacts.ts now goes through the shared
+// requireAdmin() (src/lib/adminAuth.ts), which calls supabaseAdmin's own
+// auth.getUser directly — mock that module the same way overview.test.ts
+// does, rather than @supabase/supabase-js's createClient factory.
 vi.mock("@/lib/supabaseAdmin", () => ({
-  supabaseAdmin: { from: (table: string) => mock.supabaseAdmin.from(table) },
+  supabaseAdmin: {
+    auth: { getUser: getUserMock },
+    from: (table: string) => mock.supabaseAdmin.from(table),
+  },
 }));
 
 import handler from "@/pages/api/admin/contacts";
