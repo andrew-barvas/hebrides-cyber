@@ -9,6 +9,7 @@ import ScanList, { Scan } from "@/components/ScanList";
 import PlanUpsell, { Plan } from "@/components/PlanUpsell";
 import DomainVerification from "@/components/DomainVerification";
 import MonitoredTargets from "@/components/MonitoredTargets";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
@@ -64,6 +65,15 @@ export default function DashboardPage() {
   const [targetUrl, setTargetUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+
+  // E-16 (docs/ENHANCEMENTS.md): onboarding-checklist state not already
+  // covered by scans/loadPlan above — hasScanned/hasReport are derived
+  // from scans/overviewScan directly, and the Slack/Teams half of "has an
+  // alert channel" comes from loadPlan's existing slackWebhookUrl/
+  // teamsWebhookUrl state, so only the domain-verification and outbound-
+  // webhook checks need a new fetch.
+  const [hasVerifiedDomain, setHasVerifiedDomain] = useState(false);
+  const [hasOutboundWebhook, setHasOutboundWebhook] = useState(false);
 
   // Security Overview — summarises the most recently completed scan
   // (whichever target that was), not an aggregate across every monitored
@@ -159,6 +169,18 @@ export default function DashboardPage() {
     setOverviewScoreHistory(history);
   }, []);
 
+  // E-16 (docs/ENHANCEMENTS.md): both queries are existence checks only —
+  // .limit(1) rather than fetching every row, since the checklist only
+  // needs a boolean, not a count or the rows themselves.
+  const loadOnboardingExtras = useCallback(async () => {
+    const [{ data: verified }, { data: webhook }] = await Promise.all([
+      supabase.from("verifications").select("id").not("verified_at", "is", null).limit(1),
+      supabase.from("webhooks").select("id").limit(1),
+    ]);
+    setHasVerifiedDomain((verified?.length ?? 0) > 0);
+    setHasOutboundWebhook((webhook?.length ?? 0) > 0);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const session = await getSession();
@@ -166,13 +188,13 @@ export default function DashboardPage() {
       const { currentLevel, nextLevel } = await getMfaAssuranceLevel();
       if (nextLevel && currentLevel !== nextLevel) { router.replace("/login/mfa-challenge"); return; }
       setAuthed(true);
-      await Promise.all([loadScans(session.user.id), loadPlan(), loadOverview()]);
+      await Promise.all([loadScans(session.user.id), loadPlan(), loadOverview(), loadOnboardingExtras()]);
       setLoading(false);
     })().catch((err) => {
       console.error("[dashboard] init error:", (err as Error).message);
       setLoading(false);
     });
-  }, [router, loadScans, loadPlan, loadOverview]);
+  }, [router, loadScans, loadPlan, loadOverview, loadOnboardingExtras]);
 
   async function deleteScan(scanId: string) {
     // scan_results.scan_id has `on delete cascade` (001_init.sql), so
@@ -471,16 +493,26 @@ export default function DashboardPage() {
 
         <PlanUpsell plan={plan} />
 
+        <OnboardingChecklist
+          verifiedDomain={hasVerifiedDomain}
+          hasScanned={scans.length > 0}
+          hasReport={overviewScan !== null}
+          hasAlertChannel={hasOutboundWebhook || Boolean(slackWebhookUrl) || Boolean(teamsWebhookUrl)}
+          alertChannelIsSlackTeams={plan === "pro" || plan === "agency"}
+        />
+
         {/* Basic/Pro/Agency all get scheduled monitoring (E-01, docs/ENHANCEMENTS.md)
             — cadence and per-plan target cap are enforced server-side
             (scanCadence.ts, sql/migrations/018_monitored_targets_plan_cap.sql),
             this is just the UI gate matching that. */}
         {plan !== "none" && <MonitoredTargets />}
 
-        <DomainVerification />
+        <div id="domain-verification">
+          <DomainVerification />
+        </div>
 
         {/* Run a scan */}
-        <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+        <div id="run-a-scan" className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
           <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// run a scan</h2>
           <form onSubmit={startScan} className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -512,7 +544,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Scan history */}
-        <ScanList scans={scans} onDelete={deleteScan} />
+        <div id="scan-history">
+          <ScanList scans={scans} onDelete={deleteScan} />
+        </div>
 
         {/* Slack alerts — Pro/Agency only */}
         {(plan === "pro" || plan === "agency") && (

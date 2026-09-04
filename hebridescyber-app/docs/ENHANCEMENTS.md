@@ -323,6 +323,38 @@ to `ScanReportView.tsx`'s `FindingCard`, matching the existing pattern for
 
 ## E-16 — In-app first-run onboarding checklist
 
+**Status: fixed (2026-08-28).** New `OnboardingChecklist.tsx`, rendered on
+the dashboard for any authenticated account (not gated to an active plan —
+useful pre-subscription too) right after `PlanUpsell`. All four steps are
+derived from data already on the page or a cheap existence-only query, not
+a new "has the user seen this" tracking table:
+- Verify a domain → `verifications` table, any row with `verified_at`
+  not null.
+- Run your first scan → `scans.length > 0` (already fetched for
+  `ScanList`).
+- Read your first report → `overviewScan !== null` (already computed for
+  the dashboard's own Security Overview) — a deliberate proxy for "a
+  report now exists and is visible," not real view tracking.
+- Set an alert channel → Slack/Teams webhook set (`loadPlan`'s existing
+  state) **or** an outbound webhook row exists. Wording adapts per plan:
+  Pro/Agency see "Connect Slack or Teams" (the actually-available option
+  for them); every other plan sees "Set up a webhook," since outbound
+  webhooks are deliberately ungated (`docs/USER-GUIDE.md` §3.5) while
+  Slack/Teams are Pro/Agency-only.
+
+Auto-hides once every step is complete, and is manually dismissible via a
+`localStorage` flag (per-viewer convenience, same precedent as the
+leaderboard rank-change baseline elsewhere in this app). Each incomplete
+step links to the relevant section via a new anchor id
+(`#domain-verification`/`#run-a-scan`/`#scan-history`) or `/account`.
+Tests: `src/components/OnboardingChecklist.test.tsx` (the component's
+first-ever coverage — `dashboard/page.tsx` itself still has none, a
+pre-existing gap not backfilled here). Full suite (382 tests), `tsc`,
+lint, and build all verified clean. **Not yet manually verified in a
+browser against a real staging account** — the dashboard is auth-gated,
+and this session relied on unit tests + build rather than an interactive
+session; worth a real click-through before calling this fully proven.
+
 **What**: a dashboard checklist for a new signup — verify domain → run
 first scan → read the report → set an alert channel — rather than relying
 on documentation nobody reads post-signup.
