@@ -16,10 +16,52 @@ const oneOff = [
   { name: "Full SaaS Audit", price: "£1,800", desc: "Full manual pen test, CI/CD review, cloud permissions review, 20+ page report." },
 ];
 
-const subscriptions: Array<{ id: "basic" | "pro" | "agency"; name: string; price: string; desc: string; highlight?: boolean }> = [
-  { id: "basic", name: "Basic", price: "£20/mo", desc: "Weekly automated scans, monthly Security Score email, critical alerts." },
-  { id: "pro", name: "Pro", price: "£35/mo", desc: "Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts.", highlight: true },
-  { id: "agency", name: "Agency", price: "£75/mo", desc: "Daily automated scans across multi-site monitoring, white-label PDF reports, priority support." },
+const subscriptions: Array<{
+  id: "basic" | "pro" | "agency";
+  name: string;
+  price: string;
+  tagline: string;
+  features: string[];
+  highlight?: boolean;
+}> = [
+  {
+    id: "basic",
+    name: "Basic",
+    price: "£20/mo",
+    tagline: "Continuous monitoring for a single site.",
+    features: [
+      "1 monitored site",
+      "Weekly automated scans",
+      "Monthly Security Score email",
+      "Critical-finding alerts",
+    ],
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: "£35/mo",
+    tagline: "Everything in Basic, plus faster scans and integrations.",
+    features: [
+      "Up to 3 monitored sites",
+      "Daily automated scans",
+      "Dependency & CI/CD scanning",
+      "Slack & Microsoft Teams alerts",
+    ],
+    highlight: true,
+  },
+  {
+    id: "agency",
+    name: "Agency",
+    price: "£75/mo",
+    tagline: "Everything in Pro, plus team & client-facing tools.",
+    features: [
+      "Up to 15 monitored sites",
+      "Team collaboration & roles",
+      "White-label PDF reports",
+      "Authenticated (logged-in) scanning",
+      "Priority support",
+    ],
+  },
 ];
 
 export default function PricingPage() {
@@ -116,7 +158,15 @@ export default function PricingPage() {
               )}
               <h3 className="text-base font-semibold text-cybertext">{p.name}</h3>
               <p className="my-3 font-mono text-3xl font-bold text-neon">{p.price}</p>
-              <p className="flex-1 text-sm text-cybertext/60">{p.desc}</p>
+              <p className="mb-3 text-sm text-cybertext/60">{p.tagline}</p>
+              <ul className="flex-1 space-y-2 text-sm text-cybertext/80">
+                {p.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <span className="mt-0.5 text-neon" aria-hidden="true">✓</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
               <button
                 onClick={() => subscribe(p.id)}
                 disabled={loadingPlan === p.id}
