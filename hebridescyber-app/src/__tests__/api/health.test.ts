@@ -28,6 +28,15 @@ function mockReqRes(method: RequestMethod = "GET") {
   return createMocks<NextApiRequest, NextApiResponse>({ method });
 }
 
+type HealthBody = {
+  status: "ok" | "degraded";
+  checks: {
+    supabase: { ok: boolean };
+    stripe: { ok: boolean };
+    queue: { ok: boolean; depth: number | null };
+  };
+};
+
 describe("GET /api/health", () => {
   beforeEach(() => {
     responses = {};
@@ -48,7 +57,7 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    const body = res._getJSONData();
+    const body = res._getJSONData() as HealthBody;
     expect(body.status).toBe("ok");
     expect(body.checks.supabase.ok).toBe(true);
     expect(body.checks.stripe.ok).toBe(true);
@@ -62,7 +71,7 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(503);
-    const body = res._getJSONData();
+    const body = res._getJSONData() as HealthBody;
     expect(body.status).toBe("degraded");
     expect(body.checks.supabase.ok).toBe(false);
   });
@@ -74,7 +83,7 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(503);
-    expect(res._getJSONData().checks.stripe.ok).toBe(false);
+    expect((res._getJSONData() as HealthBody).checks.stripe.ok).toBe(false);
   });
 
   it("never leaks a raw error message — only booleans and counts", async () => {
@@ -97,7 +106,7 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect(res._getJSONData().checks.queue.depth).toBe(5000);
+    expect((res._getJSONData() as HealthBody).checks.queue.depth).toBe(5000);
   });
 
   it("degrades health when the queue count query itself errors, not just when depth is high", async () => {
@@ -108,6 +117,6 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(503);
-    expect(res._getJSONData().checks.queue).toEqual({ ok: false, depth: null });
+    expect((res._getJSONData() as HealthBody).checks.queue).toEqual({ ok: false, depth: null });
   });
 });
