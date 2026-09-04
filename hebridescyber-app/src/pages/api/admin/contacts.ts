@@ -1,37 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-async function isAdmin(req: NextApiRequest): Promise<boolean> {
-  const authHeader = req.headers.authorization ?? "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  if (!token) return false;
-
-  // Failure here (missing env vars, an unreachable Supabase, a malformed
-  // token) means "not an admin", never an unhandled 500 — the caller only
-  // ever sees a clean 403.
-  try {
-    // Verify the JWT and look up is_admin using the service-role client.
-    const anonClient = createClient(
-      process.env.SUPABASE_URL ?? "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
-    );
-    const { data: { user } } = await anonClient.auth.getUser(token);
-    if (!user) return false;
-
-    const { data } = await supabaseAdmin
-      .from("users")
-      .select("is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-    return data?.is_admin === true;
-  } catch {
-    return false;
-  }
-}
+import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!(await isAdmin(req))) return res.status(403).json({ error: "Forbidden" });
+  // E-08 (docs/ENHANCEMENTS.md): previously built its own anon
+  // createClient() here to verify the caller's JWT, a second, different
+  // implementation of the same check @/lib/adminAuth's requireAdmin()
+  // already does (that one uses the service-role client directly) — two
+  // implementations of the same security control drifting apart is exactly
+  // how the is_admin RLS gap this session's migration 017 fixed nearly went
+  // unnoticed a second way.
+  if (!(await requireAdmin(req))) return res.status(403).json({ error: "Forbidden" });
 
   if (req.method === "GET") {
     const { data, error } = await supabaseAdmin

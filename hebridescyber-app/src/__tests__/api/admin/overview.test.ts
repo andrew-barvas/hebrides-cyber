@@ -31,24 +31,31 @@ describe("GET /api/admin/overview", () => {
     expect(res._getStatusCode()).toBe(405);
   });
 
-  it("returns 401 when there is no Authorization header", async () => {
+  // E-08 (docs/ENHANCEMENTS.md): this route now goes through the shared
+  // requireAdmin() (src/lib/adminAuth.ts) instead of a hand-rolled inline
+  // check — its contract collapses "no header" / "invalid session" / "auth
+  // call threw" into a single null, all surfaced as 403, matching every
+  // other admin route (e.g. admin/customers.ts) rather than this route's
+  // own previous one-off 401s for those same cases.
+
+  it("returns 403 when there is no Authorization header", async () => {
     const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "GET" });
     await handler(req, res);
-    expect(res._getStatusCode()).toBe(401);
+    expect(res._getStatusCode()).toBe(403);
   });
 
-  it("returns 401 when the session is invalid", async () => {
+  it("returns 403 when the session is invalid", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: { message: "invalid" } });
     const { req, res } = mockReqRes();
     await handler(req, res);
-    expect(res._getStatusCode()).toBe(401);
+    expect(res._getStatusCode()).toBe(403);
   });
 
-  it("returns 401 (not 500) when the auth call throws", async () => {
+  it("returns 403 (not 500) when the auth call throws", async () => {
     getUserMock.mockRejectedValue(new Error("network error"));
     const { req, res } = mockReqRes();
     await handler(req, res);
-    expect(res._getStatusCode()).toBe(401);
+    expect(res._getStatusCode()).toBe(403);
   });
 
   it("returns 403 when the caller is authenticated but not an admin", async () => {
