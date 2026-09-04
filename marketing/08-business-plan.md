@@ -53,13 +53,33 @@ Assumptions: 20 one-off audits (avg £700) + 40 monthly subscribers (avg £30/mo
 - **Month 7–12:** Scale via agency partnerships, add white-label features, hire part-time tester.
 
 ## Launch Checklist
-- [ ] Register domain hebridescyber.com
-- [ ] Set up GitHub repo and Next.js app
-- [ ] Provision Supabase (or Azure DB) and Auth
-- [ ] Implement Security Score scanner (Playwright + dependency checks)
-- [ ] Integrate Stripe and billing pages
-- [ ] Create PDF report generator (Playwright)
-- [ ] Add AI summarisation (Azure OpenAI)
-- [ ] Build marketing pages and pricing page
-- [ ] Get professional indemnity insurance
-- [ ] Start local outreach and run free scans
+
+**Updated 2026-08-28** — this list was still all-unchecked despite the
+product being live with paying customers; corrected against actual
+current state rather than left stale.
+
+- [ ] Register domain hebridescyber.com — **not yet done**, confirmed via
+      DNS lookup 2026-08-28 (non-existent domain); see
+      `marketing/10-formalisation-and-funding-roadmap.md` §1 for the full
+      domain plan
+- [x] Set up GitHub repo and Next.js app
+- [x] Provision Supabase (or Azure DB) and Auth
+- [x] Implement Security Score scanner (Playwright + dependency checks) —
+      grown well beyond the original scope (5 dependency ecosystems,
+      secret scanning, container checks, extended active-tool suite)
+- [x] Integrate Stripe and billing pages — **but checkout itself is
+      currently broken**, `STRIPE_PRICE_BASIC/PRO/AGENCY` unset in
+      production (`hebridescyber-app/docs/ENHANCEMENTS.md` E-07,
+      highest-priority open item in the whole backlog)
+- [x] Create PDF report generator (Playwright)
+- [x] Add AI summarisation (Azure OpenAI)
+- [x] Build marketing pages and pricing page
+- [ ] Get professional indemnity insurance — still open, see
+      `hebridescyber-app/docs/ROADMAP.md` BETA-B3
+- [x] Start local outreach and run free scans — the product is live and
+      taking real signups; see `marketing/06-marketing-plan.md` for the
+      current (rewritten) go-to-market plan and its KPIs
+
+For company registration, funding, and certifications — none of which
+this original checklist covered — see
+`marketing/10-formalisation-and-funding-roadmap.md`.
