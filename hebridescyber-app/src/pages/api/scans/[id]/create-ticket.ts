@@ -95,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  const reportUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com"}/dashboard/scans/${scanId}`;
+  const reportUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk"}/dashboard/scans/${scanId}`;
   const outcome = await client.createIssue({
     title: `[${finding.severity.toUpperCase()}] ${finding.title}`,
     body: `${finding.detail}\n\n${finding.remediation ?? ""}`.trim(),

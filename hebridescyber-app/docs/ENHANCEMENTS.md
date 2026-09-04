@@ -629,3 +629,22 @@ existing pattern rather than requiring new architecture.
 and `buildFindingsForDeps` entirely; only new manifest parsing was needed.
 **Depends on**: none.
 **Category**: code. **Source**: competitive gap (Snyk comparison).
+
+## E-30 — Per-finding "retest" button
+
+**What**: Closed Door Security's PTaaS platform (`cdsec.co.uk/ptaas`) has a
+live retest loop — flag a fix, click retest, get an immediate re-verify
+against that one finding, rather than waiting for the next full scheduled
+scan. Hebrides Cyber has the underlying capability (any scan recomputes
+New/Fixed status via `findingsDiff.ts`) but no UI to trigger a single,
+immediate re-check of one specific finding.
+**Why**: genuinely good competitive UX to harvest — closes the loop for a
+customer who's just pushed a fix and wants confirmation now, not on the
+next cadence-scheduled scan.
+**Impact/effort**: medium — needs a scoped "recheck this one finding"
+scan mode (or a fast full re-scan triggered from a finding row), plus UI.
+Not just a copy of `run-scan.ts`'s existing flow, which re-runs the whole
+suite.
+**Depends on**: none.
+**Category**: code. **Source**: competitive UX harvest (Closed Door
+Security PTaaS, 2026-09-04).

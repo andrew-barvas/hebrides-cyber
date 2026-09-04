@@ -71,7 +71,7 @@ export async function sendCriticalAlertEmail(
     const highCount = newAlertableFindings.filter((f) => f.severity === "high").length;
     const topFindings = [...newAlertableFindings].sort((a, b) => severityRank(a.severity) - severityRank(b.severity)).slice(0, 3);
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hebridescyber.com";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
     const dashboardLink = `${siteUrl}/dashboard/scans/${report.scan_id}`;
     const host = hostnameOf(report.target_url);
 

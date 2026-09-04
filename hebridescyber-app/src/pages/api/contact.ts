@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Set RESEND_API_KEY and CONTACT_EMAIL in environment variables.
   // sendEmail() never throws and resolves { ok: false } when RESEND_API_KEY
   // is unset, so this stays non-fatal exactly as the inline fetch was.
-  const toEmail = process.env.CONTACT_EMAIL ?? "hello@hebridescyber.com";
+  const toEmail = process.env.CONTACT_EMAIL ?? "hello@hebridescyber.co.uk";
   const result = await sendEmail({
     to: toEmail,
     subject: `New enquiry from ${name.trim()}`,

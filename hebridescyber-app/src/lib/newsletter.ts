@@ -201,7 +201,7 @@ export async function fetchRecentHighSeverityCves(daysBack = 1): Promise<NvdCve[
 
     const res = await fetch(url, {
       signal: AbortSignal.timeout(15_000),
-      headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.com)" },
+      headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)" },
     });
     if (!res.ok) return [];
 
@@ -337,7 +337,7 @@ async function fetchOneFeed(name: string, url: string, daysBack: number): Promis
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(10_000),
-      headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.com)" },
+      headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)" },
     });
     if (!res.ok) return [];
     const xml = await res.text();
