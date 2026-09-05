@@ -1029,3 +1029,56 @@ already-open Sprint 3 items (`docs/SPRINT-PLAN.md`) — this is new scope, not
 a fix to something already sold.
 **Category**: code. **Source**: harvested from the same competitive
 "future roadmap" comparison as E-32, 2026-09-05.
+
+## E-34 — Trivy: base-image CVE scanning + IaC misconfiguration scanning
+
+**Status: fixed (2026-09-05).** The one genuinely new, valuable idea out of
+a "tools worth revisiting" list — six of its other seven "must revisit"
+tools (ZAP, testssl.sh, Subfinder, and functional equivalents of
+SecurityHeaders.io/Retire.js/Waybackurls) were already shipped under
+different names; this was the real gap. Specifically fills the exact
+installed-package-CVE gap `dockerBaseImage.ts`'s own header comment
+declines to fill ("pulling the actual image and inspecting its package
+database... what grype/trivy/syft do... out of scope for this module").
+
+Shipped as `src/lib/scanners/trivyScan.ts`, two modes, both gated on a
+connected GitHub repo (`repo_connections`) like `secretScan.ts`/
+`dependencyManifest.ts`/`dockerBaseImage.ts`:
+- **Image mode** (`scanTrivyImage`) — resolves the Dockerfile's
+  final-stage base image (reusing `dockerBaseImage.ts`'s own
+  `parseDockerfileStages`/`resolveBaseImages` rather than reimplementing
+  multi-stage/ARG resolution) and runs a real `trivy image` scan against
+  it. Never builds or scans the customer's own application image — only
+  the named public base image, which is materially lower-risk than running
+  an arbitrary customer's build steps in CI.
+- **Config mode** (`scanTrivyConfig`) — a shallow git clone
+  (`secretScan.ts`'s clone pattern, minus full history since misconfig
+  checks only need the current tree) + a real `trivy config` scan for
+  Terraform/Kubernetes/Dockerfile misconfigurations. No existing scanner
+  covered IaC at all before this.
+
+New checkId prefixes `trivy-image`/`trivy-config` added to
+`src/lib/extendedToolCheckIds.ts` so E-30's retest button correctly refuses
+to "retest" a Trivy finding via the on-demand path (which never runs these
+tools — retesting one anyway would silently report "fixed" without the
+tool that found it ever running again). Compliance mapping
+(`compliance.ts`) and dedicated remediation text (`remediationText.ts`,
+following the "function not constant, when the fix names something
+specific" convention) added. CI install step added to
+`.github/workflows/scheduled-scans.yml` (versioned install script, DB
+pre-warmed once per job matching nuclei's own template-priming step).
+
+**Deliberately out of scope**: real cloud-account posture scanning (AWS/
+Azure/GCP IAM, security groups) — no credential-onboarding flow exists for
+that at all, tracked separately as **E-32**; don't conflate the two.
+`npx tsc --noEmit`, lint, full `vitest run` (9 new tests on the pure
+JSON-parsing functions), and `next build` all verified clean. Not
+verified against a real trivy binary in this environment (no Docker/trivy
+available in this sandbox) — the JSON schema assumptions should be
+re-checked against the pinned version's actual output the first time this
+runs for real in `scheduled-scans.yml`, same CONFIDENCE-NOTE caveat as
+`xsser.ts`/`commix.ts` carried before their own real-binary verification.
+**Depends on**: none. **Category**: code. **Source**: harvested from a
+"tools worth revisiting" list, refined into an architecture-respecting
+integration after an initial version of the same request proposed a
+parallel Azure Functions/Redis pipeline that was declined, 2026-09-05.
