@@ -847,6 +847,37 @@ and `buildFindingsForDeps` entirely; only new manifest parsing was needed.
 
 ## E-30 — Per-finding "retest" button
 
+**Status: fixed (2026-09-05).** Investigation surfaced a real architectural
+constraint that shaped the final scope: there is no way to run just one
+check in isolation — `runAllChecks()` (base suite) and the 12-tool extended
+batch (`scanExecution.ts`) both always run as one atomic unit, and building
+true single-check scoping would be a much larger scanner-suite refactor.
+Shipped instead: `src/pages/api/scans/[id]/retest-finding.ts` triggers a
+real on-demand rescan (the same fast, base-suite-only path any "Scan now"
+click already uses — mirrors `run-scan.ts`'s `scans`/`scan_jobs` insert +
+`triggerOnDemandWorkflow()` sequence, minus the domain-reverification dance
+since the target's already verified) and reports whether that one finding
+came back fixed, without the customer navigating away to compare two full
+reports. `src/lib/extendedToolCheckIds.ts` is the single source of truth for
+which checkIds this can't safely cover — **findings from the 12 extended
+tools (nuclei/zap/sqlmap/xsser/commix/nmap/subdomains/deep-tls/secretScan/
+dependency-manifest/docker-base-image/auth-check) are rejected outright
+(400) and the "Recheck now" button doesn't even render for them**, both
+server-side and client-side, since the on-demand path never runs those
+tools — retesting one of their findings this way would silently report
+"fixed" without the tool that found it ever running again. Deliberately does
+not call `isFreeTierExhausted()` (would double-count a free-tier user's one
+allowed scan just for re-verifying a finding they already know about) or add
+a new audit-log event (`executeScan()` already logs `scan.started`/
+`completed`/`failed` for every job, retests included). UI copy says "Recheck
+now," not anything implying the check was individually isolated — the whole
+base suite genuinely reruns, so a Pro/Agency customer with Slack/Teams
+alerts will also get a "score changed" notification if anything else
+changed too, which is correct, not a bug. `npx tsc --noEmit`, lint, full
+`vitest run` (47 new tests across the helper, the API route, and the
+frontend component), and `next build` all verified clean. Not yet manually
+verified in a browser (no Supabase credentials in this environment).
+
 **What**: Closed Door Security's PTaaS platform (`cdsec.co.uk/ptaas`) has a
 live retest loop — flag a fix, click retest, get an immediate re-verify
 against that one finding, rather than waiting for the next full scheduled

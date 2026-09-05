@@ -14,6 +14,7 @@
 import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
 import { COMPLIANCE_FRAMEWORK_LABELS, type ComplianceRef } from "@/lib/scanners/compliance";
+import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -342,6 +343,118 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
   );
 }
 
+/**
+ * "Recheck now" — E-30 (docs/ENHANCEMENTS.md), harvested from Closed Door
+ * Security's PTaaS retest loop. Triggers a real on-demand rescan (the same
+ * fast, base-suite-only path any "Scan now" click already runs — see
+ * src/pages/api/scans/[id]/retest-finding.ts's header) and reports whether
+ * THIS finding specifically came back fixed, without making the customer
+ * navigate away and compare two full reports themselves.
+ *
+ * Not rendered at all for an extended-tool finding (nuclei/sqlmap/xsser/
+ * commix/etc. — see src/lib/extendedToolCheckIds.ts) — the on-demand path
+ * never runs those tools, so "retesting" one of their findings this way
+ * would silently claim "fixed" without ever re-checking it. The parent
+ * guard below enforces this; the API route enforces it again server-side.
+ */
+function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token: string; checkId: string }) {
+  const [state, setState] = useState<"idle" | "checking" | "fixed" | "still-present" | "error">("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const [newScanId, setNewScanId] = useState<string | null>(null);
+
+  async function retest() {
+    setState("checking");
+    setMessage("Re-checking…");
+    try {
+      const startRes = await fetch(`/api/scans/${scanId}/retest-finding`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ checkId }),
+      });
+      const startBody = await startRes.json();
+      if (!startRes.ok) throw new Error(startBody.error ?? "Could not start recheck");
+
+      const targetScanId = startBody.scanId as string;
+      setNewScanId(targetScanId);
+
+      // Same interval/timeout budget as startScan() in src/app/dashboard/page.tsx.
+      const POLL_INTERVAL_MS = 4_000;
+      const MAX_POLLS = 45;
+
+      async function poll(): Promise<{ status: string; findings?: Array<{ check_id: string | null }>; fixed_findings?: Array<{ check_id: string | null }> }> {
+        const res = await fetch(`/api/v1/scans/${targetScanId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error(`Recheck status check failed (${res.status})`);
+        return res.json();
+      }
+
+      let report = await poll();
+      let polls = 0;
+      while ((report.status === "pending" || report.status === "running") && polls < MAX_POLLS) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        report = await poll();
+        polls++;
+      }
+
+      if (report.status === "pending" || report.status === "running") {
+        setMessage("Still running — check back in a minute.");
+        setState("idle");
+        return;
+      }
+      if (report.status === "failed") throw new Error("Recheck scan failed — try again.");
+
+      const stillPresent = (report.findings ?? []).some((f) => f.check_id === checkId);
+      setState(stillPresent ? "still-present" : "fixed");
+    } catch (err) {
+      setMessage((err as Error).message);
+      setState("error");
+    }
+  }
+
+  if (state === "idle") {
+    return (
+      <button onClick={retest} className="mt-3 ml-4 text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
+        🔁 Recheck now
+      </button>
+    );
+  }
+  if (state === "checking") {
+    return <p className="mt-3 ml-4 text-xs text-cybertext/40 print:hidden">{message}</p>;
+  }
+  if (state === "error") {
+    return (
+      <div className="mt-3 ml-4 print:hidden">
+        <p className="text-xs text-red-400">{message}</p>
+        <button onClick={retest} className="mt-1 text-xs font-medium text-neon hover:underline">
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (state === "fixed") {
+    return (
+      <p className="mt-3 ml-4 text-xs font-semibold text-neon print:hidden">
+        ✓ Fixed — confirmed just now.{" "}
+        {newScanId && (
+          <a href={`/dashboard/scans/${newScanId}`} className="underline hover:no-underline">
+            View full scan →
+          </a>
+        )}
+      </p>
+    );
+  }
+  // still-present
+  return (
+    <p className="mt-3 ml-4 text-xs text-cybertext/60 print:hidden">
+      Still present as of just now.{" "}
+      {newScanId && (
+        <a href={`/dashboard/scans/${newScanId}`} className="text-neon underline hover:no-underline">
+          View full scan →
+        </a>
+      )}
+    </p>
+  );
+}
+
 export function FindingCard({
   finding,
   scanId,
@@ -429,6 +542,9 @@ export function FindingCard({
           )}
           {scanId && token && finding.checkId && hasTicketIntegration && (
             <CreateTicketButton scanId={scanId} token={token} checkId={finding.checkId} />
+          )}
+          {scanId && token && finding.checkId && !isExtendedToolFinding(finding.checkId) && (
+            <RetestFindingButton scanId={scanId} token={token} checkId={finding.checkId} />
           )}
         </details>
       )}
