@@ -115,7 +115,7 @@ three," never a forced mapping.
 - **White-label branding** (Agency) — a customer's own logo/name on PDF
   reports.
 
-### 3.4 Remediation — four distinct, complementary paths
+### 3.4 Remediation — five distinct, complementary paths
 
 1. **Static remediation text** on every finding — specific, copy-pasteable
    fix instructions (config snippets for nginx/Apache/Next.js/Azure, not
@@ -136,6 +136,18 @@ three," never a forced mapping.
    no longer finds the issue moves its ticket to your workflow's done status
    and comments when it was verified — nothing in your tracker moves unless
    you turn that on.
+5. **"Recheck now"** (on demand, per finding) — just pushed a fix and don't
+   want to wait for the next scheduled scan? This triggers a real, fast
+   on-demand rescan of the target and tells you whether that one finding
+   came back fixed. It's a real rescan under the hood (the whole base check
+   suite runs, same as any "Scan now" click), not something scoped to just
+   that check — you may see other findings change too, and a Pro/Agency
+   Slack/Teams alert can fire if they do. **Not available for findings from
+   the extended scan tools** (nuclei, ZAP, sqlmap, XSSer, commix, nmap,
+   subdomain discovery, deep TLS, secret scanning, dependency-manifest
+   scanning, Docker base-image checks, or the authenticated-scan check) —
+   those only run on the scheduled cadence, so the button doesn't appear for
+   findings from them; run a new full scan to re-verify those.
 
 ### 3.5 Notifications
 
@@ -258,7 +270,9 @@ management — gated behind `is_admin`, server-side.
 3. Optionally: click "Get an AI-tailored fix" for stack-specific guidance,
    "Create ticket" to open a Jira/Linear issue, or request a remediation
    PR if it's dependency-related.
-4. Re-scan to confirm the finding clears.
+4. Push the fix, then click "Recheck now" on that finding (if it's shown —
+   not available for extended-tool findings, see §3.4) for an immediate
+   answer, or just re-scan to confirm it clears on the next full pass.
 
 ### 4.7 Unhappy paths
 

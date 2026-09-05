@@ -112,11 +112,12 @@ required) · **key-or-session** (either credential) · **admin**
 | Route | Methods | Auth | Trigger | Plan gate | Enforcement |
 |---|---|---|---|---|---|
 | `run-scan.ts` | POST | session only | on-demand, two-step | free-tier cap (1 scan ever); 10/hr rate limit | ✅ server (`isFreeTierExhausted`, `checkRateLimit`) |
-| `verify-ownership.ts` | POST | session only | manual | none | n/a |
-| `generate-report.ts` | GET | key-or-session | manual | branding applied only on `plan === "agency"` | ✅ server for branding; ❌ **PDF generation itself is ungated — any tier, unlimited** |
-| `generate-fix-pr.ts` | POST | session only | manual, **no UI caller exists** | none | ❌ none |
-| `scans/[id]/ai-fix.ts` | POST | key-or-session | manual, per-finding | none | ❌ **none — Azure OpenAI tokens spent per click, uncapped, any tier** |
-| `scans/[id]/create-ticket.ts` | POST | key-or-session | manual, per-finding | none | ❌ none |
+| `verify-ownership.ts` | POST | session only | manual | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
+| `generate-report.ts` | GET | key-or-session | manual | branding applied only on `plan === "agency"`; 10/hr rate limit (E-12) | ✅ server for branding and rate limit |
+| `generate-fix-pr.ts` | POST | session only | manual, **no UI caller exists** | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
+| `scans/[id]/ai-fix.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate, Azure OpenAI spend still uncapped per-request within that limit |
+| `scans/[id]/create-ticket.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
+| `scans/[id]/retest-finding.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit, plus a correctness gate: 400s any finding from an extended scan tool (`src/lib/extendedToolCheckIds.ts`) since the on-demand path this triggers never runs them (E-30) |
 | `scans/[id]/shares.ts` | GET/POST/DELETE | session only | manual | max 10/scan, max 365-day expiry (hardcoded, not plan-varied) | ✅ server (caps), ❌ not plan-differentiated |
 
 ### Account / settings
