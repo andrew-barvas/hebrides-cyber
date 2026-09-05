@@ -218,6 +218,28 @@ contributor task — see `docs/ONBOARDING.md` §7.
 
 ## E-06 — Runtime schema validation at API boundaries
 
+**Status: started (2026-09-05).** Adopted incrementally, per this item's
+own recommendation, rather than a big-bang rewrite. Shipped: `zod` added as
+a dependency; `src/lib/validate.ts`'s `parseBody(schema, body, res)` is the
+shared helper (writes a 400 with a field-scoped message and returns null on
+a validation failure, matching the early-return convention used everywhere
+else in this codebase); applied to the two worst offenders named below —
+`admin/contacts.ts`'s PATCH and all three `team/members.ts` handlers
+(`invite`/`setRole`/`remove`). One real behaviour fix alongside the
+type-safety win: `invite`'s `role` field used to silently coerce anything
+that wasn't exactly `"admin"` to `"member"` (a typo like `"administrator"`
+would have silently succeeded with the wrong role); it's now a proper
+`z.enum(["admin","member"]).optional()` that rejects an invalid value with
+400 instead. ID fields use `z.string().min(1)`, not `z.string().uuid()` —
+zod v4 enforces strict RFC 4122 variant bits, which would reject the
+repeating-digit placeholder IDs (`"33333333-..."` etc.) used as test
+fixtures throughout this codebase's existing test suites, for no real
+security benefit (Postgres already rejects a malformed UUID against a
+`uuid` column at the DB layer). `npx tsc --noEmit`, lint, full `vitest run`,
+and `next build` all verified clean. **Still open**: the other ~26
+`req.body as {...}` instances — backfill opportunistically as those routes
+are touched, per this item's own guidance, rather than in one pass.
+
 **What**: adopt a schema library (zod is the natural fit for a TS codebase)
 for `req.body`/`req.query` parsing. Today: no zod/yup/joi/ajv anywhere;
 validation is 28 instances of `req.body as {...}` (a compile-time cast, not
@@ -803,3 +825,46 @@ suite.
 **Depends on**: none.
 **Category**: code. **Source**: competitive UX harvest (Closed Door
 Security PTaaS, 2026-09-04).
+
+## E-31 — Stored XSS: the public blog rendered unsanitized markdown from external sources
+
+**Status: fixed (2026-09-05).** Found and fixed in response to a direct ask
+to self-audit for the same vulnerability classes this product flags in
+customers — the irony of a security company shipping this on its own site
+made it worth checking immediately rather than filing as a backlog item.
+
+**What**: `src/app/blog/[slug]/page.tsx` rendered `marked.parse(post.body)`
+via `dangerouslySetInnerHTML` on a fully public, unauthenticated page, with
+no sanitization at all. `marked` does not sanitize its output. `post.body`
+is markdown built by `src/lib/newsletter.ts` from **real external text**
+Hebrides Cyber doesn't control: NVD CVE descriptions, CISA KEV entries, and
+RSS feed titles/summaries — none of it HTML-escaped before being
+interpolated into the markdown. A CVE description routinely contains a
+literal `<script>`/`onerror` snippet as part of *describing* the
+vulnerability it's about (e.g. "XSS via `<script>...</script>` in the
+search field") — that snippet would have survived verbatim into the
+rendered page.
+**Why**: stored XSS on a public page, sourced from content Hebrides Cyber
+doesn't author or control — about as bad as a finding gets, and precisely
+the class of bug this product exists to catch for customers.
+**Fix** (defense in depth, two independent layers):
+- Generation time: `buildKevSection`/`buildNvdSection`/`buildNewsSection`
+  (`src/lib/newsletter.ts`) now HTML-escape every externally-sourced field
+  before interpolating it into markdown, reusing the existing `escapeHtml`
+  from `src/lib/email.ts`.
+- Render time: `src/app/blog/[slug]/page.tsx` now runs `marked.parse()`'s
+  output through `isomorphic-dompurify` before `dangerouslySetInnerHTML` —
+  this also covers admin-authored posts and the AI-narrative generation
+  path, neither of which the render step should have to trust just because
+  the generation-time fix above covers the deterministic path.
+- 6 new regression tests (`src/lib/newsletter.xss.test.ts`) assert a
+  `<script>`/`<img onerror>` payload embedded in each of the three
+  external-text fields is neutralised. `npx tsc --noEmit`, lint, full
+  `vitest run`, `npm audit --audit-level=moderate` (0 vulnerabilities for
+  the two new dependencies), and `next build` all verified clean. The
+  sanitizer itself was also verified directly against a raw `<script>`
+  payload run through the exact `marked` → `DOMPurify` pipeline.
+**Depends on**: none.
+**Category**: code (security fix, already shipped). **Source**: direct
+request to audit for SQL injection/XSS/command-injection-class issues
+given this is a security company's own product, 2026-09-05.

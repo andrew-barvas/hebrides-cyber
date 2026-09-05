@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marked } from "marked";
+import DOMPurify from "isomorphic-dompurify";
 import { supabase } from "@/lib/supabaseClient";
 
 export const revalidate = 3600;
@@ -92,7 +93,17 @@ export default async function BlogPostPage({ params }: Props) {
 
   if (!post) notFound();
 
-  const html = marked.parse(post.body, { async: false }) as string;
+  // post.body's markdown embeds real external text (NVD CVE descriptions,
+  // RSS article titles, CISA KEV entries — src/lib/newsletter.ts) that
+  // Hebrides Cyber doesn't author or control. A CVE description routinely
+  // contains a literal <script>/onerror snippet as part of describing the
+  // vulnerability it's about — marked.parse() doesn't sanitize its output,
+  // so without this, that snippet would render verbatim on a public,
+  // unauthenticated page. Sanitizing here (not just escaping at generation
+  // time — see newsletter.ts's own escaping) also covers admin-authored
+  // posts and the AI-narrative path, neither of which this render step
+  // should have to trust.
+  const html = DOMPurify.sanitize(marked.parse(post.body, { async: false }) as string);
   const mins = readingTime(post.body);
 
   return (
