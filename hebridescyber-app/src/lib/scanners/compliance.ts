@@ -133,6 +133,12 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "dependency-manifest.additional-vulnerable": [CE_PATCHING, OWASP_A06, CIS_7],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7],
+  // Same family as dependency-manifest.*/docker-base-image.outdated-base —
+  // a real, installed-package CVE inside the base image.
+  "trivy-image.vulnerable-package": [CE_PATCHING, OWASP_A06, CIS_7],
+  // Same family as docker-base-image.unpinned-tag — a build/infra
+  // configuration weakness, not a vulnerable component.
+  "trivy-config.misconfiguration": [CE_SECURE_CONFIG, OWASP_A05],
 
   // --- Authenticated scanning (Sprint 3) ---
   "auth-check.missing-headers": [CE_SECURE_CONFIG, OWASP_A05, CIS_4],

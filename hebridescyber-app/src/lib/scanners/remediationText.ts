@@ -1413,3 +1413,59 @@ FROM ${repoPath}:<current-supported-tag>
    digest too (see the unpinned-tag remediation) so the next upgrade is a
    deliberate, reviewed change rather than a silent drift.`;
 }
+
+/**
+ * Function, not a constant, same reasoning as dockerBaseImageOutdatedRemediation:
+ * names the actual package, versions, and image Trivy scanned. Deliberately
+ * not folded into dependencyVulnerableRemediation's ecosystem-command shape
+ * (npm/pip/composer/go/maven) — this is an OS package (apt/apk/yum) inside
+ * someone else's base image, not a project dependency you can bump in your
+ * own manifest. Unlike OSV.dev's dependency lookups, Trivy's own
+ * `FixedVersion` field is a specific, directly-scanned fact when present, so
+ * it's quoted directly rather than hedged.
+ */
+export function trivyImagePackageRemediation(
+  pkgName: string,
+  installedVersion: string,
+  fixedVersion: string | undefined,
+  imageRef: string
+): string {
+  const fixLine = fixedVersion
+    ? `A fixed version is available: **${pkgName} ${fixedVersion}**.`
+    : `No fixed version has been published for this package yet — track the CVE for an update rather than guessing at a workaround.`;
+
+  return `The base image **${imageRef}** ships **${pkgName} ${installedVersion}**, which has a known vulnerability. ${fixLine}
+
+You can't \`apt upgrade\`/\`apk upgrade\` this package directly in your own
+Dockerfile and expect it to stick — the base image's own maintainers publish
+the fix in a later build of the same tag family, so:
+
+1. Check whether a newer build of **${imageRef.split(":")[0] ?? imageRef}** already bundles the fix (rebuild with \`--no-cache\` — image tags are mutable, so the same tag today may already differ from what was scanned) and re-scan.
+2. If the fix isn't in the base image yet, add a stopgap layer that upgrades just this package:
+
+\`\`\`dockerfile
+FROM ${imageRef}
+RUN apt-get update && apt-get install -y --only-upgrade ${pkgName} \\
+    && rm -rf /var/lib/apt/lists/*
+# (use apk upgrade ${pkgName}, or your distro's equivalent, on non-Debian bases)
+\`\`\`
+
+3. Re-scan to confirm the finding clears once the fix is in place. Remove the
+   stopgap layer once a base image build that already includes the fix is
+   available, so you're not carrying a manual patch indefinitely.`;
+}
+
+/**
+ * Trivy's own `Resolution` field is already real, sourced remediation text —
+ * this wraps it (per docs/SCANNER-CONVENTIONS.md's "remediation prose lives
+ * in remediationText.ts, not inline at the push site") rather than
+ * duplicating it, and falls back to a generic pointer for the older rego
+ * checks that don't set Resolution.
+ */
+export function trivyConfigMisconfigRemediation(resolution: string | undefined, primaryUrl: string | undefined): string {
+  const link = primaryUrl ? `\n\nSee ${primaryUrl} for the full rule rationale and background.` : "";
+  if (resolution && resolution.trim()) {
+    return `${resolution.trim()}${link}`;
+  }
+  return `Review this resource against Trivy's rule for this finding — no specific remediation text was published for it.${link}`;
+}
