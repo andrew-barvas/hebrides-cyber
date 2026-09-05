@@ -966,3 +966,66 @@ the class of bug this product exists to catch for customers.
 **Category**: code (security fix, already shipped). **Source**: direct
 request to audit for SQL injection/XSS/command-injection-class issues
 given this is a security company's own product, 2026-09-05.
+
+## E-32 — Cloud posture scanning (AWS/Azure/GCP configuration review)
+
+**What**: nothing today checks a customer's *cloud account* configuration —
+IAM policies, S3/Blob storage bucket permissions, security group/firewall
+rules, public-facing resource exposure. This product is a website/app DAST
+scanner (`runAllChecks()` + the extended tool suite in `scanExecution.ts`,
+all black-box HTTP-based); a CSPM (Cloud Security Posture Management)
+capability is a structurally different thing — it needs the customer to
+grant read access to their actual cloud account (a cross-account IAM role
+for AWS, a service principal for Azure, a service account for GCP), not
+just a URL to scan.
+**Why**: a real, common gap flagged against competitor DAST-plus-cloud
+offerings — customers increasingly expect "is our app secure" and "is our
+cloud account secure" to be one relationship, not two vendors. Genuinely
+new revenue surface, not a check added to an existing scan.
+**Impact/effort**: large — this is closer to a new product line than a
+scanner addition. Needs, before any scanning code: (1) a decision on which
+provider(s) to support first, (2) a secure credential-onboarding flow per
+provider (cross-account role ARNs, not raw access keys — the trust/blast-
+radius design here is the hard part, not the API calls), (3) a new finding
+taxonomy and `checkId` namespace, (4) pricing/plan-gating decisions (this is
+plausibly an Agency-tier-only or add-on capability, not something to fold
+into existing prices unchanged). Don't scope this as "a few days" — it
+needs real design time before code, the same way E-09's Terms of Service
+needed legal review before a page could ship.
+**Depends on**: a product decision on provider priority and credential
+model; likely wants its own follow-up design pass rather than being
+estimated further here.
+**Category**: money/time (the credential-onboarding trust model and
+plan/pricing decisions need real design work before "just write code"
+applies) + code (the scanning logic itself, once that's settled).
+**Source**: harvested from a competitive "future roadmap" comparison,
+2026-09-05 — flagged as genuinely new rather than already-covered, unlike
+most of that same document's other claims.
+
+## E-33 — API-spec-aware security testing (OpenAPI/Swagger-driven)
+
+**What**: today's API coverage is incidental — ZAP's active scan exercises
+whatever endpoints it discovers by crawling, and `sqlmap.ts`/`xsser.ts`/
+`commix.ts` test whatever forms/parameters they find the same way. Nothing
+reads a customer-supplied OpenAPI/Swagger spec to systematically test every
+declared endpoint, parameter, and schema (wrong types, missing auth,
+excessive data exposure per response schema, BOLA/IDOR patterns across
+declared resource IDs).
+**Why**: crawling finds what's linked; a spec-driven approach finds what's
+*declared*, including endpoints with no UI path to reach them (the common
+case for an API-first or headend-separated product) — a real gap for any
+customer whose product is mostly an API.
+**Impact/effort**: medium-large — bounded and code-shaped (unlike E-32),
+but a genuinely new module: an OpenAPI/Swagger parser, a request-generation
+layer per declared parameter/schema (type-appropriate fuzz values, not
+generic payloads), and a new `checkId` namespace
+(`openapi.<check-name>:<operationId>` or similar) integrated into
+`runExtendedTools()`'s existing pattern. Needs a customer-supplied spec URL
+or upload — a new account-settings field, similar in shape to
+`account/connect-repo.ts`'s existing "customer points us at a resource"
+pattern.
+**Depends on**: none technically, but worth sequencing after any of the
+already-open Sprint 3 items (`docs/SPRINT-PLAN.md`) — this is new scope, not
+a fix to something already sold.
+**Category**: code. **Source**: harvested from the same competitive
+"future roadmap" comparison as E-32, 2026-09-05.
