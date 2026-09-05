@@ -2,11 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, verifyDomainMock, logAuditEventMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, verifyDomainMock, logAuditEventMock, checkRateLimitMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   verifyDomainMock: vi.fn(),
   logAuditEventMock: vi.fn(),
+  checkRateLimitMock: vi.fn(),
 }));
+
+// E-12 (docs/ENHANCEMENTS.md): this route is now rate-limited. Mocked so
+// this suite's many test cases — all keyed to the same owner — don't
+// accumulate against one shared in-process bucket and start failing each
+// other with 429s.
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
 
 // Call-order-consumed queue per table, same pattern as run-scan.test.ts /
 // stripe/webhook.test.ts.
@@ -62,6 +69,7 @@ describe("POST /api/verify-ownership", () => {
     inserted.length = 0;
     updated.length = 0;
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     verifyDomainMock.mockReset();
     logAuditEventMock.mockReset().mockResolvedValue(undefined);
   });
@@ -77,6 +85,15 @@ describe("POST /api/verify-ownership", () => {
     const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
     await handler(req, res);
     expect(res._getStatusCode()).toBe(401);
+  });
+
+  it("returns 429 when the caller is rate-limited, before any DNS/HTTP check", async () => {
+    checkRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 17 });
+    const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(429);
+    expect(res._getHeaders()["retry-after"]).toBe("17");
+    expect(verifyDomainMock).not.toHaveBeenCalled();
   });
 
   it("returns 403 for an API-key caller (session-only route)", async () => {

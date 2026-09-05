@@ -5,6 +5,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateAiRemediation } from "@/lib/aiRemediation";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { Finding, ScanResults } from "@/lib/scanners";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -12,6 +13,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+
+  // E-12 (docs/ENHANCEMENTS.md): uncapped Azure OpenAI token spend per call,
+  // one of only 2 of ~30 routes with any rate limit before this.
+  const limit = await checkRateLimit(caller.ownerId, "ai-fix");
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
+  }
 
   const scanId = req.query.id as string;
   const { checkId } = req.body as { checkId?: string };

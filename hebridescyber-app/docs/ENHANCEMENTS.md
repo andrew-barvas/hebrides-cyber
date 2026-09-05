@@ -386,6 +386,21 @@ time.
 
 ## E-12 — Rate-limit the expensive per-click routes
 
+**Status: fixed (2026-09-05).** All 5 named routes now call `checkRateLimit()`
+with their own namespace (`ai-fix`, `generate-report`, `generate-fix-pr`,
+`create-ticket`, `verify-ownership`), same shared 10-requests/hour-per-caller
+limiter `run-scan.ts` already used — matches the "cap, not a tier
+restriction" framing exactly. `ai-fix.ts`/`generate-report.ts`/
+`generate-fix-pr.ts` had no test file at all before this; added focused
+coverage of the auth/rate-limit gates for each (not full happy-path
+coverage of Azure OpenAI/Playwright/GitHub API logic, which is out of this
+fix's scope). `create-ticket.test.ts`/`verify-ownership.test.ts` already
+existed with many test cases sharing one caller id — mocked
+`checkRateLimit` in both so the real in-memory limiter's shared,
+module-level bucket doesn't accumulate across a whole test file's cases and
+start failing unrelated tests with 429s. `npx tsc --noEmit`, lint, full
+`vitest run`, and `next build` all verified clean.
+
 **What**: `checkRateLimit()` is called from exactly 2 of ~30 routes
 (`run-scan.ts`, `v1/scans.ts`). Not covered, and each expensive per-call:
 `scans/[id]/ai-fix.ts` (Azure OpenAI tokens, uncapped), `generate-report.ts`

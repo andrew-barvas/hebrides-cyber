@@ -16,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import { hostnameFromUrl, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -24,6 +25,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
   if (caller.via !== "session") {
     return res.status(403).json({ error: "Domain verification can only be managed from a logged-in session, not with an API key." });
+  }
+
+  // E-12 (docs/ENHANCEMENTS.md): outbound DNS+HTTP per call, uncapped before
+  // this.
+  const limit = await checkRateLimit(caller.ownerId, "verify-ownership");
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
   }
 
   const { action, targetUrl } = req.body as { action?: "start" | "check"; targetUrl?: string };

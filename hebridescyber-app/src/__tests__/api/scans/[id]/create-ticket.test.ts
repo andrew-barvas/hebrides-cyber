@@ -11,6 +11,7 @@ const {
   createIssueMock,
   getIssueMock,
   addCommentMock,
+  checkRateLimitMock,
 } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   buildProviderClientMock: vi.fn(),
@@ -20,7 +21,14 @@ const {
   createIssueMock: vi.fn(),
   getIssueMock: vi.fn(),
   addCommentMock: vi.fn(),
+  checkRateLimitMock: vi.fn(),
 }));
+
+// E-12 (docs/ENHANCEMENTS.md): this route is now rate-limited. Mocked (not
+// exercised against the real in-memory limiter) so this suite's own many
+// test cases — all keyed to the same owner — don't accumulate against one
+// shared in-process bucket and start failing each other with 429s.
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
 
 type QueueMap = Record<string, unknown[]>;
 let queues: QueueMap = {};
@@ -76,6 +84,7 @@ function mockReqRes(body: Record<string, unknown> = { checkId: "headers.missing-
 describe("POST /api/scans/[id]/create-ticket", () => {
   beforeEach(() => {
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     findTicketLinkMock.mockReset().mockResolvedValue(null);
     recordTicketLinkMock.mockReset().mockResolvedValue(undefined);
     touchTicketLinkMock.mockReset().mockResolvedValue(undefined);
@@ -103,6 +112,15 @@ describe("POST /api/scans/[id]/create-ticket", () => {
     const { req, res } = mockReqRes();
     await handler(req, res);
     expect(res._getStatusCode()).toBe(401);
+  });
+
+  it("returns 429 when the caller is rate-limited, before touching the ticket tracker", async () => {
+    checkRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 });
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(429);
+    expect(res._getHeaders()["retry-after"]).toBe("42");
+    expect(buildProviderClientMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 without a checkId", async () => {
