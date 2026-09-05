@@ -128,7 +128,7 @@ Beta/Live work forward.
 |---|---|---|---|
 | LIVE-1 | 100% of public unauthenticated API routes are rate-limited | A test enumerating `src/pages/api/**` and asserting every public handler is wrapped, so it can't regress | Blocked on E-05, E-12 |
 | LIVE-2 | p95 scan completion time is under a stated threshold over a rolling 7 days | Requires BETA-1/BETA-2 to be measurable at all — explicit dependency | Not yet defined |
-| LIVE-3 | Admin dashboard figures (customer count, MRR, scan totals) are exact, not sampled/capped | `admin/overview.ts`'s unbounded-but-1000-row-ceilinged queries and `admin/metrics.ts`'s 500-scan sample both fixed | Blocked on E-17 |
+| LIVE-3 | Admin dashboard figures (customer count, MRR, scan totals) are exact, not sampled/capped | `admin/overview.ts`'s unbounded-but-1000-row-ceilinged queries and `admin/metrics.ts`'s 500-scan sample both fixed | **Done** (E-17, 2026-09-05) — both now use exact-count head queries; not yet manually verified against a real staging account with 500+ scans |
 | LIVE-4 | A documented, tested Supabase restore procedure exists | Actually perform a restore against a scratch project and confirm data integrity, not just read the docs | Blocked on E-13 |
 | LIVE-5 | Session auth no longer depends on client-readable localStorage for protected-route access | `src/proxy.ts` performs real server-side redirect for an unauthenticated request to `/dashboard` or `/admin` | Blocked on E-21 — large, deliberately scheduled rather than opportunistic |
 

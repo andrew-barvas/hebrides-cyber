@@ -16,13 +16,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!(await requireAdmin(req))) return res.status(403).json({ error: "Forbidden" });
 
   if (req.method === "GET") {
-    const { data, error } = await supabaseAdmin
+    // E-17 (docs/ENHANCEMENTS.md): used to be a flat .limit(100) with no way
+    // to see anything past it. Paginated the same way admin/audit.ts already
+    // does correctly.
+    const page = Math.max(1, parseInt(typeof req.query.page === "string" ? req.query.page : "1", 10));
+    const pageSize = 25;
+    const offset = (page - 1) * pageSize;
+
+    const { data, error, count } = await supabaseAdmin
       .from("contact_enquiries")
-      .select("id, name, email, url, message, read, created_at")
+      .select("id, name, email, url, message, read, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(offset, offset + pageSize - 1);
     if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json(data);
+    return res.status(200).json({ enquiries: data ?? [], total: count ?? 0, page, pageSize });
   }
 
   if (req.method === "PATCH") {

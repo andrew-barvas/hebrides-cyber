@@ -72,14 +72,23 @@ describe("GET /api/admin/overview", () => {
       users: [
         { data: { is_admin: true } }, // the caller's own profile check
         {
+          // count is what admin/customers.ts's identical pattern returns
+          // alongside data when { count: "exact" } is passed to select().
           data: [
             { id: "u1", email: "a@example.com", company_name: "Acme", is_admin: false, created_at: "2026-01-01" },
             { id: "u2", email: "b@example.com", company_name: null, is_admin: false, created_at: "2026-01-02" },
           ],
+          count: 2,
         },
       ],
-      subscriptions: [{ data: [{ owner: "u1", plan: "agency", status: "active" }, { owner: "u2", plan: "basic", status: "past_due" }] }],
-      scans: [{ data: [{ id: "s1", owner: "u1" }, { id: "s2", owner: "u1" }] }],
+      subscriptions: [
+        { data: [{ owner: "u1", plan: "agency", status: "active" }, { owner: "u2", plan: "basic", status: "past_due" }] },
+        { count: 1 }, // the active-subscriptions head count
+      ],
+      scans: [
+        { data: [{ owner: "u1" }, { owner: "u1" }] }, // this page's per-customer scan counts
+        { count: 2 }, // the system-wide total-scans head count
+      ],
     });
     const { req, res } = mockReqRes();
 
@@ -88,6 +97,8 @@ describe("GET /api/admin/overview", () => {
     expect(res._getStatusCode()).toBe(200);
     const body = res._getJSONData() as {
       customers: Array<Record<string, unknown>>;
+      page: number;
+      pageSize: number;
       totals: { customers: number; activeSubscriptions: number; totalScans: number };
     };
     expect(body.customers).toEqual([
@@ -95,6 +106,25 @@ describe("GET /api/admin/overview", () => {
       // past_due (not active) reports plan "none" — subscriptionStatus still reflects the real status.
       { id: "u2", email: "b@example.com", companyName: null, isAdmin: false, plan: "none", subscriptionStatus: "past_due", scanCount: 0, createdAt: "2026-01-02" },
     ]);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(25);
     expect(body.totals).toEqual({ customers: 2, activeSubscriptions: 1, totalScans: 2 });
+  });
+
+  it("paginates via the page query param", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: "admin-1" } }, error: null });
+    mock.setQueues({
+      users: [{ data: { is_admin: true } }, { data: [], count: 30 }],
+      subscriptions: [{ data: [] }, { count: 0 }],
+      scans: [{ data: [] }, { count: 0 }],
+    });
+    const { req, res } = mockReqRes({ query: { page: "2" } });
+
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    const body = res._getJSONData() as { page: number; totals: { customers: number } };
+    expect(body.page).toBe(2);
+    expect(body.totals.customers).toBe(30);
   });
 });

@@ -62,17 +62,39 @@ describe("/api/admin/contacts", () => {
       getUserMock.mockResolvedValue({ data: { user: { id: "admin-1" } } });
     });
 
-    it("GET returns the enquiry list", async () => {
+    it("GET returns the paginated enquiry list", async () => {
       mock.setQueues({
         users: [{ data: { is_admin: true } }],
-        contact_enquiries: [{ data: [{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }], error: null }],
+        contact_enquiries: [
+          { data: [{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }], count: 1, error: null },
+        ],
       });
       const { req, res } = mockReqRes();
 
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData()).toEqual([{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }]);
+      expect(res._getJSONData()).toEqual({
+        enquiries: [{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      });
+    });
+
+    it("GET honours the page query param", async () => {
+      mock.setQueues({
+        users: [{ data: { is_admin: true } }],
+        contact_enquiries: [{ data: [], count: 30, error: null }],
+      });
+      const { req, res } = mockReqRes({ query: { page: "2" } });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      const body = res._getJSONData() as { page: number; total: number };
+      expect(body.page).toBe(2);
+      expect(body.total).toBe(30);
     });
 
     it("GET returns 500 on a query error", async () => {
