@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { data, error, count } = await supabaseAdmin
       .from("contact_enquiries")
-      .select("id, name, email, url, message, read, created_at", { count: "exact" })
+      .select("id, name, email, url, message, company, team_size, budget_range, read, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
     if (error) return res.status(500).json({ error: error.message });

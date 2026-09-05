@@ -62,11 +62,27 @@ describe("/api/admin/contacts", () => {
       getUserMock.mockResolvedValue({ data: { user: { id: "admin-1" } } });
     });
 
-    it("GET returns the paginated enquiry list", async () => {
+    it("GET returns the paginated enquiry list, including the lead-qualification fields when present", async () => {
       mock.setQueues({
         users: [{ data: { is_admin: true } }],
         contact_enquiries: [
-          { data: [{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }], count: 1, error: null },
+          {
+            data: [
+              {
+                id: "c1",
+                name: "Jane",
+                email: "jane@example.com",
+                message: "hi",
+                company: "Acme Ltd",
+                team_size: "11_50",
+                budget_range: "300_800",
+                read: false,
+              },
+              { id: "c2", name: "Jo", email: "jo@example.com", message: "hey", company: null, team_size: null, budget_range: null, read: true },
+            ],
+            count: 2,
+            error: null,
+          },
         ],
       });
       const { req, res } = mockReqRes();
@@ -75,8 +91,11 @@ describe("/api/admin/contacts", () => {
 
       expect(res._getStatusCode()).toBe(200);
       expect(res._getJSONData()).toEqual({
-        enquiries: [{ id: "c1", name: "Jane", email: "jane@example.com", message: "hi", read: false }],
-        total: 1,
+        enquiries: [
+          { id: "c1", name: "Jane", email: "jane@example.com", message: "hi", company: "Acme Ltd", team_size: "11_50", budget_range: "300_800", read: false },
+          { id: "c2", name: "Jo", email: "jo@example.com", message: "hey", company: null, team_size: null, budget_range: null, read: true },
+        ],
+        total: 2,
         page: 1,
         pageSize: 25,
       });

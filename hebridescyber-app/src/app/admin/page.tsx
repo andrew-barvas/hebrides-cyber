@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { useSessionToken } from "@/lib/useSessionToken";
+import { teamSizeLabel, budgetRangeLabel } from "@/lib/contactOptions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,9 @@ type ContactEnquiry = {
   email: string;
   url: string | null;
   message: string;
+  company: string | null;
+  team_size: string | null;
+  budget_range: string | null;
   read: boolean;
   created_at: string;
 };
@@ -1104,11 +1108,24 @@ function ContactsTab({ token }: { token: string }) {
                 {e.url && (
                   <p className="mt-0.5 font-mono text-xs text-neon/60 truncate max-w-[160px]">{e.url}</p>
                 )}
+                {/* Surfaced here (not just in the expanded view) so a real
+                    budget answer is visible while just scanning the list —
+                    otherwise collecting it is pointless. */}
+                {e.budget_range && e.budget_range !== "unsure" && (
+                  <p className="mt-0.5 text-xs font-semibold text-neon">{budgetRangeLabel(e.budget_range) ?? e.budget_range}</p>
+                )}
               </div>
             </button>
 
             {expanded === e.id && (
               <div className="border-t border-cyberborder px-5 pb-5 pt-4 space-y-4">
+                {(e.company || e.team_size || e.budget_range) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-cybertext/60">
+                    {e.company && <span><strong className="text-cybertext/80">Company:</strong> {e.company}</span>}
+                    {e.team_size && <span><strong className="text-cybertext/80">Team size:</strong> {teamSizeLabel(e.team_size) ?? e.team_size}</span>}
+                    {e.budget_range && <span><strong className="text-cybertext/80">Budget:</strong> {budgetRangeLabel(e.budget_range) ?? e.budget_range}</span>}
+                  </div>
+                )}
                 <div className="rounded-lg bg-cyberbg border border-cyberborder p-4">
                   <p className="text-sm text-cybertext/80 leading-relaxed whitespace-pre-wrap">{e.message}</p>
                 </div>
