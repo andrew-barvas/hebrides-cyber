@@ -19,7 +19,10 @@
     "queue:enqueue-scheduled-scans": "tsx src/scripts/enqueue-scheduled-scans.ts",
     "queue:run-worker": "tsx src/scripts/run-queued-scan-jobs.ts",
     "newsletter:daily": "tsx src/scripts/generate-daily-blog.ts",
-    "newsletter:weekly": "tsx src/scripts/generate-weekly-newsletter.ts"
+    "newsletter:weekly": "tsx src/scripts/generate-weekly-newsletter.ts",
+    "retention:cleanup": "tsx src/scripts/cleanup-retention.ts",
+    "account:erase": "tsx src/scripts/erase-user-data.ts",
+    "digest:monthly": "tsx src/scripts/send-monthly-digest.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",

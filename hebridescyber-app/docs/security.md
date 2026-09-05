@@ -87,9 +87,8 @@ interactive request:
   Azure OpenAI key, `GITHUB_PAT`, storage connection strings) as **Static
   Web App application settings** — `az staticwebapp appsettings set` or the
   Portal. Never paste raw values into `.env.local`, Terraform files, or
-  GitHub Actions YAML (the `DIGEST_SERVICE_TOKEN`/`SUPABASE_*` GitHub
-  Secrets used directly inside CI jobs — see `README.md` — are the
-  intentional exception).
+  GitHub Actions YAML (the `SUPABASE_*` GitHub Secrets used directly inside
+  CI jobs — see `README.md` — are the intentional exception).
 - `.env.example` in this repo lists required variable names only — no
   real values are ever committed.
 - Rotate the Supabase service role key and Stripe keys periodically and
@@ -97,36 +96,30 @@ interactive request:
 
 ## Data Retention
 
-**Neither of the following is implemented in code.** This is a live gap,
-not a future nice-to-have — tracked as `docs/ENHANCEMENTS.md` E-10 and
-`docs/ROADMAP.md` BETA-3/BETA-B2. No scheduled cleanup job, lifecycle rule,
-or deletion API exists anywhere in this repo; nothing has ever actually
-been deleted by either promise below.
+**Status: implemented (2026-09-05, `docs/ENHANCEMENTS.md` E-10).** The
+account owner confirmed automating against the already-published `/privacy`
+figures rather than changing policy first:
 
-**This section previously stated a 90-day figure for scan results that
-contradicted `/privacy`'s published 12-month figure** — an internal
-inconsistency on top of the missing implementation. `/privacy` is the
-customer-facing legal document and is the one that matters if the two ever
-disagree again; this section now just repeats it rather than maintaining a
-second, driftable copy of the same numbers:
+- Scan results (raw findings, `scan_results` rows): **12 months**, then
+  automatic purge — `src/scripts/cleanup-retention.ts`, run nightly by
+  `.github/workflows/data-retention-cleanup.yml` (git root).
+- PDF reports (Azure Blob Storage, `reports` container): **90 days**, then
+  deletion — same script, skipped (not failed) when
+  `AZURE_STORAGE_CONNECTION_STRING` is unset.
+- Contact enquiries: **12 months**, then deletion — same script.
+- Customer-initiated erasure (GDPR "right to erasure", `/privacy` §7's
+  30-day response commitment): `/account`'s "danger zone" section calls
+  `src/pages/api/account/request-deletion.ts`, which logs to `audit_logs`
+  and emails the account owner. The actual deletion is a separate,
+  human-run step — `src/scripts/erase-user-data.ts` (dry-run by default,
+  `--confirm` to execute) — deleting a whole account is irreversible and
+  deliberately not self-service.
 
-- Scan results (raw findings, `scan_results` rows): promised **12 months**
-  on `/privacy`, then automatic purge.
-- PDF reports (Azure Blob Storage): promised **90 days**, then deletion.
-- Contact enquiries: promised **12 months**, then deletion.
-
-**Before implementing the cleanup job**, confirm these figures are still
-the intended policy (they were never verified against any actual legal or
-business requirement, just chosen when `/privacy` was written) — don't
-build automation around them without that check. Once confirmed:
-
-- A scheduled cleanup job (matching the `daily-blog.yml`/`weekly-newsletter.yml`
-  pattern — a script run directly by GitHub Actions against Supabase, no
-  HTTP hop) that deletes `scan_results` rows and Blob Storage PDFs past
-  their respective windows.
-- A deletion API / dashboard action so a customer can request *early*
-  deletion (the GDPR "right to erasure" case `/privacy` §7 already commits
-  to a 30-day response on, with no code path behind that commitment yet).
+**Deliberately still not automated**: account/subscription deletion on
+subscription cancellation (no reliable "account closure" event exists to
+anchor a timer to — see `erase-user-data.ts`'s header) and server-log
+retention (an Azure infra setting, not application data — configure
+separately in Azure Log Analytics).
 
 ## Rate Limiting & Concurrency
 

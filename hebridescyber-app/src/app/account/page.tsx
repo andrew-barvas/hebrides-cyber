@@ -11,6 +11,7 @@ import TicketIntegration from "@/components/TicketIntegration";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
 import BrandingSection from "@/components/BrandingSection";
+import AccountDeletion from "@/components/AccountDeletion";
 
 type Plan = "none" | "basic" | "pro" | "agency";
 
@@ -184,6 +185,9 @@ export default function AccountPage() {
 
         {/* Security */}
         <TwoFactor />
+
+        {/* Danger zone */}
+        {token && <AccountDeletion token={token} />}
       </div>
     </div>
   );

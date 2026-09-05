@@ -1,0 +1,48 @@
+name: Data Retention Cleanup
+
+# Enforces the retention windows already published on /privacy (scan
+# results: 12 months, report PDFs: 90 days, contact enquiries: 12 months) —
+# see hebridescyber-app/src/scripts/cleanup-retention.ts and
+# docs/ENHANCEMENTS.md E-10. Before this workflow existed, neither promise
+# was implemented in code: nothing had ever actually been deleted.
+#
+# Runs the script directly against Supabase, same pattern as
+# daily-blog.yml/weekly-newsletter.yml (a GitHub Actions runner, not an
+# Azure SWA-hosted API route) — see daily-blog.yml's header for why.
+#
+# Does not touch account/subscription data or Stripe — see
+# hebridescyber-app/src/scripts/erase-user-data.ts for the separate,
+# human-run account-erasure path.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   AZURE_STORAGE_CONNECTION_STRING           - optional, PDF report cleanup
+#                                                is skipped (logged, not
+#                                                failed) if unset
+
+on:
+  schedule:
+    # Every day at 04:00 UTC.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Run retention cleanup
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: npm run retention:cleanup
