@@ -16,6 +16,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const storageConnectionString = process.env.AZURE_STORAGE_CONNECTION_STRING ?? "";
 
@@ -24,6 +25,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+
+  // E-12 (docs/ENHANCEMENTS.md): launches a headless Chromium per call,
+  // uncapped before this.
+  const limit = await checkRateLimit(caller.ownerId, "generate-report");
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
+  }
 
   const scanId = req.query.scan_id as string | undefined;
   if (!scanId) return res.status(400).json({ error: "scan_id query param is required" });
