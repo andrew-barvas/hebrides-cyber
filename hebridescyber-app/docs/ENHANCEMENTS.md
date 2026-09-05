@@ -287,6 +287,34 @@ template — this is why it's money/time, not a code task.
 
 ## E-10 — Data retention: implement the cleanup job, and reconcile the two conflicting promises
 
+**Status: fixed (2026-09-05).** Docs were already reconciled (`security.md`
+defers to `/privacy`'s figures, see `docs/decisions/ENGINEERING-LOG-2026-08.md`)
+before this pass — what remained was the missing implementation. Confirmed
+with the account owner: automate against the already-published figures
+rather than changing policy first. Shipped:
+- `src/scripts/cleanup-retention.ts`, run nightly by
+  `.github/workflows/data-retention-cleanup.yml` (git root) — deletes
+  `scan_results` rows and `contact_enquiries` rows older than 12 months, and
+  report PDFs in Blob Storage older than 90 days. Matches the
+  `daily-blog.yml`/`weekly-newsletter.yml` direct-script pattern.
+- `src/pages/api/account/request-deletion.ts` +
+  `src/components/AccountDeletion.tsx` (wired into `/account`'s new "danger
+  zone" section) — customer-facing GDPR erasure request. Only logs to
+  `audit_logs` and emails the account owner; deletes nothing itself.
+- `src/scripts/erase-user-data.ts` — the actual erasure, run manually by a
+  human. Dry-run by default (`--confirm` to execute); deletes that user's
+  report PDFs then their `auth.users` row, letting the existing `on delete
+  cascade` FKs remove everything else. Does not touch Stripe — an active
+  subscription is flagged as a warning, not cancelled automatically.
+- Deliberately NOT automated: account/subscription deletion (no reliable
+  "account closure" event exists in the schema to anchor a timer to — an
+  automatic full-account delete on subscription cancellation risks erasing
+  a customer who's just pausing between plans) and server-log retention
+  (an Azure infra setting, not application data — configure separately in
+  Azure Log Analytics if not already set).
+- `npx tsc --noEmit`, lint, full `vitest run`, and `next build` all
+  verified clean.
+
 **What**: `docs/security.md` states 90-day retention; `src/app/privacy/page.tsx`
 tells customers 12 months for scan results and 90 days for PDFs
 specifically — the two documents currently contradict each other, and
@@ -307,6 +335,18 @@ an HTTP route), then a minimal deletion API/admin action.
 input given E-09). **Source**: audit.
 
 ## E-11 — Fix `send-monthly-digest.ts`'s N+1 query pattern before it times out
+
+**Status: fixed (2026-09-05).** Applied the same fix a third time: moved the
+logic into `src/lib/monthlyDigest.ts` (`sendMonthlyDigest()`, now unit
+tested — 7 cases covering skip conditions, the score-delta/new-fixed
+calculation, and per-owner error isolation), running via
+`src/scripts/send-monthly-digest.ts` directly against Supabase, no HTTP
+hop. `src/pages/api/send-monthly-digest.ts` and `DIGEST_SERVICE_TOKEN` are
+deleted, not kept as a fallback — same precedent as the daily blog/weekly
+newsletter conversion. `.github/workflows/monthly-digest.yml` updated to
+run the script with `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` instead of
+curling the old route. `npx tsc --noEmit`, lint, full `vitest run`, and
+`next build` all verified clean.
 
 **What**: a serial `for` loop over every active subscriber, each iteration
 issuing 3+ Supabase queries plus an outbound email, all inside a single

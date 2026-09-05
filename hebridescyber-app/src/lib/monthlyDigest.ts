@@ -1,21 +1,21 @@
-// POST /api/send-monthly-digest — sends every active subscriber a monthly
-// digest email: one email per subscriber (not per scan), summarising the
-// most recent completed scan for each of their monitored targets.
+// Sends every active subscriber a monthly Security Score digest email — one
+// email per subscriber (not per scan), summarising the most recent
+// completed scan for each of their monitored targets.
 //
-// Triggered by .github/workflows/monthly-digest.yml on a cron, mirroring
-// generate-newsletter.ts's X-Service-Token auth pattern exactly — including
-// the "!serviceToken" guard so an unset DIGEST_SERVICE_TOKEN can never
-// accidentally match an unset header. This writes no public content (unlike
-// generate-newsletter), but it does send real customer email, so it stays
-// behind the same service-token gate rather than being callable by anyone
-// who finds the URL.
-import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/lib/apiAuth";
-import { sendEmail, escapeHtml } from "@/lib/email";
-import { diffFindings } from "@/lib/findingsDiff";
-import type { Finding } from "@/lib/scanners";
-
-const serviceToken = process.env.DIGEST_SERVICE_TOKEN ?? "";
+// Extracted from the former src/pages/api/send-monthly-digest.ts (see
+// docs/ENHANCEMENTS.md E-11): a serial loop over every active subscriber,
+// each iteration issuing 3+ Supabase queries plus an outbound email, all
+// inside a single HTTP request, is the exact execution-ceiling failure mode
+// ("Backend call failure") already hit and fixed twice for daily-blog.yml
+// and weekly-newsletter.yml — see src/scripts/generate-daily-blog.ts's
+// header. This is that same fix applied a third time: the logic lives here
+// as a plain function, run directly against Supabase by
+// src/scripts/send-monthly-digest.ts with no HTTP hop, instead of behind an
+// API route.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { diffFindings } from "./findingsDiff";
+import type { Finding } from "./scanners";
+import { escapeHtml, sendEmail } from "./email";
 
 type ScanResultRow = { results: { findings?: Finding[] }; score: number | null; created_at: string };
 type ScanRow = { id: string; target_url: string; created_at: string; scan_results: ScanResultRow[] };
@@ -29,6 +29,8 @@ type TargetSummary = {
   scanId: string;
 };
 
+export type MonthlyDigestResult = { ok: true; sent: number; skipped: number; errors: string[] };
+
 // How far back a "last month" comparison scan must be from the latest one to
 // count as a real month-over-month delta, not just two scans a few days
 // apart. Approximates "roughly a month back" without requiring an exact
@@ -38,19 +40,12 @@ const MIN_COMPARISON_GAP_MS = 20 * 24 * 60 * 60 * 1000;
 // gap to reliably find a candidate, without scanning full history.
 const LOOKBACK_MS = 45 * 24 * 60 * 60 * 1000;
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-  const provided = req.headers["x-service-token"];
-  if (!provided || !serviceToken || provided !== serviceToken) {
-    return res.status(401).json({ error: "Missing or invalid X-Service-Token" });
-  }
-
+export async function sendMonthlyDigest(supabaseAdmin: SupabaseClient): Promise<MonthlyDigestResult> {
   const { data: activeSubs, error: subsError } = await supabaseAdmin
     .from("subscriptions")
     .select("owner")
     .eq("status", "active");
-  if (subsError) return res.status(500).json({ error: subsError.message });
+  if (subsError) throw new Error(subsError.message);
 
   let sent = 0;
   let skipped = 0;
@@ -58,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   for (const sub of activeSubs ?? []) {
     try {
-      const outcome = await sendDigestForOwner(sub.owner as string);
+      const outcome = await sendDigestForOwner(supabaseAdmin, sub.owner as string);
       if (outcome === "sent") sent++;
       else skipped++;
     } catch (err) {
@@ -66,17 +61,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  return res.status(200).json({ ok: true, sent, skipped, errors });
+  return { ok: true, sent, skipped, errors };
 }
 
-async function sendDigestForOwner(ownerId: string): Promise<"sent" | "skipped"> {
+async function sendDigestForOwner(supabaseAdmin: SupabaseClient, ownerId: string): Promise<"sent" | "skipped"> {
   const { data: targets } = await supabaseAdmin.from("monitored_targets").select("target_url").eq("owner", ownerId);
   if (!targets || targets.length === 0) return "skipped";
 
   const { data: userRow } = await supabaseAdmin.from("users").select("email").eq("id", ownerId).maybeSingle();
   const toEmail = userRow?.email;
   if (!toEmail) {
-    console.error(`[send-monthly-digest] no email on file for owner ${ownerId}`);
+    console.error(`[monthlyDigest] no email on file for owner ${ownerId}`);
     return "skipped";
   }
 

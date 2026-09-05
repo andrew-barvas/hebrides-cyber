@@ -229,8 +229,7 @@ Set these under Settings > Secrets and variables > Actions on the repo:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `deploy.yml` — the whole app's deploy (site + every API route) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `deploy.yml` — build-time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `deploy.yml` — build-time |
-| `DIGEST_SERVICE_TOKEN` | `monthly-digest.yml` (`/api/send-monthly-digest`) — that route stays HTTP-gated (it sends real customer email); the daily blog and weekly newsletter don't use this, see below |
-| `SUPABASE_URL` | `scheduled-scans.yml`, `on-demand-scan.yml`, `daily-blog.yml`, `weekly-newsletter.yml` — all run scripts that query/write Supabase directly, no API route in between |
+| `SUPABASE_URL` | `scheduled-scans.yml`, `on-demand-scan.yml`, `daily-blog.yml`, `weekly-newsletter.yml`, `monthly-digest.yml`, `data-retention-cleanup.yml` — all run scripts that query/write Supabase directly, no API route in between |
 | `SUPABASE_SERVICE_ROLE_KEY` | same workflows, plus needed by any CI step that seeds/reads data |
 | `GH_PAT`, `GH_APP_ID`, `GH_APP_PRIVATE_KEY` | `scheduled-scans.yml`'s extended tool suite (Gitleaks/dependency-manifest/Docker-base-image checks). **Not** named `GITHUB_PAT`/`GITHUB_APP_*` — GitHub hard-rejects any Actions secret starting with `GITHUB_`, so the workflow remaps these to that env var name internally. `GH_APP_ID`/`GH_APP_PRIVATE_KEY` are optional (GitHub App path, preferred); `GH_PAT` is the fallback |
 | `WPSCAN_API_TOKEN`, `GOOGLE_SAFE_BROWSING_API_KEY`, `HIBP_API_KEY` | `scheduled-scans.yml` and `on-demand-scan.yml` — optional, each check degrades to `not_configured` when unset |
@@ -239,12 +238,15 @@ Also set a `NEXT_PUBLIC_SITE_URL` repo **variable** (Settings > Secrets and
 variables > Actions > Variables — not a secret) — baked into Slack/Teams
 alert links and the build.
 
-The daily blog and weekly newsletter run
-`src/scripts/generate-daily-blog.ts` / `generate-weekly-newsletter.ts`
-directly against Supabase — not API routes. They used to be, and a real
-production run hit Azure's Free-tier Functions execution ceiling
-(`"Backend call failure"` after 46s — the same failure class the scan
-pipeline hit and was fixed for first).
+The daily blog, weekly newsletter, and monthly digest run
+`src/scripts/generate-daily-blog.ts` / `generate-weekly-newsletter.ts` /
+`send-monthly-digest.ts` directly against Supabase — not API routes. They
+used to be, and a real production run hit Azure's Free-tier Functions
+execution ceiling (`"Backend call failure"` after 46s — the same failure
+class the scan pipeline hit and was fixed for first). The monthly digest
+was the last holdout (`docs/ENHANCEMENTS.md` E-11, 2026-09-05) — its
+`DIGEST_SERVICE_TOKEN` and the HTTP route it gated are both deleted, not
+kept as a fallback.
 
 Server-only secrets used by the API routes themselves
 (`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
@@ -253,8 +255,8 @@ Server-only secrets used by the API routes themselves
 own application settings, not GitHub Secrets — note these use the real
 `GITHUB_*` names there, since Azure has no equivalent naming restriction;
 only the GitHub Actions secret store does. See `docs/security.md`. The
-`SUPABASE_*`/`DIGEST_SERVICE_TOKEN`/`WPSCAN_API_TOKEN`/
-`GOOGLE_SAFE_BROWSING_API_KEY`/`HIBP_API_KEY`/`GH_*` GitHub Secrets above
+`SUPABASE_*`/`WPSCAN_API_TOKEN`/`GOOGLE_SAFE_BROWSING_API_KEY`/
+`HIBP_API_KEY`/`GH_*` GitHub Secrets above
 are the exception: used directly *inside* a GitHub Actions job, never
 deployed anywhere — a reasonable place for them, but rotate them the same
 as any other service-role credential if the repo's secret store is ever

@@ -158,9 +158,12 @@ required) · **key-or-session** (either credential) · **admin**
 
 ### Service-token (cron)
 
-| Route | Auth | Notes |
-|---|---|---|
-| `send-monthly-digest.ts` | `X-Service-Token` vs `DIGEST_SERVICE_TOKEN` | Sent to **every active subscriber regardless of plan**; N+1 query pattern — see `docs/ENHANCEMENTS.md` E-11 |
+No entries — the last one (`send-monthly-digest.ts`) is no longer an HTTP
+route (`docs/ENHANCEMENTS.md` E-11, 2026-09-05: converted to a bare script,
+`src/scripts/send-monthly-digest.ts`, run directly against Supabase by
+`.github/workflows/monthly-digest.yml` — same pattern as the daily blog/
+weekly newsletter, see CLAUDE.md's "Content generation" section — to fix
+the same N+1-query execution-ceiling risk).
 
 ### Public REST v1 (`/api/v1/`)
 

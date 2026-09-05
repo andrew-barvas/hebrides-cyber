@@ -1,23 +1,25 @@
 name: Monthly Digest
 
 # Sends the monthly Security Score digest email to every active subscriber
-# (see src/lib/email.ts and src/pages/api/send-monthly-digest.ts). One email
-# per subscriber, summarising the most recent completed scan for each of
-# their monitored targets — not one email per scan.
+# (see hebridescyber-app/src/lib/monthlyDigest.ts). One email per
+# subscriber, summarising the most recent completed scan for each of their
+# monitored targets — not one email per scan.
 #
-# Calls the Next.js app's own API route (deployed via deploy.yml to Azure
-# Static Web Apps) — unlike weekly-newsletter.yml, which runs a script
-# directly against Supabase with no HTTP hop at all. This route deliberately
-# stays HTTP-gated instead of becoming a bare script too, since it sends
-# real customer email and benefits from the same auth/logging surface as
-# every other API route, not because of any technical constraint.
+# Runs src/scripts/send-monthly-digest.ts directly against Supabase, same
+# pattern as daily-blog.yml/weekly-newsletter.yml, rather than curling the
+# app's own API route. This used to deliberately stay HTTP-gated (the route
+# sends real customer email) — docs/ENHANCEMENTS.md E-11 found the same
+# execution-ceiling risk already hit and fixed twice elsewhere: a serial
+# loop over every active subscriber, each iteration issuing 3+ Supabase
+# queries plus an outbound email, all inside one Azure SWA Free-tier
+# Functions request. Converted the same way, no HTTP hop, no
+# DIGEST_SERVICE_TOKEN needed any more (the route it gated no longer
+# exists).
 #
 # Requires:
-#   NEXT_PUBLIC_SITE_URL    - the deployed site's own URL (repo variable)
-#   DIGEST_SERVICE_TOKEN    - shared secret sent as X-Service-Token. Not
-#     named GITHUB_*  — GitHub rejects any repo secret starting with GITHUB_
-#     as reserved for its own auto-generated ones (see this same var's
-#     comment in .env.example for the full naming-restriction story).
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   NEXT_PUBLIC_SITE_URL                      - optional, used for links in
+#                                                the digest email
 
 on:
   schedule:
@@ -29,13 +31,19 @@ jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger send-monthly-digest
-        run: |
-          status=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -X POST "${{ vars.NEXT_PUBLIC_SITE_URL }}/api/send-monthly-digest" \
-            -H "X-Service-Token: ${{ secrets.DIGEST_SERVICE_TOKEN }}")
-          cat /tmp/response.json
-          if [ "$status" != "200" ]; then
-            echo "send-monthly-digest failed with status $status"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Send the monthly digest
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+        run: npm run digest:monthly

@@ -98,10 +98,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
  * Uploads the PDF to Azure Blob Storage (container "reports", created if
  * missing) and returns a 1-hour, read-only SAS URL.
  *
- * TODO: retention (see docs/security.md — 90-day default) is not enforced
- * here — add a lifecycle management policy on the storage account (or a
- * scheduled cleanup job) rather than relying on this code path to delete old
- * reports.
+ * Retention (90 days, docs/security.md) is enforced separately by
+ * src/scripts/cleanup-retention.ts, run nightly — not by this code path.
  */
 async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise<string> {
   const { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } =
