@@ -28,6 +28,15 @@ describe("getComplianceRefs", () => {
     expect(getComplianceRefs("commix.command-injection")).toEqual(sqlmapRefs);
   });
 
+  it("maps a representative checkId to all four newly added frameworks", () => {
+    const refs = getComplianceRefs("tls.no-https");
+    const frameworks = refs.map((r) => r.framework);
+    expect(frameworks).toContain("pci-dss");
+    expect(frameworks).toContain("iso-27001");
+    expect(frameworks).toContain("nis2");
+    expect(frameworks).toContain("dora");
+  });
+
   it("only uses the part before the first colon even with multiple colons in the key", () => {
     // dependency-manifest.npm findings key on "<checkId>:<package-name>",
     // and package names can't contain a colon, but this guards the
@@ -43,13 +52,29 @@ describe("COMPLIANCE_FRAMEWORK_LABELS", () => {
     for (const framework of frameworks) {
       expect(COMPLIANCE_FRAMEWORK_LABELS[framework]).toBeTruthy();
     }
-    expect(Object.keys(COMPLIANCE_FRAMEWORK_LABELS)).toEqual(["cyber-essentials", "owasp-top-10", "cis-controls-v8"]);
+    expect(Object.keys(COMPLIANCE_FRAMEWORK_LABELS)).toEqual([
+      "cyber-essentials",
+      "owasp-top-10",
+      "cis-controls-v8",
+      "iso-27001",
+      "pci-dss",
+      "nis2",
+      "dora",
+    ]);
   });
 });
 
 describe("ALL_CONTROLS_BY_FRAMEWORK", () => {
   it("has one entry per framework, none empty", () => {
-    expect(Object.keys(ALL_CONTROLS_BY_FRAMEWORK)).toEqual(["cyber-essentials", "owasp-top-10", "cis-controls-v8"]);
+    expect(Object.keys(ALL_CONTROLS_BY_FRAMEWORK)).toEqual([
+      "cyber-essentials",
+      "owasp-top-10",
+      "cis-controls-v8",
+      "iso-27001",
+      "pci-dss",
+      "nis2",
+      "dora",
+    ]);
     for (const controls of Object.values(ALL_CONTROLS_BY_FRAMEWORK)) {
       expect(controls.size).toBeGreaterThan(0);
     }

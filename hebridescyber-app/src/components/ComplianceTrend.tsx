@@ -10,7 +10,10 @@
 import { COMPLIANCE_FRAMEWORK_LABELS, type ComplianceFramework } from "@/lib/scanners/compliance";
 import type { CompliancePoint } from "@/lib/clientScanHistory";
 
-const FRAMEWORKS: ComplianceFramework[] = ["cyber-essentials", "owasp-top-10", "cis-controls-v8"];
+// Derived from COMPLIANCE_FRAMEWORK_LABELS' own keys rather than a
+// hand-listed literal, so a newly added framework (compliance.ts) shows up
+// here automatically instead of being silently omitted.
+const FRAMEWORKS = Object.keys(COMPLIANCE_FRAMEWORK_LABELS) as ComplianceFramework[];
 
 // Structural, not the full Finding/ViewFinding type — this component is fed
 // dashboard/page.tsx's overviewFindings (ViewFinding[]), which carries at

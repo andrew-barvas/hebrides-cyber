@@ -20,10 +20,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
+import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
+import type { ScanProfile, ExtendedToolName } from "../lib/scanProfiles";
 
-// With runExtendedTools enabled, a single job can take up to ~3.5 minutes
+// With a "full"/"api"/"cms"/"osint" scan profile, a single job can take up to ~3.5 minutes
 // (sqlmap's own 180s timeout is the long pole, run in parallel with the
 // other tools) versus ~10-30s for passive-only checks — both budgets sized
 // accordingly, well inside a single Actions job's own ~6 hour limit.
@@ -60,7 +62,9 @@ async function main() {
       break;
     }
 
-    const job = claimed?.[0] as { id: string; owner: string; target_url: string; scan_id: string | null } | undefined;
+    const job = claimed?.[0] as
+      | { id: string; owner: string; target_url: string; scan_id: string | null; scan_profile: string | null }
+      | undefined;
     if (!job) break; // queue is empty
 
     processed++;
@@ -74,9 +78,65 @@ async function main() {
   console.log(`[${workerId}] done — processed ${processed}, succeeded ${succeeded}, failed ${failed}.`);
 }
 
+type ScanConfig = { profile: ScanProfile; toolOverrides?: Partial<Record<ExtendedToolName, boolean>> };
+
+/**
+ * Pure decision logic for "which scan profile/tool-overrides does this job
+ * get" — kept separate from resolveScanConfig()'s Supabase fetches so it's
+ * unit-testable without a mocked client, the same way ticketLinks.ts's
+ * decideTicketAction() is. Precedence:
+ *   1. An explicit per-job override (job.scan_profile) wins outright.
+ *   2. An on-demand job (job.scan_id preset) always stays "safe" —
+ *      unchanged from today's passive-only on-demand behaviour.
+ *   3. A scheduled job's target's scan_bundle_id, if set, wins over its
+ *      plain scan_profile column.
+ *   4. Otherwise the target's plain scan_profile column, defaulting to
+ *      "full" if there's no monitored_targets row at all (matches today's
+ *      unconditional-extended-tools behaviour for a scheduled job with no
+ *      target row, which shouldn't normally happen but is the safe default
+ *      if it does).
+ */
+export function decideScanConfig(
+  job: { scan_id: string | null; scan_profile: string | null },
+  target: { scan_profile: string; scan_bundle_id: string | null } | null,
+  bundle: { base_profile: string; tool_overrides: Record<string, boolean> } | null
+): ScanConfig {
+  if (job.scan_profile) return { profile: job.scan_profile as ScanProfile };
+  if (job.scan_id) return { profile: "safe" };
+  if (target?.scan_bundle_id && bundle) {
+    return { profile: bundle.base_profile as ScanProfile, toolOverrides: bundle.tool_overrides };
+  }
+  return { profile: (target?.scan_profile as ScanProfile) ?? "full" };
+}
+
+async function resolveScanConfig(
+  supabaseAdmin: SupabaseClient,
+  job: { owner: string; target_url: string; scan_id: string | null; scan_profile: string | null }
+): Promise<ScanConfig> {
+  // Explicit override / on-demand cases never need a target lookup at all.
+  if (job.scan_profile || job.scan_id) return decideScanConfig(job, null, null);
+
+  const { data: target } = await supabaseAdmin
+    .from("monitored_targets")
+    .select("scan_profile, scan_bundle_id")
+    .eq("owner", job.owner)
+    .eq("target_url", job.target_url)
+    .maybeSingle();
+
+  if (!target?.scan_bundle_id) return decideScanConfig(job, target ?? null, null);
+
+  const { data: bundle } = await supabaseAdmin
+    .from("scan_bundles")
+    .select("base_profile, tool_overrides")
+    .eq("id", target.scan_bundle_id)
+    .maybeSingle();
+
+  return decideScanConfig(job, target, bundle ?? null);
+}
+
 async function runOne(
   supabaseAdmin: SupabaseClient,
-  job: { id: string; owner: string; target_url: string; scan_id: string | null }
+  job: { id: string; owner: string; target_url: string; scan_id: string | null; scan_profile: string | null }
 ): Promise<boolean> {
   async function failJob(message: string) {
     console.error(`[job ${job.id}] failed: ${message}`);
@@ -105,15 +165,15 @@ async function runOne(
 
   // job.scan_id distinguishes the two sources this queue now serves:
   //   - null: a scheduled job (enqueue-scheduled-scans.ts) — this worker owns
-  //     the whole scans row lifecycle and runs the real active-scanning tool
-  //     suite, since every scheduled target already has a verified,
-  //     paying-subscription owner behind it.
+  //     the whole scans row lifecycle and resolves its scan profile from the
+  //     target (or an explicit job-level override), since every scheduled
+  //     target already has a verified, paying-subscription owner behind it.
   //   - set: an on-demand job (src/pages/api/run-scan.ts) — the scans row
   //     already exists (created when the customer clicked "Run scan"), so
-  //     this worker reuses it and stays passive-only, matching what
+  //     this worker reuses it and stays on the "safe" profile, matching what
   //     /what-we-check tells customers an on-demand scan does.
   let scanId = job.scan_id;
-  const runExtendedTools = !scanId;
+  const scanConfig = await resolveScanConfig(supabaseAdmin, job);
 
   if (!scanId) {
     const { data: scan, error: insertError } = await supabaseAdmin
@@ -146,7 +206,8 @@ async function runOne(
   }
 
   const outcome = await executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
-    runExtendedTools,
+    profile: scanConfig.profile,
+    toolOverrides: scanConfig.toolOverrides,
   });
   if (!outcome.ok) {
     await failJob(outcome.error);
@@ -158,7 +219,16 @@ async function runOne(
   return true;
 }
 
-main().catch((err) => {
-  console.error("run-queued-scan-jobs failed:", err);
-  process.exit(1);
-});
+// Guarded so importing decideScanConfig() from a test doesn't also trigger
+// a real run of main() (which would exit the process if SUPABASE_URL isn't
+// set) — this is the first script in src/scripts/ that's imported rather
+// than only ever executed directly via `tsx`, so no prior file needed this.
+// pathToFileURL (not a raw `file://${process.argv[1]}` string) matters on
+// Windows, where a naive concatenation gets the drive-letter path format
+// and separators wrong.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error("run-queued-scan-jobs failed:", err);
+    process.exit(1);
+  });
+}

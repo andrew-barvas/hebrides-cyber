@@ -122,6 +122,26 @@ const KNOWN_RISKY: KnownRisky[] = [
 // overclaims coverage it doesn't have.
 export const DETECTABLE_TECHNOLOGIES: string[] = PATTERNS.map((p) => p.name);
 
+export type CmsType = "wordpress" | "joomla" | "drupal" | "magento" | "ghost";
+
+// Single-value "what CMS is this" derivation, used to route CMS-specific
+// scanning (targeted scanners, scan profiles) rather than each consumer
+// re-deriving its own isWordPress/isJoomla/... flags from raw DetectedTech
+// names. Matches by name, not category — Magento's PATTERNS category above
+// is "E-commerce", not "CMS", so filtering by category here would silently
+// drop it. Precedence (WordPress > Joomla > Drupal > Magento > Ghost) is an
+// arbitrary but deterministic tie-break for the practically-impossible case
+// of multiple CMS technologies matching one target.
+export function getCmsType(technologies: DetectedTech[]): CmsType | null {
+  const names = new Set(technologies.map((t) => t.name));
+  if (names.has("WordPress")) return "wordpress";
+  if (names.has("Joomla")) return "joomla";
+  if (names.has("Drupal")) return "drupal";
+  if (names.has("Magento")) return "magento";
+  if (names.has("Ghost")) return "ghost";
+  return null;
+}
+
 // ---- Engine ---------------------------------------------------------------
 
 export async function checkFingerprint(targetUrl: string): Promise<FingerprintResult> {
