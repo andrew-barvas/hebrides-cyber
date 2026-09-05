@@ -29,6 +29,8 @@ import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
 import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
+import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
+import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
@@ -39,19 +41,24 @@ export type ScanExecutionResult =
 
 export type ExecuteScanOptions = {
   /**
-   * Also runs nmap/nuclei/sqlmap/ZAP and merges their findings in. Off by
-   * default — explicit opt-in, not "on wherever the binaries happen to be
-   * installed". These tools take 1-3 minutes and need real binaries/a ZAP
-   * daemon that only the GitHub Actions queue worker actually has (see
+   * Which of the extended-tool suite's tools run for this scan — replaces
+   * the old binary runExtendedTools:boolean flag (all 14 tools or none) with
+   * a named profile. "safe" (the default) runs none of them — explicit
+   * opt-in, not "on wherever the binaries happen to be installed". These
+   * tools take 1-3 minutes each and need real binaries/a ZAP daemon that
+   * only the GitHub Actions queue worker actually has (see
    * .github/workflows/scheduled-scans.yml) — the dashboard's synchronous
    * run-scan Function and the public API must never wait on them, so they
-   * never pass this. Each tool already degrades to "not_configured" on its
-   * own when its binary/daemon is missing (see src/worker/tools/*.ts), but
-   * this flag means that's never load-bearing for correctness — a future
-   * environment that happens to have nmap installed still won't trigger it
-   * for the dashboard path.
+   * never pass anything but "safe". Each tool already degrades to
+   * "not_configured" on its own when its binary/daemon is missing (see
+   * src/worker/tools/*.ts), but this option means that's never load-bearing
+   * for correctness — a future environment that happens to have nmap
+   * installed still won't trigger it for the dashboard path. See
+   * src/lib/scanProfiles.ts for the profile → tool-list mapping.
    */
-  runExtendedTools?: boolean;
+  profile?: ScanProfile;
+  /** Per-scan overrides on top of `profile`'s tool list — see scan_bundles. */
+  toolOverrides?: Partial<Record<ExtendedToolName, boolean>>;
 };
 
 // Ports whose presence alone is worth a critical finding, regardless of what
@@ -72,8 +79,16 @@ async function runExtendedTools(
   targetUrl: string,
   githubRepo: string | null,
   authCredential: AuthCredential | null,
-  detectedTechnologies: string[]
+  detectedTechnologies: string[],
+  toolConfig: Record<ExtendedToolName, boolean>
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
+  // Each entry below is gated on toolConfig.<name> — a disabled tool
+  // resolves to exactly the same "not_configured"/"not_applicable" shape
+  // its own module already returns when its binary/repo/credential is
+  // missing, so the ~150-line findings-derivation block after this
+  // Promise.allSettled needs no changes: a profile-disabled tool is
+  // indistinguishable from "not available in this environment," which
+  // that code already handles correctly by pushing nothing.
   const [
     nucleiResult,
     zapResult,
@@ -90,45 +105,87 @@ async function runExtendedTools(
     trivyConfigResult,
     authCheckResult,
   ] = await Promise.allSettled([
-    runNuclei(targetUrl, detectedTechnologies),
-    runZap(targetUrl),
-    runSqlmap(targetUrl),
+    toolConfig.nuclei
+      ? runNuclei(targetUrl, detectedTechnologies)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[] }),
+    toolConfig.zap ? runZap(targetUrl) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
+    toolConfig.sqlmap
+      ? runSqlmap(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
     // Same "dedicated tool beyond ZAP's generic active-scan rules" precedent
     // as sqlmap above, applied to XSS and OS command injection respectively.
-    runXsser(targetUrl),
-    runCommix(targetUrl),
-    runNmap(targetUrl),
-    runSubdomainDiscovery(targetUrl),
-    runDeepTls(targetUrl),
-    // All three of these are only attempted when the scan owner has a row in
-    // repo_connections — see sql/migrations/009_repo_connections.sql.
-    // secretScan.ts/dependencyManifest.ts/dockerBaseImage.ts are pure
+    toolConfig.xsser
+      ? runXsser(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
+    toolConfig.commix
+      ? runCommix(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
+    toolConfig.nmap
+      ? runNmap(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
+    toolConfig.subdomains
+      ? runSubdomainDiscovery(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, subdomains: [] as never[], findings: [] as Finding[] }),
+    toolConfig.deepTls
+      ? runDeepTls(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, host: targetUrl, findings: [] as Finding[] }),
+    // All five of these are only attempted when the scan owner has a row in
+    // repo_connections — see sql/migrations/009_repo_connections.sql — AND
+    // the resolved profile/bundle enables them. secretScan.ts/
+    // dependencyManifest.ts/dockerBaseImage.ts/trivyScan.ts are pure
     // { githubRepo } functions specifically so this call site is the only
     // place that needs to know where the repo name comes from.
-    githubRepo
+    toolConfig.secretScan && githubRepo
       ? scanRepositoryForSecrets({ githubRepo })
-      : Promise.resolve({ status: "not_configured" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
-    githubRepo
+      : Promise.resolve({
+          status: "not_configured" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
+    toolConfig.dependencyManifest && githubRepo
       ? scanDependencyManifest({ githubRepo })
-      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
-    githubRepo
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
+    toolConfig.dockerBaseImage && githubRepo
       ? scanDockerBaseImage({ githubRepo })
-      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // Fills the real-installed-package-CVE gap dockerBaseImage.ts's own
     // header comment explicitly declines to fill (text-only tag checks,
     // not a real registry pull + package-database match).
-    githubRepo
+    toolConfig.trivyImage && githubRepo
       ? scanTrivyImage({ githubRepo })
-      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // IaC misconfiguration scanning (Terraform/Kubernetes/Dockerfile) — no
     // existing scanner covers this at all.
-    githubRepo
+    toolConfig.trivyConfig && githubRepo
       ? scanTrivyConfig({ githubRepo })
-      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
     // place that needs to know where the credential comes from.
-    checkAuthenticated(targetUrl, authCredential),
+    toolConfig.authCheck
+      ? checkAuthenticated(targetUrl, authCredential)
+      : Promise.resolve({ status: "not_applicable" as const, note: "Disabled by scan profile." }),
   ]);
 
   const extended = {
@@ -271,19 +328,26 @@ export async function executeScan(
   let findings: Finding[];
   let extended: Record<string, unknown> | undefined;
 
+  const profile: ScanProfile = options.profile ?? "safe";
+
   await logAuditEvent(supabaseAdmin, {
     actorId: ownerId,
     action: "scan.started",
     resourceType: "scan",
     resourceId: scanId,
-    metadata: { target_url: targetUrl, extended_tools: Boolean(options.runExtendedTools) },
+    metadata: { target_url: targetUrl, scan_profile: profile },
   });
 
   try {
     const results = await runAllChecks(targetUrl);
     ({ findings } = summariseResults(results));
 
-    if (options.runExtendedTools) {
+    // "safe" early-exits before any of the repo_connections/monitored_targets/
+    // target_auth_credentials lookups below — preserving today's behaviour of
+    // skipping those Supabase round-trips entirely for the common case (every
+    // on-demand scan), rather than doing them unconditionally and letting
+    // per-tool gating alone decide nothing runs.
+    if (profile !== "safe") {
       const { data: repoConnection } = await supabaseAdmin
         .from("repo_connections")
         .select("github_repo")
@@ -291,10 +355,12 @@ export async function executeScan(
         .maybeSingle();
 
       // target_auth_credentials is keyed by monitored_target_id, not
-      // (owner, target_url) directly — a scan only ever gets here via the
-      // scheduled path (runExtendedTools is scheduled-scan-only), which
-      // always originates from a monitored_targets row, so this join is
-      // real, not speculative.
+      // (owner, target_url) directly — a non-"safe" profile only ever
+      // reaches here via the scheduled path (run-scan.ts/v1/scans.ts/
+      // retest-finding.ts never set scan_profile and always pre-set scan_id,
+      // so resolveScanConfig() resolves them to "safe" — see
+      // run-queued-scan-jobs.ts), which always originates from a
+      // monitored_targets row, so this join is real, not speculative.
       const { data: monitoredTarget } = await supabaseAdmin
         .from("monitored_targets")
         .select("id")
@@ -321,20 +387,28 @@ export async function executeScan(
       // nuclei's entire default template set at every target.
       const detectedTechnologies = results.fingerprint.status === "checked" ? results.fingerprint.technologies.map((t) => t.name) : [];
 
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies);
+      const toolConfig = resolveToolConfig(profile, options.toolOverrides);
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
       }
       findings = [...findings, ...toolOutcome.findings];
-      // summariseResults() already ran its own compliance-mapping pass over
-      // the base-suite findings; extended-tool findings are appended after
-      // that returns, so they need the same pass applied here — see
-      // src/lib/scanners/compliance.ts's header for why this is a final
-      // pass over checkId rather than something each push site sets itself.
+      // summariseResults() already ran its own compliance-mapping and
+      // fix-difficulty passes over the base-suite findings; extended-tool
+      // findings are appended after that returns, so they need the same
+      // passes applied here — see src/lib/scanners/compliance.ts's and
+      // fixDifficulty.ts's headers for why these are final passes over
+      // checkId rather than something each push site sets itself.
       for (const finding of toolOutcome.findings) {
         const refs = getComplianceRefs(finding.checkId);
         if (refs.length > 0) finding.complianceRefs = refs;
+
+        const difficulty = getFixDifficulty(finding.checkId);
+        if (difficulty) {
+          finding.fixDifficulty = difficulty;
+          finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+        }
       }
     }
 

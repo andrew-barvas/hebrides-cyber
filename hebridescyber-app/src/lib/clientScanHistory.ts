@@ -135,11 +135,16 @@ export type CompliancePoint = { date: string; coverage: Record<ComplianceFramewo
 type FindingLike = { severity: string; checkId?: string };
 
 export function coverageForFindings(findings: FindingLike[]): Record<ComplianceFramework, number> {
-  const atRisk: Record<ComplianceFramework, Set<string>> = {
-    "cyber-essentials": new Set(),
-    "owasp-top-10": new Set(),
-    "cis-controls-v8": new Set(),
-  };
+  // Derived from ALL_CONTROLS_BY_FRAMEWORK's own keys rather than a
+  // hand-listed framework literal — a hand-listed Record here would fail
+  // tsc the moment ComplianceFramework grows a new member (missing
+  // properties), which is exactly what happened when ISO 27001/PCI DSS/
+  // NIS2/DORA were added.
+  const frameworks = Object.keys(ALL_CONTROLS_BY_FRAMEWORK) as ComplianceFramework[];
+  const atRisk = Object.fromEntries(frameworks.map((f) => [f, new Set<string>()])) as Record<
+    ComplianceFramework,
+    Set<string>
+  >;
   for (const f of findings) {
     if (f.severity === "info") continue;
     for (const ref of getComplianceRefs(f.checkId)) atRisk[ref.framework].add(ref.control);

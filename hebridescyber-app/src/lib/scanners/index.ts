@@ -7,7 +7,7 @@ import { checkDns, type DnsResult } from "./dns";
 import { checkExposure, type ExposureResult } from "./exposure";
 import { checkDirectoryListing, type DirectoryListingResult } from "./directoryListing";
 import { checkCloudMisconfig, type CloudMisconfigResult } from "./cloudMisconfig";
-import { checkFingerprint, type FingerprintResult } from "./fingerprint";
+import { checkFingerprint, getCmsType, type FingerprintResult } from "./fingerprint";
 import { checkOpenPorts, type PortsResult } from "./ports";
 import { checkPlaywrightPageLoad, type PlaywrightResult } from "./playwright";
 import { checkRecon, type ReconResult } from "./recon";
@@ -17,6 +17,7 @@ import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDis
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
+import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 import * as FIX from "./remediationText";
 
 export type {
@@ -91,6 +92,16 @@ export type Finding = {
    * header explains why those are deliberately not distinguished.
    */
   complianceRefs?: ComplianceRef[];
+  /**
+   * How much effort fixing this finding takes — a different axis from
+   * severity (how much risk it poses). See src/lib/scanners/fixDifficulty.ts.
+   * Applied as a final pass alongside complianceRefs, same optionality
+   * reasoning: absent means either "not yet rated" or genuinely no fixed
+   * estimate makes sense for this check.
+   */
+  fixDifficulty?: FixDifficulty;
+  /** Rough remediation time estimate in minutes, derived from fixDifficulty. */
+  estimatedFixMinutes?: number;
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
@@ -142,10 +153,11 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
+  const cmsType = getCmsType(detectedTechs);
   const cms = {
-    isWordPress: detectedTechs.some((t) => t.name === "WordPress"),
-    isJoomla: detectedTechs.some((t) => t.name === "Joomla"),
-    isDrupal: detectedTechs.some((t) => t.name === "Drupal"),
+    isWordPress: cmsType === "wordpress",
+    isJoomla: cmsType === "joomla",
+    isDrupal: cmsType === "drupal",
   };
 
   const [playwright, webapp, zap] = await Promise.all([
@@ -664,11 +676,18 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });
   }
 
-  // Compliance mapping is a final pass over the whole set, not something any
-  // individual push site needs to know about — see compliance.ts's header.
+  // Compliance mapping and fix-difficulty rating are both final passes over
+  // the whole set, not something any individual push site needs to know
+  // about — see compliance.ts's and fixDifficulty.ts's headers.
   for (const finding of findings) {
     const refs = getComplianceRefs(finding.checkId);
     if (refs.length > 0) finding.complianceRefs = refs;
+
+    const difficulty = getFixDifficulty(finding.checkId);
+    if (difficulty) {
+      finding.fixDifficulty = difficulty;
+      finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+    }
   }
 
   const topTitles = findings.slice(0, 3).map((f) => f.title).join("; ");

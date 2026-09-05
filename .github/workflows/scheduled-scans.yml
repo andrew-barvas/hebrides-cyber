@@ -127,6 +127,31 @@ jobs:
           sudo chmod +x /usr/local/bin/nuclei
           nuclei -update-templates -silent || true
 
+      - name: Install gitleaks and testssl.sh
+        # secretScan.ts (Gitleaks) and deepTls.ts (testssl.sh) have always
+        # degraded to status: "not_configured" on every real scheduled scan
+        # because this workflow never actually installed either binary,
+        # despite CLAUDE.md/docs/architecture.md claiming it did. Gitleaks
+        # ships as a GitHub release binary; testssl.sh is a shell script with
+        # no compiled release, so it's git-cloned and pointed to via
+        # TESTSSL_PATH (deepTls.ts already reads that env var, falling back
+        # to a bare "testssl.sh" on PATH otherwise) rather than symlinked
+        # onto PATH under its own name.
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -fsSL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tar.gz \
+            || echo "gitleaks download failed — secretScan.ts will report status: not_configured"
+          if [ -f /tmp/gitleaks.tar.gz ]; then
+            sudo tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+            sudo chmod +x /usr/local/bin/gitleaks
+            rm /tmp/gitleaks.tar.gz
+          fi
+          sudo git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.sh \
+            || echo "testssl.sh clone failed — deepTls.ts will report status: not_configured"
+
       - name: Install trivy
         # Container base-image CVE scanning + IaC misconfiguration scanning
         # (src/lib/scanners/trivyScan.ts) — fills the real-installed-package
@@ -179,6 +204,7 @@ jobs:
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
           ZAP_API_KEY: changeme
+          TESTSSL_PATH: /opt/testssl.sh/testssl.sh
           # Was missing entirely before — secretScan.ts/dependencyManifest.ts/
           # dockerBaseImage.ts (src/lib/scanExecution.ts's runExtendedTools)
           # need GitHub access to run at all, and none of these three secrets

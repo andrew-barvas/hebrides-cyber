@@ -13,12 +13,14 @@
 // implying anything narrower actually ran.
 //
 // Extended-tool findings (nuclei/zap/sqlmap/xsser/commix/nmap/subdomains/
-// deep-tls/secretScan/dependency-manifest/docker-base-image/auth-check) are
-// rejected outright — src/scripts/run-queued-scan-jobs.ts's
-// `runExtendedTools = !scanId` means an on-demand job (scan_id preset, as
-// this route always creates) never runs those tools, so "retesting" one of
-// their findings this way would silently report "fixed" without the tool
-// that found it ever running again. See src/lib/extendedToolCheckIds.ts.
+// deep-tls/secretScan/dependency-manifest/docker-base-image/trivy-image/
+// trivy-config/auth-check) are rejected outright — this route always
+// pre-sets scan_id on the scan_jobs row it creates, and
+// src/scripts/run-queued-scan-jobs.ts's resolveScanConfig() resolves any
+// job with scan_id preset to the "safe" scan profile (src/lib/scanProfiles.ts),
+// which runs none of those tools — so "retesting" one of their findings
+// this way would silently report "fixed" without the tool that found it
+// ever running again. See src/lib/extendedToolCheckIds.ts.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { checkRateLimit } from "@/lib/rateLimit";
