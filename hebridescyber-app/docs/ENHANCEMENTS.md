@@ -549,6 +549,35 @@ correctly elsewhere in the same directory.
 
 ## E-18 — Verify `xsser.ts` and `commix.ts` against a real binary
 
+**Status: partially done (2026-09-05).** commix verified for real — its own
+GitHub source cloned and run locally against a deliberately vulnerable
+local test target (a throwaway Node HTTP server with a genuine OS
+command-injection endpoint, never any third-party or production system).
+Confirmed: `--url`/`--batch` are correct; the real detection pipeline
+(heuristic → classic results-based → time-based blind → file-based
+semi-blind) correctly progressed end-to-end against a real injection point.
+**Found and fixed a real bug**: the `--crawl=1` flag caused commix to
+report "No usable links found" and stop without ever testing the target
+URL's own query parameter when its page-crawler found nothing to follow —
+confirmed by running with and without the flag against the same target.
+Removed. **Still not confirmed**: the exact wording of the
+vulnerability-found marker `commix.ts`'s regex parses — both verification
+runs were stopped before reaching a natural "confirmed" line (time/file-based
+blind techniques require many slow, timed requests), and source-tracing
+commix's own message-building code suggests the real format may differ by
+injection type. Flagged explicitly in `commix.ts`'s own header comment
+rather than claiming false confidence.
+
+xsser was **not verified** — installing its mandatory `pycurl` dependency
+was refused by this environment's own permission classifier (a sandboxing
+control, not a tool failure). Did not attempt to route around it. xsser's
+`CONFIDENCE NOTE` is unchanged and this item stays open for it.
+**Depends on**: an environment where `pip install pycurl` is permitted, or
+xsser installed a different way (its own repo shows it packaged as a
+Debian apt package too — `scheduled-scans.yml`'s existing install step
+already uses that path in real CI, which is a different, unblocked
+environment from this one).
+
 **What**: both tool wrappers carry an explicit `CONFIDENCE NOTE` in their
 own header comments — written without a verified reference run against the
 real `xsser`/`commix` binaries, unlike every other tool wrapper in
