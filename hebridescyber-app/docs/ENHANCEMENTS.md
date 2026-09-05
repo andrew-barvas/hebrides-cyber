@@ -495,6 +495,29 @@ per-account.
 
 ## E-17 — Paginate/cap the remaining unbounded admin queries
 
+**Status: fixed (2026-09-05).** `admin/overview.ts` now paginates the
+customer list (page/pageSize query params, `{count:"exact"}`) the same way
+`admin/customers.ts` already did — the two are near-duplicates and
+`admin/overview.ts` turns out to have **no frontend caller at all**
+(`OverviewTab` in `src/app/admin/page.tsx` calls `/api/admin/metrics`, not
+`/api/admin/overview`); flagging that rather than deleting it, since
+removing a route is a bigger call than this item asked for. `totalScans`/
+`activeSubscriptions` totals now come from exact-count head queries instead
+of `.length` on a truncated array. `admin/contacts.ts` is now properly
+paginated (page/pageSize, `{count:"exact"}`) with real Prev/Next controls
+added to the Contacts tab, matching the Audit tab's existing pattern.
+`admin/metrics.ts`'s `totalScans`/`scansByStatus`/`scansLast30d` no longer
+sample the 500 most recent scans — each is now an exact-count head query
+(one per `scans.status` enum value for the breakdown), run sequentially
+rather than in parallel since they all hit the same table and parallel
+same-table thenables resolve in a non-deterministic relative order (found
+while writing the regression test — see the sequential-vs-Promise.all
+comment in the file). `npx tsc --noEmit`, lint, full `vitest run`, and
+`next build` all verified clean; not yet manually verified in a browser
+against a real staging admin account (no Supabase credentials in this
+environment) — the API-level test coverage is real, this is only "haven't
+clicked through it."
+
 **What**: `admin/overview.ts` fetches all rows of `users`/`subscriptions`/`scans`
 with no `.range()`/`.limit()` (unlike `admin/audit.ts`/`blog.ts`/`customers.ts`/`scans.ts`,
 which all paginate correctly) and counts scans in JS — will silently return

@@ -1037,12 +1037,15 @@ function ContactsTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 25;
 
   useEffect(() => {
-    apiFetch<ContactEnquiry[]>("/api/admin/contacts", token)
-      .then((data) => { setEnquiries(data); setLoading(false); })
+    apiFetch<{ enquiries: ContactEnquiry[]; total: number }>(`/api/admin/contacts?page=${page}`, token)
+      .then((d) => { setEnquiries(d.enquiries); setTotal(d.total); setLoading(false); })
       .catch((e) => { setErr(e.message); setLoading(false); });
-  }, [token]);
+  }, [token, page]);
 
   async function toggleRead(id: string, current: boolean) {
     try {
@@ -1058,7 +1061,7 @@ function ContactsTab({ token }: { token: string }) {
 
   if (loading) return <p className="text-cybertext/40 text-sm font-mono">// loading…</p>;
   if (err) return <p className="text-red-400 text-sm">{err}</p>;
-  if (enquiries.length === 0)
+  if (total === 0)
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-8 text-center">
         <p className="text-cybertext/40 text-sm">No contact enquiries yet.</p>
@@ -1070,7 +1073,7 @@ function ContactsTab({ token }: { token: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <p className="font-mono text-xs text-cybertext/40">{enquiries.length} enquiries</p>
+        <p className="font-mono text-xs text-cybertext/40">{total} enquiries</p>
         {unread > 0 && (
           <span className="rounded-full bg-neon/20 px-2 py-0.5 text-xs font-medium text-neon">
             {unread} unread
@@ -1138,6 +1141,14 @@ function ContactsTab({ token }: { token: string }) {
           </div>
         ))}
       </div>
+
+      {total > PAGE_SIZE && (
+        <div className="flex justify-end gap-2">
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+        </div>
+      )}
     </div>
   );
 }
