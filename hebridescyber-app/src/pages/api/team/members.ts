@@ -6,11 +6,25 @@
 //   - admin: can invite and remove 'member' role users, cannot touch other admins
 //   - member: read-only, can only remove themselves (leave)
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
+import { parseBody } from "@/lib/validate";
 
 type TeamRow = { id: string; owner_id: string };
 type MemberRow = { team_id: string; user_id: string; role: "admin" | "member" };
+
+const inviteSchema = z.object({
+  team_id: z.string().min(1),
+  email: z.string().email(),
+  role: z.enum(["admin", "member"]).optional(),
+});
+const setRoleSchema = z.object({
+  team_id: z.string().min(1),
+  user_id: z.string().min(1),
+  role: z.enum(["admin", "member"]),
+});
+const removeSchema = z.object({ team_id: z.string().min(1), user_id: z.string().min(1) });
 
 async function getTeam(teamId: string): Promise<TeamRow | null> {
   const { data } = await supabaseAdmin.from("teams").select("id, owner_id").eq("id", teamId).maybeSingle();
@@ -41,10 +55,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 async function invite(req: NextApiRequest, res: NextApiResponse, callerId: string) {
-  const { team_id: teamId, email, role } = req.body as { team_id?: string; email?: string; role?: string };
-  if (!teamId) return res.status(400).json({ error: "team_id is required" });
-  if (!email) return res.status(400).json({ error: "email is required" });
-  const memberRole = role === "admin" ? "admin" : "member";
+  const body = parseBody(inviteSchema, req.body, res);
+  if (!body) return;
+  const { team_id: teamId, email, role } = body;
+  const memberRole = role ?? "member";
 
   const team = await getTeam(teamId);
   if (!team) return res.status(404).json({ error: "Team not found" });
@@ -114,9 +128,9 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
 }
 
 async function setRole(req: NextApiRequest, res: NextApiResponse, callerId: string) {
-  const { team_id: teamId, user_id: userId, role } = req.body as { team_id?: string; user_id?: string; role?: string };
-  if (!teamId || !userId) return res.status(400).json({ error: "team_id and user_id are required" });
-  if (role !== "admin" && role !== "member") return res.status(400).json({ error: 'role must be "admin" or "member"' });
+  const body = parseBody(setRoleSchema, req.body, res);
+  if (!body) return;
+  const { team_id: teamId, user_id: userId, role } = body;
 
   const team = await getTeam(teamId);
   if (!team) return res.status(404).json({ error: "Team not found" });
@@ -144,8 +158,9 @@ async function setRole(req: NextApiRequest, res: NextApiResponse, callerId: stri
 }
 
 async function remove(req: NextApiRequest, res: NextApiResponse, callerId: string) {
-  const { team_id: teamId, user_id: userId } = req.body as { team_id?: string; user_id?: string };
-  if (!teamId || !userId) return res.status(400).json({ error: "team_id and user_id are required" });
+  const body = parseBody(removeSchema, req.body, res);
+  if (!body) return;
+  const { team_id: teamId, user_id: userId } = body;
 
   const team = await getTeam(teamId);
   if (!team) return res.status(404).json({ error: "Team not found" });

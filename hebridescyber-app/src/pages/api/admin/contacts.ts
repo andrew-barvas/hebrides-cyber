@@ -1,5 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { parseBody } from "@/lib/validate";
+
+const patchSchema = z.object({ id: z.string().min(1), read: z.boolean() });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // E-08 (docs/ENHANCEMENTS.md): previously built its own anon
@@ -22,8 +26,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "PATCH") {
-    const { id, read } = req.body as { id: string; read: boolean };
-    if (!id) return res.status(400).json({ error: "Missing id" });
+    const body = parseBody(patchSchema, req.body, res);
+    if (!body) return;
+    const { id, read } = body;
     const { error } = await supabaseAdmin
       .from("contact_enquiries")
       .update({ read })

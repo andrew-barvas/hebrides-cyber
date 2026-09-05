@@ -18,6 +18,7 @@
 // so one dead source can't block publishing.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DETECTABLE_TECHNOLOGIES } from "./scanners/fingerprint";
+import { escapeHtml } from "./email";
 
 export type NewsletterPost = {
   slug: string;
@@ -578,19 +579,28 @@ async function draftBody(
  * rather than risk an overclaim. Returns "" (section omitted entirely) when
  * there's nothing relevant this week — never padded with irrelevant CVEs.
  */
-function buildKevSection(kevMatches: KevMatch[]): string {
+export function buildKevSection(kevMatches: KevMatch[]): string {
   const relevant = kevMatches.filter((m) => m.matchedTech !== null).slice(0, 2);
   if (relevant.length === 0) return "";
 
+  // Every interpolated field below is real external text (CISA's KEV
+  // catalog) Hebrides Cyber doesn't control — HTML-escaped before it ever
+  // becomes part of the markdown body, so a vulnerability name/product
+  // string that happens to contain a literal <script>/<img onerror=...>
+  // (not unheard of when a KEV entry describes an XSS itself) can't survive
+  // as markup once marked.parse() converts this to HTML. Belt-and-braces
+  // with the DOMPurify sanitization at render time (src/app/blog/[slug]/page.tsx) —
+  // this is the fix at the point untrusted text enters the document, that
+  // one is the fix at the point it's rendered.
   const lines = relevant.map(({ entry, matchedTech }) => {
     const due = entry.dueDate
-      ? ` CISA's federal remediation deadline for this one is ${entry.dueDate}.`
+      ? ` CISA's federal remediation deadline for this one is ${escapeHtml(entry.dueDate)}.`
       : "";
     return (
-      `- **${entry.vulnerabilityName}** (${entry.cveId}, affecting ${entry.vendorProject} ` +
-      `${entry.product}) was added to CISA's Known Exploited Vulnerabilities catalog on ` +
-      `${entry.dateAdded} — confirmed under active exploitation in the wild.${due} We detect ` +
-      `**${matchedTech}** on scanned sites, so if you're running it, it's worth checking your ` +
+      `- **${escapeHtml(entry.vulnerabilityName)}** (${escapeHtml(entry.cveId)}, affecting ${escapeHtml(entry.vendorProject)} ` +
+      `${escapeHtml(entry.product)}) was added to CISA's Known Exploited Vulnerabilities catalog on ` +
+      `${escapeHtml(entry.dateAdded)} — confirmed under active exploitation in the wild.${due} We detect ` +
+      `**${escapeHtml(matchedTech ?? "")}** on scanned sites, so if you're running it, it's worth checking your ` +
       `version is current.`
     );
   });
@@ -604,11 +614,16 @@ ${lines.join("\n")}
 *Per [CISA's Known Exploited Vulnerabilities catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog).*`;
 }
 
-function buildNvdSection(cves: NvdCve[]): string {
+export function buildNvdSection(cves: NvdCve[]): string {
   if (cves.length === 0) return "";
+  // c.description is NVD's own free-text field — routinely contains a
+  // literal <script>/onerror snippet when the CVE it's describing IS an
+  // XSS. Escaped for the same reason as buildKevSection above.
   const lines = cves.slice(0, 4).map((c) => {
-    const desc = c.description ? c.description.slice(0, 220) + (c.description.length > 220 ? "…" : "") : "No description available yet.";
-    return `- **${c.cveId}** (CVSS ${c.cvssScore}, ${c.severity}) — ${desc}`;
+    const rawDesc = c.description
+      ? c.description.slice(0, 220) + (c.description.length > 220 ? "…" : "")
+      : "No description available yet.";
+    return `- **${escapeHtml(c.cveId)}** (CVSS ${c.cvssScore}, ${escapeHtml(c.severity ?? "unrated")}) — ${escapeHtml(rawDesc)}`;
   });
   return `
 
@@ -619,11 +634,15 @@ ${lines.join("\n")}
 *Source: [NIST National Vulnerability Database](https://nvd.nist.gov/).*`;
 }
 
-function buildNewsSection(news: NewsArticle[]): string {
+export function buildNewsSection(news: NewsArticle[]): string {
   if (news.length === 0) return "";
+  // a.title/a.summary/a.source are third-party RSS feed text (see
+  // parseRssItems above) — a.summary is already HTML-tag-stripped at parse
+  // time, but a.title isn't, so escape all three here for the same reason
+  // as buildKevSection/buildNvdSection.
   const lines = news.slice(0, 5).map((a) => {
-    const summary = a.summary ? ` — ${a.summary.slice(0, 200)}${a.summary.length > 200 ? "…" : ""}` : "";
-    return `- **[${a.title}](${a.link})** (${a.source})${summary}`;
+    const summary = a.summary ? ` — ${escapeHtml(a.summary.slice(0, 200))}${a.summary.length > 200 ? "…" : ""}` : "";
+    return `- **[${escapeHtml(a.title)}](${a.link})** (${escapeHtml(a.source)})${summary}`;
   });
   return `
 

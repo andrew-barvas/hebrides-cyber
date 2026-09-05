@@ -28,12 +28,14 @@
     "@azure/storage-blob": "^12.24.0",
     "@sentry/nextjs": "^10.73.0",
     "@supabase/supabase-js": "^2.45.0",
+    "isomorphic-dompurify": "^3.19.0",
     "marked": "^13.0.2",
     "next": "^16.3.1",
     "playwright": "^1.46.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "stripe": "^16.2.0"
+    "stripe": "^16.2.0",
+    "zod": "^4.5.4"
   },
   "overrides": {
     "qs": "^6.16.0"
