@@ -24,6 +24,8 @@ export const EXTENDED_TOOL_PREFIXES = [
   "secretScan",
   "dependency-manifest",
   "docker-base-image",
+  "trivy-image",
+  "trivy-config",
   "auth-check",
 ] as const;
 

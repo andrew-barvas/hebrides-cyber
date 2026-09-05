@@ -127,6 +127,29 @@ jobs:
           sudo chmod +x /usr/local/bin/nuclei
           nuclei -update-templates -silent || true
 
+      - name: Install trivy
+        # Container base-image CVE scanning + IaC misconfiguration scanning
+        # (src/lib/scanners/trivyScan.ts) — fills the real-installed-package
+        # gap src/lib/scanners/dockerBaseImage.ts's own header comment
+        # explicitly declines to fill. Installed unconditionally alongside
+        # every other tool here, same "install everything, let each check
+        # degrade to not_configured/not_applicable if unneeded" philosophy —
+        # only scans that actually have a connected repo run it at all.
+        # Installer script pinned to the same tag as the binary itself
+        # (rather than fetching from `main`) so the install script's own
+        # supply chain is version-pinned too, not just the binary.
+        env:
+          TRIVY_VERSION: 0.58.1
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/aquasecurity/trivy/v${TRIVY_VERSION}/contrib/install.sh" \
+            | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}" \
+            || echo "trivy install failed — trivyScan.ts will report status: not_configured"
+          trivy --version || true
+          # Prime the vulnerability DB once per job so a real scan later
+          # doesn't burn its own exec timeout on a first-run download —
+          # matches nuclei's own "-update-templates" priming step above.
+          trivy image --download-db-only --quiet || echo "trivy DB download failed — image scans will report status: error"
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \

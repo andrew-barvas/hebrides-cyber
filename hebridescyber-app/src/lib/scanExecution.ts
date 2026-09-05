@@ -25,6 +25,7 @@ import { runDeepTls } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
+import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
 import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
@@ -85,6 +86,8 @@ async function runExtendedTools(
     secretScanResult,
     dependencyManifestResult,
     dockerBaseImageResult,
+    trivyImageResult,
+    trivyConfigResult,
     authCheckResult,
   ] = await Promise.allSettled([
     runNuclei(targetUrl, detectedTechnologies),
@@ -111,6 +114,17 @@ async function runExtendedTools(
     githubRepo
       ? scanDockerBaseImage({ githubRepo })
       : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+    // Fills the real-installed-package-CVE gap dockerBaseImage.ts's own
+    // header comment explicitly declines to fill (text-only tag checks,
+    // not a real registry pull + package-database match).
+    githubRepo
+      ? scanTrivyImage({ githubRepo })
+      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
+    // IaC misconfiguration scanning (Terraform/Kubernetes/Dockerfile) — no
+    // existing scanner covers this at all.
+    githubRepo
+      ? scanTrivyConfig({ githubRepo })
+      : Promise.resolve({ status: "not_applicable" as const, repo: "", findings: [] as Finding[], note: "No repository connected." }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
     // place that needs to know where the credential comes from.
@@ -129,6 +143,8 @@ async function runExtendedTools(
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
     dependencyManifest: dependencyManifestResult.status === "fulfilled" ? dependencyManifestResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dependencyManifestResult.reason) },
     dockerBaseImage: dockerBaseImageResult.status === "fulfilled" ? dockerBaseImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dockerBaseImageResult.reason) },
+    trivyImage: trivyImageResult.status === "fulfilled" ? trivyImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyImageResult.reason) },
+    trivyConfig: trivyConfigResult.status === "fulfilled" ? trivyConfigResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyConfigResult.reason) },
     authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
   };
 
@@ -219,6 +235,12 @@ async function runExtendedTools(
   }
   if (extended.dockerBaseImage.status === "completed") {
     findings.push(...extended.dockerBaseImage.findings);
+  }
+  if (extended.trivyImage.status === "completed") {
+    findings.push(...extended.trivyImage.findings);
+  }
+  if (extended.trivyConfig.status === "completed") {
+    findings.push(...extended.trivyConfig.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
