@@ -86,6 +86,18 @@ export default function Header() {
     { href: "/contact",        label: "Contact" },
   ];
 
+  // Pathname-based, not session-based: a signed-in user browsing the
+  // marketing site (reading /blog, checking /pricing before upgrading)
+  // should still see full marketing nav — only the actual app shell
+  // collapses it, since that's where a logged-in user with Dashboard/
+  // Account/(Admin)/Sign-out already in the bar doesn't also need 5 more
+  // marketing links crowding the same row. The wordmark logo above already
+  // renders unconditionally on every route and already serves as the way
+  // back to the marketing site, so nothing is added in the links' place.
+  const isAppRoute = ["/dashboard", "/account", "/admin"].some(
+    (p) => pathname === p || (pathname ?? "").startsWith(`${p}/`)
+  );
+
   return (
     <header className="border-b border-cyberborder bg-cyberbg text-cybertext" ref={drawerRef}>
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
@@ -103,7 +115,7 @@ export default function Header() {
           aria-label="Main navigation"
           className="hidden md:flex items-center gap-5 text-sm font-medium text-cybertext/80"
         >
-          {navItems.map(({ href, label }) => (
+          {!isAppRoute && navItems.map(({ href, label }) => (
             <Link key={href} href={href} className="py-1 hover:text-neon transition-colors">
               {label}
             </Link>
@@ -165,7 +177,7 @@ export default function Header() {
           className="md:hidden border-t border-cyberborder bg-cyberbg"
         >
           <div className="mx-auto max-w-6xl px-4 py-2">
-            {navItems.map(({ href, label }) => (
+            {!isAppRoute && navItems.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}

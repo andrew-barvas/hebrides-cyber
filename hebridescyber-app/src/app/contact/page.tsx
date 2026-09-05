@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TEAM_SIZE_OPTIONS, BUDGET_RANGE_OPTIONS } from "@/lib/contactOptions";
 
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
@@ -64,6 +65,9 @@ export default function ContactPage() {
             <Field label="Name" name="name" type="text" required />
             <Field label="Email" name="email" type="email" required />
             <Field label="Website / App URL" name="url" type="url" placeholder="https://your-site.com" />
+            <Field label="Company / Organisation" name="company" type="text" />
+            <SelectField label="Team size" name="teamSize" options={TEAM_SIZE_OPTIONS} />
+            <SelectField label="Budget range" name="budgetRange" options={BUDGET_RANGE_OPTIONS} />
             <div>
               <label htmlFor="message" className="mb-1.5 block font-mono text-xs text-cybertext/60 uppercase tracking-wider">
                 Message
@@ -137,6 +141,37 @@ function Field({
         placeholder={placeholder}
         className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  options,
+}: {
+  label: string;
+  name: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}) {
+  return (
+    <div>
+      <label htmlFor={name} className="mb-1.5 block font-mono text-xs text-cybertext/60 uppercase tracking-wider">
+        {label} <span className="normal-case text-cybertext/30">(optional)</span>
+      </label>
+      <select
+        id={name}
+        name={name}
+        defaultValue=""
+        className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
+      >
+        <option value="">Select…</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

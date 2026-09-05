@@ -105,4 +105,72 @@ describe("POST /api/contact", () => {
 
     expect(res._getStatusCode()).toBe(200);
   });
+
+  describe("optional lead-qualification fields", () => {
+    it("saves company/teamSize/budgetRange when provided", async () => {
+      const { req, res } = mockReqRes({ ...validBody, company: "Acme Ltd", teamSize: "11_50", budgetRange: "300_800" });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ company: "Acme Ltd", team_size: "11_50", budget_range: "300_800" })
+      );
+    });
+
+    it("saves all three as null when omitted entirely", async () => {
+      const { req, res } = mockReqRes(validBody);
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ company: null, team_size: null, budget_range: null })
+      );
+    });
+
+    it("treats an unanswered <select>'s empty-string value as omitted, not invalid", async () => {
+      // The real wire value a browser <select> left on its blank default
+      // option submits via FormData/Object.fromEntries — must not 400.
+      const { req, res } = mockReqRes({ ...validBody, teamSize: "", budgetRange: "" });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(insertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ team_size: null, budget_range: null })
+      );
+    });
+
+    it("rejects an invalid teamSize value with 400", async () => {
+      const { req, res } = mockReqRes({ ...validBody, teamSize: "not-a-real-bucket" });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+      expect(insertMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid budgetRange value with 400", async () => {
+      const { req, res } = mockReqRes({ ...validBody, budgetRange: "not-a-real-bucket" });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+      expect(insertMock).not.toHaveBeenCalled();
+    });
+
+    it("includes the new fields in the notification email and puts an answered budget in the subject", async () => {
+      const { req, res } = mockReqRes({ ...validBody, company: "Acme Ltd", teamSize: "11_50", budgetRange: "800_1800" });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      const call = sendEmailMock.mock.calls[0][0];
+      expect(call.subject).toContain("budget");
+      expect(call.html).toContain("Acme Ltd");
+      expect(call.html).toContain("11–50");
+      expect(call.html).toContain("£800");
+    });
+
+    it("does not mention budget in the subject when the answer is 'unsure'", async () => {
+      const { req, res } = mockReqRes({ ...validBody, budgetRange: "unsure" });
+      await handler(req, res);
+
+      const call = sendEmailMock.mock.calls[0][0];
+      expect(call.subject).not.toContain("budget");
+    });
+  });
 });
