@@ -168,6 +168,20 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "auth-check.csp-absent": [OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
   "auth-check.session-cookie-insecure": [CE_ACCESS, OWASP_A05, OWASP_A01, CIS_4, PCI_REQ8, ISO_A9],
   "auth-check.cors-wildcard": [CE_ACCESS, OWASP_A01, OWASP_A05, CIS_4, PCI_REQ8, ISO_A9],
+
+  // --- WAF detection ---
+  "whatwaf.no-waf": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, NIS2_ART21],
+  "whatwaf.waf-bypass": [CE_SECURE_CONFIG, OWASP_A05, CIS_4],
+
+  // --- WPScan CLI ---
+  "wpscan.theme-vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "wpscan.config-backup": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "wpscan.db-export": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "wpscan.timthumb": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+
+  // --- CMSmap ---
+  "cmsmap.vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "cmsmap.misconfiguration": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
 };
 
 /** The part of a checkId before its first ":" — see module header. */

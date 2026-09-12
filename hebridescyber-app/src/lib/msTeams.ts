@@ -21,6 +21,13 @@ function severityColor(score: number): string {
 }
 
 export async function sendTeamsAlert(webhookUrl: string, payload: SlackAlertPayload): Promise<void> {
+  // SSRF guard: webhookUrl is customer-supplied (subscriptions.ms_teams_webhook_url)
+  // and this fetch runs server-side, so refuse anything that isn't a real
+  // Teams webhook host rather than trusting the "https://" check alone.
+  if (!isValidTeamsWebhookUrl(webhookUrl)) {
+    throw new Error("Refusing to send Teams alert: URL is not a recognised Teams webhook host");
+  }
+
   const {
     scanId,
     targetUrl,
@@ -74,13 +81,6 @@ export async function sendTeamsAlert(webhookUrl: string, payload: SlackAlertPayl
       },
     ],
   };
-
-  // Gated here, at the actual fetch call site — see slack.ts's identical
-  // check for the full reasoning (save-path validation alone isn't enough).
-  if (!isValidTeamsWebhookUrl(webhookUrl)) {
-    console.error(`[ms-teams] refusing to send: "${webhookUrl}" is not a recognised Teams webhook host`);
-    return;
-  }
 
   const res = await fetch(webhookUrl, {
     method: "POST",

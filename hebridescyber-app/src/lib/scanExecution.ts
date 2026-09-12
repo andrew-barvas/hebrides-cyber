@@ -27,10 +27,14 @@ import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
-import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation } from "./scanners/remediationText";
+import { runWhatWaf } from "../worker/tools/whatwaf";
+import { runWpScanCli } from "../worker/tools/wpscan";
+import { runCmsMap } from "../worker/tools/cmsmap";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
+import { getCmsType } from "./scanners/fingerprint";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
@@ -89,6 +93,10 @@ async function runExtendedTools(
   // Promise.allSettled needs no changes: a profile-disabled tool is
   // indistinguishable from "not available in this environment," which
   // that code already handles correctly by pushing nothing.
+  const detectedCmsType = getCmsType(
+    detectedTechnologies.map((name) => ({ name, category: "", version: null, confidence: "medium" as const, source: "html" as const }))
+  );
+
   const [
     nucleiResult,
     zapResult,
@@ -104,6 +112,9 @@ async function runExtendedTools(
     trivyImageResult,
     trivyConfigResult,
     authCheckResult,
+    whatwafResult,
+    wpscanResult,
+    cmsmapResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -186,6 +197,15 @@ async function runExtendedTools(
     toolConfig.authCheck
       ? checkAuthenticated(targetUrl, authCredential)
       : Promise.resolve({ status: "not_applicable" as const, note: "Disabled by scan profile." }),
+    toolConfig.whatwaf
+      ? runWhatWaf(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.wpscan && detectedCmsType === "wordpress"
+      ? runWpScanCli(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
+    toolConfig.cmsmap && detectedCmsType
+      ? runCmsMap(targetUrl, detectedCmsType)
+      : Promise.resolve({ status: "not_applicable" as const, findings: [] as never[], note: detectedCmsType ? "Disabled by scan profile." : "No CMS detected." }),
   ]);
 
   const extended = {
@@ -203,6 +223,9 @@ async function runExtendedTools(
     trivyImage: trivyImageResult.status === "fulfilled" ? trivyImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyImageResult.reason) },
     trivyConfig: trivyConfigResult.status === "fulfilled" ? trivyConfigResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyConfigResult.reason) },
     authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
+    whatwaf: whatwafResult.status === "fulfilled" ? whatwafResult.value : { status: "error" as const, note: String(whatwafResult.reason) },
+    wpscan: wpscanResult.status === "fulfilled" ? wpscanResult.value : { status: "error" as const, findings: [], note: String(wpscanResult.reason) },
+    cmsmap: cmsmapResult.status === "fulfilled" ? cmsmapResult.value : { status: "error" as const, findings: [], note: String(cmsmapResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -300,6 +323,82 @@ async function runExtendedTools(
     findings.push(...extended.trivyConfig.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
+
+  // WAF detection findings
+  if (extended.whatwaf.status === "completed") {
+    const waf = extended.whatwaf as { status: "completed"; waf: string | null; vendor: string | null; confidence: number };
+    if (waf.waf) {
+      findings.push({
+        checkId: "whatwaf.waf-detected",
+        severity: "info",
+        title: `[WhatWaf] WAF detected: ${waf.waf}`,
+        detail: `A web application firewall (${waf.waf}${waf.vendor ? `, ${waf.vendor}` : ""}) is protecting this application. Confidence: ${waf.confidence}%.`,
+      });
+    } else {
+      findings.push({
+        checkId: "whatwaf.no-waf",
+        severity: "medium",
+        title: "[WhatWaf] No Web Application Firewall detected",
+        detail: "No WAF was detected protecting this application. A WAF provides defence-in-depth against common web attacks.",
+        remediation: WAF_NOT_DETECTED,
+      });
+    }
+  }
+
+  // WPScan CLI findings
+  if (extended.wpscan.status === "completed" && "findings" in extended.wpscan) {
+    const wpscanFindings = (extended.wpscan as { status: "completed"; findings: Array<{ type: string; title: string; detail: string; severity: string; slug?: string; cveIds?: string[]; fixedIn?: string }> }).findings;
+    for (const f of wpscanFindings) {
+      const slugKey = f.slug ?? f.title.replace(/\s+/g, "-").toLowerCase().slice(0, 40);
+      let checkId: string;
+      let remediation: string;
+
+      if (f.title.includes("config backup")) {
+        checkId = `wpscan.config-backup:${slugKey}`;
+        remediation = WPSCAN_CONFIG_BACKUP;
+      } else if (f.title.includes("database export")) {
+        checkId = `wpscan.db-export:${slugKey}`;
+        remediation = WPSCAN_DB_EXPORT;
+      } else if (f.title.includes("TimThumb")) {
+        checkId = `wpscan.timthumb:${slugKey}`;
+        remediation = WPSCAN_TIMTHUMB;
+      } else {
+        checkId = `wpscan.theme-vulnerability:${slugKey}`;
+        remediation = wpScanThemeVulnerabilityRemediation(f.slug ?? "unknown", f.fixedIn ?? null);
+      }
+
+      findings.push({
+        checkId,
+        severity: (f.severity as Finding["severity"]) || "medium",
+        title: `[WPScan] ${f.title}`,
+        detail: f.detail,
+        remediation,
+        cveIds: f.cveIds,
+      });
+    }
+  }
+
+  // CMSmap findings
+  if (extended.cmsmap.status === "completed" && "findings" in extended.cmsmap) {
+    const cmsmapFindings = (extended.cmsmap as { status: "completed"; cmsType: string; findings: Array<{ type: string; title: string; detail: string; severity: string; checkName?: string; cveIds?: string[] }> });
+    for (const f of cmsmapFindings.findings) {
+      const checkName = f.checkName ?? f.title.replace(/\s+/g, "-").toLowerCase().slice(0, 40);
+      const checkId = f.type === "vulnerability"
+        ? `cmsmap.vulnerability:${checkName}`
+        : `cmsmap.misconfiguration:${checkName}`;
+
+      findings.push({
+        checkId,
+        severity: (f.severity as Finding["severity"]) || "medium",
+        title: f.title,
+        detail: f.detail,
+        remediation: f.type === "vulnerability"
+          ? cmsmapVulnerabilityRemediation(cmsmapFindings.cmsType)
+          : cmsmapMisconfigRemediation(cmsmapFindings.cmsType),
+        cveIds: f.cveIds,
+      });
+    }
+  }
 
   // recon.ts's base checkDns pass already reports a single "N subdomains
   // found via crt.sh" finding (recon.subdomains-found). When Subfinder also

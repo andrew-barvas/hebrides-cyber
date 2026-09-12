@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import ApiKeys from "@/components/ApiKeys";
 import Webhooks from "@/components/Webhooks";
+import RequestAudit from "@/components/RequestAudit";
 import ConnectRepo from "@/components/ConnectRepo";
 import TicketIntegration from "@/components/TicketIntegration";
 import TeamSection from "@/components/TeamSection";
@@ -167,6 +168,9 @@ export default function AccountPage() {
         {token && plan === "agency" && (
           <BrandingSection token={token} initialLogoUrl={brandLogoUrl} initialBrandName={brandName} />
         )}
+
+        {/* One-off audit requests */}
+        {token && <RequestAudit token={token} />}
 
         {/* API keys */}
         {token && <ApiKeys token={token} />}

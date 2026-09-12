@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ScoreGauge, FindingCard, type ViewFinding, type Severity } from "@/components/ScanReportView";
+import { ScoreGauge, FindingCard, ExecutiveSummary, type ViewFinding, type Severity } from "@/components/ScanReportView";
 
 type ApiFinding = {
   check_id: string | null;
@@ -13,6 +13,8 @@ type ApiFinding = {
   remediation: string | null;
   status: "new" | "unchanged" | null;
   cve_ids?: string[];
+  fix_difficulty?: string;
+  estimated_fix_minutes?: number;
 };
 
 type ApiReport = {
@@ -76,6 +78,8 @@ export default function SharedReportPage() {
       checkId: f.check_id ?? undefined,
       status: f.status ?? undefined,
       cveIds: f.cve_ids,
+      fixDifficulty: f.fix_difficulty as ViewFinding["fixDifficulty"],
+      estimatedFixMinutes: f.estimated_fix_minutes,
     })),
     ...(report.fixed_findings ?? []).map((f) => ({
       severity: f.severity,
@@ -108,12 +112,14 @@ export default function SharedReportPage() {
         <div className="flex flex-col items-start gap-6 rounded-xl border border-cyberborder bg-cyberpanel p-6 sm:flex-row sm:items-center">
           {report.score !== null && <ScoreGauge score={report.score} />}
           <div>
-            <p className="text-sm font-semibold text-neon mb-1">Executive summary</p>
+            <p className="text-sm font-semibold text-neon mb-1">Summary</p>
             <p className="text-sm text-cybertext/70 leading-relaxed">
               {report.summary ?? "Scan complete. Review findings below."}
             </p>
           </div>
         </div>
+
+        {report.score !== null && <ExecutiveSummary findings={findings} score={report.score} />}
 
         {findings.length > 0 ? (
           <div>

@@ -2,41 +2,46 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { sendTeamsAlert } from "./msTeams";
 import type { SlackAlertPayload } from "./slack";
 
-function payload(overrides: Partial<SlackAlertPayload> = {}): SlackAlertPayload {
-  return {
-    scanId: "scan-1",
-    targetUrl: "https://example.com",
-    score: 82,
-    findingsCount: 3,
-    criticalCount: 0,
-    highCount: 1,
-    dashboardUrl: "https://app.hebridescyber.com",
-    ...overrides,
-  };
-}
+const payload: SlackAlertPayload = {
+  scanId: "scan-1",
+  targetUrl: "https://example.com",
+  score: 82,
+  findingsCount: 3,
+  criticalCount: 0,
+  highCount: 1,
+  dashboardUrl: "https://www.hebridescyber.co.uk",
+};
 
-describe("sendTeamsAlert", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("sendTeamsAlert SSRF guard", () => {
+  it("posts to a real Teams tenant webhook", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendTeamsAlert("https://mytenant.webhook.office.com/webhookb2/abc", payload);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://mytenant.webhook.office.com/webhookb2/abc");
   });
 
-  it("posts to a real outlook.office.com URL", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "" });
-    global.fetch = fetchMock;
-
-    await sendTeamsAlert("https://outlook.office.com/webhook/abc", payload());
-
-    expect(fetchMock).toHaveBeenCalledWith("https://outlook.office.com/webhook/abc", expect.any(Object));
-  });
-
-  // Regression guard — same SSRF vulnerability class as slack.test.ts's
-  // equivalent case, fixed the same way (webhookUrlValidation.ts).
-  it("never calls fetch for a non-Teams URL, even though it's https", async () => {
+  it("rejects a non-Teams host without ever calling fetch", async () => {
     const fetchMock = vi.fn();
-    global.fetch = fetchMock;
+    vi.stubGlobal("fetch", fetchMock);
 
-    await sendTeamsAlert("https://attacker.example.com/collect", payload());
+    await expect(sendTeamsAlert("https://169.254.169.254/latest/meta-data", payload)).rejects.toThrow(
+      /not a recognised Teams webhook host/
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
+  it("rejects an internal/private target disguised as a normal URL", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendTeamsAlert("https://internal.example.corp/webhook", payload)).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

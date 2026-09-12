@@ -36,7 +36,7 @@ type SeedUser = {
 };
 
 const users: SeedUser[] = [
-  { email: "admin@hebridescyber.co.uk", isAdmin: true, plan: "none", companyName: "Hebrides Cyber (staff)" },
+  { email: "admin@hebridescyber.co.uk", isAdmin: true, plan: "agency", companyName: "Hebrides Cyber (staff)" },
   { email: "no-plan-customer@example.com", isAdmin: false, plan: "none", companyName: "Lewis Crafts Co." },
   { email: "basic-customer@example.com", isAdmin: false, plan: "basic", companyName: "Stornoway Guesthouse" },
   { email: "pro-customer@example.com", isAdmin: false, plan: "pro", companyName: "Outer Hebrides SaaS Ltd" },

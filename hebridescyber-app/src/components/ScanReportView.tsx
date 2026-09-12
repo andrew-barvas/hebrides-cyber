@@ -15,6 +15,7 @@ import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
 import { COMPLIANCE_FRAMEWORK_LABELS, type ComplianceRef } from "@/lib/scanners/compliance";
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
+import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -27,9 +28,18 @@ export type ViewFinding = {
   status?: DiffStatus;
   cveIds?: string[];
   complianceRefs?: ComplianceRef[];
+  fixDifficulty?: FixDifficulty;
+  estimatedFixMinutes?: number;
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+
+const FIX_DIFFICULTY_META: Record<FixDifficulty, { label: string; time: string; text: string; bg: string; border: string }> = {
+  trivial: { label: "Trivial", time: "~15 min", text: "text-neon", bg: "bg-neon/10", border: "border-neon/30" },
+  easy: { label: "Easy", time: "~1 hr", text: "text-blue-400", bg: "bg-blue-400/10", border: "border-blue-400/30" },
+  moderate: { label: "Moderate", time: "~4 hrs", text: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/30" },
+  hard: { label: "Hard", time: "~2 days", text: "text-red-400", bg: "bg-red-400/10", border: "border-red-400/30" },
+};
 
 export function sortFindingsBySeverity<T extends { severity: Severity }>(list: T[]): T[] {
   return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
@@ -492,6 +502,14 @@ export function FindingCard({
         {finding.status === "new" && (
           <span className="rounded-full border border-neon/30 bg-neon/10 px-1.5 py-0.5 text-[10px] font-semibold text-neon">NEW</span>
         )}
+        {finding.fixDifficulty && (() => {
+          const dm = FIX_DIFFICULTY_META[finding.fixDifficulty];
+          return (
+            <span className={`ml-auto rounded-full border ${dm.border} ${dm.bg} px-1.5 py-0.5 text-[10px] font-semibold ${dm.text} print:text-slate-500`}>
+              {dm.label} fix {dm.time}
+            </span>
+          );
+        })()}
       </div>
       <p className="font-medium text-cybertext text-sm">{finding.title}</p>
       {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
@@ -608,6 +626,91 @@ export function ComplianceSummary({ findings }: { findings: ViewFinding[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[]; score: number }) {
+  const open = findings.filter((f) => f.status !== "fixed");
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  let totalFixMinutes = 0;
+  for (const f of open) {
+    severityCounts[f.severity] = (severityCounts[f.severity] ?? 0) + 1;
+    if (f.estimatedFixMinutes) totalFixMinutes += f.estimatedFixMinutes;
+  }
+
+  const topFindings = open
+    .filter((f) => f.severity === "critical" || f.severity === "high")
+    .slice(0, 3);
+
+  const formatTime = (mins: number) => {
+    if (mins < 60) return `${mins} min`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 8) return `${hrs} hr${hrs > 1 ? "s" : ""}`;
+    const days = Math.round(hrs / 8);
+    return `${days} day${days > 1 ? "s" : ""}`;
+  };
+
+  return (
+    <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5 print:border-slate-300 print:bg-white">
+      <p className="mb-4 text-sm font-semibold text-cybertext">Executive summary</p>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
+          <p className="text-2xl font-bold text-cybertext">{score}</p>
+          <p className="text-[10px] uppercase tracking-wide text-cybertext/50">Score</p>
+        </div>
+        <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
+          <p className="text-2xl font-bold text-red-400">{severityCounts.critical + severityCounts.high}</p>
+          <p className="text-[10px] uppercase tracking-wide text-cybertext/50">Critical + High</p>
+        </div>
+        <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
+          <p className="text-2xl font-bold text-cybertext">{open.length}</p>
+          <p className="text-[10px] uppercase tracking-wide text-cybertext/50">Open findings</p>
+        </div>
+        <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
+          <p className="text-2xl font-bold text-cybertext">{totalFixMinutes > 0 ? formatTime(totalFixMinutes) : "—"}</p>
+          <p className="text-[10px] uppercase tracking-wide text-cybertext/50">Est. remediation</p>
+        </div>
+      </div>
+
+      <div className="mb-4 flex gap-1">
+        {(["critical", "high", "medium", "low", "info"] as const).map((sev) => {
+          const count = severityCounts[sev];
+          if (!count) return null;
+          const meta = SEVERITY_META[sev];
+          return (
+            <div
+              key={sev}
+              className={`h-2 rounded-full ${meta.dot}`}
+              style={{ flex: count }}
+              title={`${meta.label}: ${count}`}
+            />
+          );
+        })}
+      </div>
+
+      {topFindings.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold text-cybertext/60 uppercase tracking-wide">Top priorities</p>
+          <ol className="space-y-1.5">
+            {topFindings.map((f, i) => {
+              const meta = SEVERITY_META[f.severity];
+              return (
+                <li key={f.checkId ?? i} className="flex items-start gap-2 text-xs">
+                  <span className={`mt-0.5 inline-block h-2 w-2 flex-shrink-0 rounded-full ${meta.dot}`} />
+                  <span className="text-cybertext/80">{f.title}</span>
+                  {f.fixDifficulty && (
+                    <span className={`ml-auto flex-shrink-0 ${FIX_DIFFICULTY_META[f.fixDifficulty].text} text-[10px]`}>
+                      {FIX_DIFFICULTY_META[f.fixDifficulty].time}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }
