@@ -184,6 +184,22 @@ jobs:
           pip3 install --break-system-packages cmsmap \
             || echo "cmsmap install failed — cmsmap.ts will report status: not_configured"
 
+      - name: Install photon and gospider
+        env:
+          GOSPIDER_VERSION: 1.1.6
+        run: |
+          pip3 install --break-system-packages photon \
+            || echo "photon install failed — photon.ts will report status: not_configured"
+          curl -fsSL \
+            "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_amd64.zip" \
+            -o /tmp/gospider.zip \
+            || echo "gospider download failed — gospider.ts will report status: not_configured"
+          if [ -f /tmp/gospider.zip ]; then
+            sudo unzip -o /tmp/gospider.zip -d /usr/local/bin
+            sudo chmod +x /usr/local/bin/gospider
+            rm /tmp/gospider.zip
+          fi
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \

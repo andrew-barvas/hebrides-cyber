@@ -182,6 +182,15 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   // --- CMSmap ---
   "cmsmap.vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "cmsmap.misconfiguration": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
+
+  // --- OSINT / metadata ---
+  "metadataLeak.email": [OWASP_A05, CIS_3, ISO_A9],
+  "metadataLeak.internal-ip": [OWASP_A05, CIS_3, ISO_A9, NIS2_ART21],
+  "metadataLeak.path": [OWASP_A05, CIS_3, ISO_A9],
+  "metadataLeak.author": [OWASP_A05, CIS_3],
+
+  // --- ZAP AJAX Spider ---
+  "zapAjaxSpider.hidden-endpoint": [OWASP_A05, CIS_3],
 };
 
 /** The part of a checkId before its first ":" — see module header. */

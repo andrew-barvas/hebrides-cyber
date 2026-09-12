@@ -32,6 +32,10 @@ export const EXTENDED_TOOL_PREFIXES = [
   "whatwaf",
   "wpscan",
   "cmsmap",
+  "photon",
+  "gospider",
+  "zapAjaxSpider",
+  "metadataLeak",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

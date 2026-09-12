@@ -12,7 +12,7 @@ import MonitoredTargets from "@/components/MonitoredTargets";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
-import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown } from "@/components/DashboardPanels";
+import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import ComplianceTrend from "@/components/ComplianceTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
@@ -406,6 +406,7 @@ export default function DashboardPage() {
                 <WafIndicator results={overviewResults as Parameters<typeof WafIndicator>[0]["results"]} />
                 <CmsStatusPanel results={overviewResults as Parameters<typeof CmsStatusPanel>[0]["results"]} />
                 <TechStackPanel results={overviewResults as Parameters<typeof TechStackPanel>[0]["results"]} />
+                <OsintSummaryPanel results={overviewResults as Parameters<typeof OsintSummaryPanel>[0]["results"]} />
               </div>
             )}
 
