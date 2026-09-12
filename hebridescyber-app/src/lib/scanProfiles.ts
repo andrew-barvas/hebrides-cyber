@@ -27,7 +27,11 @@ export type ExtendedToolName =
   | "authCheck"
   | "whatwaf"
   | "wpscan"
-  | "cmsmap";
+  | "cmsmap"
+  | "photon"
+  | "gospider"
+  | "zapAjaxSpider"
+  | "metadataLeak";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -53,6 +57,10 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "whatwaf",
   "wpscan",
   "cmsmap",
+  "photon",
+  "gospider",
+  "zapAjaxSpider",
+  "metadataLeak",
 ];
 
 export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint";
@@ -64,10 +72,10 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
   safe: {},
   full: Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
-  api: { nuclei: true, zap: true, sqlmap: true, xsser: true, commix: true, authCheck: true, whatwaf: true },
+  api: { nuclei: true, zap: true, sqlmap: true, xsser: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
   // active scan + XSS are the classic CMS admin/comment-form vectors.
-  cms: { nuclei: true, zap: true, xsser: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true },
+  cms: { nuclei: true, zap: true, xsser: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true },
   // Passive reconnaissance / supply-chain inventory — no active exploitation.
   osint: {
     subdomains: true,
@@ -78,6 +86,9 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     dockerBaseImage: true,
     trivyImage: true,
     trivyConfig: true,
+    photon: true,
+    gospider: true,
+    metadataLeak: true,
   },
 };
 

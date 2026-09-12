@@ -1584,6 +1584,31 @@ reported. Common issues include debug mode enabled in production, default
 admin paths exposed, and unnecessary modules/plugins active.`;
 }
 
+export const METADATA_LEAK_EMAIL = `An email address was found in the metadata of a publicly accessible document.
+Strip document metadata before publishing using your office suite's "Inspect
+Document" feature, or run \`exiftool -all= <file>\` to remove all metadata.`;
+
+export const METADATA_LEAK_INTERNAL_IP = `An internal/private IP address was found in a publicly accessible document's
+metadata. This leaks information about your internal network topology. Strip
+document metadata before publishing.`;
+
+export const METADATA_LEAK_PATH = `A local filesystem path (e.g. \`C:\\Users\\...\` or \`/home/...\`) was found in a
+publicly accessible document's metadata. This leaks internal usernames and
+directory structure. Strip metadata before publishing.`;
+
+export const METADATA_LEAK_AUTHOR = `An author name was found in a publicly accessible document's metadata.
+While low-risk, this can be used in social engineering attacks. Strip
+document metadata before publishing using your office suite's privacy tools.`;
+
+export const METADATA_LEAK_SOFTWARE = `Software version information was found in a publicly accessible document's
+metadata. This reveals the tools and versions used internally. Strip
+document metadata before publishing.`;
+
+export const HIDDEN_ENDPOINT_DISCOVERED = `A hidden endpoint was discovered via JavaScript-aware crawling (ZAP AJAX
+Spider) that was not found by the traditional HTML spider. Review whether
+this endpoint should be publicly accessible and ensure it enforces
+appropriate authentication and authorization controls.`;
+
 export function trivyConfigMisconfigRemediation(resolution: string | undefined, primaryUrl: string | undefined): string {
   const link = primaryUrl ? `\n\nSee ${primaryUrl} for the full rule rationale and background.` : "";
   if (resolution && resolution.trim()) {

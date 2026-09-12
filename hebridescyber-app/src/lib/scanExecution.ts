@@ -30,7 +30,11 @@ import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } f
 import { runWhatWaf } from "../worker/tools/whatwaf";
 import { runWpScanCli } from "../worker/tools/wpscan";
 import { runCmsMap } from "../worker/tools/cmsmap";
-import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation } from "./scanners/remediationText";
+import { runPhoton } from "../worker/tools/photon";
+import { runGospider } from "../worker/tools/gospider";
+import { runZapAjaxSpider } from "../worker/tools/zapAjaxSpider";
+import { runMetadataLeakCheck } from "../worker/tools/metadataLeak";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -115,6 +119,9 @@ async function runExtendedTools(
     whatwafResult,
     wpscanResult,
     cmsmapResult,
+    photonResult,
+    gospiderResult,
+    zapAjaxSpiderResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -206,6 +213,15 @@ async function runExtendedTools(
     toolConfig.cmsmap && detectedCmsType
       ? runCmsMap(targetUrl, detectedCmsType)
       : Promise.resolve({ status: "not_applicable" as const, findings: [] as never[], note: detectedCmsType ? "Disabled by scan profile." : "No CMS detected." }),
+    toolConfig.photon
+      ? runPhoton(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.gospider
+      ? runGospider(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.zapAjaxSpider
+      ? runZapAjaxSpider(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
   ]);
 
   const extended = {
@@ -226,6 +242,9 @@ async function runExtendedTools(
     whatwaf: whatwafResult.status === "fulfilled" ? whatwafResult.value : { status: "error" as const, note: String(whatwafResult.reason) },
     wpscan: wpscanResult.status === "fulfilled" ? wpscanResult.value : { status: "error" as const, findings: [], note: String(wpscanResult.reason) },
     cmsmap: cmsmapResult.status === "fulfilled" ? cmsmapResult.value : { status: "error" as const, findings: [], note: String(cmsmapResult.reason) },
+    photon: photonResult.status === "fulfilled" ? photonResult.value : { status: "error" as const, note: String(photonResult.reason) },
+    gospider: gospiderResult.status === "fulfilled" ? gospiderResult.value : { status: "error" as const, note: String(gospiderResult.reason) },
+    zapAjaxSpider: zapAjaxSpiderResult.status === "fulfilled" ? zapAjaxSpiderResult.value : { status: "error" as const, note: String(zapAjaxSpiderResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -398,6 +417,104 @@ async function runExtendedTools(
         cveIds: f.cveIds,
       });
     }
+  }
+
+  // Photon — OSINT URL/email/social harvesting (inventory, not vulnerabilities)
+  const photonAssets: Array<{ type: string; value: string }> = [];
+  if (extended.photon.status === "completed" && "assets" in extended.photon) {
+    const assets = (extended.photon as { status: "completed"; assets: Array<{ type: string; value: string }> }).assets;
+    photonAssets.push(...assets);
+    const emails = assets.filter((a) => a.type === "email");
+    const jsEndpoints = assets.filter((a) => a.type === "js-endpoint");
+    if (emails.length > 0) {
+      findings.push({
+        checkId: `photon.emails-discovered`,
+        severity: "info",
+        title: `[Photon] ${emails.length} email address${emails.length > 1 ? "es" : ""} discovered`,
+        detail: `Emails found on the target: ${emails.slice(0, 5).map((e) => e.value).join(", ")}${emails.length > 5 ? ` (+${emails.length - 5} more)` : ""}`,
+      });
+    }
+    if (jsEndpoints.length > 0) {
+      findings.push({
+        checkId: `photon.js-endpoints-discovered`,
+        severity: "info",
+        title: `[Photon] ${jsEndpoints.length} JavaScript endpoint${jsEndpoints.length > 1 ? "s" : ""} extracted`,
+        detail: `Endpoints extracted from JS files: ${jsEndpoints.slice(0, 5).map((e) => e.value).join(", ")}${jsEndpoints.length > 5 ? ` (+${jsEndpoints.length - 5} more)` : ""}`,
+      });
+    }
+  }
+
+  // Gospider — fast web crawling and JS endpoint discovery (inventory)
+  const gospiderEndpoints: Array<{ type: string; value: string }> = [];
+  if (extended.gospider.status === "completed" && "endpoints" in extended.gospider) {
+    const endpoints = (extended.gospider as { status: "completed"; endpoints: Array<{ type: string; value: string; source: string }> }).endpoints;
+    gospiderEndpoints.push(...endpoints);
+    const jsEps = endpoints.filter((e) => e.type === "js-endpoint");
+    const s3Refs = endpoints.filter((e) => e.type === "aws-s3");
+    if (jsEps.length > 0) {
+      findings.push({
+        checkId: `gospider.js-endpoints-discovered`,
+        severity: "info",
+        title: `[Gospider] ${jsEps.length} hidden API endpoint${jsEps.length > 1 ? "s" : ""} found in JavaScript`,
+        detail: `Endpoints discovered via JS analysis: ${jsEps.slice(0, 5).map((e) => e.value).join(", ")}${jsEps.length > 5 ? ` (+${jsEps.length - 5} more)` : ""}`,
+      });
+    }
+    if (s3Refs.length > 0) {
+      findings.push({
+        checkId: `gospider.aws-s3-reference`,
+        severity: "low",
+        title: `[Gospider] ${s3Refs.length} AWS S3 reference${s3Refs.length > 1 ? "s" : ""} found`,
+        detail: `S3 bucket references discovered: ${s3Refs.slice(0, 3).map((e) => e.value).join(", ")}`,
+      });
+    }
+  }
+
+  // ZAP AJAX Spider — JS-aware crawling discovers endpoints the traditional spider misses
+  if (extended.zapAjaxSpider.status === "completed" && "urls" in extended.zapAjaxSpider) {
+    const urls = (extended.zapAjaxSpider as { status: "completed"; urls: string[] }).urls;
+    if (urls.length > 0) {
+      findings.push({
+        checkId: `zapAjaxSpider.hidden-endpoint`,
+        severity: "info",
+        title: `[ZAP AJAX Spider] ${urls.length} additional endpoint${urls.length > 1 ? "s" : ""} discovered`,
+        detail: `The AJAX spider discovered ${urls.length} URL${urls.length > 1 ? "s" : ""} not found by the traditional spider. These may include client-side-rendered routes and API endpoints.`,
+        remediation: HIDDEN_ENDPOINT_DISCOVERED,
+      });
+    }
+  }
+
+  // Metadata leak — checks files discovered by Photon/Gospider for metadata leakage
+  const allDiscoveredFileUrls = [
+    ...photonAssets.filter((a) => a.type === "url").map((a) => a.value),
+    ...gospiderEndpoints.filter((e) => e.type === "url").map((e) => e.value),
+  ];
+  if (toolConfig.metadataLeak && allDiscoveredFileUrls.length > 0) {
+    try {
+      const metadataResult = await runMetadataLeakCheck(allDiscoveredFileUrls);
+      (extended as Record<string, unknown>).metadataLeak = metadataResult;
+      if (metadataResult.status === "completed") {
+        const remediationMap: Record<string, string> = {
+          email: METADATA_LEAK_EMAIL,
+          "internal-ip": METADATA_LEAK_INTERNAL_IP,
+          path: METADATA_LEAK_PATH,
+          author: METADATA_LEAK_AUTHOR,
+          software: METADATA_LEAK_SOFTWARE,
+        };
+        for (const f of metadataResult.findings) {
+          findings.push({
+            checkId: `metadataLeak.${f.type}:${f.url}`,
+            severity: f.type === "internal-ip" ? "medium" : f.type === "email" ? "low" : "info",
+            title: `[Metadata] ${f.type === "email" ? "Email address" : f.type === "internal-ip" ? "Internal IP address" : f.type === "path" ? "Filesystem path" : f.type === "author" ? "Author name" : "Software version"} leaked in document`,
+            detail: `Found "${f.value}" in metadata of ${f.url}`,
+            remediation: remediationMap[f.type],
+          });
+        }
+      }
+    } catch {
+      (extended as Record<string, unknown>).metadataLeak = { status: "error", note: "Metadata check failed" };
+    }
+  } else {
+    (extended as Record<string, unknown>).metadataLeak = { status: "not_configured" };
   }
 
   // recon.ts's base checkDns pass already reports a single "N subdomains

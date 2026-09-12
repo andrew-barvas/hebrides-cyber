@@ -15,10 +15,23 @@ type CmsMapStatus = {
   findings: Array<{ type: string; detail: string }>;
 } | { status: "not_configured" | "not_applicable" | "error" };
 
+type PhotonStatus = {
+  status: "completed";
+  assets: Array<{ type: string; value: string }>;
+} | { status: "not_configured" | "error" };
+
+type GospiderStatus = {
+  status: "completed";
+  endpoints: Array<{ type: string; value: string; source: string }>;
+} | { status: "not_configured" | "error" };
+
 type ExtendedResults = {
   whatwaf?: WafStatus;
   cmsmap?: CmsMapStatus;
   wpscan?: { status: string; findings?: Array<{ type: string }> };
+  photon?: PhotonStatus;
+  gospider?: GospiderStatus;
+  zapAjaxSpider?: { status: string; urls?: string[] };
   [key: string]: unknown;
 };
 
@@ -151,6 +164,51 @@ export function SeverityBreakdown({ findings }: { findings: ViewFinding[] }) {
               />
             </div>
             <span className="w-6 text-right text-xs font-bold text-cybertext/60">{b.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function OsintSummaryPanel({ results }: { results: ScanResults }) {
+  const photon = results.extended?.photon;
+  const gospider = results.extended?.gospider;
+  const ajaxSpider = results.extended?.zapAjaxSpider;
+
+  const hasPhoton = photon && photon.status === "completed" && "assets" in photon;
+  const hasGospider = gospider && gospider.status === "completed" && "endpoints" in gospider;
+  const hasAjax = ajaxSpider && ajaxSpider.status === "completed" && ajaxSpider.urls;
+
+  if (!hasPhoton && !hasGospider && !hasAjax) return null;
+
+  const photonAssets = hasPhoton ? (photon as Extract<PhotonStatus, { status: "completed" }>).assets : [];
+  const gospiderEps = hasGospider ? (gospider as Extract<GospiderStatus, { status: "completed" }>).endpoints : [];
+  const ajaxUrls = hasAjax ? (ajaxSpider as { urls: string[] }).urls : [];
+
+  const emailCount = photonAssets.filter((a) => a.type === "email").length;
+  const jsEndpointCount =
+    photonAssets.filter((a) => a.type === "js-endpoint").length +
+    gospiderEps.filter((e) => e.type === "js-endpoint").length;
+  const urlCount = photonAssets.filter((a) => a.type === "url").length + gospiderEps.filter((e) => e.type === "url").length;
+
+  const stats = [
+    { label: "URLs crawled", count: urlCount },
+    { label: "JS endpoints", count: jsEndpointCount },
+    { label: "Emails found", count: emailCount },
+    { label: "AJAX Spider URLs", count: ajaxUrls.length },
+  ].filter((s) => s.count > 0);
+
+  if (stats.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">Attack surface discovery</p>
+      <div className="grid grid-cols-2 gap-2">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2 text-center">
+            <p className="text-lg font-bold text-cybertext">{s.count}</p>
+            <p className="text-[10px] text-cybertext/40">{s.label}</p>
           </div>
         ))}
       </div>

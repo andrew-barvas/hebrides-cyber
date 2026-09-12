@@ -119,6 +119,16 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   // --- CMSmap ---
   "cmsmap.vulnerability": "moderate",
   "cmsmap.misconfiguration": "moderate",
+
+  // --- OSINT / metadata leaks ---
+  "metadataLeak.email": "easy",
+  "metadataLeak.internal-ip": "easy",
+  "metadataLeak.path": "easy",
+  "metadataLeak.author": "trivial",
+  "metadataLeak.software": "trivial",
+
+  // --- ZAP AJAX Spider ---
+  "zapAjaxSpider.hidden-endpoint": "moderate",
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {
