@@ -129,6 +129,15 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- ZAP AJAX Spider ---
   "zapAjaxSpider.hidden-endpoint": "moderate",
+
+  // --- API scanning (Kiterunner / Arjun) ---
+  "kiterunner.hidden-api-endpoint": "moderate",
+  "arjun.hidden-parameter": "moderate",
+
+  // --- Session / business logic ---
+  "sessionCheck.no-rate-limit": "moderate",
+  "sessionCheck.session-fixation": "hard",
+  "sessionCheck.idor-indicator": "hard",
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {

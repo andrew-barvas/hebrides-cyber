@@ -1616,3 +1616,40 @@ export function trivyConfigMisconfigRemediation(resolution: string | undefined, 
   }
   return `Review this resource against Trivy's rule for this finding — no specific remediation text was published for it.${link}`;
 }
+
+// --- API scanning (Kiterunner / Arjun) ---
+
+export const KITERUNNER_HIDDEN_ENDPOINT = `An API endpoint was discovered via contextual wordlist brute-forcing
+(Kiterunner) that is not linked from the application's HTML or JavaScript.
+Review whether this endpoint should be publicly accessible and ensure it
+enforces appropriate authentication and authorization controls. Consider
+adding the endpoint to your API documentation or removing it if it is
+no longer needed.`;
+
+export const ARJUN_HIDDEN_PARAMETER = `A hidden HTTP parameter was discovered that is not documented in the
+application's public interface. Hidden parameters can be used to bypass
+input validation or access restricted functionality. Review each
+discovered parameter and ensure it is properly validated and authorised.
+Remove any debug or internal-only parameters from production.`;
+
+// --- Session / business logic ---
+
+export const NO_RATE_LIMIT = `The login endpoint does not appear to enforce rate limiting. This
+allows attackers to perform brute-force password guessing attacks at
+high speed. Implement rate limiting (e.g. 5 attempts per minute per
+IP/account) and consider adding CAPTCHA after repeated failures.
+Most web frameworks have rate-limiting middleware available.`;
+
+export const SESSION_FIXATION = `The server accepted a pre-set session cookie without issuing a new
+session identifier. An attacker could set a victim's session cookie
+(e.g. via a subdomain cookie or XSS) and then hijack the session once
+the victim authenticates. Ensure your application always generates a
+new session ID upon successful authentication, invalidating any
+previously issued session tokens.`;
+
+export const IDOR_INDICATOR = `An API endpoint returned data when accessed with a sequential numeric
+ID without requiring authentication. This may indicate an Insecure
+Direct Object Reference (IDOR) vulnerability where users can access
+other users' data by changing the ID parameter. Implement proper
+authentication and authorization checks on all data-access endpoints.
+Use non-sequential identifiers (UUIDs) where possible.`;

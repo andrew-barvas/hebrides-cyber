@@ -200,6 +200,22 @@ jobs:
             rm /tmp/gospider.zip
           fi
 
+      - name: Install kiterunner and arjun
+        env:
+          KITERUNNER_VERSION: 2.0.2
+        run: |
+          curl -fsSL \
+            "https://github.com/assetnote/kiterunner/releases/download/v${KITERUNNER_VERSION}/kiterunner_${KITERUNNER_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/kiterunner.tar.gz \
+            || echo "kiterunner download failed — kiterunner.ts will report status: not_configured"
+          if [ -f /tmp/kiterunner.tar.gz ]; then
+            sudo tar -xzf /tmp/kiterunner.tar.gz -C /usr/local/bin kr
+            sudo chmod +x /usr/local/bin/kr
+            rm /tmp/kiterunner.tar.gz
+          fi
+          pip3 install --break-system-packages arjun \
+            || echo "arjun install failed — arjun.ts will report status: not_configured"
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \
