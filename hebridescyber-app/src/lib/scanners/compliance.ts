@@ -49,6 +49,7 @@ const OWASP_A02: ComplianceRef = { framework: "owasp-top-10", control: "A02:2021
 const OWASP_A03: ComplianceRef = { framework: "owasp-top-10", control: "A03:2021 – Injection" };
 const OWASP_A05: ComplianceRef = { framework: "owasp-top-10", control: "A05:2021 – Security Misconfiguration" };
 const OWASP_A06: ComplianceRef = { framework: "owasp-top-10", control: "A06:2021 – Vulnerable and Outdated Components" };
+const OWASP_A07: ComplianceRef = { framework: "owasp-top-10", control: "A07:2021 – Identification and Authentication Failures" };
 const OWASP_A08: ComplianceRef = { framework: "owasp-top-10", control: "A08:2021 – Software and Data Integrity Failures" };
 
 const CIS_3: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 3 – Data Protection" };
@@ -191,6 +192,15 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
 
   // --- ZAP AJAX Spider ---
   "zapAjaxSpider.hidden-endpoint": [OWASP_A05, CIS_3],
+
+  // --- API scanning (Kiterunner / Arjun) ---
+  "kiterunner.hidden-api-endpoint": [OWASP_A05, CIS_3],
+  "arjun.hidden-parameter": [OWASP_A05, CIS_3],
+
+  // --- Session / business logic ---
+  "sessionCheck.no-rate-limit": [OWASP_A07, CIS_16],
+  "sessionCheck.session-fixation": [OWASP_A07, CIS_16],
+  "sessionCheck.idor-indicator": [OWASP_A01, CIS_3],
 };
 
 /** The part of a checkId before its first ":" — see module header. */

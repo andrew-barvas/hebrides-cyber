@@ -34,7 +34,10 @@ import { runPhoton } from "../worker/tools/photon";
 import { runGospider } from "../worker/tools/gospider";
 import { runZapAjaxSpider } from "../worker/tools/zapAjaxSpider";
 import { runMetadataLeakCheck } from "../worker/tools/metadataLeak";
-import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED } from "./scanners/remediationText";
+import { runKiterunner } from "../worker/tools/kiterunner";
+import { runArjun } from "../worker/tools/arjun";
+import { runSessionCheck } from "../worker/tools/sessionCheck";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -122,6 +125,9 @@ async function runExtendedTools(
     photonResult,
     gospiderResult,
     zapAjaxSpiderResult,
+    kiterunnerResult,
+    arjunResult,
+    sessionCheckResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -222,6 +228,15 @@ async function runExtendedTools(
     toolConfig.zapAjaxSpider
       ? runZapAjaxSpider(targetUrl)
       : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.kiterunner
+      ? runKiterunner(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.arjun
+      ? runArjun(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.sessionCheck
+      ? runSessionCheck(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
   ]);
 
   const extended = {
@@ -245,6 +260,9 @@ async function runExtendedTools(
     photon: photonResult.status === "fulfilled" ? photonResult.value : { status: "error" as const, note: String(photonResult.reason) },
     gospider: gospiderResult.status === "fulfilled" ? gospiderResult.value : { status: "error" as const, note: String(gospiderResult.reason) },
     zapAjaxSpider: zapAjaxSpiderResult.status === "fulfilled" ? zapAjaxSpiderResult.value : { status: "error" as const, note: String(zapAjaxSpiderResult.reason) },
+    kiterunner: kiterunnerResult.status === "fulfilled" ? kiterunnerResult.value : { status: "error" as const, note: String(kiterunnerResult.reason) },
+    arjun: arjunResult.status === "fulfilled" ? arjunResult.value : { status: "error" as const, note: String(arjunResult.reason) },
+    sessionCheck: sessionCheckResult.status === "fulfilled" ? sessionCheckResult.value : { status: "error" as const, note: String(sessionCheckResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -515,6 +533,55 @@ async function runExtendedTools(
     }
   } else {
     (extended as Record<string, unknown>).metadataLeak = { status: "not_configured" };
+  }
+
+  // Kiterunner — API endpoint brute-force discovery
+  if (extended.kiterunner.status === "completed" && "endpoints" in extended.kiterunner) {
+    const endpoints = (extended.kiterunner as { status: "completed"; endpoints: Array<{ method: string; path: string; statusCode: number }> }).endpoints;
+    if (endpoints.length > 0) {
+      findings.push({
+        checkId: `kiterunner.hidden-api-endpoint`,
+        severity: "medium",
+        title: `[Kiterunner] ${endpoints.length} hidden API endpoint${endpoints.length > 1 ? "s" : ""} discovered`,
+        detail: `Undocumented API endpoints found via wordlist brute-forcing: ${endpoints.slice(0, 5).map((e) => `${e.method} ${e.path} (${e.statusCode})`).join(", ")}${endpoints.length > 5 ? ` (+${endpoints.length - 5} more)` : ""}`,
+        remediation: KITERUNNER_HIDDEN_ENDPOINT,
+      });
+    }
+  }
+
+  // Arjun — HTTP parameter discovery
+  if (extended.arjun.status === "completed" && "parameters" in extended.arjun) {
+    const params = (extended.arjun as { status: "completed"; parameters: Array<{ url: string; method: string; params: string[] }> }).parameters;
+    for (const p of params) {
+      if (p.params.length > 0) {
+        findings.push({
+          checkId: `arjun.hidden-parameter:${p.url}`,
+          severity: "low",
+          title: `[Arjun] ${p.params.length} hidden parameter${p.params.length > 1 ? "s" : ""} found on ${p.url}`,
+          detail: `Hidden ${p.method} parameters discovered: ${p.params.join(", ")}`,
+          remediation: ARJUN_HIDDEN_PARAMETER,
+        });
+      }
+    }
+  }
+
+  // Session / business logic checks
+  if (extended.sessionCheck.status === "completed" && "findings" in extended.sessionCheck) {
+    const sessionFindings = (extended.sessionCheck as { status: "completed"; findings: Array<{ type: string; detail: string; url: string }> }).findings;
+    const remediationMap: Record<string, string> = {
+      "no-rate-limit": NO_RATE_LIMIT,
+      "session-fixation": SESSION_FIXATION,
+      "idor-indicator": IDOR_INDICATOR,
+    };
+    for (const f of sessionFindings) {
+      findings.push({
+        checkId: `sessionCheck.${f.type}:${f.url}`,
+        severity: f.type === "idor-indicator" ? "high" : f.type === "session-fixation" ? "high" : "medium",
+        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
+        detail: f.detail,
+        remediation: remediationMap[f.type],
+      });
+    }
   }
 
   // recon.ts's base checkDns pass already reports a single "N subdomains

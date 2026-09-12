@@ -36,6 +36,9 @@ export const EXTENDED_TOOL_PREFIXES = [
   "gospider",
   "zapAjaxSpider",
   "metadataLeak",
+  "kiterunner",
+  "arjun",
+  "sessionCheck",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {
