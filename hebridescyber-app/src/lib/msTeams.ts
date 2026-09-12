@@ -12,6 +12,7 @@
 // as a plain card) even in newer Workflow-based webhook endpoints. If Teams
 // ever fully retires MessageCard rendering, this is the one thing to revisit.
 import type { SlackAlertPayload } from "./slack";
+import { isValidTeamsWebhookUrl } from "./webhookUrlValidation";
 
 function severityColor(score: number): string {
   if (score < 40) return "D93F0B"; // red
@@ -73,6 +74,13 @@ export async function sendTeamsAlert(webhookUrl: string, payload: SlackAlertPayl
       },
     ],
   };
+
+  // Gated here, at the actual fetch call site — see slack.ts's identical
+  // check for the full reasoning (save-path validation alone isn't enough).
+  if (!isValidTeamsWebhookUrl(webhookUrl)) {
+    console.error(`[ms-teams] refusing to send: "${webhookUrl}" is not a recognised Teams webhook host`);
+    return;
+  }
 
   const res = await fetch(webhookUrl, {
     method: "POST",

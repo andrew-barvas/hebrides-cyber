@@ -3,6 +3,8 @@
 // in the dashboard (subscriptions.slack_webhook_url) or globally via
 // SLACK_WEBHOOK_URL env var for admin alerting.
 
+import { isValidSlackWebhookUrl } from "./webhookUrlValidation";
+
 export type SlackAlertPayload = {
   scanId: string;
   targetUrl: string;
@@ -94,6 +96,15 @@ export async function sendSlackAlert(
       },
     ],
   };
+
+  // Gated here, at the actual fetch call site, not just at the save path
+  // (notification-webhooks.ts validates too, but that's defense in depth —
+  // this is the check that actually matters, since it's the one place every
+  // outbound request funnels through regardless of how the URL got saved.
+  if (!isValidSlackWebhookUrl(webhookUrl)) {
+    console.error(`[slack] refusing to send: "${webhookUrl}" is not a hooks.slack.com URL`);
+    return;
+  }
 
   const res = await fetch(webhookUrl, {
     method: "POST",
