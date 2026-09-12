@@ -175,6 +175,15 @@ jobs:
           # matches nuclei's own "-update-templates" priming step above.
           trivy image --download-db-only --quiet || echo "trivy DB download failed — image scans will report status: error"
 
+      - name: Install whatwaf, wpscan, and cmsmap
+        run: |
+          pip3 install --break-system-packages whatwaf \
+            || echo "whatwaf install failed — whatwaf.ts will report status: not_configured"
+          sudo gem install wpscan --no-document \
+            || echo "wpscan install failed — wpscan.ts will report status: not_configured"
+          pip3 install --break-system-packages cmsmap \
+            || echo "cmsmap install failed — cmsmap.ts will report status: not_configured"
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \

@@ -1462,6 +1462,128 @@ RUN apt-get update && apt-get install -y --only-upgrade ${pkgName} \\
  * duplicating it, and falls back to a generic pointer for the older rego
  * checks that don't set Resolution.
  */
+// ---------------------------------------------------------------------------
+// WAF detection (src/worker/tools/whatwaf.ts)
+// ---------------------------------------------------------------------------
+
+export const WAF_NOT_DETECTED = `No Web Application Firewall (WAF) was detected in front of this application.
+A WAF provides an additional layer of defence against common web attacks —
+injection, cross-site scripting, and application-layer DDoS — buying time to
+patch when a new vulnerability is disclosed.
+
+**Options, roughly in order of deployment effort:**
+
+1. **Managed CDN/WAF** (Cloudflare, AWS WAF, Azure Front Door, Akamai) —
+   point DNS at the provider, enable the managed ruleset. Fastest path, and
+   the WAF doubles as a CDN.
+2. **ModSecurity + OWASP Core Rule Set** — open-source, self-hosted. Add the
+   module to nginx or Apache, enable the CRS, and start in \`DetectionOnly\`
+   mode while you tune false positives.
+3. **Cloud-native WAF** (AWS WAF, Azure WAF, GCP Cloud Armor) — if you are
+   already behind that provider's load balancer, the WAF is a configuration
+   toggle, not a new deployment.
+
+A WAF is defence in depth, not a replacement for fixing the underlying issues
+in this report. Start with the critical and high findings above, and layer a
+WAF on top.`;
+
+export const WAF_BYPASS = `A WAF is present but WhatWaf identified a technique that bypasses it. This
+means the WAF provides a false sense of security for some attack patterns.
+
+1. **Update the WAF ruleset** — managed WAFs auto-update, but self-hosted ones
+   (ModSecurity) need manual rule updates.
+2. **Review the WAF mode** — ensure it is in blocking mode, not detection-only.
+3. **Test the bypass** — reproduce the bypass technique in a staging
+   environment and confirm the WAF blocks it after updating.
+4. **Fix the underlying vulnerability** — a WAF bypass is only dangerous when
+   there is a real vulnerability behind it. Prioritise the application-level
+   fix.`;
+
+// ---------------------------------------------------------------------------
+// WPScan CLI (src/worker/tools/wpscan.ts)
+// ---------------------------------------------------------------------------
+
+export const WPSCAN_CONFIG_BACKUP = `A WordPress configuration backup file is publicly accessible. This file
+typically contains database credentials, authentication keys, and other
+secrets.
+
+1. **Delete the backup immediately** — it should never exist in the web root.
+2. **Rotate every credential** it contained: database password, AUTH_KEY,
+   SECURE_AUTH_KEY, and all other salts in wp-config.php.
+3. **Block access** to common backup patterns at the server level:
+
+\`\`\`nginx
+location ~* wp-config\\.php\\.(bak|old|orig|save|swp|txt)$ {
+  deny all;
+  return 404;
+}
+\`\`\`
+
+4. **Audit how it was created** — a manual backup left by an admin, an editor
+   plugin, or part of a compromised deployment pipeline. Remove the cause, not
+   just the symptom.`;
+
+export const WPSCAN_DB_EXPORT = `A database export file is publicly accessible. This is a **critical** exposure
+— the file likely contains every user account, password hash, post, comment,
+and option row in the WordPress database.
+
+1. **Delete the file immediately.**
+2. **Assume the data is compromised.** Force a password reset for every user,
+   revoke all active sessions, and rotate every secret stored in the database
+   (API keys, OAuth tokens, etc.).
+3. **Block access** at the server level:
+
+\`\`\`nginx
+location ~* \\.(sql|sql\\.gz|sql\\.bz2|sql\\.zip)$ {
+  deny all;
+  return 404;
+}
+\`\`\`
+
+4. **Never store database exports inside the web root.** Use a backup plugin
+   that writes to a private storage location (S3, a local path outside the
+   document root) instead.`;
+
+export const WPSCAN_TIMTHUMB = `TimThumb is a PHP image-resizing script with a history of critical
+remote-file-inclusion and remote-code-execution vulnerabilities.
+
+1. **Remove TimThumb entirely** — modern WordPress has built-in image handling
+   via \`add_image_size()\` and the media library.
+2. If removal is not immediately possible, update to the latest TimThumb
+   version and restrict the list of allowed domains.
+3. Check for indicators of compromise: unexpected PHP files in the cache
+   directory, unfamiliar cron jobs, or new admin accounts.`;
+
+export function wpScanThemeVulnerabilityRemediation(slug: string, fixedIn: string | null): string {
+  if (fixedIn) {
+    return `Update the **${slug}** theme to version **${fixedIn}** or later from the WordPress admin
+dashboard (**Appearance → Themes → Update**) after taking a backup. This is a
+confirmed, disclosed vulnerability in the specific version detected.`;
+  }
+  return `The **${slug}** theme has a known vulnerability with no patched version available
+yet. Consider switching to an alternative theme, or apply a web application
+firewall rule to mitigate the specific vulnerability type while waiting for a
+fix from the theme author.`;
+}
+
+export function cmsmapVulnerabilityRemediation(cmsType: string): string {
+  return `CMSmap identified a vulnerability in this **${cmsType}** installation.
+
+1. **Update** ${cmsType} core and all extensions to the latest versions.
+2. **Review** the specific vulnerability details and check the vendor's
+   advisory for the exact affected versions.
+3. **Harden** the ${cmsType} installation following the official security
+   checklist for your version.
+4. **Re-scan** to confirm the finding clears after patching.`;
+}
+
+export function cmsmapMisconfigRemediation(cmsType: string): string {
+  return `CMSmap identified a configuration weakness in this **${cmsType}** installation.
+Review the ${cmsType} hardening guide and correct the specific misconfiguration
+reported. Common issues include debug mode enabled in production, default
+admin paths exposed, and unnecessary modules/plugins active.`;
+}
+
 export function trivyConfigMisconfigRemediation(resolution: string | undefined, primaryUrl: string | undefined): string {
   const link = primaryUrl ? `\n\nSee ${primaryUrl} for the full rule rationale and background.` : "";
   if (resolution && resolution.trim()) {

@@ -6,7 +6,7 @@ describe("isExtendedToolFinding", () => {
     expect(isExtendedToolFinding(`${prefix}.some-check:key`)).toBe(true);
   });
 
-  it.each(["recon.subdomains-found", "headers.missing", "tls.expiring", "wpscan.outdated-plugin"])(
+  it.each(["recon.subdomains-found", "headers.missing", "tls.expiring", "wpvdb.outdated-plugin"])(
     "returns false for the non-extended checkId %s",
     (checkId) => {
       expect(isExtendedToolFinding(checkId)).toBe(false);

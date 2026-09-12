@@ -105,6 +105,20 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "auth-check.csp-absent": "moderate",
   "auth-check.session-cookie-insecure": "easy",
   "auth-check.cors-wildcard": "easy",
+
+  // --- WAF detection ---
+  "whatwaf.no-waf": "hard",
+  "whatwaf.waf-bypass": "hard",
+
+  // --- WPScan CLI ---
+  "wpscan.theme-vulnerability": "easy",
+  "wpscan.config-backup": "easy",
+  "wpscan.db-export": "trivial",
+  "wpscan.timthumb": "easy",
+
+  // --- CMSmap ---
+  "cmsmap.vulnerability": "moderate",
+  "cmsmap.misconfiguration": "moderate",
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {

@@ -12,6 +12,7 @@ import MonitoredTargets from "@/components/MonitoredTargets";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
+import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown } from "@/components/DashboardPanels";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import ComplianceTrend from "@/components/ComplianceTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
@@ -87,6 +88,7 @@ export default function DashboardPage() {
   const [overviewScoreHistory, setOverviewScoreHistory] = useState<ScorePoint[]>([]);
   const [overviewComplianceHistory, setOverviewComplianceHistory] = useState<CompliancePoint[]>([]);
   const [overviewFilter, setOverviewFilter] = useState<FindingsFilter>("all");
+  const [overviewResults, setOverviewResults] = useState<Record<string, unknown> | null>(null);
 
   const loadPlan = useCallback(async () => {
     const { data } = await supabase
@@ -162,6 +164,7 @@ export default function DashboardPage() {
     const findings = resultRow.results?.findings ?? [];
     setOverviewScan({ id: latest.id, target_url: latest.target_url, score: resultRow.score ?? 0, created_at: createdAt });
     setOverviewFindings(findings);
+    setOverviewResults(resultRow.results as Record<string, unknown> | null);
 
     const [previousFindings, history, complianceHistory] = await Promise.all([
       findPreviousFindingsClient(latest.id, latest.target_url, createdAt),
@@ -398,11 +401,22 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {overviewScoreHistory.length >= 2 && (
-              <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-                <ScoreTrend points={overviewScoreHistory} />
+            {overviewResults && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <WafIndicator results={overviewResults as Parameters<typeof WafIndicator>[0]["results"]} />
+                <CmsStatusPanel results={overviewResults as Parameters<typeof CmsStatusPanel>[0]["results"]} />
+                <TechStackPanel results={overviewResults as Parameters<typeof TechStackPanel>[0]["results"]} />
               </div>
             )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <SeverityBreakdown findings={overviewFindings} />
+              {overviewScoreHistory.length >= 2 && (
+                <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+                  <ScoreTrend points={overviewScoreHistory} />
+                </div>
+              )}
+            </div>
 
             <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
               <ComplianceTrend findings={overviewFindings} history={overviewComplianceHistory} />

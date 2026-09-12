@@ -29,6 +29,9 @@ export const EXTENDED_TOOL_PREFIXES = [
   "trivy-image",
   "trivy-config",
   "auth-check",
+  "whatwaf",
+  "wpscan",
+  "cmsmap",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

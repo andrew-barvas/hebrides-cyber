@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, ExecutiveSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
@@ -285,6 +285,9 @@ export default function ScanDetailPage() {
               <ScoreTrend points={scoreHistory} />
             </div>
           )}
+
+          {/* Executive summary */}
+          {result.score !== null && <ExecutiveSummary findings={taggedOrdered} score={result.score} />}
 
           {/* Compliance mapping */}
           <ComplianceSummary findings={taggedOrdered} />

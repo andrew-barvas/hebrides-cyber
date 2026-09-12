@@ -31,6 +31,8 @@ export type ScanReport = {
     // only today. [] means "checked, none known"; omitted entirely from a
     // finding type that was never checked (see Finding.cveIds in scanners).
     cve_ids?: string[];
+    fix_difficulty?: string;
+    estimated_fix_minutes?: number;
   }>;
   fixed_findings?: Array<{ check_id: string | null; severity: string; title: string }>;
 };
@@ -124,6 +126,8 @@ export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFi
       remediation: f.remediation ?? null,
       status: f.checkId ? statusByCheckId.get(f.checkId) ?? null : null,
       cve_ids: f.cveIds,
+      fix_difficulty: f.fixDifficulty,
+      estimated_fix_minutes: f.estimatedFixMinutes,
     })),
     fixed_findings: diff
       ? diff.fixed.map((f) => ({ check_id: f.checkId ?? null, severity: f.severity, title: f.title }))
