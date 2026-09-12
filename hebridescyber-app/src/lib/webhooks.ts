@@ -15,6 +15,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ScanReport } from "./scanReport";
+import { validateNoSsrf } from "./ownership";
 
 const SECRET_BYTES = 24;
 const DELIVERY_TIMEOUT_MS = 8_000;
@@ -93,10 +94,26 @@ async function deliverOne(supabaseAdmin: SupabaseClient, webhook: WebhookRow, bo
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = buildSignatureHeader(webhook.secret, body, timestamp);
 
-  let ok = await attemptDelivery(webhook.url, body, signature);
-  if (!ok) {
-    await sleep(RETRY_DELAY_MS);
+  // Re-validated on every delivery, not just at registration (src/pages/api/
+  // webhooks.ts also checks at save time, but that result can go stale —
+  // DNS can legitimately repoint at internal infrastructure between
+  // registration and a scan firing weeks or months later). This is the
+  // single choke point every outbound delivery passes through regardless of
+  // how the row was created, which is what makes it the check that actually
+  // matters. One check per delivery, not per retry attempt — a target that
+  // fails SSRF validation won't pass on a second try 2 seconds later, so
+  // there's nothing to retry.
+  let ok: boolean;
+  try {
+    await validateNoSsrf(webhook.url);
     ok = await attemptDelivery(webhook.url, body, signature);
+    if (!ok) {
+      await sleep(RETRY_DELAY_MS);
+      ok = await attemptDelivery(webhook.url, body, signature);
+    }
+  } catch (err) {
+    console.error(`[webhooks] refusing to deliver to webhook ${webhook.id}:`, (err as Error).message);
+    ok = false;
   }
 
   if (ok) {

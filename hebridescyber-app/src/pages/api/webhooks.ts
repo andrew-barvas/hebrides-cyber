@@ -8,6 +8,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateWebhookSecret } from "@/lib/webhooks";
 import { logAuditEvent } from "@/lib/audit";
+import { validateNoSsrf } from "@/lib/ownership";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -42,6 +43,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (parsed.protocol !== "https:") {
       return res.status(400).json({ error: "url must use https — a plaintext http endpoint can't keep the signing secret confidential in transit" });
+    }
+
+    // Unlike the Slack/Teams vendor fields (webhookUrlValidation.ts's
+    // hostname allowlist — this URL is genuinely arbitrary, owner-controlled
+    // infrastructure, so the check here is validateNoSsrf's private-IP/
+    // metadata-endpoint block rather than a fixed allowlist. This is
+    // defense in depth for immediate customer feedback — the actual
+    // enforcement that matters is in src/lib/webhooks.ts's deliverOne(),
+    // which re-checks on every delivery rather than trusting this one-time
+    // save-time result (DNS can legitimately repoint after registration).
+    try {
+      await validateNoSsrf(url);
+    } catch (err) {
+      return res.status(400).json({ error: (err as Error).message });
     }
 
     const label = (name ?? "").trim().slice(0, 60) || null;
