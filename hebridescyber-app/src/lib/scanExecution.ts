@@ -42,6 +42,7 @@ import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { getCmsType } from "./scanners/fingerprint";
+import { syncAssetInventory } from "./assetInventory";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
@@ -714,6 +715,11 @@ export async function executeScan(
       resourceId: scanId,
       metadata: { target_url: targetUrl, score },
     });
+
+    // Best-effort, post-completion — syncAssetInventory() swallows its own
+    // errors internally (see its header), so this can never flip a
+    // completed scan back to failed.
+    await syncAssetInventory(supabaseAdmin, ownerId, targetUrl, results, extended);
   } catch (err) {
     await supabaseAdmin
       .from("scans")
@@ -775,6 +781,14 @@ export async function executeScan(
  * change (Pro/Agency plan)"). Slack and Teams are independent — a customer
  * with both webhooks configured gets both, and either can be set without
  * the other.
+ *
+ * Admins bypass the plan/subscription-status gate — same `users.is_admin`
+ * precedent as freeTier.ts's isFreeTierExhausted() and ownership.ts's
+ * isDomainVerified(). This was the one plan-gated path in the scan pipeline
+ * that hadn't picked up that convention: an admin account (which may have
+ * no subscriptions row at all, since admin access doesn't require a paid
+ * plan) would otherwise silently never get a change alert, same as a real
+ * Basic customer, unlike every other admin-exempt gate in this codebase.
  */
 async function sendChangeAlertIfDue(
   supabaseAdmin: SupabaseClient,
@@ -784,14 +798,17 @@ async function sendChangeAlertIfDue(
 ): Promise<void> {
   if (!report.new_finding_count) return; // null (no previous scan) or 0 — nothing changed
 
-  const { data: sub } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan, status, slack_webhook_url, ms_teams_webhook_url")
-    .eq("owner", ownerId)
-    .maybeSingle();
+  const [{ data: sub }, { data: user }] = await Promise.all([
+    supabaseAdmin.from("subscriptions").select("plan, status, slack_webhook_url, ms_teams_webhook_url").eq("owner", ownerId).maybeSingle(),
+    supabaseAdmin.from("users").select("is_admin").eq("id", ownerId).maybeSingle(),
+  ]);
 
-  if (!sub || sub.status !== "active") return;
-  if (sub.plan !== "pro" && sub.plan !== "agency") return;
+  if (!sub) return; // nothing to send to, admin or not
+  const isAdmin = Boolean(user?.is_admin);
+  if (!isAdmin) {
+    if (sub.status !== "active") return;
+    if (sub.plan !== "pro" && sub.plan !== "agency") return;
+  }
   if (!sub.slack_webhook_url && !sub.ms_teams_webhook_url) return;
 
   const criticalCount = findings.filter((f) => f.severity === "critical").length;

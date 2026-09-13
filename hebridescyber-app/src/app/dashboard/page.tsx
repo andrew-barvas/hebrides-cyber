@@ -354,12 +354,26 @@ export default function DashboardPage() {
             <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./dashboard</p>
             <h1 className="text-2xl font-bold text-cybertext sm:text-3xl">Dashboard</h1>
           </div>
-          <Link
-            href="/dashboard/scans"
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
-          >
-            All scans →
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/assets"
+              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
+            >
+              Assets →
+            </Link>
+            <Link
+              href="/dashboard/scans"
+              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
+            >
+              All scans →
+            </Link>
+            <Link
+              href="/dashboard/scans/history"
+              className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
+            >
+              Score history →
+            </Link>
+          </div>
         </div>
 
         <FleetOverview />
