@@ -26,6 +26,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
+import { callerCanActFor } from "@/lib/teamAccess";
 import type { Finding, ScanResults } from "@/lib/scanners";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -46,7 +47,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner, target_url").eq("id", scanId).maybeSingle();
   if (!scan) return res.status(404).json({ error: "Scan not found" });
-  if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
+  const isOwner = scan.owner === caller.ownerId;
+  if (!isOwner && !(await callerCanActFor(supabaseAdmin, caller.ownerId, scan.owner))) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  // Q4 #18: a team 'admin'/'developer' can retest on the owner's behalf; the
+  // new scan/job rows still belong to the owner (scan.owner), not the caller.
+  const actingOwnerId = scan.owner;
 
   const { data: result } = await supabaseAdmin
     .from("scan_results")
@@ -75,13 +82,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // run-scan.ts's fresh-scan flow needs.
   const { data: newScan, error: insertError } = await supabaseAdmin
     .from("scans")
-    .insert({ owner: caller.ownerId, target_url: scan.target_url, status: "running", owner_verified: true })
+    .insert({ owner: actingOwnerId, target_url: scan.target_url, status: "running", owner_verified: true })
     .select("id")
     .single();
   if (insertError || !newScan) return res.status(500).json({ error: insertError?.message ?? "Failed to create retest scan" });
 
   const { error: jobError } = await supabaseAdmin.from("scan_jobs").insert({
-    owner: caller.ownerId,
+    owner: actingOwnerId,
     target_url: scan.target_url,
     scan_id: newScan.id,
     status: "pending",

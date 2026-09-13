@@ -22,6 +22,7 @@ import {
   touchTicketLink,
   type TicketIntegrationRow,
 } from "@/lib/ticketLinks";
+import { callerCanActFor } from "@/lib/teamAccess";
 import type { Finding, ScanResults } from "@/lib/scanners";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -44,7 +45,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner, target_url").eq("id", scanId).maybeSingle();
   if (!scan) return res.status(404).json({ error: "Scan not found" });
-  if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
+  const isOwner = scan.owner === caller.ownerId;
+  if (!isOwner && !(await callerCanActFor(supabaseAdmin, caller.ownerId, scan.owner))) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  // Q4 #18: a team 'admin'/'developer' can create a ticket on the owner's
+  // behalf — using the OWNER's own ticket integration (their Jira/Linear),
+  // never the caller's, and recorded against the owner in ticket_links.
+  const actingOwnerId = scan.owner;
 
   const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).maybeSingle();
   if (!result) return res.status(404).json({ error: "No results for this scan yet" });
@@ -60,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data: integration } = await supabaseAdmin
     .from("ticket_integrations")
     .select("provider, jira_base_url, jira_email, jira_api_token, jira_project_key, linear_api_key, linear_team_id, auto_close_enabled")
-    .eq("owner", caller.ownerId)
+    .eq("owner", actingOwnerId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -75,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const targetHost = ticketHostOf(scan.target_url);
-  const link = await findTicketLink(supabaseAdmin, caller.ownerId, client.provider, targetHost, checkId);
+  const link = await findTicketLink(supabaseAdmin, actingOwnerId, client.provider, targetHost, checkId);
   // Only worth asking the tracker about a link we might reuse; a row already
   // marked closed is a regression and takes the create path regardless.
   const issueState = link && !link.closed_at ? await client.getIssue(link.issue_key) : null;
@@ -114,7 +122,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!outcome.ok) return res.status(502).json({ error: outcome.error });
 
   await recordTicketLink(supabaseAdmin, {
-    owner: caller.ownerId,
+    owner: actingOwnerId,
     provider: client.provider,
     targetHost,
     checkId,

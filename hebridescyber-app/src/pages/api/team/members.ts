@@ -3,7 +3,10 @@
 //
 // Permission model (kept deliberately simple):
 //   - owner: full control over their team (invite, change role, remove anyone)
-//   - admin: can invite and remove 'member' role users, cannot touch other admins
+//   - admin: can invite and remove non-admin role users, cannot touch other admins
+//   - developer: can act on the owner's behalf for scans (see src/lib/teamAccess.ts),
+//     but this file grants no extra invite/remove power over a plain member
+//   - auditor: read-only, same standing as member for team management itself
 //   - member: read-only, can only remove themselves (leave)
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
@@ -11,18 +14,21 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
 
+type TeamRole = "admin" | "developer" | "auditor" | "member";
 type TeamRow = { id: string; owner_id: string };
-type MemberRow = { team_id: string; user_id: string; role: "admin" | "member" };
+type MemberRow = { team_id: string; user_id: string; role: TeamRole };
+
+const TEAM_ROLES = ["admin", "developer", "auditor", "member"] as const;
 
 const inviteSchema = z.object({
   team_id: z.string().min(1),
   email: z.string().email(),
-  role: z.enum(["admin", "member"]).optional(),
+  role: z.enum(TEAM_ROLES).optional(),
 });
 const setRoleSchema = z.object({
   team_id: z.string().min(1),
   user_id: z.string().min(1),
-  role: z.enum(["admin", "member"]),
+  role: z.enum(TEAM_ROLES),
 });
 const removeSchema = z.object({ team_id: z.string().min(1), user_id: z.string().min(1) });
 
@@ -175,7 +181,7 @@ async function remove(req: NextApiRequest, res: NextApiResponse, callerId: strin
   const allowed =
     isOwner || // owner can remove anyone
     isSelf || // anyone can remove themselves (leave)
-    (callerMembership?.role === "admin" && targetMembership.role === "member"); // admin can remove members, not other admins
+    (callerMembership?.role === "admin" && targetMembership.role !== "admin"); // admin can remove any non-admin role, not other admins
 
   if (!allowed) {
     return res.status(403).json({ error: "You don't have permission to remove this member" });

@@ -2,9 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Member = { user_id: string; email: string; role: "admin" | "member"; joined_at: string };
+type TeamRole = "admin" | "developer" | "auditor" | "member";
+type Member = { user_id: string; email: string; role: TeamRole; joined_at: string };
 type OwnedTeam = { id: string; name: string; created_at: string; members: Member[] };
-type Membership = { team_id: string; team_name: string; owner_email: string; role: "admin" | "member"; joined_at: string };
+type Membership = { team_id: string; team_name: string; owner_email: string; role: TeamRole; joined_at: string };
+
+// Q4 #18 (docs/24-FEATURE-EXPANSION-SPEC.md) — shown next to the role select
+// so "developer" and "auditor" aren't cryptic labels; the API routes
+// (src/lib/teamAccess.ts) are what actually enforce this, not this UI.
+const ROLE_LABELS: Record<TeamRole, string> = {
+  member: "Member (view only)",
+  auditor: "Auditor (view only, plus exec/compliance views)",
+  developer: "Developer (can replay scans, retest findings, create tickets)",
+  admin: "Admin (can invite/remove members)",
+};
 
 export default function TeamSection({ token, currentUserId }: { token: string; currentUserId: string }) {
   const [ownedTeam, setOwnedTeam] = useState<OwnedTeam | null>(null);
@@ -16,7 +27,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
   const [creating, setCreating] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [inviteRole, setInviteRole] = useState<TeamRole>("member");
   const [inviting, setInviting] = useState(false);
 
   const load = useCallback(async () => {
@@ -81,7 +92,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
     }
   }
 
-  async function changeRole(userId: string, role: "admin" | "member") {
+  async function changeRole(userId: string, role: TeamRole) {
     if (!ownedTeam) return;
     setError(null);
     try {
@@ -166,11 +177,12 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                 />
                 <select
                   value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as "admin" | "member")}
+                  onChange={(e) => setInviteRole(e.target.value as TeamRole)}
                   className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
                 >
-                  <option value="member">Member (view only)</option>
-                  <option value="admin">Admin (can invite/remove members)</option>
+                  {(["member", "auditor", "developer", "admin"] as const).map((role) => (
+                    <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                  ))}
                 </select>
                 <button
                   type="submit"
@@ -194,10 +206,12 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                       <div className="flex shrink-0 items-center gap-3">
                         <select
                           value={m.role}
-                          onChange={(e) => changeRole(m.user_id, e.target.value as "admin" | "member")}
+                          onChange={(e) => changeRole(m.user_id, e.target.value as TeamRole)}
                           className="rounded border border-cyberborder bg-cyberbg px-2 py-1 text-xs text-cybertext/70 focus:border-neon focus:outline-none transition-colors"
                         >
                           <option value="member">Member</option>
+                          <option value="auditor">Auditor</option>
+                          <option value="developer">Developer</option>
                           <option value="admin">Admin</option>
                         </select>
                         <button

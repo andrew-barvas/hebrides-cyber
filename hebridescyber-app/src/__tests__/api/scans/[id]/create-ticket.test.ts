@@ -129,11 +129,27 @@ describe("POST /api/scans/[id]/create-ticket", () => {
     expect(res._getStatusCode()).toBe(400);
   });
 
-  it("returns 403 when the caller does not own the scan", async () => {
+  it("returns 403 when the caller does not own the scan and isn't on the owner's team", async () => {
     queues.scans = [{ data: { id: "scan-1", owner: "someone-else", target_url: "https://example.com" } }];
+    queues.teams = [{ data: null, error: null }];
     const { req, res } = mockReqRes();
     await handler(req, res);
     expect(res._getStatusCode()).toBe(403);
+  });
+
+  it("allows a team 'developer' to create a ticket on the owner's behalf, using the OWNER's own integration", async () => {
+    const teamOwnerId = "someone-else";
+    queues.scans = [{ data: { id: "scan-1", owner: teamOwnerId, target_url: "https://Example.com/path" } }];
+    queues.scan_results = [{ data: { results: { findings: [FINDING] } } }];
+    queues.teams = [{ data: { id: "team-1" }, error: null }];
+    queues.team_members = [{ data: { role: "developer" }, error: null }];
+    queues.ticket_integrations = [{ data: { provider: "jira", jira_base_url: "https://t.atlassian.net", jira_email: "a@b.c", jira_api_token: "t", jira_project_key: "SEC" } }];
+
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(recordTicketLinkMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ owner: teamOwnerId }));
   });
 
   it("returns 404 when the checkId matches no finding on the scan", async () => {
