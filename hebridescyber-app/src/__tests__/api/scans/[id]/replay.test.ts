@@ -186,7 +186,7 @@ describe("POST /api/scans/[id]/replay", () => {
     const { req, res } = mockReqRes();
     await handler(req, res);
 
-    expect(res._getJSONData().scanProfile).toBe("safe");
+    expect((res._getJSONData() as Record<string, unknown>).scanProfile).toBe("safe");
     expect(triggerOnDemandWorkflowMock).toHaveBeenCalledTimes(1);
   });
 
@@ -200,7 +200,7 @@ describe("POST /api/scans/[id]/replay", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(202);
-    const body = res._getJSONData();
+    const body = res._getJSONData() as Record<string, unknown>;
     expect(body.scanProfile).toBe("full");
     expect(body.note).toMatch(/scheduled scan runner/);
     expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();

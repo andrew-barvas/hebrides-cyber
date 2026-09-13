@@ -22,7 +22,7 @@ export type ZapAlert = {
 
 export type ZapResult =
   | { status: "completed"; alerts: ZapAlert[]; findings: Finding[] }
-  | { status: "not_configured"; alerts: [] }
+  | { status: "not_configured"; alerts: []; note?: string }
   | { status: "error"; alerts: []; note: string };
 
 function zapRiskToSeverity(risk: string): Finding["severity"] {
@@ -94,10 +94,14 @@ async function pollUntilDone(
 
 export async function runZap(targetUrl: string): Promise<ZapResult> {
   const zapApiUrl = process.env.ZAP_API_URL;
-  const zapApiKey = process.env.ZAP_API_KEY ?? "changeme";
+  const zapApiKey = process.env.ZAP_API_KEY;
 
   if (!zapApiUrl) {
     return { status: "not_configured", alerts: [] };
+  }
+
+  if (!zapApiKey) {
+    return { status: "not_configured", alerts: [], note: "ZAP_API_KEY is not set — skipping ZAP scan" };
   }
 
   try {
