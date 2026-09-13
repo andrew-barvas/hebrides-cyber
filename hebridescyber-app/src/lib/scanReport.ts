@@ -3,6 +3,7 @@
 // gets pushed to, rather than two JSON shapes that can drift apart.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diffFindings } from "./findingsDiff";
+import { computeCriticalPaths, type CriticalPath } from "./attackPathAnalysis";
 import type { Finding } from "./scanners";
 
 export type ScanRow = { id: string; owner: string; target_url: string; status: string; created_at: string };
@@ -35,6 +36,14 @@ export type ScanReport = {
     estimated_fix_minutes?: number;
   }>;
   fixed_findings?: Array<{ check_id: string | null; severity: string; title: string }>;
+  /**
+   * Critical Path Analysis (docs/24-FEATURE-EXPANSION-SPEC.md #9) — computed
+   * fresh from `findings` on every buildScanReport() call, same as
+   * everything else in this type; never persisted separately. Omitted (not
+   * an empty array) would be indistinguishable from "no chains found," so
+   * this is always present, defaulting to [].
+   */
+  critical_paths: CriticalPath[];
 };
 
 /**
@@ -132,6 +141,7 @@ export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFi
     fixed_findings: diff
       ? diff.fixed.map((f) => ({ check_id: f.checkId ?? null, severity: f.severity, title: f.title }))
       : [],
+    critical_paths: computeCriticalPaths(findings),
   };
 }
 
@@ -144,5 +154,6 @@ export function pendingScanReport(scan: ScanRow): ScanReport {
     created_at: scan.created_at,
     score: null,
     findings: [],
+    critical_paths: [],
   };
 }
