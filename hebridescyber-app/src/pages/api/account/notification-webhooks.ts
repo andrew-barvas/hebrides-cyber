@@ -23,8 +23,15 @@
 // panel) and is gated on the server-verified users.is_admin flag, never on
 // anything the client sends.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { isValidSlackWebhookUrl, isValidTeamsWebhookUrl } from "@/lib/webhookUrlValidation";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  slackWebhookUrl: z.string().url().nullish(),
+  msTeamsWebhookUrl: z.string().url().nullish(),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -35,7 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Notification webhooks can only be managed from a logged-in session, not with an API key." });
   }
 
-  const { slackWebhookUrl, msTeamsWebhookUrl } = req.body as { slackWebhookUrl?: string | null; msTeamsWebhookUrl?: string | null };
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { slackWebhookUrl, msTeamsWebhookUrl } = parsed;
 
   // Defense in depth, not the primary control — a bare "starts with
   // https://" check here was previously trivially satisfiable by any

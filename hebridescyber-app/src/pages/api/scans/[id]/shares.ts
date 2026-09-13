@@ -4,11 +4,21 @@
 // write to the account, not something an API key should be able to do on
 // its own.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateShareToken } from "@/lib/reportShares";
 import { logAuditEvent } from "@/lib/audit";
+import { parseBody } from "@/lib/validate";
 
 const MAX_EXPIRY_DAYS = 365;
+
+const createShareSchema = z.object({
+  expires_in_days: z.number().int().min(1).max(MAX_EXPIRY_DAYS).optional(),
+});
+
+const deleteShareSchema = z.object({
+  id: z.string().min(1, "id is required"),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -41,14 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
-    const { expires_in_days: expiresInDays } = req.body as { expires_in_days?: number };
+    const body = parseBody(createShareSchema, req.body, res);
+    if (!body) return;
 
     let expiresAt: string | null = null;
-    if (expiresInDays !== undefined) {
-      if (typeof expiresInDays !== "number" || expiresInDays <= 0 || expiresInDays > MAX_EXPIRY_DAYS) {
-        return res.status(400).json({ error: `expires_in_days must be between 1 and ${MAX_EXPIRY_DAYS}` });
-      }
-      expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+    if (body.expires_in_days !== undefined) {
+      expiresAt = new Date(Date.now() + body.expires_in_days * 24 * 60 * 60 * 1000).toISOString();
     }
 
     const { data: existing } = await supabaseAdmin
@@ -85,8 +93,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
-    const { id } = req.body as { id?: string };
-    if (!id) return res.status(400).json({ error: "id is required" });
+    const body = parseBody(deleteShareSchema, req.body, res);
+    if (!body) return;
+    const { id } = body;
 
     const { error } = await supabaseAdmin
       .from("report_shares")

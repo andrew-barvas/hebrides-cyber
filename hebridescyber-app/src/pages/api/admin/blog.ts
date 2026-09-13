@@ -1,5 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { parseBody } from "@/lib/validate";
+
+const createPostSchema = z.object({
+  title: z.string().min(1, "title is required"),
+  slug: z.string().min(1, "slug is required"),
+  excerpt: z.string().optional(),
+  body: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "published"]).optional(),
+  cover_image_url: z.string().url().nullish(),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const adminId = await requireAdmin(req);
@@ -30,17 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // POST /api/admin/blog — create new post
   if (req.method === "POST") {
-    const { title, slug, excerpt, body, tags, status, cover_image_url } = req.body as {
-      title?: string;
-      slug?: string;
-      excerpt?: string;
-      body?: string;
-      tags?: string[];
-      status?: "draft" | "published";
-      cover_image_url?: string;
-    };
-
-    if (!title || !slug) return res.status(400).json({ error: "title and slug are required" });
+    const parsed = parseBody(createPostSchema, req.body, res);
+    if (!parsed) return;
+    const { title, slug, excerpt, body, tags, status, cover_image_url } = parsed;
 
     const { data, error } = await supabaseAdmin
       .from("blog_posts")

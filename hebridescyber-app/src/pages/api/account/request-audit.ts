@@ -7,12 +7,18 @@
 // email contact.ts sends, with the requester's account email/company
 // pre-filled server-side rather than re-typed.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { sendEmail, escapeHtml } from "@/lib/email";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { isAuditTierId, getAuditTier } from "@/lib/auditTiers";
+import { getAuditTier } from "@/lib/auditTiers";
+import { parseBody } from "@/lib/validate";
 
-type RequestAuditBody = { tier: string; targetUrl?: string; notes?: string };
+const bodySchema = z.object({
+  tier: z.enum(["small", "standard", "full"]),
+  targetUrl: z.string().url().optional().or(z.literal("")),
+  notes: z.string().optional(),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -31,17 +37,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: "Too many audit requests sent — please try again later." });
   }
 
-  const { tier, targetUrl, notes } = req.body as RequestAuditBody;
-  if (!isAuditTierId(tier)) {
-    return res.status(400).json({ error: "tier must be 'small', 'standard', or 'full'" });
-  }
-  if (targetUrl && typeof targetUrl === "string" && targetUrl.trim().length > 0) {
-    try {
-      new URL(targetUrl.trim());
-    } catch {
-      return res.status(400).json({ error: "Please enter a valid target URL, or leave it blank." });
-    }
-  }
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { tier, targetUrl, notes } = parsed;
 
   const { data: profile } = await supabaseAdmin
     .from("users")

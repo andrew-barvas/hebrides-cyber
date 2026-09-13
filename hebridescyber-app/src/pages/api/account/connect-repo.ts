@@ -19,8 +19,14 @@
 // repo_connections directly via the browser's session, the same way
 // src/app/account/page.tsx already reads `subscriptions` directly.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { resolveGithubAuth } from "@/lib/githubApp";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  githubRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "githubRepo must look like 'owner/repo'"),
+});
 
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 10_000;
@@ -44,10 +50,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Repository connections can only be managed from a logged-in session, not with an API key." });
   }
 
-  const { githubRepo } = req.body as { githubRepo?: string };
-  if (!githubRepo || !/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) {
-    return res.status(400).json({ error: "githubRepo must look like 'owner/repo'" });
-  }
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { githubRepo } = parsed;
 
   if (req.method === "DELETE") {
     const { error } = await supabaseAdmin

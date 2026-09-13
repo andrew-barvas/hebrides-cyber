@@ -3,9 +3,15 @@
 // shares your dashboard with someone else is an account-level write, not
 // something an API key should be able to do.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { parseBody } from "@/lib/validate";
 
 const MAX_TEAM_NAME_LENGTH = 60;
+
+const createTeamSchema = z.object({
+  name: z.string().min(1, "name is required").max(MAX_TEAM_NAME_LENGTH, `name must be ${MAX_TEAM_NAME_LENGTH} characters or fewer`),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -94,12 +100,10 @@ async function createTeam(req: NextApiRequest, res: NextApiResponse, userId: str
     return res.status(403).json({ error: "Team collaboration is an Agency-plan feature." });
   }
 
-  const { name } = req.body as { name?: string };
-  const teamName = (name ?? "").trim();
+  const parsed = parseBody(createTeamSchema, req.body, res);
+  if (!parsed) return;
+  const teamName = parsed.name.trim();
   if (!teamName) return res.status(400).json({ error: "name is required" });
-  if (teamName.length > MAX_TEAM_NAME_LENGTH) {
-    return res.status(400).json({ error: `name must be ${MAX_TEAM_NAME_LENGTH} characters or fewer` });
-  }
 
   const { data: existing } = await supabaseAdmin.from("teams").select("id").eq("owner_id", userId).maybeSingle();
   if (existing) return res.status(400).json({ error: "You already have a team. Each account can own one team." });
