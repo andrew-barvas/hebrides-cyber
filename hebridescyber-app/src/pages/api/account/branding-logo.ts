@@ -17,15 +17,23 @@
 // Also accepts a plain-text brandName in the same request so the UI can save
 // logo and name from one form without two routes.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { randomUUID } from "node:crypto";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { parseBody } from "@/lib/validate";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "5mb" } },
 };
 
 const MAX_BRAND_NAME_LENGTH = 80;
+
+const bodySchema = z.object({
+  dataUrl: z.string().optional(),
+  filename: z.string().optional(),
+  brandName: z.string().max(MAX_BRAND_NAME_LENGTH, `brandName must be ${MAX_BRAND_NAME_LENGTH} characters or fewer`).optional(),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -48,11 +56,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "White-label branding is an Agency-plan feature." });
   }
 
-  const { dataUrl, filename, brandName } = req.body as {
-    dataUrl?: string;
-    filename?: string;
-    brandName?: string;
-  };
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { dataUrl, filename, brandName } = parsed;
 
   if (!dataUrl && brandName === undefined) {
     return res.status(400).json({ error: "Provide dataUrl (with filename) and/or brandName" });
@@ -106,9 +112,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (brandName !== undefined) {
     const trimmed = brandName.trim();
-    if (trimmed.length > MAX_BRAND_NAME_LENGTH) {
-      return res.status(400).json({ error: `brandName must be ${MAX_BRAND_NAME_LENGTH} characters or fewer` });
-    }
     // Empty string clears the field back to the default template name.
     update.brand_name = trimmed || null;
   }

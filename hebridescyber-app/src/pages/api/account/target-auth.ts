@@ -12,10 +12,28 @@
 // page that also happens to return 200. Being honest about that limitation
 // is better than a validation check that would give false confidence.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { parseBody } from "@/lib/validate";
 
-type CookieBody = { monitoredTargetId: string; authType: "cookie"; cookieValue: string };
-type BasicBody = { monitoredTargetId: string; authType: "basic"; username: string; password: string };
+
+const deleteBodySchema = z.object({
+  monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
+});
+
+const postBodySchema = z.discriminatedUnion("authType", [
+  z.object({
+    monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
+    authType: z.literal("cookie"),
+    cookieValue: z.string().min(1, "cookieValue is required"),
+  }),
+  z.object({
+    monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
+    authType: z.literal("basic"),
+    username: z.string().min(1, "username is required"),
+    password: z.string().min(1, "password is required"),
+  }),
+]);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST" && req.method !== "DELETE") {
@@ -28,8 +46,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Authenticated-scan credentials can only be managed from a logged-in session, not with an API key." });
   }
 
-  const { monitoredTargetId } = req.body as { monitoredTargetId?: string };
-  if (!monitoredTargetId) return res.status(400).json({ error: "monitoredTargetId is required" });
+  // DELETE only needs monitoredTargetId; POST uses the full discriminated union.
+  if (req.method === "DELETE") {
+    const parsed = parseBody(deleteBodySchema, req.body, res);
+    if (!parsed) return;
+    const { monitoredTargetId } = parsed;
+    return handleTargetAuth(req, res, caller, monitoredTargetId);
+  }
+
+  const parsed = parseBody(postBodySchema, req.body, res);
+  if (!parsed) return;
+  const { monitoredTargetId } = parsed;
+  return handleTargetAuth(req, res, caller, monitoredTargetId, parsed);
+}
+
+async function handleTargetAuth(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  caller: { ownerId: string; via: string },
+  monitoredTargetId: string,
+  body?: z.infer<typeof postBodySchema>,
+) {
 
   // Confirm the caller actually owns this monitored target before touching
   // any credential row for it — the same ownership check every other
@@ -65,10 +102,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true });
   }
 
-  const body = req.body as CookieBody | BasicBody;
+  if (!body) return res.status(400).json({ error: "authType is required" });
 
   if (body.authType === "cookie") {
-    if (!body.cookieValue) return res.status(400).json({ error: "cookieValue is required" });
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
       { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: body.cookieValue, basic_username: null, basic_password: null },
       { onConflict: "monitored_target_id" }
@@ -78,7 +114,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (body.authType === "basic") {
-    if (!body.username || !body.password) return res.status(400).json({ error: "username and password are both required" });
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
       { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "basic", basic_username: body.username, basic_password: body.password, cookie_value: null },
       { onConflict: "monitored_target_id" }

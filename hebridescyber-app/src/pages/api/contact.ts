@@ -1,8 +1,23 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendEmail, escapeHtml } from "@/lib/email";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { isTeamSize, isBudgetRange, teamSizeLabel, budgetRangeLabel } from "@/lib/contactOptions";
+import { parseBody } from "@/lib/validate";
+
+const TEAM_SIZE_VALUES = ["solo", "2_10", "11_50", "51_200", "200_plus"] as const;
+const BUDGET_RANGE_VALUES = ["unsure", "under_300", "300_800", "800_1800", "1800_plus"] as const;
+
+const bodySchema = z.object({
+  name: z.string().min(2, "Please enter your name."),
+  email: z.string().email("Please enter a valid email address."),
+  message: z.string().min(10, "Please write a message (10+ characters)."),
+  url: z.string().url("Please enter a valid URL, or leave it blank.").optional().or(z.literal("")),
+  company: z.string().optional().or(z.literal("")),
+  teamSize: z.enum(TEAM_SIZE_VALUES).optional().or(z.literal("")),
+  budgetRange: z.enum(BUDGET_RANGE_VALUES).optional().or(z.literal("")),
+});
 
 // E-05 (docs/ENHANCEMENTS.md): this was the only fully-open, unauthenticated
 // write path in the app with zero abuse protection. Keyed by IP (no
@@ -18,30 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: "Too many messages sent — please try again later." });
   }
 
-  const { name, email, url, message, company, teamSize, budgetRange } = req.body as Record<string, unknown>;
-
-  if (!name || typeof name !== "string" || name.trim().length < 2)
-    return res.status(400).json({ error: "Please enter your name." });
-  if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return res.status(400).json({ error: "Please enter a valid email address." });
-  if (!message || typeof message !== "string" || message.trim().length < 10)
-    return res.status(400).json({ error: "Please write a message (10+ characters)." });
-  if (url && typeof url === "string" && url.trim().length > 0) {
-    try { new URL(url.trim()); } catch {
-      return res.status(400).json({ error: "Please enter a valid URL, or leave it blank." });
-    }
-  }
-
-  // All three are optional — a browser <select> left on its blank default
-  // option submits "" (via FormData/Object.fromEntries on the contact page),
-  // not undefined, so "" must be treated as "omitted" alongside undefined/null
-  // rather than rejected as an invalid enum value.
-  const teamSizeProvided = teamSize !== undefined && teamSize !== null && teamSize !== "";
-  if (teamSizeProvided && !isTeamSize(teamSize))
-    return res.status(400).json({ error: "Please select a valid team size." });
-  const budgetRangeProvided = budgetRange !== undefined && budgetRange !== null && budgetRange !== "";
-  if (budgetRangeProvided && !isBudgetRange(budgetRange))
-    return res.status(400).json({ error: "Please select a valid budget range." });
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { name, email, url, message, company, teamSize, budgetRange } = parsed;
 
   // supabaseAdmin's client is constructed lazily on first access, so a
   // missing SUPABASE_URL/SERVICE_ROLE_KEY throws here rather than at import —
@@ -51,11 +45,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { error: insertError } = await supabaseAdmin.from("contact_enquiries").insert({
       name: name.trim(),
       email: email.trim().toLowerCase(),
-      url: typeof url === "string" && url.trim() ? url.trim() : null,
+      url: url && url.trim() ? url.trim() : null,
       message: message.trim(),
-      company: typeof company === "string" && company.trim() ? company.trim() : null,
-      team_size: isTeamSize(teamSize) ? teamSize : null,
-      budget_range: isBudgetRange(budgetRange) ? budgetRange : null,
+      company: company && company.trim() ? company.trim() : null,
+      team_size: teamSize && isTeamSize(teamSize) ? teamSize : null,
+      budget_range: budgetRange && isBudgetRange(budgetRange) ? budgetRange : null,
     });
 
     if (insertError) throw new Error(insertError.message);
@@ -73,21 +67,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // a high-budget lead is visible from an inbox/notification preview
   // without opening the email at all.
   const budgetSubjectSuffix =
-    isBudgetRange(budgetRange) && budgetRange !== "unsure" ? ` — budget ${budgetRangeLabel(budgetRange)}` : "";
+    budgetRange && isBudgetRange(budgetRange) && budgetRange !== "unsure" ? ` — budget ${budgetRangeLabel(budgetRange)}` : "";
   const result = await sendEmail({
     to: toEmail,
     subject: `New enquiry from ${name.trim()}${budgetSubjectSuffix}`,
     html: [
       `<p><strong>Name:</strong> ${escapeHtml(name.trim())}</p>`,
       `<p><strong>Email:</strong> ${escapeHtml(email.trim())}</p>`,
-      typeof url === "string" && url.trim()
+      url && url.trim()
         ? `<p><strong>Website:</strong> ${escapeHtml(url.trim())}</p>`
         : "",
-      typeof company === "string" && company.trim()
+      company && company.trim()
         ? `<p><strong>Company:</strong> ${escapeHtml(company.trim())}</p>`
         : "",
-      isTeamSize(teamSize) ? `<p><strong>Team size:</strong> ${escapeHtml(teamSizeLabel(teamSize) ?? teamSize)}</p>` : "",
-      isBudgetRange(budgetRange) ? `<p><strong>Budget:</strong> ${escapeHtml(budgetRangeLabel(budgetRange) ?? budgetRange)}</p>` : "",
+      teamSize && isTeamSize(teamSize) ? `<p><strong>Team size:</strong> ${escapeHtml(teamSizeLabel(teamSize) ?? teamSize)}</p>` : "",
+      budgetRange && isBudgetRange(budgetRange) ? `<p><strong>Budget:</strong> ${escapeHtml(budgetRangeLabel(budgetRange) ?? budgetRange)}</p>` : "",
       `<p><strong>Message:</strong></p>`,
       `<p>${escapeHtml(message.trim()).replace(/\n/g, "<br>")}</p>`,
     ].join(""),

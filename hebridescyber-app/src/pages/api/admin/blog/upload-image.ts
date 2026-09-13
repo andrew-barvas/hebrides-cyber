@@ -1,7 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { requireAdmin } from "@/lib/adminAuth";
 import { randomUUID } from "node:crypto";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  dataUrl: z.string().min(1, "dataUrl is required"),
+  filename: z.string().min(1, "filename is required"),
+});
 
 export const config = {
   api: { bodyParser: { sizeLimit: "5mb" } },
@@ -17,10 +24,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(503).json({ error: "AZURE_STORAGE_CONNECTION_STRING not set" });
   }
 
-  const { dataUrl, filename } = req.body as { dataUrl?: string; filename?: string };
-  if (!dataUrl || !filename) {
-    return res.status(400).json({ error: "dataUrl and filename are required" });
-  }
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { dataUrl, filename } = parsed;
 
   // dataUrl must be a valid base64 data URI (image/* only).
   const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl);

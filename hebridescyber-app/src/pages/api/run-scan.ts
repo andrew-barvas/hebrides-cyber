@@ -19,11 +19,18 @@
 // going through this HTTP round-trip (see src/scripts/enqueue-scheduled-scans.ts).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 import { validateNoSsrf, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  targetUrl: z.string().url().optional(),
+  scanId: z.string().optional(),
+});
 
 // Defaults to requiring real DNS/file domain verification. Set
 // ALLOW_DEV_TOKEN_VERIFICATION=true only for local dev — see
@@ -69,7 +76,9 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     return res.status(403).json({ error: "Scans can only be run from a logged-in session, not with an API key — use POST /api/v1/scans instead." });
   }
 
-  const { targetUrl, scanId } = req.body as { targetUrl?: string; scanId?: string };
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { targetUrl, scanId } = parsed;
 
   // --- Step 1: create a new scan, return a proof token -----------------
   if (!scanId) {

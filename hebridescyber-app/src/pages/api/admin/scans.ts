@@ -1,6 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 import { logAuditEvent } from "@/lib/audit";
+import { parseBody } from "@/lib/validate";
+
+const patchSchema = z.object({
+  scanId: z.string().min(1, "scanId is required"),
+  action: z.enum(["cancel", "retry"]),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const adminId = await requireAdmin(req);
@@ -56,8 +63,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // PATCH /api/admin/scans — retry or cancel a scan
   if (req.method === "PATCH") {
-    const { scanId, action } = req.body as { scanId?: string; action?: "cancel" | "retry" };
-    if (!scanId || !action) return res.status(400).json({ error: "scanId and action required" });
+    const parsed = parseBody(patchSchema, req.body, res);
+    if (!parsed) return;
+    const { scanId, action } = parsed;
     if (action === "cancel") {
       await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
       await logAuditEvent(supabaseAdmin, {

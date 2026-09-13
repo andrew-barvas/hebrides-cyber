@@ -3,10 +3,16 @@
 // follows /api/v1/scans' dual-auth rather than keys.ts/shares.ts's
 // session-only restriction).
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateAiRemediation } from "@/lib/aiRemediation";
 import { checkRateLimit } from "@/lib/rateLimit";
 import type { Finding, ScanResults } from "@/lib/scanners";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  checkId: z.string().min(1, "checkId is required"),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -23,8 +29,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const scanId = req.query.id as string;
-  const { checkId } = req.body as { checkId?: string };
-  if (!checkId) return res.status(400).json({ error: "checkId is required" });
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { checkId } = parsed;
 
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner").eq("id", scanId).maybeSingle();
   if (!scan) return res.status(404).json({ error: "Scan not found" });

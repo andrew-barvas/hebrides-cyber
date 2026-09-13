@@ -14,12 +14,34 @@
 // UI must only ever request non-secret columns — see the migration's
 // header for why.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { validateJiraCredentials, validateLinearCredentials } from "@/lib/ticketIntegrations";
+import { parseBody } from "@/lib/validate";
 
-type JiraBody = { provider: "jira"; baseUrl: string; email: string; apiToken: string; projectKey: string };
-type LinearBody = { provider: "linear"; apiKey: string; teamId: string };
-type SettingsBody = { provider: "jira" | "linear"; autoCloseEnabled: boolean };
+const patchSchema = z.object({
+  provider: z.enum(["jira", "linear"]),
+  autoCloseEnabled: z.boolean(),
+});
+
+const deleteSchema = z.object({
+  provider: z.enum(["jira", "linear"]),
+});
+
+const postSchema = z.discriminatedUnion("provider", [
+  z.object({
+    provider: z.literal("jira"),
+    baseUrl: z.string().url("baseUrl must be a valid URL"),
+    email: z.string().email("email must be a valid email address"),
+    apiToken: z.string().min(1, "apiToken is required"),
+    projectKey: z.string().min(1, "projectKey is required"),
+  }),
+  z.object({
+    provider: z.literal("linear"),
+    apiKey: z.string().min(1, "apiKey is required"),
+    teamId: z.string().min(1, "teamId is required"),
+  }),
+]);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST" && req.method !== "PATCH" && req.method !== "DELETE") {
@@ -36,13 +58,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // from POST's credential save so flipping auto-close doesn't require
   // re-entering an API token that is never sent back to the browser.
   if (req.method === "PATCH") {
-    const { provider, autoCloseEnabled } = req.body as SettingsBody;
-    if (provider !== "jira" && provider !== "linear") {
-      return res.status(400).json({ error: "provider must be 'jira' or 'linear'" });
-    }
-    if (typeof autoCloseEnabled !== "boolean") {
-      return res.status(400).json({ error: "autoCloseEnabled must be a boolean" });
-    }
+    const patchParsed = parseBody(patchSchema, req.body, res);
+    if (!patchParsed) return;
+    const { provider, autoCloseEnabled } = patchParsed;
     const { data, error } = await supabaseAdmin
       .from("ticket_integrations")
       .update({ auto_close_enabled: autoCloseEnabled })
@@ -56,20 +74,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
-    const { provider } = req.body as { provider?: "jira" | "linear" };
-    if (!provider) return res.status(400).json({ error: "provider is required" });
+    const deleteParsed = parseBody(deleteSchema, req.body, res);
+    if (!deleteParsed) return;
+    const { provider } = deleteParsed;
     const { error } = await supabaseAdmin.from("ticket_integrations").delete().eq("owner", caller.ownerId).eq("provider", provider);
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ ok: true });
   }
 
-  const body = req.body as JiraBody | LinearBody;
+  const body = parseBody(postSchema, req.body, res);
+  if (!body) return;
 
   if (body.provider === "jira") {
     const { baseUrl, email, apiToken, projectKey } = body;
-    if (!baseUrl || !email || !apiToken || !projectKey) {
-      return res.status(400).json({ error: "baseUrl, email, apiToken, and projectKey are all required for Jira" });
-    }
     const check = await validateJiraCredentials({ baseUrl, email, apiToken });
     if (!check.ok) return res.status(400).json({ error: check.error });
 
@@ -83,7 +100,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (body.provider === "linear") {
     const { apiKey, teamId } = body;
-    if (!apiKey || !teamId) return res.status(400).json({ error: "apiKey and teamId are both required for Linear" });
     const check = await validateLinearCredentials(apiKey);
     if (!check.ok) return res.status(400).json({ error: check.error });
 

@@ -17,11 +17,17 @@
 // with `status`, see pendingScanReport in scanReport.ts — needed no changes)
 // or use webhooks, which were already the documented "don't poll" option.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { validateNoSsrf, hostnameFromUrl, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
+import { parseBody } from "@/lib/validate";
+
+const createScanSchema = z.object({
+  target_url: z.string().url("target_url must be a valid URL"),
+});
 
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
@@ -68,8 +74,9 @@ async function listScans(req: NextApiRequest, res: NextApiResponse, ownerId: str
 }
 
 async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: string) {
-  const { target_url: targetUrl } = req.body as { target_url?: string };
-  if (!targetUrl) return res.status(400).json({ error: "target_url is required" });
+  const parsed = parseBody(createScanSchema, req.body, res);
+  if (!parsed) return;
+  const targetUrl = parsed.target_url;
 
   const limit = await checkRateLimit(ownerId);
   if (!limit.allowed) {

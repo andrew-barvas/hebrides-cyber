@@ -17,12 +17,20 @@
 // Rebuilt as a Next.js API route alongside run-scan — see that file's header
 // for why.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { buildRemediationMarkdown } from "@/lib/remediation";
 import type { Finding } from "@/lib/scanners";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { lookupOsvFixInfo } from "@/lib/scanners/osv";
 import { resolveGithubAuth } from "@/lib/githubApp";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  scanId: z.string().min(1, "scanId is required"),
+  githubRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "githubRepo must look like 'owner/repo'"),
+  baseBranch: z.string().optional().default("main"),
+});
 
 const githubApi = "https://api.github.com";
 
@@ -51,9 +59,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
   }
 
-  const { scanId, githubRepo, baseBranch = "main" } = req.body as { scanId?: string; githubRepo?: string; baseBranch?: string };
-  if (!scanId || !githubRepo) return res.status(400).json({ error: "scanId and githubRepo ('owner/repo') are required" });
-  if (!/^[\w.-]+\/[\w.-]+$/.test(githubRepo)) return res.status(400).json({ error: "githubRepo must look like 'owner/repo'" });
+  const parsed = parseBody(bodySchema, req.body, res);
+  if (!parsed) return;
+  const { scanId, githubRepo, baseBranch } = parsed;
 
   const { token } = await resolveGithubAuth(githubRepo);
   if (!token) {

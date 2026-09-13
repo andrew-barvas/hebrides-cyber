@@ -4,9 +4,19 @@
 // A key that can mint further keys turns one leaked CI secret into permanent
 // account access that outlives revoking the original.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { mintApiKey } from "@/lib/apiKeys";
 import { logAuditEvent } from "@/lib/audit";
+import { parseBody } from "@/lib/validate";
+
+const createSchema = z.object({
+  name: z.string().min(1, "name is required").max(60, "name must be 60 characters or fewer"),
+});
+
+const deleteSchema = z.object({
+  id: z.string().min(1, "id is required"),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -28,10 +38,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
-    const { name } = req.body as { name?: string };
-    const keyName = (name ?? "").trim();
+    const parsed = parseBody(createSchema, req.body, res);
+    if (!parsed) return;
+    const keyName = parsed.name.trim();
     if (!keyName) return res.status(400).json({ error: "name is required" });
-    if (keyName.length > 60) return res.status(400).json({ error: "name must be 60 characters or fewer" });
 
     const { data: existing } = await supabaseAdmin
       .from("api_keys")
@@ -71,8 +81,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
-    const { id } = req.body as { id?: string };
-    if (!id) return res.status(400).json({ error: "id is required" });
+    const parsed = parseBody(deleteSchema, req.body, res);
+    if (!parsed) return;
+    const { id } = parsed;
 
     // Revoke rather than delete: last_used_at stays available as an audit
     // trail of what the key did before it was turned off.

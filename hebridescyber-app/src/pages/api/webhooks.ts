@@ -5,10 +5,21 @@
 // sent to whatever URL an attacker chose is still not something an API key
 // should be able to set up on its own.
 import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateWebhookSecret } from "@/lib/webhooks";
 import { logAuditEvent } from "@/lib/audit";
 import { validateNoSsrf } from "@/lib/ownership";
+import { parseBody } from "@/lib/validate";
+
+const createSchema = z.object({
+  url: z.string().url("url must be a valid URL"),
+  name: z.string().max(60).optional(),
+});
+
+const deleteWebhookSchema = z.object({
+  id: z.string().min(1, "id is required"),
+});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -32,8 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "POST") {
-    const { url, name } = req.body as { url?: string; name?: string };
-    if (!url) return res.status(400).json({ error: "url is required" });
+    const body = parseBody(createSchema, req.body, res);
+    if (!body) return;
+    const { url, name } = body;
 
     let parsed: URL;
     try {
@@ -95,8 +107,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
-    const { id } = req.body as { id?: string };
-    if (!id) return res.status(400).json({ error: "id is required" });
+    const body = parseBody(deleteWebhookSchema, req.body, res);
+    if (!body) return;
+    const { id } = body;
 
     const { error } = await supabaseAdmin
       .from("webhooks")
