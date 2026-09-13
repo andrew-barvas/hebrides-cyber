@@ -125,12 +125,49 @@ either green or have a named blocker that isn't on this plan's own list.
 
 ---
 
-## After these 3 sprints
+## Sprint 4 — Production stability + feature expansion (2026-09-11 – 2026-09-13)
 
-Re-generate `docs/FUNCTIONALITY-MATRIX.md` and re-check every `docs/ROADMAP.md`
-Beta criterion before planning a Sprint 4 — don't extend this plan by
-guessing at what's left. The honest next candidates, unordered, are E-13/
-E-14/E-15/E-20/E-21/E-22 from the "explicitly not in these 3 sprints" list
-above, plus whatever `docs/COMPETITIVE-ANALYSIS.md`'s next refresh surfaces
-(its own §1 documents the refresh procedure — it degrades visibly if
-neglected, not silently).
+**Theme**: Ship the feature expansion (CMS/OSINT/WAF/API scanning tools,
+Partner Portal, asset inventory, critical path analysis, Fix Wizard, diff
+view, scan replay, team roles, scan profiles), fix a live production
+incident (unapplied migrations), and close hardening items (E-14, E-22,
+E-25, E-06 zod backfill).
+
+| Priority | ID | What | Status |
+|---|---|---|---|
+| 0 | **E-49** | Apply migrations 019-026 to production Supabase | ⛔ blocked — needs owner to paste the combined script into Supabase SQL editor (script prepared) |
+| 0a | — | Fix tsc error in `replay.test.ts` (CI blocker) | ✅ done (2026-09-13) |
+| 1 | **E-35–E-48** | Feature expansion: 21+ extended tools, Partner Portal, asset inventory, critical paths, Fix Wizard, diff view, replay, team roles, scan profiles, subscriptions RLS fix, COEP header | ✅ done (2026-09-11, pushed as 11 commits) |
+| 2 | **E-14** | ZAP_API_KEY `"changeme"` → `not_configured` | ✅ done (2026-09-13) |
+| 3 | **E-22** | security.txt RFC 9116 `Expires` field | ✅ done (2026-09-13) |
+| 4 | **E-25** | `Promise.allSettled` in `runAllChecks()` | ✅ done (2026-09-13) |
+| 5 | **E-06** | Zod validation backfill for ~20 write routes | 🔄 in progress (2026-09-13) |
+| 6 | — | Regenerate stale docs (ENHANCEMENTS, FUNCTIONALITY-MATRIX, ROADMAP, SPRINT-PLAN) | ✅ done (2026-09-13) |
+| 7 | — | Migration 026: `monitored_targets` UPDATE RLS policy | ✅ done (2026-09-13, file created; needs application to production — see E-49) |
+| 8 | **E-02** | Document remaining ungated capabilities as "intentionally open" | ✅ done (2026-09-13, in FUNCTIONALITY-MATRIX.md) |
+
+**Sprint 4 exit check**: `npx tsc --noEmit` clean, CI passes, all four docs
+regenerated, E-14/E-22/E-25 closed, E-06 zod backfill applied to all write
+routes. **Blocked until E-49**: production incident is resolved only when
+migrations 019-026 are applied to the live Supabase database — the script
+is prepared at `sql/migrations/` (idempotent, safe to re-run), but needs
+manual application via the Supabase SQL editor.
+
+---
+
+## After Sprint 4
+
+The honest next candidates, unordered:
+- **E-49 automation**: add a `supabase db push` or equivalent step to
+  `deploy.yml` so migrations are applied automatically on deploy, preventing
+  a recurrence of the 2026-09-13 incident.
+- **Free staging environment**: Azure SWA preview deployments + a second
+  free-tier Supabase project, tied to E-20's `pull_request` trigger. Zero
+  cost; would have caught the migration gap before it hit production.
+- E-13 (Supabase backup/restore documentation), E-15 (remediation-PR UI),
+  E-20 (`pull_request` trigger on `deploy.yml`), E-21 (httpOnly-cookie auth),
+  E-26 (Terraform scaffold), E-32 (cloud posture scanning), E-33 (API-spec
+  testing).
+
+Re-generate `docs/FUNCTIONALITY-MATRIX.md` and re-check every
+`docs/ROADMAP.md` Beta criterion before planning a Sprint 5.

@@ -434,6 +434,12 @@ current PITR status.
 
 ## E-14 — Remove the `"changeme"` default for `ZAP_API_KEY`
 
+**Status: fixed (2026-09-13).** `src/worker/tools/zap.ts` now returns
+`{ status: "not_configured", note: "ZAP_API_KEY is not set — skipping ZAP
+scan" }` when `ZAP_API_URL` is set but `ZAP_API_KEY` is not, matching
+`hibp.ts`/`safeBrowsing.ts`'s established convention exactly. The
+`"changeme"` literal is removed entirely.
+
 **What**: `src/worker/tools/zap.ts:97` —
 `process.env.ZAP_API_KEY ?? "changeme"`. A literal, trivially-guessable
 fallback credential for a security tool's own API key.
@@ -645,6 +651,9 @@ than opportunistically given the blast radius.
 
 ## E-22 — Add the RFC-9116-mandatory `Expires` field to `security.txt`
 
+**Status: fixed (2026-09-13).** Added `Expires: 2027-09-13T00:00:00.000Z`
+(one year out), per RFC 9116 §2.5.
+
 **What**: `public/.well-known/security.txt` is missing `Expires`, which
 RFC 9116 §2.5 makes mandatory (has `Contact`, `Preferred-Languages`,
 `Canonical` only).
@@ -690,6 +699,15 @@ checks, has since shipped as Safe Browsing + HaveIBeenPwned integration,
 exactly as that log's §7 "buy, don't build" note proposed).
 
 ## E-25 — Per-check isolation in `runAllChecks()`
+
+**Status: fixed (2026-09-13).** Both `Promise.all()` batches in
+`runAllChecks()` (`src/lib/scanners/index.ts`) converted to
+`Promise.allSettled()`. Each rejected result falls back to an
+`{ status: "error" }` shape matching the check's own error type, so
+`summariseResults()` and every other consumer already handles it correctly
+(they all guard on `status === "checked"` before accessing check-specific
+fields). Mirrors the exact pattern `scanExecution.ts`'s `runExtendedTools()`
+already used.
 
 **What**: `runAllChecks()` (`src/lib/scanners/index.ts`) still uses
 `Promise.all()` for its main batch of checks — one throwing check voids the
@@ -968,6 +986,154 @@ request to audit for SQL injection/XSS/command-injection-class issues
 given this is a security company's own product, 2026-09-05.
 
 ## E-32 — Cloud posture scanning (AWS/Azure/GCP configuration review)
+
+## E-35 — CMS scanning tools (WPScan, CMSmap)
+
+**Status: fixed (2026-09-11).** New extended tools `src/worker/tools/wpscan.ts`
+and `src/worker/tools/cmsmap.ts`, wired into `runExtendedTools()`. WPScan
+runs a targeted `--enumerate` sweep when WordPress is detected; CMSmap runs
+a general CMS fingerprint scan. Both follow the established
+`not_configured`-on-missing-binary pattern. CI install steps added to
+`scheduled-scans.yml`.
+**Category**: code. **Source**: roadmap.
+
+## E-36 — OSINT tools (Gospider, Photon, metadata leak, AJAX spider)
+
+**Status: fixed (2026-09-11).** Four new extended tools in `src/worker/tools/`:
+`gospider.ts` (web spidering/link extraction), `photon.ts` (data extraction),
+`metadataLeak.ts` (document metadata OSINT), and `ajaxSpider.ts` (ZAP AJAX
+spider for JS-heavy SPAs). All wired into `runExtendedTools()` and follow
+existing conventions.
+**Category**: code. **Source**: roadmap.
+
+## E-37 — WAF detection (WhatWaf)
+
+**Status: fixed (2026-09-11).** New `src/worker/tools/whatwaf.ts`, detects
+WAF/IDS presence before active scanning. Runs early in the extended tool
+pipeline to inform other tools' expectations.
+**Category**: code. **Source**: roadmap.
+
+## E-38 — API security testing tools (Kiterunner, Arjun, session check)
+
+**Status: fixed (2026-09-11).** New `src/worker/tools/kiterunner.ts`
+(API endpoint brute-force discovery), `arjun.ts` (hidden parameter
+discovery), and `sessionCheck.ts` (session management analysis). All
+wired into `runExtendedTools()`.
+**Category**: code. **Source**: roadmap.
+
+## E-39 — Partner Portal panel (Agency-tier fleet management)
+
+**Status: fixed (2026-09-11).** New `PartnerPortalPanel.tsx`, rendered on
+the dashboard for Agency-plan accounts only. Shows a fleet-level rollup with
+per-client scan status, score trends, and white-label report generation
+links. **Client-only gate** (`{plan === "agency" && <PartnerPortalPanel />}`
+in `dashboard/page.tsx`) — no server enforcement, but the component only
+ever shows the caller's own RLS-scoped data, so the exposure is
+informational not exploitable. Noted as ⚠️ in `FUNCTIONALITY-MATRIX.md`.
+**Category**: code. **Source**: roadmap.
+
+## E-40 — Asset inventory (subdomain/hostname tracking)
+
+**Status: fixed (2026-09-11).** New `src/lib/assetInventory.ts` with
+`syncAssetInventory()` called as a best-effort post-scan step in
+`scanExecution.ts`. Populates the `asset_inventory` table (migration 022)
+with every hostname seen across an owner's scans. New
+`src/components/AssetInventory.tsx` and `/dashboard/assets` page for
+viewing. RLS-scoped, team-visible.
+**Category**: code. **Source**: roadmap.
+
+## E-41 — Critical path analysis + multi-framework compliance tabs
+
+**Status: fixed (2026-09-11).** New `src/lib/attackPathAnalysis.ts`
+(`computeCriticalPaths()`) identifies attack chains across findings.
+`ScanReportView.tsx`'s `ComplianceSummary` replaced with a framework-tabbed
+version using `ALL_CONTROLS_BY_FRAMEWORK` (Cyber Essentials, OWASP Top 10,
+CIS Controls v8, ISO 27001, PCI DSS, NIS2, DORA). `CriticalPaths` component
+renders identified attack chains on the scan detail page.
+**Category**: code. **Source**: roadmap.
+
+## E-42 — Fix Wizard (guided remediation)
+
+**Status: fixed (2026-09-11).** New `src/components/FixWizard.tsx`, activated
+via `?wizard=1` URL param on the scan detail page. Provides step-by-step
+guided remediation for each finding, grouped by fix difficulty, with inline
+code snippets and verification steps.
+**Category**: code. **Source**: roadmap.
+
+## E-43 — Scan diff view + score/category history
+
+**Status: fixed (2026-09-11).** New `src/components/DiffView.tsx` and
+`/dashboard/scans/[id]/diff` page for side-by-side comparison of two scans.
+New `/dashboard/scans/history` page with `CategorySparklines.tsx` showing
+per-category trends. New `src/lib/clientScanHistory.ts` functions for
+scan listing, finding lookup, and category history queries.
+**Category**: code. **Source**: roadmap.
+
+## E-44 — Scan replay
+
+**Status: fixed (2026-09-11).** New `POST /api/scans/[id]/replay` — re-runs
+a scan against the same target with the same (or updated) scan profile.
+Resolves the profile from `monitored_targets.scan_profile`, defaults to
+`safe` if no monitored-targets row exists. Only dispatches the on-demand
+workflow for `safe`-profile replays; non-safe profiles are left for the
+scheduled cron (which has the necessary tool binaries). `ReplayButton`
+component added to the scan detail page.
+**Category**: code. **Source**: roadmap.
+
+## E-45 — Extended team roles + delegated actions
+
+**Status: fixed (2026-09-11).** Migration 025 widens `team_members.role` to
+include `developer` and `auditor` roles. `src/lib/teamAccess.ts`'s
+`callerCanActFor()` enables team-delegated actions: developers can replay
+scans, retest findings, and create tickets on the team owner's behalf.
+`TeamSection.tsx` updated with role management UI. `team/members.ts` updated
+to validate the widened role set.
+**Category**: code. **Source**: roadmap.
+
+## E-46 — Scan profile selector UI
+
+**Status: fixed (2026-09-11).** New `ScanProfileConfig` component in
+`MonitoredTargets.tsx` — per-target scan profile selector (safe/full/api/
+cms/osint) with tool descriptions and estimated scan times. Writes to
+`monitored_targets.scan_profile` via the browser client. **Requires
+migration 026** for the UPDATE RLS policy — without it, the write silently
+no-ops. Migration 026 added in this session.
+**Category**: code. **Source**: roadmap.
+
+## E-47 — Subscriptions RLS security fix
+
+**Status: fixed (2026-09-11).** Migration 024 drops the client-writable
+UPDATE policy on `subscriptions` — a real, exploitable revenue-bypass
+vulnerability where any signed-in customer could set their own plan to
+`agency` via the browser console. Writes to `subscriptions` now go through
+`POST /api/account/notification-webhooks` (service-role only).
+**Category**: code (security fix). **Source**: audit.
+
+## E-48 — COEP header
+
+**Status: fixed (2026-09-11).** Added `Cross-Origin-Embedder-Policy:
+require-corp` to both `next.config.mjs` security headers and
+`staticwebapp.config.json` global headers.
+**Category**: code. **Source**: audit.
+
+## E-49 — Missing migration-application step in deploy pipeline
+
+**What**: `deploy.yml` builds, tests, and deploys the Next.js app to Azure
+Static Web Apps but **never touches the Supabase schema**. Migrations in
+`sql/migrations/` are numbered, idempotent files that must be applied
+manually against the Supabase SQL editor. There is no automated step,
+no CI check that migrations are applied, and no warning when code ships
+that depends on a schema change that hasn't been applied.
+**Why**: this caused a live production incident (2026-09-13) — migrations
+019-026 had never been applied, causing `column contact_enquiries.company
+does not exist` errors, silent RLS failures, and general "backend call
+failure" symptoms across the admin panel and dashboard.
+**Impact/effort**: medium — options range from a simple `supabase db push`
+step in CI (needs service-role credentials as a GitHub secret) to a full
+Supabase CLI migration workflow. The immediate fix is manual application;
+the systemic fix is automation.
+**Depends on**: Supabase CLI authentication or service-role key in CI.
+**Category**: code + process. **Source**: production incident, 2026-09-13.
 
 **What**: nothing today checks a customer's *cloud account* configuration —
 IAM policies, S3/Blob storage bucket permissions, security group/firewall

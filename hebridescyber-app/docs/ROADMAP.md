@@ -43,7 +43,7 @@ looks like, that one states what to actually work on next.
 - Free-tier scan cap and rate limiting are real and server-enforced.
   Almost everything else in the plan-gating ladder (`FUNCTIONALITY-MATRIX.md`
   §5/§6) is not.
-- 326 unit/integration tests, coverage floor 18/16/18/19
+- 400+ unit/integration tests, coverage floor 36/30/33/37
   (statements/branches/functions/lines) — a genuine floor, not a target,
   and it only moves up.
 - Error-tracking code shipped (`docs/ENHANCEMENTS.md` E-03, 2026-09-04) but
@@ -60,15 +60,15 @@ looks like, that one states what to actually work on next.
 
 | ID | Assertion | Verify |
 |---|---|---|
-| POC-B1 | Stripe Price IDs are live for all three tiers | Checkout completes end-to-end for Basic/Pro/Agency against staging Stripe — `docs/ENHANCEMENTS.md` E-07 |
+| POC-B1 | Stripe Price IDs are live for all three tiers | Checkout completes end-to-end for Basic/Pro/Agency against production Stripe — `docs/ENHANCEMENTS.md` E-07 |
 
 ### Product criteria
 
 | ID | Assertion | Verify | Status |
 |---|---|---|---|
-| POC-1 | A Basic subscriber can register a monitored target and receives a scheduled scan within the plan's cadence window | Staging Basic account → add target → run `npm run queue:enqueue-scheduled-scans` with a clock override → assert a `scans` row for that target | **UI/enforcement gap fixed** (`docs/ENHANCEMENTS.md` E-01 — `MonitoredTargets.tsx` now renders for any active plan, per-plan cap enforced server-side via `sql/migrations/018_monitored_targets_plan_cap.sql`); cadence logic itself was already correct. **Not yet verified against staging** — the verify method in this row's own third column hasn't actually been run since the fix landed, so don't mark this row green without doing that |
+| POC-1 | A Basic subscriber can register a monitored target and receives a scheduled scan within the plan's cadence window | Staging Basic account → add target → run `npm run queue:enqueue-scheduled-scans` with a clock override → assert a `scans` row for that target | **UI/enforcement gap fixed** (`docs/ENHANCEMENTS.md` E-01 — `MonitoredTargets.tsx` now renders for any active plan, per-plan cap enforced server-side via `sql/migrations/018_monitored_targets_plan_cap.sql`); cadence logic itself was already correct. **Not yet verified against production (with a demo account)** — the verify method in this row's own third column hasn't actually been run since the fix landed, so don't mark this row green without doing that |
 | POC-2 | No authenticated non-admin user can set `is_admin` on their own row | Integration test issuing the UPDATE via the anon key against a real Postgres/RLS instance, asserting 0 rows affected | **Fixed** (migration `017`) — verify the assertion holds against the deployed Supabase project, not just locally |
-| POC-3 | Paid signup completes end-to-end for all three price tiers | One Playwright test per tier against staging Stripe | **Fails today** (depends on POC-B1) |
+| POC-3 | Paid signup completes end-to-end for all three price tiers | One Playwright test per tier against production Stripe | **Fails today** (depends on POC-B1) |
 | POC-4 | A scan created via the public API (`POST /api/v1/scans`) and one created via the dashboard produce the same report shape | Compare `GET /api/v1/scans/{id}` output for one of each | Not yet verified — likely true (`executeScan()` is the single entry point per `CLAUDE.md`), but not asserted by a test |
 | POC-5 | The extended active-tool suite (nmap/nuclei/sqlmap/xsser/commix/ZAP) runs successfully in the real scheduled-scan environment, not just `not_configured` | Trigger `scheduled-scans.yml` manually against a known-vulnerable staging target, confirm findings from at least one extended tool appear | Untested — `xsser`/`commix` specifically carry an unverified-against-a-real-binary caveat (`docs/ENHANCEMENTS.md` E-18) |
 
@@ -94,9 +94,9 @@ marketing-site work, support tooling. Explicitly parked, not forgotten.
 | BETA-1 | Every unhandled server error in the last 24h is visible in one place with a request/correlation id | Trigger a canary error, locate it in the tracker within 60s | Code shipped (E-03, 2026-09-04) — **not yet verifiable**, needs a real Sentry account + `SENTRY_DSN` before this row can actually go green |
 | BETA-2 | `GET /api/health` returns 200 with Supabase/Stripe/queue-depth sub-checks, 503 when any is degraded | `curl` in CI immediately post-deploy | **Done** (E-04, 2026-09-04) — verified via unit tests; the "curl in CI immediately post-deploy" verify method itself hasn't been added to `deploy.yml`, worth doing as a follow-up |
 | BETA-3 | A customer can request deletion; every row keyed to their account is gone within the window stated on `/privacy` | Script + re-query test against a seeded account | **Done** (E-10, 2026-09-05) — `/account`'s "danger zone" records the request; `src/scripts/erase-user-data.ts` performs the actual erasure (dry-run by default, human-confirmed). Not yet exercised against a real seeded staging account |
-| BETA-4 | Every plan-gated capability in `docs/FUNCTIONALITY-MATRIX.md`'s Enforcement column reads ✅ server — zero ⚠️/❌ rows | Re-generate the matrix's enforcement column from the code, count non-✅ rows, assert zero | Currently 14 ❌ + 3 ⚠️ rows — this is why the matrix exists: it makes this criterion countable. Blocked on E-01, E-02 |
+| BETA-4 | Every plan-gated capability in `docs/FUNCTIONALITY-MATRIX.md`'s Enforcement column reads ✅ server — zero ⚠️/❌ rows | Re-generate the matrix's enforcement column from the code, count non-✅ rows, assert zero | **Re-audited 2026-09-13**: down to 7 ❌ + 2 ⚠️ (was 14 ❌ + 3 ⚠️). The 3 advertised-but-unenforced gaps are now server-enforced (E-02 fixed). Remaining ❌ items are capabilities not advertised as tier-specific — gating them is a product decision, not a code bug. Per E-02's "intentionally open" decision, these may stay ungated. ⚠️ = Partner Portal client-only gate + extended-tool path-gating |
 | BETA-5 | `deploy.yml`'s quality gates run on `pull_request`, and a failing check blocks merge, not just deploy | A deliberately-failing PR cannot merge (branch protection configured) | Blocked on E-20 |
-| BETA-6 | Every public, unauthenticated write route has abuse protection (rate limit, or is otherwise justified as safe — e.g. Stripe-signature-verified) | Enumerate `src/pages/api/**` public routes, assert each is covered | `contact.ts` currently isn't — blocked on E-05 |
+| BETA-6 | Every public, unauthenticated write route has abuse protection (rate limit, or is otherwise justified as safe — e.g. Stripe-signature-verified) | Enumerate `src/pages/api/**` public routes, assert each is covered | **Done** — `contact.ts` rate-limited (E-05, 2026-08-28); all other public write routes are either Stripe-signature-verified or admin-only |
 | BETA-7 | `xsser.ts`/`commix.ts` findings are verified against at least one known-vulnerable reference target, not just shipped on faith | Manual run against a deliberately vulnerable staging app, confirm expected findings appear | Blocked on E-18 |
 
 **Beta non-goals**: SOC 2/ISO, 24/7 support, enterprise procurement
@@ -128,7 +128,7 @@ Beta/Live work forward.
 |---|---|---|---|
 | LIVE-1 | 100% of public unauthenticated API routes are rate-limited | A test enumerating `src/pages/api/**` and asserting every public handler is wrapped, so it can't regress | Blocked on E-05, E-12 |
 | LIVE-2 | p95 scan completion time is under a stated threshold over a rolling 7 days | Requires BETA-1/BETA-2 to be measurable at all — explicit dependency | Not yet defined |
-| LIVE-3 | Admin dashboard figures (customer count, MRR, scan totals) are exact, not sampled/capped | `admin/overview.ts`'s unbounded-but-1000-row-ceilinged queries and `admin/metrics.ts`'s 500-scan sample both fixed | **Done** (E-17, 2026-09-05) — both now use exact-count head queries; not yet manually verified against a real staging account with 500+ scans |
+| LIVE-3 | Admin dashboard figures (customer count, MRR, scan totals) are exact, not sampled/capped | `admin/overview.ts`'s unbounded-but-1000-row-ceilinged queries and `admin/metrics.ts`'s 500-scan sample both fixed | **Done** (E-17, 2026-09-05) — both now use exact-count head queries; not yet manually verified against a real production (with a demo account) account with 500+ scans |
 | LIVE-4 | A documented, tested Supabase restore procedure exists | Actually perform a restore against a scratch project and confirm data integrity, not just read the docs | Blocked on E-13 |
 | LIVE-5 | Session auth no longer depends on client-readable localStorage for protected-route access | `src/proxy.ts` performs real server-side redirect for an unauthenticated request to `/dashboard` or `/admin` | Blocked on E-21 — large, deliberately scheduled rather than opportunistic |
 
