@@ -24,7 +24,7 @@ one level up, at the git root. Paths below are relative to
 - ❌ **none** — no plan check exists at any layer; available to any authenticated account regardless of tier
 - 🔒 **service-role-only** — not plan-gated because it's not customer-writable at all (admin/service paths)
 
-*As of 2026-08-23.*
+*As of 2026-09-13.*
 
 ---
 
@@ -85,7 +85,7 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 |---|---|---|---|---|---|
 | `src/worker/tools/nmap.ts` | SYN scan, top-1000 ports, service/OS detect | `nmap` binary | `not_configured` on ENOENT | ⚠️ path-gated, not plan-gated | no |
 | `src/worker/tools/nuclei.ts` | Templates scoped to detected tech + baseline tags | `nuclei` binary | `not_configured` | ⚠️ path-gated | no |
-| `src/worker/tools/zap.ts` | Full spider + active scan | `ZAP_API_URL` (+`ZAP_API_KEY`, defaults `"changeme"` — see `docs/ENHANCEMENTS.md` E-14) | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/zap.ts` | Full spider + active scan | `ZAP_API_URL` + `ZAP_API_KEY` (E-14 fixed: no default, returns `not_configured` if either is unset) | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/sqlmap.ts` | SQL injection confirmation | `sqlmap` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/xsser.ts` | XSS confirmation | `xsser` binary. **Written without a verified reference run against a real binary** | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/commix.ts` | OS command injection confirmation | `commix` binary. **Same unverified caveat as xsser** | `not_configured` | ⚠️ path-gated | no |
@@ -95,6 +95,17 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 | `src/lib/scanners/dependencyManifest.ts` | npm/pip/Composer/Go/Maven manifests → OSV.dev | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | yes — parsers only (`src/__tests__/scanners/dependencyManifest.test.ts`); OSV-querying paths still need local/manual verification, matching the module's own stated verification method |
 | `src/lib/scanners/dockerBaseImage.ts` | Dockerfile base-image EOL via endoflife.date | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
 | `src/lib/scanners/authenticatedCheck.ts` | Header/cookie recheck against an authenticated request | saved credential on a monitored target | `not_applicable` | ❌ **no plan check** despite being labelled "Optional (Agency)" on `/what-we-check` | no |
+| `src/worker/tools/wpscan.ts` | WPScan WordPress enumeration | `wpscan` binary + `WPSCAN_API_TOKEN` | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/cmsmap.ts` | CMSmap CMS fingerprint/scan | `cmsmap` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/gospider.ts` | Web spidering/link extraction | `gospider` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/photon.ts` | Data extraction/OSINT | `photon` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/metadataLeak.ts` | Document metadata OSINT | none (HTTP-based) | n/a | ⚠️ path-gated | no |
+| `src/worker/tools/ajaxSpider.ts` | ZAP AJAX spider for JS-heavy SPAs | `ZAP_API_URL` | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/whatwaf.ts` | WAF/IDS detection | `whatwaf` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/kiterunner.ts` | API endpoint brute-force discovery | `kiterunner` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/arjun.ts` | Hidden parameter discovery | `arjun` binary | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/sessionCheck.ts` | Session management analysis | none (HTTP-based) | n/a | ⚠️ path-gated | no |
+| `src/lib/scanners/trivyScan.ts` | Base-image CVEs + IaC misconfig | connected repo + `trivy` binary | `not_configured`/`not_applicable` | 🔒 requires repo connection | yes (parsers) |
 
 `DANGEROUS_TOOL_PORTS` in `scanExecution.ts` escalates nmap hits on
 2375/2376/6379/9200/27017/2379 to critical unconditionally.
@@ -119,6 +130,7 @@ required) · **key-or-session** (either credential) · **admin**
 | `scans/[id]/create-ticket.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
 | `scans/[id]/retest-finding.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit, plus a correctness gate: 400s any finding from an extended scan tool (`src/lib/extendedToolCheckIds.ts`) since the on-demand path this triggers never runs them (E-30) |
 | `scans/[id]/shares.ts` | GET/POST/DELETE | session only | manual | max 10/scan, max 365-day expiry (hardcoded, not plan-varied) | ✅ server (caps), ❌ not plan-differentiated |
+| `scans/[id]/replay.ts` | POST | key-or-session | manual | none | ✅ server — 10/hr rate limit; resolves scan profile from `monitored_targets`, defaults to `safe` |
 
 ### Account / settings
 
@@ -200,6 +212,16 @@ fails the build only on newly-introduced findings.
 | Critical-finding email alert | `scanAlerts.ts` | Any active plan, incl. Basic | ✅ server, deliberately not tier-gated |
 | Monthly digest email | `send-monthly-digest.ts` | Any active plan | ✅ server, not tier-gated (advertised as a Basic bullet, but not a differentiator since every tier gets it) |
 | Authenticated scanning | `MonitoredTargets.tsx` + `target-auth.ts` | "Optional (Agency)" per `/what-we-check` | ❌ **none** — attaching a credential to a target has no plan check of its own; only the target-count cap above is enforced, so any plan with monitored-site access can add authenticated-scan credentials to it |
+| Partner Portal (fleet management) | `PartnerPortalPanel.tsx`, rendered on the dashboard | Agency | ⚠️ **client-only** — `{plan === "agency" && ...}` in `dashboard/page.tsx`; component shows only the caller's own RLS-scoped data, so exposure is informational not exploitable (E-39) |
+| Asset inventory | `AssetInventory.tsx`, `/dashboard/assets` | — | n/a — not a gated capability; populated by `syncAssetInventory()` post-scan (E-40) |
+| Critical path analysis | `CriticalPaths` in scan detail page | — | n/a — not a gated capability (E-41) |
+| Multi-framework compliance tabs | `ScanReportView.tsx` framework-tabbed `ComplianceSummary` | — | n/a — not a gated capability (E-41) |
+| Fix Wizard | `FixWizard.tsx`, `/dashboard/scans/[id]?wizard=1` | — | n/a — not a gated capability (E-42) |
+| Scan diff view | `DiffView.tsx`, `/dashboard/scans/[id]/diff` | — | n/a — not a gated capability (E-43) |
+| Score/category history | `/dashboard/scans/history`, `CategorySparklines.tsx` | — | n/a — not a gated capability (E-43) |
+| Scan replay | `ReplayButton` in scan detail page | — | n/a — not a gated capability; rate-limited (E-44) |
+| Scan profile selector | `ScanProfileConfig` in `MonitoredTargets.tsx` | — (per-target) | n/a — requires monitored-targets access (plan-capped); requires migration 026 for UPDATE RLS (E-46) |
+| Extended team roles (developer, auditor) | `TeamSection.tsx`, `team/members.ts` | Agency (team creation) | ✅ server for team creation; roles themselves are ungated once in a team (E-45) |
 | Two-factor auth (TOTP) | `TwoFactor.tsx`, `auth.ts` MFA functions | — | ❌ no plan gate (not advertised either — see §7) |
 | API keys / webhooks / share links / CSV-JSON export / CI Action | `ApiKeys.tsx`, `Webhooks.tsx`, `ShareLinks.tsx` | — | ❌ **no plan gate at all** — available on free tier |
 | Repo connection (dependency/secret/Docker scanning) | `ConnectRepo.tsx` | Pro ("dependency monitoring", advertised) | ❌ **none** — connection itself is ungated; consumption is path-gated (see §3), not plan-gated |
@@ -215,15 +237,21 @@ fails the build only on newly-introduced findings.
 
 | Enforcement | Count of rows above |
 |---|---|
-| ✅ Server-enforced | 7 (free-tier cap, rate limit, Slack, Teams, branding upload, branding-on-PDF, PDF-branding-decision) |
-| ⚠️ Client-only / soft | 3 (multi-site monitoring, authenticated-scan labelling, extended-tool-suite path-gating) |
-| ❌ No gate at all | 14 (AI fix, remediation PR, tickets, teams, keys, webhooks, shares, repo connection, target-auth, 2FA, generate-fix-pr, generate-report base cost, ai-fix cost, dependency-scan consumption) |
+| ✅ Server-enforced | 10 (free-tier cap, rate limit, Slack, Teams, branding upload, branding-on-PDF, target-auth POST, team create/invite, connect-repo POST, monitored-targets cap) |
+| ⚠️ Client-only / soft | 2 (Partner Portal Agency gate, extended-tool-suite path-gating) |
+| ❌ No gate at all | 7 (AI fix, remediation PR, tickets, keys, shares, 2FA, authenticated-scan credential) |
+| — Intentionally ungated | 7 (webhooks, repo-connection consumption, scan replay, Fix Wizard, asset inventory, diff view, score history — none advertised as tier-specific; rate-limited not plan-gated, per E-02's "don't invent pricing policy" decision) |
 
-**Bottom line: plan enforcement is essentially unbuilt beyond a binary
-free-vs-paid scan cap and white-label branding.** The Basic/Pro/Agency
-ladder exists in Stripe billing and in marketing copy; in the product it
-mostly doesn't exist. See `docs/ROADMAP.md` BETA-5 for the exit criterion
-this drives, and `docs/ENHANCEMENTS.md` for the itemised backlog.
+**Bottom line (2026-09-13 re-audit)**: plan enforcement has improved
+significantly since the first audit (was 14 ❌ + 3 ⚠️). The 3
+advertised-but-unenforced gaps (target-auth, team, connect-repo) are now
+server-enforced. The remaining 7 ❌ items are capabilities not advertised
+as tier-specific anywhere in current copy — gating them would mean
+inventing new product policy, not fixing a documented mismatch (`E-02`'s
+"intentionally open" decision, confirmed by the account owner). The 7
+"intentionally ungated" items are new features shipped 2026-09-11 that
+were never advertised as tier-specific. See `docs/ENHANCEMENTS.md` E-02
+for the full decision record.
 
 ---
 
