@@ -97,11 +97,29 @@ describe("POST /api/scans/[id]/retest-finding", () => {
     expect(res._getStatusCode()).toBe(404);
   });
 
-  it("returns 403 when the caller doesn't own the scan", async () => {
+  it("returns 403 when the caller doesn't own the scan and isn't on the owner's team", async () => {
     queues.scans = [{ data: { id: SCAN_ID, owner: "someone-else", target_url: TARGET_URL } }];
+    queues.teams = [{ data: null, error: null }];
     const { req, res } = mockReqRes();
     await handler(req, res);
     expect(res._getStatusCode()).toBe(403);
+  });
+
+  it("allows a team 'admin' to retest on the owner's behalf, attributing the new scan to the owner", async () => {
+    const teamOwnerId = "someone-else";
+    queues.scans = [{ data: { id: SCAN_ID, owner: teamOwnerId, target_url: TARGET_URL } }];
+    queues.scan_results = [{ data: { results: { findings: [{ checkId: "headers.missing", severity: "medium", title: "t", detail: "d" }] } } }];
+    queues.teams = [{ data: { id: "team-1" }, error: null }];
+    queues.team_members = [{ data: { role: "admin" }, error: null }];
+    queues.scans.push({ data: { id: "new-scan-1" }, error: null });
+    queues.scan_jobs = [{ data: null, error: null }];
+
+    const { req, res } = mockReqRes({ checkId: "headers.missing" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(202);
+    const scansInsert = inserted.find((i) => i.table === "scans");
+    expect(scansInsert?.payload).toMatchObject({ owner: teamOwnerId });
   });
 
   it("returns 404 when there are no results for the scan yet", async () => {
