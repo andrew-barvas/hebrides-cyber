@@ -135,21 +135,37 @@ async function checkZap(targetUrl: string): Promise<ZapResult> {
  * and ZAP (async server-side) run after.
  */
 export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
-  const [tls, headers, dns, exposure, directoryListing, cloudMisconfig, fingerprint, ports, recon, safeBrowsing, waybackDiscovery, hibp] =
-    await Promise.all([
-      checkTls(targetUrl),
-      checkHeaders(targetUrl),
-      checkDns(targetUrl),
-      checkExposure(targetUrl),
-      checkDirectoryListing(targetUrl),
-      checkCloudMisconfig(targetUrl),
-      checkFingerprint(targetUrl),
-      checkOpenPorts(targetUrl),
-      checkRecon(targetUrl),
-      checkSafeBrowsing(targetUrl),
-      checkWaybackDiscovery(targetUrl),
-      checkHibp(targetUrl),
-    ]);
+  const settled1 = await Promise.allSettled([
+    checkTls(targetUrl),
+    checkHeaders(targetUrl),
+    checkDns(targetUrl),
+    checkExposure(targetUrl),
+    checkDirectoryListing(targetUrl),
+    checkCloudMisconfig(targetUrl),
+    checkFingerprint(targetUrl),
+    checkOpenPorts(targetUrl),
+    checkRecon(targetUrl),
+    checkSafeBrowsing(targetUrl),
+    checkWaybackDiscovery(targetUrl),
+    checkHibp(targetUrl),
+  ]);
+
+  function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
+    return r.status === "fulfilled" ? r.value : fallback;
+  }
+
+  const tls = unwrap(settled1[0], { status: "error", isHttps: false, protocol: null, weakProtocol: false, selfSigned: false, certificateExpiresAt: null, daysUntilExpiry: null, issuer: null, hsts: { present: false, adequate: false, maxAge: null }, note: String((settled1[0] as PromiseRejectedResult).reason) } as TlsResult);
+  const headers = unwrap(settled1[1], { status: "error" } as HeadersResult);
+  const dns = unwrap(settled1[2], { status: "error" } as DnsResult);
+  const exposure = unwrap(settled1[3], { status: "error" } as ExposureResult);
+  const directoryListing = unwrap(settled1[4], { status: "error", listings: [], note: "check crashed" } as DirectoryListingResult);
+  const cloudMisconfig = unwrap(settled1[5], { status: "error", publicBuckets: [], note: "check crashed" } as CloudMisconfigResult);
+  const fingerprint = unwrap(settled1[6], { status: "error" } as FingerprintResult);
+  const ports = unwrap(settled1[7], { status: "error" } as PortsResult);
+  const recon = unwrap(settled1[8], { status: "error" } as ReconResult);
+  const safeBrowsing = unwrap(settled1[9], { status: "error" } as SafeBrowsingResult);
+  const waybackDiscovery = unwrap(settled1[10], { status: "error" } as WaybackDiscoveryResult);
+  const hibp = unwrap(settled1[11], { status: "error" } as HibpResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -160,11 +176,14 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     isDrupal: cmsType === "drupal",
   };
 
-  const [playwright, webapp, zap] = await Promise.all([
+  const settled2 = await Promise.allSettled([
     checkPlaywrightPageLoad(targetUrl),
     checkWebApp(targetUrl, cms),
     checkZap(targetUrl),
   ]);
+  const playwright = unwrap(settled2[0], { status: "error" } as PlaywrightResult);
+  const webapp = unwrap(settled2[1], { status: "error" } as WebAppResult);
+  const zap = unwrap(settled2[2], { status: "error", note: "ZAP check crashed" } as unknown as ZapResult);
 
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
