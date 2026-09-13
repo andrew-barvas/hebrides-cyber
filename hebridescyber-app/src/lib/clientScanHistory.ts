@@ -12,6 +12,7 @@ import { supabase } from "./supabaseClient";
 import type { Finding } from "./scanners";
 import type { ScorePoint } from "@/components/ScoreTrend";
 import { getComplianceRefs, ALL_CONTROLS_BY_FRAMEWORK, type ComplianceFramework } from "./scanners/compliance";
+import { categoryOf } from "@/components/ComplianceTrend";
 
 /**
  * Finds the most recent completed scan of the same target that predates this
@@ -206,6 +207,144 @@ export async function findComplianceHistoryClient(
   }
 
   points.push({ date: currentCreatedAt, coverage: coverageForFindings(currentFindings) });
+
+  return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+/** One row for the Diff View's scan picker. */
+export type ScanListEntry = { id: string; createdAt: string; score: number | null };
+
+// Full-history variant of findScoreHistoryClient/findComplianceHistoryClient
+// above, for src/app/dashboard/scans/history/page.tsx — that page starts
+// from "pick a target" rather than "already viewing one scan," so it has no
+// currentScanId/currentFindings to exclude or append the way the two
+// scan-detail-page-driven functions above do. Capped at 500 scans (not the
+// 20/10-point caps those two use) — a genuine "full history" view rather
+// than a short trend line, but still bounded rather than truly unlimited.
+const FULL_HISTORY_LIMIT = 500;
+
+/**
+ * Every completed scan of the same target (by hostname), newest first —
+ * the source list for Diff View's "compare with" picker, which needs real
+ * scan ids to fetch findings for, unlike findScoreHistoryClient's
+ * ScorePoint[] (score + date only, no id).
+ */
+export async function listCompletedScansForTarget(targetUrl: string): Promise<ScanListEntry[]> {
+  let hostname: string;
+  try {
+    hostname = new URL(targetUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("id, target_url, created_at, scan_results(score)")
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(FULL_HISTORY_LIMIT);
+
+  const entries: ScanListEntry[] = [];
+  for (const c of (candidates ?? []) as Array<{ id: string; target_url: string; created_at: string; scan_results: { score: number | null }[] }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    entries.push({ id: c.id, createdAt: c.created_at, score: c.scan_results?.[0]?.score ?? null });
+  }
+
+  return entries;
+}
+
+/** Findings for one specific scan, by id — Diff View fetches both sides of a comparison this way. */
+export async function findFindingsForScan(scanId: string): Promise<Finding[] | null> {
+  const { data } = await supabase.from("scan_results").select("results").eq("scan_id", scanId).maybeSingle();
+  return (data?.results as { findings?: Finding[] } | undefined)?.findings ?? null;
+}
+
+/** One scan's worth of category counts, for the history page's per-category sparklines. */
+export type CategoryCountPoint = { date: string; counts: Record<string, number> };
+
+export async function findFullScoreHistoryClient(targetUrl: string): Promise<ScorePoint[]> {
+  let hostname: string;
+  try {
+    hostname = new URL(targetUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("target_url, created_at, scan_results(score, created_at)")
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(FULL_HISTORY_LIMIT);
+
+  const points: ScorePoint[] = [];
+  for (const c of (candidates ?? []) as Array<{ target_url: string; scan_results: { score: number | null; created_at: string }[] }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    const result = c.scan_results?.[0];
+    if (result?.score == null) continue;
+    points.push({ date: result.created_at, score: result.score });
+  }
+
+  return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+/**
+ * Per-category open-finding counts across a target's full scan history —
+ * same categoryOf() taxonomy ComplianceTrend.tsx's "Open findings by
+ * category" bar list already uses, generalised into one point per scan
+ * instead of only the latest.
+ */
+export async function findCategoryHistoryClient(targetUrl: string): Promise<CategoryCountPoint[]> {
+  let hostname: string;
+  try {
+    hostname = new URL(targetUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const { data: candidates } = await supabase
+    .from("scans")
+    .select("target_url, created_at, scan_results(results, created_at)")
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(FULL_HISTORY_LIMIT);
+
+  const points: CategoryCountPoint[] = [];
+  for (const c of (candidates ?? []) as Array<{
+    target_url: string;
+    scan_results: { results: { findings?: Finding[] } | null; created_at: string }[];
+  }>) {
+    let candidateHost: string;
+    try {
+      candidateHost = new URL(c.target_url).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    if (candidateHost !== hostname) continue;
+    const result = c.scan_results?.[0];
+    const findings = result?.results?.findings;
+    if (!result || !findings) continue;
+
+    const counts: Record<string, number> = {};
+    for (const f of findings) {
+      if (f.severity === "info") continue;
+      const cat = categoryOf(f.checkId);
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    points.push({ date: result.created_at, counts });
+  }
 
   return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
