@@ -54,12 +54,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   "auth-check": "Authenticated checks",
 };
 
-function categoryOf(checkId: string | undefined): string {
+// Exported for src/app/dashboard/scans/history/page.tsx's per-category
+// sparkline breakdown and src/lib/clientScanHistory.ts's history builder —
+// same taxonomy, not a second copy of it.
+export function categoryOf(checkId: string | undefined): string {
   if (!checkId) return "other";
   return checkId.split(":")[0].split(".")[0];
 }
 
-function categoryLabel(category: string): string {
+export function categoryLabel(category: string): string {
   return CATEGORY_LABELS[category] ?? category.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
