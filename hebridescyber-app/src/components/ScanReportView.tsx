@@ -13,8 +13,9 @@
 // view by design, not a 1:1 mirror of the owner's dashboard.
 import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
-import { COMPLIANCE_FRAMEWORK_LABELS, type ComplianceRef } from "@/lib/scanners/compliance";
+import { COMPLIANCE_FRAMEWORK_LABELS, ALL_CONTROLS_BY_FRAMEWORK, type ComplianceRef, type ComplianceFramework } from "@/lib/scanners/compliance";
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
+import { computeCriticalPaths } from "@/lib/attackPathAnalysis";
 import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -570,58 +571,118 @@ export function FindingCard({
   );
 }
 
-// Cyber Essentials' own 5 control themes (NCSC scheme) — not this codebase's
-// invention, so listed verbatim rather than derived from anything else.
-const CYBER_ESSENTIALS_CONTROLS = [
-  "Firewalls and internet gateways",
-  "Secure configuration",
-  "Security update management",
-  "User access control",
-  "Malware protection",
-];
+// Tab order — Cyber Essentials first, since it's the one framework with
+// genuine UK small-business relevance for this product's positioning; the
+// rest follow COMPLIANCE_FRAMEWORK_LABELS' own declaration order.
+const FRAMEWORK_TAB_ORDER = Object.keys(COMPLIANCE_FRAMEWORK_LABELS) as ComplianceFramework[];
+
+// Cyber Essentials gets its own longer disclaimer (real Cyber Essentials
+// certification is a formal self-assessment, or for Plus an external
+// audit, against NCSC's own questionnaire — this scan does neither); the
+// other frameworks share a shorter, equally honest generic version.
+const FRAMEWORK_DISCLAIMER: Partial<Record<ComplianceFramework, string>> = {
+  "cyber-essentials":
+    "An automated indicator based on this scan’s findings — not a Cyber Essentials certification. Real certification is a formal self-assessment (or, for Plus, an external audit) against NCSC’s own questionnaire.",
+};
+const DEFAULT_DISCLAIMER = "An automated indicator based on this scan’s findings — not a formal compliance certification or attestation against this framework.";
 
 /**
- * Cyber Essentials-specific breakdown — singled out from the general
- * complianceRefs badges on each finding because it's the one framework with
- * genuine UK small-business relevance for this product. Deliberately worded
- * as an "automated indicator," never a certification claim: real Cyber
- * Essentials certification is a formal self-assessment (or Plus, an
- * external audit) against NCSC's own questionnaire, which this scan does
- * not perform and cannot substitute for.
+ * Per-framework control-area breakdown — which of a framework's controls
+ * (ALL_CONTROLS_BY_FRAMEWORK, compliance.ts) have at least one open finding
+ * mapped to them. Framework-generic: any framework compliance.ts knows
+ * about can be selected via the tabs below, not just Cyber Essentials.
  *
  * Returns null when no open finding maps to any framework yet (e.g. a scan
  * stored before complianceRefs existed) — a report with the section but
  * zero real data behind it would be misleading, not just incomplete.
  */
 export function ComplianceSummary({ findings }: { findings: ViewFinding[] }) {
+  const [activeFramework, setActiveFramework] = useState<ComplianceFramework>("cyber-essentials");
+
   // A fixed finding shouldn't count against a control area that's since
   // been addressed — only open findings inform this breakdown.
   const open = findings.filter((f) => f.status !== "fixed");
   const anyMapped = open.some((f) => (f.complianceRefs?.length ?? 0) > 0);
   if (!anyMapped) return null;
 
-  const controlHasFinding = new Map<string, boolean>(CYBER_ESSENTIALS_CONTROLS.map((c) => [c, false]));
+  const controls = [...ALL_CONTROLS_BY_FRAMEWORK[activeFramework]].sort();
+  const controlHasFinding = new Map<string, boolean>(controls.map((c) => [c, false]));
   for (const f of open) {
     for (const ref of f.complianceRefs ?? []) {
-      if (ref.framework === "cyber-essentials") controlHasFinding.set(ref.control, true);
+      if (ref.framework === activeFramework) controlHasFinding.set(ref.control, true);
     }
   }
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <p className="mb-1 text-sm font-semibold text-cybertext">Cyber Essentials control areas</p>
+      <p className="mb-3 text-sm font-semibold text-cybertext">Compliance control areas</p>
+      <div className="no-print mb-3 flex flex-wrap gap-1.5">
+        {FRAMEWORK_TAB_ORDER.map((fw) => (
+          <button
+            key={fw}
+            onClick={() => setActiveFramework(fw)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              activeFramework === fw
+                ? "border-neon/40 bg-neon/10 text-neon"
+                : "border-cyberborder text-cybertext/50 hover:border-cybertext/30 hover:text-cybertext/70"
+            }`}
+          >
+            {COMPLIANCE_FRAMEWORK_LABELS[fw]}
+          </button>
+        ))}
+      </div>
+      <p className="mb-4 text-xs text-cybertext/50">{FRAMEWORK_DISCLAIMER[activeFramework] ?? DEFAULT_DISCLAIMER}</p>
+      {controls.length === 0 ? (
+        <p className="text-xs text-cybertext/40">No controls mapped to {COMPLIANCE_FRAMEWORK_LABELS[activeFramework]} for this scan&rsquo;s findings yet.</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {controls.map((control) => {
+            const hasFinding = controlHasFinding.get(control);
+            return (
+              <div key={control} className="flex items-center gap-2 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
+                <span className={`text-sm font-bold ${hasFinding ? "text-red-400" : "text-neon"}`}>{hasFinding ? "✗" : "✓"}</span>
+                <span className="text-xs text-cybertext/70">{control}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Critical Path Analysis — chains related findings into a "worse together
+ * than alone" attack narrative. Calls the pure computeCriticalPaths()
+ * directly on this page's already-loaded findings, rather than routing
+ * through scanReport.ts's buildScanReport() (which also computes the same
+ * chains, for the public API/webhook consumers) — the dashboard page
+ * doesn't call buildScanReport() today, and refactoring it to do so isn't
+ * needed just to reuse a pure function. Excludes fixed findings for the
+ * same reason ComplianceSummary does: a chain built from a since-resolved
+ * finding would be misleading, not just stale.
+ */
+export function CriticalPaths({ findings }: { findings: ViewFinding[] }) {
+  const open = findings.filter((f) => f.status !== "fixed");
+  const paths = computeCriticalPaths(open);
+  if (paths.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+      <p className="mb-1 text-sm font-semibold text-cybertext">Attack chains</p>
       <p className="mb-4 text-xs text-cybertext/50">
-        An automated indicator based on this scan&rsquo;s findings — not a Cyber Essentials certification. Real
-        certification is a formal self-assessment (or, for Plus, an external audit) against NCSC&rsquo;s own
-        questionnaire.
+        Combinations of this scan&rsquo;s findings that are worse together than either is alone — not a new scan, just a different read of what&rsquo;s already been found.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {CYBER_ESSENTIALS_CONTROLS.map((control) => {
-          const hasFinding = controlHasFinding.get(control);
+      <div className="space-y-3">
+        {paths.map((path) => {
+          const meta = SEVERITY_META[path.severity];
           return (
-            <div key={control} className="flex items-center gap-2 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
-              <span className={`text-sm font-bold ${hasFinding ? "text-red-400" : "text-neon"}`}>{hasFinding ? "✗" : "✓"}</span>
-              <span className="text-xs text-cybertext/70">{control}</span>
+            <div key={path.title} className={`rounded-lg border ${meta.border} ${meta.bg} p-3`}>
+              <div className="mb-1 flex items-center gap-2">
+                <span className={`rounded-full border ${meta.border} px-1.5 py-0.5 text-[10px] font-medium ${meta.text}`}>{meta.label}</span>
+                <p className="text-sm font-medium text-cybertext">{path.title}</p>
+              </div>
+              <p className="text-xs text-cybertext/60">{path.narrative}</p>
             </div>
           );
         })}
