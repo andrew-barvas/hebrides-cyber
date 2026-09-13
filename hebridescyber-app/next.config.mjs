@@ -35,6 +35,17 @@ const SECURITY_HEADERS = [
   },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  // require-corp is the strict setting our own headers.ts check wants —
+  // every cross-origin subresource must opt in via its own
+  // Cross-Origin-Resource-Policy header (or be loaded with `crossorigin`
+  // under real CORS) or the browser blocks it outright. Re-check after
+  // deploy: Google Analytics/Tag Manager's scripts and Stripe's checkout/js
+  // iframes (both already CSP-allowlisted above) are the two genuinely
+  // cross-origin things this app loads today and are the ones actually at
+  // risk of silently breaking under this — both are commonly reported as
+  // COEP-safe by their own vendors, but "commonly" isn't "verified against
+  // this app," so confirm with a real browser load, not just curl -I.
+  { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
 ];
 
 /** @type {import('next').NextConfig} */

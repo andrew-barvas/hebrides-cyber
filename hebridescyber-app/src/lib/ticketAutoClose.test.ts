@@ -46,6 +46,7 @@ function report(overrides: Partial<ScanReport> = {}): ScanReport {
     score: 80,
     findings: [],
     fixed_findings: [{ check_id: "headers.missing-csp", severity: "medium", title: "No CSP" }],
+    critical_paths: [],
     ...overrides,
   };
 }
