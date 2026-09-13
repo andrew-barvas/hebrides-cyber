@@ -94,6 +94,63 @@ function ExportButton({
   );
 }
 
+// E-15: "Generate fix PR" — opens a real GitHub pull request with
+// remediation recommendations (see src/pages/api/generate-fix-pr.ts).
+// Only rendered when the user has a connected repo (repo_connections).
+function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; token: string | null; githubRepo: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function generate() {
+    if (!token || state === "loading") return;
+    setState("loading");
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/generate-fix-pr", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId, githubRepo }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not generate fix PR");
+      setPrUrl(body.prUrl);
+      setState("done");
+    } catch (err) {
+      setErrorMsg((err as Error).message);
+      setState("error");
+    }
+  }
+
+  if (state === "done" && prUrl) {
+    return (
+      <a
+        href={prUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rounded-md border border-neon/40 bg-neon/10 px-4 py-2 text-sm font-medium text-neon hover:bg-neon/20 transition-colors"
+      >
+        PR created — view ↗
+      </a>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      <button
+        onClick={generate}
+        disabled={!token || state === "loading"}
+        className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-40"
+      >
+        {state === "loading" ? "Creating PR…" : "Generate fix PR"}
+      </button>
+      {state === "error" && errorMsg && (
+        <span className="text-xs text-red-400">{errorMsg}</span>
+      )}
+    </div>
+  );
+}
+
 // "Replay this scan" — POSTs to /api/scans/{id}/replay (which resolves the
 // target's *current* scan_profile, not whatever the original scan ran
 // with) and lands on the new scan's own report page, which already has its
@@ -144,6 +201,7 @@ export default function ScanDetailPage() {
   const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
   const [hasTicketIntegration, setHasTicketIntegration] = useState(false);
+  const [connectedRepo, setConnectedRepo] = useState<string | null>(null);
   const [wizardMode, setWizardMode] = useState(false);
   // Kept fresh via onAuthStateChange — reading it once on mount left this page
   // holding an expired token after a few hours idle, which silently 401'd the
@@ -225,6 +283,19 @@ export default function ScanDetailPage() {
         () => {
           // Non-fatal — findings just render without the "Create ticket" button.
         }
+      );
+  }, [result]);
+
+  // Gates the "Generate fix PR" button — same pattern as hasTicketIntegration.
+  useEffect(() => {
+    if (!result) return;
+    supabase
+      .from("repo_connections")
+      .select("github_repo")
+      .maybeSingle()
+      .then(
+        ({ data }) => setConnectedRepo((data as { github_repo: string } | null)?.github_repo ?? null),
+        () => {},
       );
   }, [result]);
 
@@ -325,6 +396,9 @@ export default function ScanDetailPage() {
                   >
                     Fix wizard →
                   </button>
+                )}
+                {connectedRepo && (
+                  <GenerateFixPrButton scanId={result.scan_id} token={sessionToken} githubRepo={connectedRepo} />
                 )}
               </div>
             </div>

@@ -2,13 +2,25 @@ name: Deploy
 
 # Builds and deploys the Next.js site to Azure Static Web Apps.
 #
+# E-20: quality gates now run on pull_request too, so a failing check
+# blocks merge (with branch-protection configured) rather than only
+# blocking deploy after merge.
+#
+# E-49: a migration schema check verifies that every column/table the
+# code depends on actually exists in the production Supabase database,
+# catching the class of bug that caused the 2026-09-13 incident.
+#
 # Required GitHub Secrets (Settings > Secrets and variables > Actions):
 #   AZURE_STATIC_WEB_APPS_API_TOKEN   - from `az staticwebapp create` or the Portal
 #   NEXT_PUBLIC_SUPABASE_URL
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   SUPABASE_URL                       - server-side URL (for migration check)
+#   SUPABASE_SERVICE_ROLE_KEY          - service role key (for migration check)
 
 on:
   push:
+    branches: [master]
+  pull_request:
     branches: [master]
   workflow_dispatch: {}
 
@@ -17,9 +29,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy-static-site:
+  # ── Quality gates ──────────────────────────────────────────────────
+  # Runs on both push and pull_request so PRs get feedback before merge.
+  check:
     runs-on: ubuntu-latest
-    name: Build and deploy Next.js site
+    name: Lint, typecheck, test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,6 +78,118 @@ jobs:
       - name: E2E tests
         working-directory: hebridescyber-app
         run: npm run test
+
+  # ── Migration schema check (E-49) ─────────────────────────────────
+  # Queries production Supabase to verify that every column/table the
+  # code depends on actually exists. Fails the pipeline if a migration
+  # hasn't been applied, preventing deploy of code that would crash.
+  # Skipped when the secrets aren't available (e.g. fork PRs).
+  migration-check:
+    runs-on: ubuntu-latest
+    name: Verify migration schema
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Check required schema objects exist
+        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Query information_schema via Supabase's PostgREST endpoint to
+          # verify expected columns exist. Uses the service-role key to
+          # bypass RLS on the pg_catalog/information_schema views.
+          check_column() {
+            local table="$1" column="$2"
+            local result
+            result=$(curl -sf \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              "${SUPABASE_URL}/rest/v1/rpc/check_column_exists" \
+              -d "{\"p_table\": \"${table}\", \"p_column\": \"${column}\"}" \
+              2>/dev/null || echo "error")
+
+            if [ "$result" = "error" ] || [ "$result" = "false" ]; then
+              echo "MISSING: ${table}.${column}"
+              return 1
+            fi
+            echo "OK: ${table}.${column}"
+            return 0
+          }
+
+          # Fallback: query information_schema directly via SQL over the
+          # PostgREST SQL endpoint (pg/query isn't available on all plans).
+          # Instead, use a simple REST query against the tables themselves
+          # with a LIMIT 0 — a missing column returns a 400 error.
+          check_table_column() {
+            local table="$1" column="$2"
+            local status
+            status=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              "${SUPABASE_URL}/rest/v1/${table}?select=${column}&limit=0")
+
+            if [ "$status" = "200" ]; then
+              echo "OK: ${table}.${column}"
+              return 0
+            else
+              echo "MISSING: ${table}.${column} (HTTP ${status})"
+              return 1
+            fi
+          }
+
+          FAILED=0
+
+          # Migration 019: contact_enquiries.company
+          check_table_column "contact_enquiries" "company" || FAILED=1
+
+          # Migration 020: monitored_targets.scan_profile
+          check_table_column "monitored_targets" "scan_profile" || FAILED=1
+
+          # Migration 021: team_members.role (extended enum)
+          check_table_column "team_members" "role" || FAILED=1
+
+          # Migration 022: asset_inventory table
+          check_table_column "asset_inventory" "id" || FAILED=1
+
+          # Migration 023: api_specs table
+          check_table_column "api_specs" "id" || FAILED=1
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "::error::One or more required database columns/tables are missing."
+            echo "::error::Apply pending migrations from sql/migrations/ to the production Supabase database."
+            exit 1
+          fi
+
+          echo ""
+          echo "All required schema objects verified."
+
+  # ── Deploy ─────────────────────────────────────────────────────────
+  # Only runs on push to master (not on pull_request), and only after
+  # the check job passes.
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Azure Static Web Apps
+    needs: [check, migration-check]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

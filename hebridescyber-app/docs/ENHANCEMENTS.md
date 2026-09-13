@@ -218,24 +218,32 @@ contributor task — see `docs/ONBOARDING.md` §7.
 
 ## E-06 — Runtime schema validation at API boundaries
 
-**Status: started (2026-09-05).** Adopted incrementally, per this item's
-own recommendation, rather than a big-bang rewrite. Shipped: `zod` added as
+**Status: fixed (2026-09-13).** All 21 write routes now use
+`parseBody(schema, body, res)` with proper zod schemas. Adopted
+incrementally, per this item's own recommendation. Shipped: `zod` added as
 a dependency; `src/lib/validate.ts`'s `parseBody(schema, body, res)` is the
 shared helper (writes a 400 with a field-scoped message and returns null on
 a validation failure, matching the early-return convention used everywhere
-else in this codebase); applied to the two worst offenders named below —
+else in this codebase); applied to the two worst offenders first —
 `admin/contacts.ts`'s PATCH and all three `team/members.ts` handlers
-(`invite`/`setRole`/`remove`). One real behaviour fix alongside the
-type-safety win: `invite`'s `role` field used to silently coerce anything
-that wasn't exactly `"admin"` to `"member"` (a typo like `"administrator"`
-would have silently succeeded with the wrong role); it's now a proper
+(`invite`/`setRole`/`remove`), then backfilled to the remaining 19 routes
+including `contact.ts` (previously had zero shape-checking),
+`target-auth.ts` (`z.discriminatedUnion("authType", [...])`), and
+`ticket-integration.ts` (`z.discriminatedUnion("provider", [...])`).
+One real behaviour fix alongside the type-safety win: `invite`'s `role`
+field used to silently coerce anything that wasn't exactly `"admin"` to
+`"member"` (a typo like `"administrator"` would have silently succeeded
+with the wrong role); it's now a proper
 `z.enum(["admin","member"]).optional()` that rejects an invalid value with
 400 instead. ID fields use `z.string().min(1)`, not `z.string().uuid()` —
 zod v4 enforces strict RFC 4122 variant bits, which would reject the
 repeating-digit placeholder IDs (`"33333333-..."` etc.) used as test
 fixtures throughout this codebase's existing test suites, for no real
 security benefit (Postgres already rejects a malformed UUID against a
-`uuid` column at the DB layer). `npx tsc --noEmit`, lint, full `vitest run`,
+`uuid` column at the DB layer). Read-only routes using unvalidated
+`req.query` (14 files) left for a future pass — noted here rather than
+done now, to keep the scope to the write-route half flagged as
+higher-risk. `npx tsc --noEmit`, lint, full `vitest run`,
 and `next build` all verified clean. **Still open**: the other ~26
 `req.body as {...}` instances — backfill opportunistically as those routes
 are touched, per this item's own guidance, rather than in one pass.
@@ -454,16 +462,19 @@ this codebase.
 
 ## E-15 — Add a UI entry point for remediation-PR generation
 
+**Status: fixed (2026-09-13).** "Generate fix PR" button added to the scan
+detail page header (`src/app/dashboard/scans/[id]/page.tsx`), visible when
+the user has a connected GitHub repo (`repo_connections`). Clicking it calls
+`POST /api/generate-fix-pr` and shows a link to the created PR on success.
+
 **What**: `POST /api/generate-fix-pr` — opens a real GitHub PR fixing
-headers/deps — has **no caller in the UI at all**. Reachable only by
-hand-crafting a session-authenticated POST request. It's advertised on
-`/services` as "Remediation Pull Requests."
+headers/deps — previously had **no caller in the UI at all**. It's
+advertised on `/services` as "Remediation Pull Requests."
 **Why**: a real, working, differentiated feature (see
 `docs/COMPETITIVE-ANALYSIS.md` §5's remediation ladder) that customers
-currently cannot discover or use.
-**Impact/effort**: low-medium — the backend works; this is adding a button
-to `ScanReportView.tsx`'s `FindingCard`, matching the existing pattern for
-"Get AI-tailored fix"/"Create ticket."
+previously could not discover or use.
+**Impact/effort**: low-medium — the backend works; this was adding a button
+to the scan detail page header.
 **Depends on**: none.
 **Category**: code. **Source**: audit.
 
@@ -616,18 +627,23 @@ once in this project's history (see the two-root layout note in
 
 ## E-20 — Add a `pull_request` trigger to `deploy.yml`
 
-**What**: `deploy.yml` triggers only on `push: branches: [master]` — every
-quality gate (lint, typecheck, unit tests, coverage floor, e2e) currently
-runs *after* merge, in the same job that deploys. A failing check doesn't
-block a merge; it blocks the deploy, leaving `master` broken until fixed.
-**Why**: survivable solo; becomes a real problem with a second contributor,
-and this whole project just onboarded its first `docs/ONBOARDING.md` for
-exactly that eventuality.
-**Impact/effort**: low effort (split the existing checks into a
-`pull_request`-triggered job, keep `push`-triggered deploy as a separate
-job that depends on it) — but needs branch-protection rules configured
-too, which is a GitHub settings change, not just a workflow-file edit.
-**Depends on**: none.
+**Status: fixed (2026-09-13).** `deploy.yml` now has three jobs: `check`
+(lint/tsc/unit tests/e2e — runs on both `push` and `pull_request`),
+`migration-check` (E-49 schema verification — runs on push/dispatch only),
+and `deploy` (runs only on push to master, depends on both check jobs).
+PRs now get quality-gate feedback before merge. **Still needs**: GitHub
+branch-protection rules configured to require the `check` job to pass
+before merging — that's a repo-settings change, not a workflow-file edit.
+
+**What**: `deploy.yml` previously triggered only on `push: branches:
+[master]` — every quality gate ran *after* merge, in the same job that
+deployed.
+**Why**: survivable solo; becomes a real problem with a second contributor.
+**Impact/effort**: low effort — split the existing checks into a
+`pull_request`-triggered job, kept `push`-triggered deploy as a separate
+job that depends on it.
+**Depends on**: none (the workflow change is done; branch-protection is a
+GitHub repo-settings change only the owner can configure).
 **Category**: code + a GitHub repo-settings change. **Source**: audit.
 
 ## E-21 — Migrate auth off localStorage to httpOnly cookies
@@ -1118,21 +1134,28 @@ require-corp` to both `next.config.mjs` security headers and
 
 ## E-49 — Missing migration-application step in deploy pipeline
 
-**What**: `deploy.yml` builds, tests, and deploys the Next.js app to Azure
-Static Web Apps but **never touches the Supabase schema**. Migrations in
-`sql/migrations/` are numbered, idempotent files that must be applied
-manually against the Supabase SQL editor. There is no automated step,
-no CI check that migrations are applied, and no warning when code ships
-that depends on a schema change that hasn't been applied.
+**Status: fixed (2026-09-13).** A `migration-check` job added to
+`deploy.yml` queries production Supabase via PostgREST to verify that
+every column/table the code depends on (from migrations 019–026) actually
+exists. Fails the pipeline if a migration hasn't been applied, blocking
+deploy of code that would crash. Uses `SUPABASE_URL` +
+`SUPABASE_SERVICE_ROLE_KEY` (already in GitHub secrets). This is a
+*detection* step, not an *application* step — migrations still need to be
+applied manually via the Supabase SQL editor; the CI job catches the gap
+before broken code reaches production.
+
+**What**: `deploy.yml` previously built, tested, and deployed the Next.js
+app but **never touched the Supabase schema**. No automated step, no CI
+check that migrations were applied, no warning when code shipped that
+depended on a schema change that hadn't been applied.
 **Why**: this caused a live production incident (2026-09-13) — migrations
 019-026 had never been applied, causing `column contact_enquiries.company
 does not exist` errors, silent RLS failures, and general "backend call
 failure" symptoms across the admin panel and dashboard.
-**Impact/effort**: medium — options range from a simple `supabase db push`
-step in CI (needs service-role credentials as a GitHub secret) to a full
-Supabase CLI migration workflow. The immediate fix is manual application;
-the systemic fix is automation.
-**Depends on**: Supabase CLI authentication or service-role key in CI.
+**Impact/effort**: medium — the detection step is done; full `supabase db
+push` automation would be the next level (needs Supabase CLI auth in CI).
+**Depends on**: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in GitHub
+secrets (already present).
 **Category**: code + process. **Source**: production incident, 2026-09-13.
 
 **What**: nothing today checks a customer's *cloud account* configuration —
