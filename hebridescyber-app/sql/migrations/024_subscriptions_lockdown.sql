@@ -1,0 +1,32 @@
+-- Fixes a real, exploitable revenue-bypass vulnerability found while
+-- investigating a support report (Teams/Slack webhook notifications not
+-- firing): 002_improvements.sql's "Users can update their own subscription"
+-- policy grants UPDATE on the *entire* subscriptions row to its owner, with
+-- no column restriction. Because Postgres RLS policies gate rows, not
+-- columns, any signed-in customer could call
+--   supabase.from("subscriptions").update({ plan: "agency", status: "active" })
+-- directly from the browser console and grant themselves a paid plan for
+-- free, entirely bypassing Stripe. The policy was added (002_improvements.sql)
+-- specifically so a customer could self-serve their own slack_webhook_url —
+-- it was never meant to expose plan/status, that's just what "no column
+-- restriction" actually grants.
+--
+-- Fix: drop the client-writable UPDATE policy entirely. subscriptions now
+-- follows the same pattern every other billing/security-sensitive table in
+-- this codebase already uses (repo_connections, ticket_integrations,
+-- target_auth_credentials) — no client insert/update policy, writes only
+-- via a service-role API route. slack_webhook_url/ms_teams_webhook_url
+-- saves move to POST /api/account/notification-webhooks
+-- (src/pages/api/account/notification-webhooks.ts), which never reads
+-- plan/status from the request body at all — there is no code path left,
+-- client-supplied or otherwise, that can set those two columns to anything
+-- other than what src/pages/api/stripe/webhook.ts's own upsert sets them to.
+--
+-- All statements are safe to re-run, matching the convention established in
+-- 002_improvements.sql onward.
+
+drop policy if exists "Users can update their own subscription" on public.subscriptions;
+
+-- SELECT stays as-is (001_init.sql) — a customer still needs to read their
+-- own plan/status/webhook URLs to render the dashboard; only the ability to
+-- WRITE any of it from the browser is removed.
