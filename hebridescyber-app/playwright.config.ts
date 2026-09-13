@@ -26,7 +26,7 @@ export default defineConfig({
     command: "npm run build && npm run start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 240_000,
     env: {
       // These literal values override whatever the CI environment has set so
       // the Supabase project ref is ALWAYS "example-project" in tests.
