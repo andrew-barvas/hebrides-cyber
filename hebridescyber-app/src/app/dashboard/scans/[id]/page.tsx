@@ -6,9 +6,10 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, ExecutiveSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
+import FixWizard from "@/components/FixWizard";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
 
 type Finding = ViewFinding;
@@ -93,6 +94,47 @@ function ExportButton({
   );
 }
 
+// "Replay this scan" — POSTs to /api/scans/{id}/replay (which resolves the
+// target's *current* scan_profile, not whatever the original scan ran
+// with) and lands on the new scan's own report page, which already has its
+// own "may still be running" fallback for the queued/running window — no
+// polling needed here.
+function ReplayButton({ scanId, token }: { scanId: string; token: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function replay() {
+    if (!token || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/scans/${scanId}/replay`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Replay failed (${res.status})`);
+      window.location.href = `/dashboard/scans/${data.scanId}`;
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={replay}
+        disabled={!token || busy}
+        className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-40"
+      >
+        {busy ? "Queuing replay…" : "↻ Replay scan"}
+      </button>
+      {error && <p className="absolute right-0 top-full mt-1 w-56 text-right text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
 export default function ScanDetailPage() {
   const params = useParams<{ id: string }>();
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -102,10 +144,29 @@ export default function ScanDetailPage() {
   const [filter, setFilter] = useState<"all" | "new" | "fixed">("all");
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
   const [hasTicketIntegration, setHasTicketIntegration] = useState(false);
+  const [wizardMode, setWizardMode] = useState(false);
   // Kept fresh via onAuthStateChange — reading it once on mount left this page
   // holding an expired token after a few hours idle, which silently 401'd the
   // share-link and AI-fix buttons while the page still looked signed in.
   const sessionToken = useSessionToken();
+
+  // ?wizard=1 opens the Fix Wizard directly — read via window.location
+  // rather than next/navigation's useSearchParams() to avoid that hook's
+  // Suspense-boundary requirement for a single query param this page only
+  // needs to read once on mount.
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("wizard") === "1") {
+      setWizardMode(true);
+    }
+  }, []);
+
+  function setWizardModeAndUrl(next: boolean) {
+    setWizardMode(next);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("wizard", "1");
+    else url.searchParams.delete("wizard");
+    window.history.replaceState({}, "", url.toString());
+  }
 
   useEffect(() => {
     if (!params?.id) return;
@@ -242,7 +303,8 @@ export default function ScanDetailPage() {
                 <h1 className="text-2xl font-bold text-cybertext break-all print:text-slate-800">{targetUrl}</h1>
                 <p className="mt-1 text-sm text-cybertext/40 print:text-slate-500">Security scan report · {checkedAt}</p>
               </div>
-              <div className="no-print flex shrink-0 gap-2">
+              <div className="no-print flex shrink-0 flex-wrap gap-2">
+                <ReplayButton scanId={result.scan_id} token={sessionToken} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} format="csv" targetUrl={targetUrl} />
                 <button
                   onClick={() => window.print()}
@@ -250,6 +312,20 @@ export default function ScanDetailPage() {
                 >
                   ↓ Download PDF
                 </button>
+                <Link
+                  href={`/dashboard/scans/${result.scan_id}/diff`}
+                  className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+                >
+                  Compare scans →
+                </Link>
+                {findings.some((f) => f.status !== "fixed") && (
+                  <button
+                    onClick={() => setWizardModeAndUrl(true)}
+                    className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+                  >
+                    Fix wizard →
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -291,6 +367,9 @@ export default function ScanDetailPage() {
 
           {/* Compliance mapping */}
           <ComplianceSummary findings={taggedOrdered} />
+
+          {/* Attack chains */}
+          <CriticalPaths findings={taggedOrdered} />
 
           {/* Check breakdown */}
           <div>
@@ -339,8 +418,19 @@ export default function ScanDetailPage() {
             </div>
           </div>
 
+          {/* Fix Wizard — one finding at a time, easiest-first */}
+          {wizardMode && (
+            <FixWizard
+              findings={taggedOrdered}
+              scanId={result.scan_id}
+              token={sessionToken ?? undefined}
+              hasTicketIntegration={hasTicketIntegration}
+              onClose={() => setWizardModeAndUrl(false)}
+            />
+          )}
+
           {/* Findings */}
-          {taggedOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
+          {!wizardMode && (taggedOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
             <div>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
@@ -390,7 +480,7 @@ export default function ScanDetailPage() {
             <div className="rounded-lg border border-neon/20 bg-neon/5 p-5 text-sm text-neon">
               No significant findings detected. TLS, headers, DNS authentication, and common exposure paths all checked out.
             </div>
-          )}
+          ))}
 
           {/* Remediation prompt */}
           {criticalOrHighCount > 0 && (
