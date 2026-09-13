@@ -141,31 +141,38 @@ E-25, E-06 zod backfill).
 | 2 | **E-14** | ZAP_API_KEY `"changeme"` → `not_configured` | ✅ done (2026-09-13) |
 | 3 | **E-22** | security.txt RFC 9116 `Expires` field | ✅ done (2026-09-13) |
 | 4 | **E-25** | `Promise.allSettled` in `runAllChecks()` | ✅ done (2026-09-13) |
-| 5 | **E-06** | Zod validation backfill for ~20 write routes | 🔄 in progress (2026-09-13) |
+| 5 | **E-06** | Zod validation backfill for ~20 write routes | ✅ done (2026-09-13) |
 | 6 | — | Regenerate stale docs (ENHANCEMENTS, FUNCTIONALITY-MATRIX, ROADMAP, SPRINT-PLAN) | ✅ done (2026-09-13) |
 | 7 | — | Migration 026: `monitored_targets` UPDATE RLS policy | ✅ done (2026-09-13, file created; needs application to production — see E-49) |
 | 8 | **E-02** | Document remaining ungated capabilities as "intentionally open" | ✅ done (2026-09-13, in FUNCTIONALITY-MATRIX.md) |
 
+| 9 | **E-15** | "Generate fix PR" button in scan detail page | ✅ done (2026-09-13) |
+| 10 | **E-20** | `pull_request` trigger + split check/deploy jobs in `deploy.yml` | ✅ done (2026-09-13) |
+| 11 | **E-49** | Migration schema check in CI pipeline | ✅ done (2026-09-13) |
+
 **Sprint 4 exit check**: `npx tsc --noEmit` clean, CI passes, all four docs
 regenerated, E-14/E-22/E-25 closed, E-06 zod backfill applied to all write
-routes. **Blocked until E-49**: production incident is resolved only when
-migrations 019-026 are applied to the live Supabase database — the script
-is prepared at `sql/migrations/` (idempotent, safe to re-run), but needs
-manual application via the Supabase SQL editor.
+routes, E-15/E-20/E-49 shipped. **Blocked until E-49 (manual)**: production
+incident is resolved only when migrations 019-026 are applied to the live
+Supabase database — the script is prepared at `sql/migrations/` (idempotent,
+safe to re-run), but needs manual application via the Supabase SQL editor.
+The CI migration check (E-49 automation) will now block deploys if
+migrations are missing.
 
 ---
 
 ## After Sprint 4
 
 The honest next candidates, unordered:
-- **E-49 automation**: add a `supabase db push` or equivalent step to
-  `deploy.yml` so migrations are applied automatically on deploy, preventing
-  a recurrence of the 2026-09-13 incident.
 - **Free staging environment**: Azure SWA preview deployments + a second
-  free-tier Supabase project, tied to E-20's `pull_request` trigger. Zero
-  cost; would have caught the migration gap before it hit production.
-- E-13 (Supabase backup/restore documentation), E-15 (remediation-PR UI),
-  E-20 (`pull_request` trigger on `deploy.yml`), E-21 (httpOnly-cookie auth),
+  free-tier Supabase project, tied to E-20's `pull_request` trigger (now
+  done). Zero cost; would have caught the migration gap before production.
+- **Full migration automation**: upgrade E-49 from a detection step to
+  actual `supabase db push` in CI, so migrations are applied automatically
+  on deploy rather than just failing when they're missing.
+- **Branch-protection rules**: configure GitHub to require the `check` job
+  to pass before merging PRs (completes E-20's full intent).
+- E-13 (Supabase backup/restore documentation), E-21 (httpOnly-cookie auth),
   E-26 (Terraform scaffold), E-32 (cloud posture scanning), E-33 (API-spec
   testing).
 
