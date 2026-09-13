@@ -98,24 +98,23 @@ canary error in staging shows up in the error tracker within a minute.
 criteria but aren't urgent enough to have displaced Sprints 1-2. Lower
 priority within this sprint means "do these if time allows," not "skip."
 
-| Priority | ID | What | Why here |
-|---|---|---|---|
-| 1 | **E-10** | Data retention: implement the cleanup job, reconcile the two promises | Blocks `ROADMAP.md` BETA-3 (customer deletion requests) — a real, live legal gap, not a nice-to-have. Confirm the actual retention windows with the account owner before building automation around unverified numbers (the item's own caveat). |
-| 2 | **E-06** | Runtime schema validation at API boundaries (zod) | Credibility risk for a security product specifically to ship without one; do incrementally (new routes first) rather than a big-bang rewrite, as the item itself recommends. |
-| 3 | **E-11** | Fix `send-monthly-digest.ts`'s N+1 query pattern | Same failure class that already broke daily-blog/weekly-newsletter once (Azure Functions execution ceiling) — fix before it repeats, not after. |
-| 4 | **E-17** | Paginate/cap the remaining unbounded admin queries | Blocks `ROADMAP.md` LIVE-3 (admin figures currently sampled/capped, not exact). |
-| 5 | **E-12** | Rate-limit the remaining expensive per-click routes | Rounds out E-05's work from Sprint 1 — do them as one category, not scattered. |
-| 6 | **E-18** | Verify `xsser.ts`/`commix.ts` against a real vulnerable target | Cheap verification task, closes `ROADMAP.md` BETA-7. |
+| Priority | ID | What | Status | Why here |
+|---|---|---|---|---|
+| 1 | **E-10** | Data retention: implement the cleanup job, reconcile the two promises | ✅ done (2026-09-05) | Blocks `ROADMAP.md` BETA-3 (customer deletion requests) — a real, live legal gap, not a nice-to-have. |
+| 2 | **E-06** | Runtime schema validation at API boundaries (zod) | ✅ done (2026-09-13) | Credibility risk for a security product specifically to ship without one; all 21 write routes now validated. |
+| 3 | **E-11** | Fix `send-monthly-digest.ts`'s N+1 query pattern | ✅ done (2026-09-05) | Same failure class that already broke daily-blog/weekly-newsletter once. |
+| 4 | **E-17** | Paginate/cap the remaining unbounded admin queries | ✅ done (2026-09-05) | Blocks `ROADMAP.md` LIVE-3. |
+| 5 | **E-12** | Rate-limit the remaining expensive per-click routes | ✅ done (2026-09-05) | Rounds out E-05's work from Sprint 1. |
+| 6 | **E-18** | Verify `xsser.ts`/`commix.ts` against a real vulnerable target | 🔄 partial (2026-09-05) | commix verified; xsser still needs a real binary test. |
 
-**Explicitly not in these 3 sprints** (real, tracked, deliberately deferred —
-see `docs/ENHANCEMENTS.md` for each): E-13 (Supabase backup/restore
-documentation), E-14 (`ZAP_API_KEY` default), E-15 (remediation-PR UI entry
-point), E-20 (`pull_request` trigger on `deploy.yml`), E-21 (httpOnly-cookie
-auth migration — explicitly large, the roadmap itself says "deliberately
-scheduled rather than opportunistic," don't squeeze it in), E-22
-(`security.txt` `Expires` field), E-24/E-25 (harvested-but-lower-priority
-items from the frozen engineering log), E-26 (Terraform scaffold/reality
-mismatch — infra cleanup, not customer-facing).
+**Sprint 3 is now fully complete** (all items either done or as far as they
+can go without a real xsser binary).
+
+**Originally "not in these 3 sprints"** — several have since shipped in
+Sprint 4: E-14 (done), E-15 (done), E-20 (done), E-22 (done), E-25 (done).
+Still deferred: E-13 (Supabase backup/restore documentation), E-21
+(httpOnly-cookie auth migration — explicitly large), E-24 (harvested item),
+E-26 (Terraform scaffold).
 
 **Sprint 3 exit check**: re-run `docs/FUNCTIONALITY-MATRIX.md`'s audit and
 confirm the ❌-gate count from Sprint 1 has actually reached 0; a seeded test
