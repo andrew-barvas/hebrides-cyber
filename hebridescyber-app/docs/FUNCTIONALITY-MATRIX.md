@@ -211,7 +211,7 @@ fails the build only on newly-introduced findings.
 | MS Teams alerts | dashboard form | Pro/Agency | ✅ **server**, same function |
 | Critical-finding email alert | `scanAlerts.ts` | Any active plan, incl. Basic | ✅ server, deliberately not tier-gated |
 | Monthly digest email | `send-monthly-digest.ts` | Any active plan | ✅ server, not tier-gated (advertised as a Basic bullet, but not a differentiator since every tier gets it) |
-| Authenticated scanning | `MonitoredTargets.tsx` + `target-auth.ts` | "Optional (Agency)" per `/what-we-check` | ❌ **none** — attaching a credential to a target has no plan check of its own; only the target-count cap above is enforced, so any plan with monitored-site access can add authenticated-scan credentials to it |
+| Authenticated scanning | `MonitoredTargets.tsx` + `target-auth.ts` | "Optional (Agency)" per `/what-we-check` | ✅ server — `target-auth.ts` enforces `plan !== "agency"` → 403 on POST (E-02 fix, 2026-08-28); DELETE stays ungated so downgraded accounts can remove a credential |
 | Partner Portal (fleet management) | `PartnerPortalPanel.tsx`, rendered on the dashboard | Agency | ⚠️ **client-only** — `{plan === "agency" && ...}` in `dashboard/page.tsx`; component shows only the caller's own RLS-scoped data, so exposure is informational not exploitable (E-39) |
 | Asset inventory | `AssetInventory.tsx`, `/dashboard/assets` | — | n/a — not a gated capability; populated by `syncAssetInventory()` post-scan (E-40) |
 | Critical path analysis | `CriticalPaths` in scan detail page | — | n/a — not a gated capability (E-41) |
@@ -237,17 +237,18 @@ fails the build only on newly-introduced findings.
 
 | Enforcement | Count of rows above |
 |---|---|
-| ✅ Server-enforced | 10 (free-tier cap, rate limit, Slack, Teams, branding upload, branding-on-PDF, target-auth POST, team create/invite, connect-repo POST, monitored-targets cap) |
+| ✅ Server-enforced | 11 (free-tier cap, rate limit, Slack, Teams, branding upload, branding-on-PDF, target-auth POST, authenticated-scan POST, team create/invite, connect-repo POST, monitored-targets cap) |
 | ⚠️ Client-only / soft | 2 (Partner Portal Agency gate, extended-tool-suite path-gating) |
-| ❌ No gate at all | 7 (AI fix, remediation PR, tickets, keys, shares, 2FA, authenticated-scan credential) |
+| ❌ No gate at all | 6 (AI fix, remediation PR, tickets, keys, shares, 2FA) |
 | — Intentionally ungated | 7 (webhooks, repo-connection consumption, scan replay, Fix Wizard, asset inventory, diff view, score history — none advertised as tier-specific; rate-limited not plan-gated, per E-02's "don't invent pricing policy" decision) |
 
 **Bottom line (2026-09-13 re-audit)**: plan enforcement has improved
 significantly since the first audit (was 14 ❌ + 3 ⚠️). The 3
 advertised-but-unenforced gaps (target-auth, team, connect-repo) are now
-server-enforced. The remaining 7 ❌ items are capabilities not advertised
-as tier-specific anywhere in current copy — gating them would mean
-inventing new product policy, not fixing a documented mismatch (`E-02`'s
+server-enforced; authenticated scanning is also now Agency-gated
+server-side. The remaining 6 ❌ items are capabilities not advertised as
+tier-specific anywhere in current copy — gating them would mean inventing
+new product policy, not fixing a documented mismatch (`E-02`'s
 "intentionally open" decision, confirmed by the account owner). The 7
 "intentionally ungated" items are new features shipped 2026-09-11 that
 were never advertised as tier-specific. See `docs/ENHANCEMENTS.md` E-02
