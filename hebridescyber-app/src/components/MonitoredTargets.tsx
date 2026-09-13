@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 
-type Target = { id: string; target_url: string; created_at: string };
+type Target = { id: string; target_url: string; created_at: string; scan_profile: string };
 type AuthStatus = { auth_type: "cookie" | "basic" };
 
 export default function MonitoredTargets() {
@@ -26,7 +26,7 @@ export default function MonitoredTargets() {
 
     const { data, error: fetchError } = await supabase
       .from("monitored_targets")
-      .select("id, target_url, created_at")
+      .select("id, target_url, created_at, scan_profile")
       .order("created_at", { ascending: false });
     if (fetchError) setError(fetchError.message);
     const list = (data ?? []) as Target[];
@@ -145,6 +145,11 @@ export default function MonitoredTargets() {
               <AuthenticatedScanConfig
                 monitoredTargetId={t.id}
                 status={authStatus[t.id] ?? null}
+                onChange={load}
+              />
+              <ScanProfileConfig
+                monitoredTargetId={t.id}
+                currentProfile={t.scan_profile ?? "full"}
                 onChange={load}
               />
             </li>
@@ -323,5 +328,82 @@ function AuthenticatedScanConfig({
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
     </form>
+  );
+}
+
+const PROFILE_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
+  { value: "full", label: "Full", hint: "All extended tools" },
+  { value: "api", label: "API", hint: "Injection + active scanning + authenticated headers" },
+  { value: "cms", label: "CMS", hint: "WPScan/CMSmap + active scan + XSS" },
+  { value: "osint", label: "OSINT", hint: "Subfinder, testssl.sh, Trivy, dependency/secret scanning" },
+  { value: "safe", label: "Safe", hint: "Base passive checks only, no active tools" },
+];
+
+/**
+ * Per-target scan profile selector (src/lib/scanProfiles.ts) — which of the
+ * extended-tool suite's tools run on this target's scheduled scans.
+ * Collapsed by default, same pattern as AuthenticatedScanConfig above.
+ */
+function ScanProfileConfig({
+  monitoredTargetId,
+  currentProfile,
+  onChange,
+}: {
+  monitoredTargetId: string;
+  currentProfile: string;
+  onChange: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function setProfile(profile: string) {
+    setBusy(true);
+    await supabase.from("monitored_targets").update({ scan_profile: profile }).eq("id", monitoredTargetId);
+    setBusy(false);
+    setOpen(false);
+    await onChange();
+  }
+
+  const label = PROFILE_OPTIONS.find((p) => p.value === currentProfile)?.label ?? currentProfile;
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+        <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-[10px]">{label}</span>
+        scan profile
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-cyberborder bg-cyberbg/50 p-3">
+      <p className="text-[11px] text-cybertext/50">
+        Choose which extended tools run on this target&apos;s scheduled scans.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {PROFILE_OPTIONS.map((p) => (
+          <button
+            key={p.value}
+            disabled={busy}
+            onClick={() => setProfile(p.value)}
+            title={p.hint}
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-mono border transition-colors disabled:opacity-50 ${
+              currentProfile === p.value
+                ? "bg-neon text-cyberbg border-neon"
+                : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="rounded-md border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
   );
 }
