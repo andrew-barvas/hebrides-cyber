@@ -145,7 +145,7 @@ export async function createOpsgenieAlert(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `Opsgenie ${res.status}` };
-    const body = (await res.json()) as { requestId?: string };
+    await res.json();
     return { ok: true, alertId: opts.alias, url: `${baseUrl.replace("api.", "app.")}/alert/detail/${opts.alias}` };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
