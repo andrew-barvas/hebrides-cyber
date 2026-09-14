@@ -75,6 +75,22 @@ body {
   color: rgb(var(--c-text) / 0.78);
 }
 
+/* Dark-mode contrast floor.
+
+   WCAG AA requires 4.5:1 for normal text. White at /30 on #070B14 only reaches
+   ~2.4:1, and /40 ~3.4:1. Boost the low-alpha steps so de-emphasised labels
+   still pass Lighthouse accessibility audits in the default dark theme.
+   Keeps the visual hierarchy (/30 < /40 < /50) while meeting the floor. */
+.dark .text-cybertext\/20 {
+  color: rgb(var(--c-text) / 0.50);
+}
+.dark .text-cybertext\/30 {
+  color: rgb(var(--c-text) / 0.53);
+}
+.dark .text-cybertext\/40 {
+  color: rgb(var(--c-text) / 0.58);
+}
+
 /* Same treatment for the accent. Neon green on near-black tolerates being
    faded right down; the light-mode deep teal does not — a 50% teal on #F6F7F9
    only reaches 2.1:1, and these are used for list glyphs and captions. */
