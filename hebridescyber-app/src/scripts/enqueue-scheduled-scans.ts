@@ -18,6 +18,7 @@ import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
 import { isDomainVerified } from "../lib/ownership";
 import { isScanDue, type Plan } from "../lib/scanCadence";
+import { isWithinScanWindow } from "../lib/scanWindows";
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -57,7 +58,7 @@ async function main() {
 
   const { data: targets, error: targetsError } = await supabaseAdmin
     .from("monitored_targets")
-    .select("owner, target_url")
+    .select("owner, target_url, scan_window_start, scan_window_end, scan_window_tz")
     .in("owner", activeOwners);
 
   if (targetsError) {
@@ -69,10 +70,20 @@ async function main() {
   let skippedUnverified = 0;
   let skippedAlreadyQueued = 0;
   let skippedTooRecent = 0;
+  let skippedOutsideWindow = 0;
 
   for (const target of targets ?? []) {
     if (!(await isDomainVerified(supabaseAdmin, target.owner, target.target_url))) {
       skippedUnverified++;
+      continue;
+    }
+
+    if (!isWithinScanWindow({
+      startTime: target.scan_window_start ?? null,
+      endTime: target.scan_window_end ?? null,
+      timezone: target.scan_window_tz ?? "UTC",
+    }, new Date())) {
+      skippedOutsideWindow++;
       continue;
     }
 
@@ -123,8 +134,8 @@ async function main() {
   }
 
   console.log(
-    `Enqueued ${enqueued} scan job(s). Skipped ${skippedUnverified} unverified target(s), ` +
-      `${skippedAlreadyQueued} already-queued target(s), ${skippedTooRecent} not-yet-due target(s).`
+    `Enqueued ${enqueued} scan job(s). Skipped ${skippedUnverified} unverified, ` +
+      `${skippedAlreadyQueued} already-queued, ${skippedTooRecent} not-yet-due, ${skippedOutsideWindow} outside-window.`
   );
 }
 
