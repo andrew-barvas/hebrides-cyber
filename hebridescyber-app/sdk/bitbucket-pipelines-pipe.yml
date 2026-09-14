@@ -1,0 +1,43 @@
+# Hebrides Cyber Security Scanner — Bitbucket Pipelines Pipe
+#
+# Usage in your bitbucket-pipelines.yml:
+#
+#   pipelines:
+#     default:
+#       - step:
+#           name: Security Scan
+#           script:
+#             - pipe: docker://node:20-alpine
+#               variables:
+#                 HEBRIDES_API_KEY: $HEBRIDES_API_KEY
+#                 HEBRIDES_TARGET_URL: "https://your-site.com"
+#
+# Or inline:
+#
+#   pipelines:
+#     default:
+#       - step:
+#           name: Security Scan
+#           image: node:20-alpine
+#           script:
+#             - apk add --no-cache wget
+#             - |
+#               RESPONSE=$(wget -qO- --header="Authorization: Bearer $HEBRIDES_API_KEY" \
+#                 --header="Content-Type: application/json" \
+#                 --post-data="{\"targetUrl\":\"$HEBRIDES_TARGET_URL\"}" \
+#                 "https://hebridescyber.co.uk/api/v1/scans")
+#               SCAN_ID=$(echo "$RESPONSE" | grep -o '"scanId":"[^"]*"' | cut -d'"' -f4)
+#               echo "Scan started: $SCAN_ID"
+#               for i in $(seq 1 60); do
+#                 sleep 10
+#                 STATUS=$(wget -qO- --header="Authorization: Bearer $HEBRIDES_API_KEY" \
+#                   "https://hebridescyber.co.uk/api/v1/scans/$SCAN_ID" | \
+#                   grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+#                 if [ "$STATUS" = "completed" ]; then echo "Scan complete"; exit 0; fi
+#                 if [ "$STATUS" = "failed" ]; then echo "Scan failed"; exit 1; fi
+#               done
+#               echo "Timeout"; exit 1
+
+name: Hebrides Cyber Security Scan
+description: Run a security scan via the Hebrides Cyber API
+version: 1.0.0
