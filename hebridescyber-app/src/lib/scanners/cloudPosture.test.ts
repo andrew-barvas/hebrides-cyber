@@ -8,7 +8,7 @@ function mockSupabase(creds: Array<{ provider: string; credentials_encrypted: Re
         eq: () => ({ data: creds }),
       }),
     }),
-  } as any;
+  } as unknown as import("@supabase/supabase-js").SupabaseClient;
 }
 
 describe("runCloudPostureChecks", () => {
@@ -128,7 +128,7 @@ describe("runCloudPostureChecks", () => {
   it("returns error on supabase query crash", async () => {
     const supabase = {
       from: () => { throw new Error("db down"); },
-    } as any;
+    } as unknown as import("@supabase/supabase-js").SupabaseClient;
 
     const result = await runCloudPostureChecks(supabase, "owner-1");
     expect(result.status).toBe("error");
