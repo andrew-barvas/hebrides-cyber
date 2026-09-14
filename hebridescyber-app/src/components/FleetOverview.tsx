@@ -28,6 +28,7 @@ type FleetRow = {
   latestScore: number | null;
   lastScannedAt: string | null;
   openFindingsCount: number | null;
+  scoreHistory: number[];
 };
 
 type ScanCandidate = {
@@ -49,6 +50,27 @@ function scoreColor(score: number): string {
   if (score >= 80) return "text-neon";
   if (score >= 50) return "text-amber-400";
   return "text-red-400";
+}
+
+const SPARK_W = 64;
+const SPARK_H = 20;
+
+function MiniSparkline({ points }: { points: number[] }) {
+  if (points.length < 2) return null;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const xFor = (i: number) => (i / (points.length - 1)) * SPARK_W;
+  const yFor = (v: number) => SPARK_H - ((v - min) / range) * (SPARK_H - 2) - 1;
+  const d = points.map((v, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(1)},${yFor(v).toFixed(1)}`).join(" ");
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const color = last >= prev ? "var(--c-neon)" : "#f87171";
+  return (
+    <svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} className="inline-block h-5 w-16" role="img" aria-label={`Score trend: ${points.join(", ")}`}>
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function relativeTime(iso: string): string {
@@ -95,11 +117,17 @@ export default function FleetOverview() {
 
       const rowsOut: FleetRow[] = targetList.map((t) => {
         const targetHost = hostnameOf(t.target_url);
-        const latest = targetHost
-          ? candidates.find((c) => hostnameOf(c.target_url) === targetHost)
-          : undefined;
+        const matching = targetHost
+          ? candidates.filter((c) => hostnameOf(c.target_url) === targetHost)
+          : [];
+        const latest = matching[0];
         const result = latest?.scan_results?.[0];
         const findings = result?.results?.findings ?? [];
+        const scoreHistory = matching
+          .slice(0, 7)
+          .reverse()
+          .map((c) => c.scan_results?.[0]?.score)
+          .filter((s): s is number => s != null);
         return {
           targetId: t.id,
           targetUrl: t.target_url,
@@ -107,6 +135,7 @@ export default function FleetOverview() {
           latestScore: result?.score ?? null,
           lastScannedAt: latest?.created_at ?? null,
           openFindingsCount: latest ? findings.filter((f) => f.severity !== "info").length : null,
+          scoreHistory,
         };
       });
 
@@ -129,6 +158,7 @@ export default function FleetOverview() {
             <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
               <th className="pb-2 font-normal">Site</th>
               <th className="pb-2 font-normal">Score</th>
+              <th className="pb-2 font-normal">Trend</th>
               <th className="pb-2 font-normal">Open findings</th>
               <th className="pb-2 font-normal">Last scanned</th>
             </tr>
@@ -143,6 +173,9 @@ export default function FleetOverview() {
                   ) : (
                     <span className="text-cybertext/30">—</span>
                   )}
+                </td>
+                <td className="py-2.5 pr-3">
+                  <MiniSparkline points={row.scoreHistory} />
                 </td>
                 <td className="py-2.5 pr-3 text-cybertext/70">
                   {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybertext/30">—</span>}
