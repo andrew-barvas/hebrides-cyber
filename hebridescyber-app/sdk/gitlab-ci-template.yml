@@ -1,0 +1,66 @@
+# Hebrides Cyber Security Scanner — GitLab CI Template
+#
+# Usage: include this template in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/andrew-barvas/hebrides-cyber/master/hebridescyber-app/sdk/gitlab-ci-template.yml'
+#
+#   security_scan:
+#     extends: .hebrides-scan
+#     variables:
+#       HEBRIDES_TARGET_URL: "https://your-site.com"
+#       HEBRIDES_API_KEY: $HEBRIDES_API_KEY  # Set in GitLab CI/CD Variables
+
+.hebrides-scan:
+  image: node:20-alpine
+  stage: test
+  variables:
+    HEBRIDES_API_URL: "https://hebridescyber.co.uk/api/v1"
+  script:
+    - |
+      # Submit scan
+      RESPONSE=$(wget -qO- --header="Authorization: Bearer $HEBRIDES_API_KEY" \
+        --header="Content-Type: application/json" \
+        --post-data="{\"targetUrl\":\"$HEBRIDES_TARGET_URL\"}" \
+        "$HEBRIDES_API_URL/scans" 2>&1) || true
+
+      SCAN_ID=$(echo "$RESPONSE" | grep -o '"scanId":"[^"]*"' | cut -d'"' -f4)
+
+      if [ -z "$SCAN_ID" ]; then
+        echo "Failed to start scan: $RESPONSE"
+        exit 1
+      fi
+
+      echo "Scan started: $SCAN_ID"
+
+      # Poll for completion
+      for i in $(seq 1 60); do
+        sleep 10
+        STATUS_RESPONSE=$(wget -qO- --header="Authorization: Bearer $HEBRIDES_API_KEY" \
+          "$HEBRIDES_API_URL/scans/$SCAN_ID" 2>&1) || true
+        STATUS=$(echo "$STATUS_RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+        echo "Poll $i: status=$STATUS"
+
+        if [ "$STATUS" = "completed" ]; then
+          SCORE=$(echo "$STATUS_RESPONSE" | grep -o '"score":[0-9]*' | cut -d: -f2)
+          echo "Scan completed. Score: $SCORE/100"
+
+          if [ -n "$HEBRIDES_MIN_SCORE" ] && [ "$SCORE" -lt "$HEBRIDES_MIN_SCORE" ]; then
+            echo "Score $SCORE is below minimum threshold $HEBRIDES_MIN_SCORE"
+            exit 1
+          fi
+          exit 0
+        fi
+
+        if [ "$STATUS" = "failed" ]; then
+          echo "Scan failed"
+          exit 1
+        fi
+      done
+
+      echo "Scan timed out after 10 minutes"
+      exit 1
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

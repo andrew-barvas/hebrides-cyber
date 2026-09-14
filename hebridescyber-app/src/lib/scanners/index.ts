@@ -107,6 +107,8 @@ export type Finding = {
   cvssScore?: number;
   /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
   cvssVector?: string;
+  /** Arbitrary metadata for enrichment passes (proof-of-exploit, scanner-specific context). */
+  metadata?: Record<string, unknown>;
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
