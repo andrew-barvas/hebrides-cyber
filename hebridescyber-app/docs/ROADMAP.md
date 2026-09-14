@@ -43,9 +43,16 @@ looks like, that one states what to actually work on next.
 - Free-tier scan cap and rate limiting are real and server-enforced.
   Almost everything else in the plan-gating ladder (`FUNCTIONALITY-MATRIX.md`
   §5/§6) is not.
-- 400+ unit/integration tests, coverage floor 36/30/33/37
+- 914 unit/integration tests across 84 test files, coverage floor 36/30/33/37
   (statements/branches/functions/lines) — a genuine floor, not a target,
   and it only moves up.
+- **20 enterprise competitor gaps closed** (Sprints 9-13, 2026-09-12 –
+  2026-09-14): SSO/SAML, RBAC, org model, audit logging, scheduled reports,
+  GraphQL scanning, SIEM, CI/CD SDK, compliance reporting, proof-of-exploit,
+  authenticated crawling, ServiceNow/GitHub Issues, scan windows, IP
+  allowlisting, SCIM, MSP portal, custom policies, SLA monitoring, risk
+  scoring, GraphQL API. All implemented as pure library modules with test
+  coverage. See `docs/FUNCTIONALITY-MATRIX.md` §5b for the full table.
 - Error-tracking code shipped (`docs/ENHANCEMENTS.md` E-03, 2026-09-04) but
   **not yet actually capturing anything in production** — needs a real
   Sentry account and `SENTRY_DSN` set, neither of which exist yet. Don't
@@ -151,3 +158,25 @@ and §8, not just "not done yet."
 - Re-verify `docs/FUNCTIONALITY-MATRIX.md` before trusting any "currently
   fails"/"currently X rows" status above — this file is written once and
   will drift; the matrix is the thing to regenerate from code.
+
+---
+
+## Scale — "differentiated beyond the SME scanner pack"
+
+Beyond Live. These are the next-frontier competitive gaps identified in
+`docs/COMPETITIVE-ANALYSIS.md` §10 that would move Hebrides Cyber from
+"good SME scanner" to "genuinely differentiated platform." Not sequenced
+into sprints yet — they depend on Live criteria being green first.
+
+| ID | Capability | Why it matters | Effort |
+|---|---|---|---|
+| SCALE-1 | **SBOM generation** (CycloneDX/SPDX export) | EU Cyber Resilience Act will mandate this for software vendors; low effort since `dependencyManifest.ts` already has the data, just needs standards-compliant output formatting | Low — format existing data |
+| SCALE-2 | **External Attack Surface Management (EASM)** | Continuous autonomous asset discovery (shadow IT, forgotten subdomains, cloud assets). Biggest genuine gap vs Detectify/Rapid7/Qualys. Extends existing `recon.ts`/`subdomains.ts` into a scheduled discovery pipeline | Medium — new scanning paradigm |
+| SCALE-3 | **Cloud Security Posture Management (CSPM)** | AWS/Azure/GCP IAM, storage, network config checks. Already scoped as E-32. Credential onboarding is the hard design problem, not the scanning logic | Medium — credential UX is the constraint |
+| SCALE-4 | **AI/ML vulnerability prioritization** | Move risk scoring from rule-based (`riskScoring.ts`) to ML-informed exploit-likelihood prediction. Requires training data from real scan results | High — needs data + model |
+| SCALE-5 | **Container runtime scanning** | Beyond Trivy's static image analysis to runtime monitoring. Kubernetes-native | High — new infrastructure |
+
+**Scale non-goals** (explicitly not worth building for the SME segment):
+IAST/RASP (requires application instrumentation), attack path analysis
+(enterprise network complexity), autonomous pen testing (too early, too
+expensive). See `docs/COMPETITIVE-ANALYSIS.md` §10 for the full reasoning.

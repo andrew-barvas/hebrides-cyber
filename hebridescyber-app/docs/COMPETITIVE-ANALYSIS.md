@@ -254,7 +254,39 @@ Not restated here — see that file for the itemised list, and
 
 ---
 
-## 8. Anti-features — what NOT to build
+## 8. Enterprise features closed (Sprint 9-13 update)
+
+**As of 2026-09-14**, all 20 enterprise competitor gaps identified in the
+original competitive audit have been implemented. This is a significant
+shift — when §4 was written (2026-08-23), most of these were aspirational.
+Updated self-scoring for dimensions affected:
+
+- **D6** stays 3 — now also includes ServiceNow, GitHub Issues, SIEM
+  (syslog + webhook), expanded CI/CD SDK, and a GraphQL API endpoint
+- **D7** upgraded from 3 → **3+** — now covers 7 frameworks (ISO 27001,
+  PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA)
+  with per-control pass/fail reporting, not just finding-level mapping
+- **D8** upgraded from 2 → **3** — MSP portal with per-client health
+  scoring, RBAC with 4-level role hierarchy, SCIM provisioning, org/workspace
+  model, custom scan policies. Still no reseller billing, keeping at 3 not 4
+- **D2** stays 2 — scan windows and custom policies add operational
+  flexibility but don't change scan *depth* (still no crawl-behind-login)
+
+### Enterprise feature inventory (for competitive positioning)
+
+| Category | Features | Code |
+|---|---|---|
+| Identity | SSO/SAML, RBAC (4-level), SCIM 2.0, IP allowlisting | `ssoSaml.ts`, `rbac.ts`, `scimProvisioning.ts`, `ipAllowlist.ts` |
+| Multi-tenancy | Org model, MSP portal, custom scan policies | `orgModel.ts`, `mspPortal.ts`, `customScanPolicies.ts` |
+| Compliance | 7-framework reporting, SLA monitoring, 5-factor risk scoring | `complianceReport.ts`, `slaMonitoring.ts`, `riskScoring.ts` |
+| Integrations | SIEM, CI/CD SDK, ServiceNow, GitHub Issues, GraphQL API | `siemIntegration.ts`, `cicdSdk.ts`, `ticketProviders.ts`, `graphqlApi.ts` |
+| Scanning | GraphQL scanning, proof-of-exploit, scan windows, scheduled reports | `graphql.ts`, `scanWindows.ts`, `scheduledReports.ts` |
+
+---
+
+## 9. Anti-features — what NOT to build
+
+*Renumbered from §8 after Sprint 9-13 update.*
 
 Pairs with `docs/USER-GUIDE.md` §6 ("what this product deliberately does
 not do"). Some competitors' features are deliberately not worth matching:
@@ -275,7 +307,55 @@ not do"). Some competitors' features are deliberately not worth matching:
 
 ---
 
-## 9. Positioning conclusion
+## 10. Next-frontier competitive gaps (post-Sprint 13)
+
+With all 20 original enterprise gaps closed, these are the genuine
+remaining differentiators competitors have that Hebrides Cyber does not.
+Scored by relevance to the SME segment this product actually serves.
+
+### High priority (SME-relevant, realistic to build)
+
+| # | Gap | Who has it | Why it matters for SMEs | Effort |
+|---|---|---|---|---|
+| 1 | **SBOM generation** (CycloneDX/SPDX) | Snyk, Qualys, most enterprise tools | EU Cyber Resilience Act (effective 2027) will mandate SBOM for software vendors selling into EU. `dependencyManifest.ts` already has the data — needs standards-compliant formatting only | Low |
+| 2 | **External Attack Surface Management (EASM)** | Detectify, Rapid7, Qualys, Intruder (new) | Continuous discovery of shadow IT, forgotten subdomains, cloud assets the customer didn't know about. Even SMEs have orphan subdomains. Extends existing `recon.ts`/`subdomains.ts` into a scheduled pipeline | Medium |
+| 3 | **Cloud Security Posture Management (CSPM)** | Qualys, Rapid7, Wiz, Orca | AWS/Azure/GCP public S3 buckets, overly-permissive IAM, unencrypted storage. Every SME uses cloud now. Already scoped as E-32 | Medium |
+
+### Medium priority (valuable but less urgent)
+
+| # | Gap | Who has it | Notes |
+|---|---|---|---|
+| 4 | **Container runtime scanning** | Qualys, Rapid7, Sysdig | Beyond `trivyScan.ts`'s static image analysis to runtime monitoring. Requires Kubernetes access; niche for SMEs |
+| 5 | **AI/ML vulnerability prioritization** | Qualys TruRisk, Rapid7 InsightVM | ML-trained exploit-likelihood scoring vs `riskScoring.ts`'s rule-based approach. Requires training data from real scan results |
+| 6 | **Dark web / threat intel monitoring** | Detectify, Intruder enterprise, Recorded Future | Credential leak monitoring beyond HIBP. High value but needs data partnerships |
+
+### Low priority (enterprise-only, not worth building for SME segment)
+
+| # | Gap | Who has it | Why NOT to build it |
+|---|---|---|---|
+| 7 | **IAST/RASP** (agent-based interactive testing) | Invicti, Acunetix, Contrast Security | Requires instrumenting the running application — enterprise deployment model incompatible with SME self-serve |
+| 8 | **Mobile app security testing** | Probely, Invicti, NowSecure | APK/IPA analysis is a different product category entirely; would dilute focus |
+| 9 | **Attack path analysis** | Qualys, XM Cyber, Pentera | Automated attack graph traversal — needs enterprise network complexity to be meaningful |
+| 10 | **Autonomous pen testing** | Pentera, NodeZero, Horizon3.ai | AI-agent-driven pen testing. Frontier technology, 12-18 months from SME pricing. Watch space but don't build yet |
+
+### Competitive positioning after Sprint 13
+
+Hebrides Cyber now has **feature parity or superiority** versus SME-tier
+competitors (Intruder, Probely, Beagle, Pentest-Tools) on every dimension
+except trust apparatus (D11) and support model (D12) — both of which are
+business maturity gaps, not code gaps. The product's enterprise feature set
+(SCIM, MSP portal, RBAC, 7-framework compliance, SIEM, SLA monitoring)
+exceeds what most SME-priced competitors offer at any tier.
+
+The three high-priority gaps (SBOM, EASM, CSPM) represent the next
+meaningful product differentiation opportunity and are sequenced into
+Sprint 16 (`docs/SPRINT-PLAN.md`).
+
+---
+
+## 11. Positioning conclusion
+
+*Renumbered from §9 after Sprint 9-13 update.*
 
 Hebrides Cyber's honest position is **the developer-and-agency-friendly
 automated scanner for UK SMEs who have a compliance trigger (Cyber

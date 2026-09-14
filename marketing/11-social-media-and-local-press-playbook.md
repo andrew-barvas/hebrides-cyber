@@ -177,3 +177,185 @@ actual target list from, so here's the structured approach instead:
 This mirrors `06-marketing-plan.md`'s own "local Cyber Essentials /
 compliance-triggered contact list" TODO — this section is the how, that
 document is the what/why.
+
+---
+
+## 8. Week 1 Action Checklist (added 2026-09-14)
+
+Do these in order, ideally all on the same day:
+
+- [ ] Register `@hebridescyber` on LinkedIn (Company Page)
+- [ ] Register `@hebridescyber` on Facebook (Business Page)
+- [ ] Register `@hebridescyber` on X/Twitter
+- [ ] Use the bio copy from §3 above for all three — paste directly
+- [ ] Profile image: use the existing brand mark from `marketing/02-branding.md`
+  (recommended: 400x400px square, dark background, neon accent)
+- [ ] Banner image: 1584x396px (LinkedIn) / 820x312px (Facebook) /
+  1500x500px (X) — use the brand colours (atlantic `#0B1D3A` background,
+  neon `#39FFC0` accent, tagline text in white)
+- [ ] Join local Facebook groups: "Stornoway & Lewis Buy and Sell,"
+  "Outer Hebrides Business Network," "Isle of Lewis Community" (search
+  for current active groups — names may vary)
+- [ ] Follow relevant accounts: @CyberScotland, @ABORISCYBER,
+  @ABORISCYBER, local business accounts, Stornoway Gazette, WHFP
+
+---
+
+## 9. First 10 Posts — Ready to Copy
+
+Sequenced for the first 2 weeks. Each post is written for LinkedIn but
+adaptable to the other platforms with minor tone adjustments. Post times:
+Tuesday and Thursday mornings (LinkedIn), Wednesday (Facebook).
+
+**Post 1 — Founder story (LinkedIn, Day 1)**
+
+> After 15 years in defence-sector cybersecurity at Lockheed Martin and
+> Leidos, I've launched Hebrides Cyber — automated security scanning
+> for UK small businesses, built from Stornoway on the Isle of Lewis.
+>
+> Enterprise companies pay £10,000+ a year for the security testing that
+> Hebrides Cyber offers from £20/month. Same depth. Same standards.
+> Fraction of the price.
+>
+> If you run a business with a website, I'll scan it for free — just
+> message me.
+>
+> #cybersecurity #smallbusiness #scotland #outerHebrides
+
+**Post 2 — Why affordable security matters (LinkedIn, Day 3)**
+
+> 43% of UK cyber attacks target small businesses. Most don't have a
+> security budget.
+>
+> You don't need a £10,000 penetration test to find out if your website
+> is leaking data, running outdated software, or missing basic
+> protections.
+>
+> A 5-minute automated scan will tell you — and tell you exactly how to
+> fix each issue in plain English.
+>
+> That's what we built Hebrides Cyber to do.
+>
+> #CyberEssentials #SME #websecurity
+
+**Post 3 — Product announcement (LinkedIn, Day 5)**
+
+> Hebrides Cyber is live.
+>
+> What you get:
+> - Automated security scanning of your website
+> - Findings mapped to Cyber Essentials controls
+> - Plain-English fix instructions (not CVE numbers)
+> - CI/CD integration for dev teams
+> - Compliance reporting across 7 frameworks
+>
+> From £20/month. Free scan for your first site.
+>
+> [link]
+>
+> #infosec #CyberEssentials #startup
+
+**Post 4 — Local community offer (Facebook, Day 7)**
+
+> Hebrides Cyber is a new cybersecurity business based here in Stornoway.
+>
+> We're offering FREE website security scans to local businesses across
+> the Outer Hebrides. If you have a website — for your B&B, trade
+> business, shop, or community group — we'll check it for security
+> issues and send you a plain-English report with exactly what to fix.
+>
+> No catch. No obligation. Just drop us a message.
+>
+> 🏴󠁧󠁢󠁳󠁣󠁴󠁿 Built in Lewis, for Lewis.
+
+**Post 5 — Cyber Essentials explainer (LinkedIn, Day 8)**
+
+> "We need Cyber Essentials for this contract."
+>
+> If you've heard that recently, you're not alone — CE certification is
+> increasingly required for UK public-sector contracts and supply chains.
+>
+> What most businesses don't realise: you can check your CE readiness
+> right now, before paying for the formal assessment.
+>
+> Hebrides Cyber maps every scan finding to the specific CE control it
+> affects. You see exactly what passes and what fails — and what to fix
+> first.
+>
+> [link to /pricing]
+>
+> #CyberEssentials #compliance #UKbusiness
+
+**Post 6 — "This week in cyber" (X/Twitter, Day 9)**
+
+> This week in cyber:
+> - [Reference a current CVE from the daily blog]
+> - [Reference a breach from the daily blog]
+> - [Reference a KEV entry from the daily blog]
+>
+> Your site affected? Free scan: [link]
+>
+> #infosec #cybersecurity
+
+**Post 7 — Remediation ladder showcase (LinkedIn, Day 10)**
+
+> Most security scanners tell you what's wrong.
+>
+> Hebrides Cyber tells you how to fix it — in four steps:
+>
+> 1. Plain-English explanation (no jargon)
+> 2. AI-tailored fix for your specific tech stack
+> 3. One-click ticket to your dev team (Jira, Linear, ServiceNow,
+>    GitHub)
+> 4. Automated pull request for dependency updates
+>
+> Security findings that collect dust help nobody.
+>
+> #DevSecOps #remediation #cybersecurity
+
+**Post 8 — Local press angle (Facebook, Day 12)**
+
+> Did you know? Local businesses in the Outer Hebrides are just as
+> vulnerable to cyber attacks as businesses in Edinburgh or London.
+> Automated attacks don't check postcodes.
+>
+> That's why we're based here — bringing enterprise-level security to
+> island businesses at prices that actually make sense.
+>
+> Free scans for all Western Isles businesses. Message us.
+
+**Post 9 — Developer/technical angle (X/Twitter, Day 13)**
+
+> Tired of security scanners that cry wolf on day 1, get ignored by
+> day 7, and get disabled by day 30?
+>
+> Our CI gate only fails builds on *newly introduced* findings. Existing
+> tech debt doesn't block your PR.
+>
+> GitHub Action, one YAML file, 5 minutes.
+>
+> [link to action/]
+>
+> #DevSecOps #GitHubActions #CI
+
+**Post 10 — Compliance reporting (LinkedIn, Day 15)**
+
+> "Which ISO 27001 controls does our website meet?"
+>
+> That used to require a consultant and a spreadsheet.
+>
+> Hebrides Cyber maps every scan finding to 7 compliance frameworks
+> automatically:
+> - ISO 27001
+> - PCI DSS
+> - Cyber Essentials
+> - OWASP Top 10
+> - CIS Controls v8
+> - NIS2
+> - DORA
+>
+> One scan. Seven frameworks. Updated every time you rescan.
+>
+> [link]
+>
+> #compliance #ISO27001 #GDPR #CyberEssentials

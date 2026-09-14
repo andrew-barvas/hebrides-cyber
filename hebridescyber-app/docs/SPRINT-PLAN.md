@@ -250,17 +250,121 @@ CVE-backed findings; Terraform plan runs clean for Container Apps.
 
 ---
 
-## After Sprint 8
+## Sprints 9–13 — Enterprise competitor gaps (2026-09-12 – 2026-09-14)
+
+**Summary**: All 20 enterprise competitor gaps implemented across 5 sprints.
+These are documented rather than listed in detail here — see
+`docs/FUNCTIONALITY-MATRIX.md` §5b for the full feature table, and
+`docs/COMPETITIVE-ANALYSIS.md` §8 for the competitive positioning update.
+
+| Sprint | What shipped | Tests added |
+|---|---|---|
+| 9 | Scan windows, scheduled reports, SIEM integration, expanded audit logging | ~30 |
+| 10 | SSO/SAML, RBAC, org/workspace model | ~25 |
+| 11 | GraphQL scanning, proof-of-exploit, CI/CD SDK expansion | ~20 |
+| 12 | ServiceNow/GitHub Issues, compliance reporting, IP allowlisting, risk scoring | ~35 |
+| 13 | SCIM provisioning, MSP portal, custom scan policies, SLA monitoring, GraphQL API | ~35 |
+
+**Total**: 914 tests across 84 files. CI green. Coverage floor 36/30/33/37.
+
+---
+
+## Sprint 14 — Documentation & test hardening (2026-09-14 – 2026-09-28)
+
+**Theme**: the product now has 20 enterprise features with no documentation
+updates to match. Before building anything new, make the existing work
+visible (docs, competitive analysis, use cases) and raise test coverage on
+the Sprint 9-13 modules.
+
+| Priority | What | Status | Why |
+|---|---|---|---|
+| 1 | Update `FUNCTIONALITY-MATRIX.md` with Sprint 9-13 features | ✅ done (2026-09-14) | The matrix is the source of truth; stale matrix = stale roadmap decisions |
+| 2 | Update `COMPETITIVE-ANALYSIS.md` with next-frontier gaps (§10) | ✅ done (2026-09-14) | Feeds the grant application and marketing campaign |
+| 3 | Update `ROADMAP.md` — Stage 0 refresh + Scale stage | ✅ done (2026-09-14) | Required before any external-facing document |
+| 4 | Create `USE-CASES.md` — 6 concrete customer scenarios | ✅ done (2026-09-14) | Needed for grant application and marketing |
+| 5 | Update `SPRINT-PLAN.md` with Sprints 14-17 | 🔄 in progress | This document |
+| 6 | Raise test coverage from 36%/30% toward 50%/40% (statements/branches) | ⬜ | Focus Sprint 9-13 modules: `mspPortal.ts` (4 tests), `complianceReport.ts` (5 tests), `scheduledReports.ts` (7 tests) have the most room to grow |
+| 7 | Create HIE grant application (`marketing/12-hie-grant-application.md`) | ⬜ | Builds on updated competitive analysis |
+| 8 | Create launch campaign plan (`marketing/15-launch-campaign.md`) | ⬜ | Customer acquisition strategy |
+
+**Sprint 14 exit check**: all docs reference Sprint 13 completion state,
+competitive analysis identifies 10 next-frontier gaps with SME priority
+ranking, use cases document is ready for grant application, test coverage
+statements ≥ 45%.
+
+---
+
+## Sprint 15 — Production readiness closure (2026-09-29 – 2026-10-12)
+
+**Theme**: the product has enterprise features but can't take money. Fix the
+revenue-blocking items that have been deferred since Sprint 1.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | **E-07** | Configure live Stripe Price IDs | ⛔ blocked on owner's Stripe Dashboard | Still the single most important blocker — paid signup is completely broken. Not a dev task |
+| 2 | — | Domain registration (hebridescyber.com + .co.uk) | ⛔ blocked on owner action | Required for grant applications, marketing, and basic credibility. See `marketing/10-formalisation-and-funding-roadmap.md` §1 |
+| 3 | **E-49** | Apply pending migrations to production Supabase | ⛔ blocked on owner (SQL editor paste) | Admin panel, monitored-targets, asset inventory all fail until migrations 019-026 are applied |
+| 4 | **E-03** | Create Sentry account, set SENTRY_DSN | ⛔ blocked on owner | Code shipped 2026-09-04; observability still not live. Free Sentry Developer plan, 5k errors/month |
+| 5 | **E-21** | httpOnly cookie auth migration | ⬜ | Security product storing JWTs in localStorage is a credibility risk. Large but high-priority |
+
+**Sprint 15 exit check**: Stripe Checkout completes end-to-end for all
+three tiers, domain resolves to the live app, migrations applied to
+production, Sentry capturing real errors, auth tokens in httpOnly cookies.
+
+---
+
+## Sprint 16 — SBOM + EASM foundation (2026-10-13 – 2026-10-26)
+
+**Theme**: build the first two high-priority competitive differentiators
+from `docs/COMPETITIVE-ANALYSIS.md` §10.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | — | SBOM generation (CycloneDX export from `dependencyManifest.ts`) | ⬜ | EU Cyber Resilience Act compliance; low effort — format existing data as standards-compliant output |
+| 2 | — | EASM discovery module (continuous subdomain/asset enumeration) | ⬜ | Biggest genuine competitive gap; extend existing `recon.ts`/`subdomains.ts` into a scheduled discovery pipeline |
+| 3 | **E-32** | Cloud posture scanning (AWS starter — public S3, IAM basics) | ⬜ | Already scoped in ENHANCEMENTS.md; start with AWS (largest market share) |
+| 4 | — | Push test coverage toward 55%/45% | ⬜ | Maintain momentum on test hardening |
+
+**Sprint 16 exit check**: `dependencyManifest.ts` output can be exported
+as valid CycloneDX 1.5 JSON; a scheduled EASM job discovers subdomains
+not in the target list; at least one AWS posture check (public S3) runs
+for a connected account; coverage statements ≥ 50%.
+
+---
+
+## Sprint 17 — Launch & customer acquisition (2026-10-27 – 2026-11-09)
+
+**Theme**: everything needed to go from "product exists" to "customers
+know about it." This is a business sprint, not a code sprint.
+
+| Priority | What | Status | Why |
+|---|---|---|---|
+| 1 | Company registration (Ltd) | ⛔ owner action | Required for grant applications. See `marketing/10-formalisation-and-funding-roadmap.md` §2 |
+| 2 | Register social media accounts (@hebridescyber on LinkedIn, Facebook, X) | ⛔ owner action | Prerequisites for the launch campaign |
+| 3 | Execute first 2 weeks of launch campaign (see `marketing/15-launch-campaign.md`) | ⬜ | 3 LinkedIn posts, local Facebook groups, initial outreach |
+| 4 | Submit HIE grant application (`marketing/12-hie-grant-application.md`) | ⬜ | Formal funding request for ~£7,000-12,000 |
+| 5 | Launch free scan offer for Outer Hebrides businesses (up to 50 in Y1) | ⬜ | Customer acquisition + grant narrative support |
+
+**Sprint 17 exit check**: company registered at Companies House,
+@hebridescyber live on all three platforms with first posts published,
+HIE application submitted, at least 5 local businesses have received
+their free scan.
+
+---
+
+## After Sprint 17
 
 Deferred long-horizon items (explicitly not forgotten):
-- E-21 if not done in Sprint 6 (httpOnly cookie auth — large but the right
-  long-term auth model).
 - SOC 2 / ISO 27001 — out of scope for the segment this product serves, per
   `docs/COMPETITIVE-ANALYSIS.md` §6(c); revisit only if a customer
   explicitly blocks on it.
 - 24/7 MDR / dark-web monitoring beyond HIBP — same §6(c) decision.
 - Full white-label reseller path (Partner Portal beyond what E-39 shipped) —
   needs pricing design before code.
+- AI/ML vulnerability prioritization (SCALE-4) — needs training data from
+  real scan results; revisit once there are 1000+ real scans in the database.
+- Container runtime scanning (SCALE-5) — Kubernetes-native, niche for SME
+  segment.
 
 Re-run `docs/FUNCTIONALITY-MATRIX.md`'s audit and re-check `docs/ROADMAP.md`
-Beta/Live criteria before committing to Sprint 9 scope.
+Scale criteria before committing to Sprint 18 scope.

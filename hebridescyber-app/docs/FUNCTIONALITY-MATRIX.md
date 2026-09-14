@@ -24,7 +24,7 @@ one level up, at the git root. Paths below are relative to
 - ❌ **none** — no plan check exists at any layer; available to any authenticated account regardless of tier
 - 🔒 **service-role-only** — not plan-gated because it's not customer-writable at all (admin/service paths)
 
-*As of 2026-09-13.*
+*As of 2026-09-14.*
 
 ---
 
@@ -226,10 +226,66 @@ fails the build only on newly-introduced findings.
 | API keys / webhooks / share links / CSV-JSON export / CI Action | `ApiKeys.tsx`, `Webhooks.tsx`, `ShareLinks.tsx` | — | ❌ **no plan gate at all** — available on free tier |
 | Repo connection (dependency/secret/Docker scanning) | `ConnectRepo.tsx` | Pro ("dependency monitoring", advertised) | ❌ **none** — connection itself is ungated; consumption is path-gated (see §3), not plan-gated |
 | Jira/Linear ticketing + auto-close | `TicketIntegration.tsx` | — | ❌ no plan gate |
+| ServiceNow ticketing | `src/lib/ticketProviders.ts` | — | ❌ no plan gate — same contract as Jira/Linear |
+| GitHub Issues ticketing | `src/lib/ticketProviders.ts` | — | ❌ no plan gate — same contract as Jira/Linear |
 | Teams/collaboration (invite, roles) | `TeamSection.tsx` | Agency, per `docs/USER-GUIDE.md` §3.7 | ❌ **none** — also not on the pricing page at all |
 | White-label branding (upload) | `BrandingSection.tsx` | Agency | ✅ server (see API table above) |
 | White-label applied to PDF | `generate-report.ts` | Agency | ✅ server |
 | "Priority support" | — | Agency (advertised) | — no code representation; no SLA field, no routing |
+
+---
+
+## 5b. Enterprise features (Sprints 9–13)
+
+Shipped 2026-09-12 – 2026-09-14. All implemented as pure library modules
+with comprehensive test coverage. None are plan-gated — they're available
+to any authenticated account. API route wiring is deferred until production
+readiness (Sprint 15+); the library layer is complete and tested.
+
+### Identity & Access
+
+| Module | What it does | Code path | Tests |
+|---|---|---|---|
+| SSO/SAML | SAML 2.0 assertion parsing, IdP metadata validation, SP metadata generation | `src/lib/ssoSaml.ts` | ✅ `ssoSaml.test.ts` (10 tests) |
+| RBAC | Role hierarchy (viewer→editor→admin→owner), permission checks, role assignment validation | `src/lib/rbac.ts` | ✅ `rbac.test.ts` (9 tests) |
+| SCIM 2.0 provisioning | User resource parsing/serialization, list responses, bearer token validation | `src/lib/scimProvisioning.ts` | ✅ `scimProvisioning.test.ts` (10 tests) |
+| IP allowlisting | CIDR parsing, IP-in-range matching, allowlist validation | `src/lib/ipAllowlist.ts` | ✅ `ipAllowlist.test.ts` (12 tests) |
+
+### Organization & Multi-tenancy
+
+| Module | What it does | Code path | Tests |
+|---|---|---|---|
+| Org/workspace model | Organization CRUD, membership management, workspace isolation | `src/lib/orgModel.ts` | ✅ `orgModel.test.ts` (8 tests) |
+| MSP portal | Per-client health scoring (healthy/warning/critical), cross-org dashboard aggregation | `src/lib/mspPortal.ts` | ✅ `mspPortal.test.ts` (4 tests) |
+| Custom scan policies | Policy validation, check enable/disable, finding exclusion, pass/fail evaluation | `src/lib/customScanPolicies.ts` | ✅ `customScanPolicies.test.ts` (9 tests) |
+
+### Reporting & Compliance
+
+| Module | What it does | Code path | Tests |
+|---|---|---|---|
+| Scheduled reports | Report scheduling (daily/weekly/monthly), recipient management, due-report identification | `src/lib/scheduledReports.ts` | ✅ `scheduledReports.test.ts` (7 tests) |
+| Multi-framework compliance reporting | Per-framework control pass/fail across 7 frameworks (ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA), overall score, markdown export | `src/lib/complianceReport.ts` | ✅ `complianceReport.test.ts` (5 tests) |
+| SLA monitoring | Per-severity remediation deadlines (critical 24h, high 72h, medium 168h, low 720h), breach tracking, compliance percentage | `src/lib/slaMonitoring.ts` | ✅ `slaMonitoring.test.ts` (7 tests) |
+| Risk scoring | 5-factor composite scoring (severity 0.35, exploitability 0.25, density 0.15, attack surface 0.15, compliance impact 0.10), A-F grading, trend comparison | `src/lib/riskScoring.ts` | ✅ `riskScoring.test.ts` (8 tests) |
+
+### Advanced Scanning
+
+| Module | What it does | Code path | Tests |
+|---|---|---|---|
+| GraphQL scanning | Schema introspection detection, query depth analysis, field suggestion leak detection | `src/lib/scanners/graphql.ts` | ✅ `graphql.test.ts` (7 tests) |
+| Proof-of-exploit | Safe, verifiable proof generation for findings (metadata-enriched) | Integrated into `src/lib/scanners/index.ts` via `Finding.metadata` | ✅ covered by scanner tests |
+| Scan windows | Maintenance window definition, overlap detection, scan-eligibility checks | `src/lib/scanWindows.ts` | ✅ `scanWindows.test.ts` (8 tests) |
+
+### Integrations
+
+| Module | What it does | Code path | Tests |
+|---|---|---|---|
+| SIEM integration | Syslog (RFC 5424) and webhook event forwarding, severity filtering | `src/lib/siemIntegration.ts` | ✅ `siemIntegration.test.ts` (8 tests) |
+| CI/CD SDK | Pipeline configuration generation, threshold-based gating, multi-provider support | `src/lib/cicdSdk.ts` | ✅ `cicdSdk.test.ts` (6 tests) |
+| ServiceNow tickets | Incident create/get/close/comment via Table API, Basic auth | `src/lib/ticketProviders.ts` | ✅ `ticketProviders.test.ts` (11 tests, shared with GitHub Issues) |
+| GitHub Issues tickets | Issue create/get/close/comment via REST API | `src/lib/ticketProviders.ts` | ✅ (same test file) |
+| GraphQL API | Schema definition, query parsing, operation name extraction, introspection detection, depth validation | `src/lib/graphqlApi.ts` | ✅ `graphqlApi.test.ts` (7 tests) |
+| Audit logging (expanded) | Extended event vocabulary, org-scoped audit trails | `src/lib/audit.ts` (extended) | ✅ `audit.test.ts` |
 
 ---
 

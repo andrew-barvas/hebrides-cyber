@@ -151,3 +151,67 @@ against; revise after month 2 once actual conversion data is in.
 - [ ] Set up Google Ads / analytics tracking before spending on paid channels
 - [ ] Confirm VAT treatment / registration status (`marketing/03-pricing-page.md`
       TODO — also blocks confident pricing-page marketing copy)
+
+---
+
+## 6. AI-Assisted Content Workflow (added 2026-09-14)
+
+A sustainable content pipeline for a solo founder, leveraging the product's
+own automated content generation and AI tools for efficiency.
+
+### Daily (automated, zero effort)
+
+The daily blog pipeline (`generate-daily-blog.ts`) already auto-generates
+a post from real CVE/KEV/security-news data every morning at 07:00 UTC.
+This is the content **source** — it runs whether or not you touch it.
+
+### Weekly (15-30 minutes)
+
+1. **Monday**: scan the week's daily blog posts. Pick 1 with a compelling
+   hook (a high-profile CVE, a breach story, a KEV entry relevant to SMEs).
+2. **Tuesday**: expand it into a LinkedIn article. Use Claude/ChatGPT:
+   provide the daily blog post + "rewrite as a 200-word LinkedIn post for
+   UK small business owners, plain English, end with a call to action."
+   Edit for voice and accuracy. Post.
+3. **Wednesday**: adapt for Facebook (shorter, more local angle). Post.
+4. **Thursday**: post a second LinkedIn piece (product feature, compliance
+   tip, or founder story).
+5. **Friday**: batch-create 2-3 X/Twitter posts for the following week
+   from the daily blog content. Use AI for variations.
+
+### Monthly (2-3 hours)
+
+1 evergreen content piece. Rotate between:
+- **Remediation walkthrough** — show the four-rung ladder on a real
+  (anonymised) finding. The before/after diff is the most compelling
+  demo asset.
+- **Compliance guide** — "What Cyber Essentials actually requires,
+  mapped to what we actually check." Reusable across platforms.
+- **Local case study** — a real local business that consented to sharing
+  their scan-and-fix journey (even if it's just "we found 3 issues, here's
+  what they were, here's the score after fixing them").
+
+### Quarterly (half a day)
+
+- Refresh `docs/COMPETITIVE-ANALYSIS.md` per §1's refresh procedure
+- Update grant narrative if needed (`marketing/12-hie-grant-application.md`)
+- Review social media analytics: which post types get engagement, which
+  don't? Adjust the weekly mix accordingly.
+- Re-check posting cadence — is it sustainable? If not, drop X/Twitter
+  first (lowest-priority platform per `marketing/11-social-media-and-local-press-playbook.md` §1).
+
+### Tools
+
+| Tool | Use | Cost |
+|---|---|---|
+| Claude / ChatGPT | Blog drafts, social post variations, email subject lines, press release drafts | Existing subscription |
+| Canva AI | Social media graphics with brand colours | Free tier or £100/year Pro |
+| Loom | Screen recording demos | Free tier |
+| Daily blog pipeline | Source material — real CVE/KEV/news data, auto-generated | Already running |
+
+### Rules
+
+- Always edit AI-generated content for voice, accuracy, and UK English
+- Never publish AI-generated testimonials or case studies
+- Every technical claim must be verifiable against the codebase
+- When in doubt about accuracy, check `docs/FUNCTIONALITY-MATRIX.md`
