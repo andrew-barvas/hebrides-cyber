@@ -1,18 +1,4 @@
 {
-  "responseOverrides": {
-    "500": {
-      "rewrite": "/500.html",
-      "statusCode": 200
-    },
-    "503": {
-      "rewrite": "/500.html",
-      "statusCode": 200
-    },
-    "504": {
-      "rewrite": "/500.html",
-      "statusCode": 200
-    }
-  },
   "routes": [
     {
       "route": "/api/*",
