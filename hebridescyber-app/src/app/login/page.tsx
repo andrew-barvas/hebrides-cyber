@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
 
 // Magic link is the primary sign-in flow. Password sign-in is available so
@@ -9,18 +9,23 @@ import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth"
 // `npm run seed:users`) are usable without inbox access.
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams?.get("redirect") ?? "/dashboard";
+  const callbackError = searchParams?.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [usePassword, setUsePassword] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    callbackError === "auth_callback_failed" ? "Sign-in failed — please try again." : null
+  );
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     getSession().then((session) => {
-      if (session) router.replace("/dashboard");
+      if (session) router.replace(redirectTo);
     });
-  }, [router]);
+  }, [router, redirectTo]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +38,7 @@ export default function LoginPage() {
       if (signInError) {
         setError(signInError.message);
       } else {
-        router.replace("/dashboard");
+        router.replace(redirectTo);
       }
       return;
     }
