@@ -1271,3 +1271,157 @@ runs for real in `scheduled-scans.yml`, same CONFIDENCE-NOTE caveat as
 "tools worth revisiting" list, refined into an architecture-respecting
 integration after an initial version of the same request proposed a
 parallel Azure Functions/Redis pipeline that was declined, 2026-09-05.
+
+## E-50 — Email notifications on scan completion
+
+**What**: when a scheduled or on-demand scan finishes, send the owner an
+email summary: overall score, score delta vs previous scan, count of new
+critical/high findings, link to the full report. Currently only Slack and
+MS Teams webhooks exist (`subscriptions.slack_webhook_url` /
+`ms_teams_webhook_url`); email is lower-friction for customers who haven't
+set up a webhook.
+**Why**: a paying customer who doesn't have Slack/Teams integrated gets zero
+proactive notification when their scan finds something — they must remember to
+log in and check. Email covers the baseline case. Resend (already a dep for
+monthly digest) means no new infra; `executeScan()`'s Phase 2 already has
+the right hook point (`sendSlackAlert` pattern, same never-throw contract).
+**Impact/effort**: medium impact, low effort — follows `sendSlackAlert`'s
+pattern exactly; the only new piece is an email template and a
+`sendgrid_from_email` / `notification_email` preference (either the account
+email from `auth.users` or a user-settable override in `subscriptions`).
+**Depends on**: Resend/SendGrid already wired for monthly digest — same creds.
+**Category**: code. **Source**: roadmap 2026-09-14.
+
+## E-51 — Custom notification rules (score threshold + severity filter)
+
+**What**: let owners set a rule so alerts only fire when the security score
+drops below a threshold (e.g. "only notify me if score < 80") or when a
+new finding of severity Critical/High appears. Applies to Slack, Teams, and
+E-50's email channel equally.
+**Why**: noisy "score went from 91 to 90" notifications on a healthy site
+train owners to ignore alerts — defeating the purpose. A threshold rule
+separates signal from noise. `subscriptions` already has a row per owner;
+two new columns (`notify_score_threshold INT`, `notify_severity_min TEXT`)
+are enough to gate both channels at the call site in `executeScan()`.
+**Impact/effort**: low effort (two migration columns + a conditional around
+existing `sendSlackAlert` call), meaningful UX uplift.
+**Depends on**: E-50 (email channel). **Category**: code.
+**Source**: roadmap 2026-09-14.
+
+## E-52 — Score-trend sparklines on the fleet / monitored-targets view
+
+**What**: the E-27 fleet dashboard shows each target's *current* score but
+not whether it's improving or degrading. Add a small 7-point sparkline (last
+7 completed scans) next to each target's score badge so an Agency customer
+can see at a glance which sites are trending in the wrong direction without
+opening individual scan reports.
+**Why**: the data already exists in `scans` (status = 'completed', ordered
+by created_at per monitored_target) — this is a query + rendering change, no
+new schema. An Agency account paying for multi-site monitoring specifically
+wants "which of my 15 sites needs attention today?" and a flat score is a
+worse answer than a score with a direction.
+**Impact/effort**: low effort — `ScoreTrend.tsx` already renders a trend line
+per-target on the individual scan report; fleet view needs the same logic
+with a smaller viewport footprint.
+**Depends on**: E-27 (fleet dashboard, already done). **Category**: code.
+**Source**: roadmap 2026-09-14.
+
+## E-53 — CSV / JSON export of findings
+
+**What**: a "Download findings" button on the scan report page that exports
+the current scan's findings array as CSV (one row per finding: checkId,
+severity, title, detail, remediation, compliance refs) or JSON (full
+`ScanReport.findings`). For Agency accounts with many targets, also expose
+a bulk-export from the fleet view (all targets, most recent scan each).
+**Why**: security teams often need to feed findings into a spreadsheet, a
+GRC tool, or an existing ticketing-import workflow — the ticket integration
+covers Jira/Linear, but most real security processes involve some manual
+triage first. A CSV export is the zero-friction bridge for that, and costs
+almost nothing to build (the data is already serialized in `scan_results`).
+**Impact/effort**: low effort — a client-side `JSON → CSV` transform
+on an existing `GET /api/scans/[id]/report` payload; no new API route
+needed. Add a `GET /api/v1/scans/{id}/export?format=csv|json` for API
+consumers (public-API surface, follows existing v1 conventions).
+**Depends on**: none. **Category**: code. **Source**: roadmap 2026-09-14.
+
+## E-54 — PagerDuty / Opsgenie alert integration
+
+**What**: when a scan finds a new Critical severity finding, open a
+PagerDuty incident or Opsgenie alert (owner's choice), using the same
+credential-save pattern as `ticket_integrations` (validate key before
+saving, one row per owner+provider). Resolves the incident automatically
+when the finding is marked fixed on the next scan (follows `ticketAutoClose`'s
+opt-in model, `auto_close_enabled` default false).
+**Why**: security teams in companies with on-call rotations already route
+critical infrastructure alerts through PagerDuty/Opsgenie — this makes
+Hebrides Cyber a first-class citizen in that workflow rather than something
+that emails a report that sits unread until the weekly review. The
+`ticket_links` ledger and `decideTicketAction()` machinery are already
+designed for exactly this extension pattern.
+**Impact/effort**: medium — PagerDuty Events API v2 and Opsgenie Alert API
+are well-documented REST APIs; the `ticketIntegrations.ts` abstraction
+already decouples the ledger from the provider. Add provider keys
+`"pagerduty"` and `"opsgenie"`, implement `createPagerDutyIncident()` /
+`createOpsgenieAlert()` (parallel to `createJiraIssue()`), wire into
+`ticketAutoClose.ts`'s existing resolution path.
+**Depends on**: `ticket_integrations`/`ticket_links` tables (already shipped).
+**Category**: code. **Source**: roadmap 2026-09-14.
+
+## E-55 — CVSS-scored findings
+
+**What**: attach a CVSS v3.1 base score and vector string to findings where
+the check is specific enough to support one (TLS grade F, exposed .env,
+open critical port, known CVE). Display as a coloured badge alongside the
+existing severity label on `FindingCard`; include in CSV export (E-53) and
+ticket body (E-54/ticket integrations).
+**Why**: security teams doing risk prioritisation work in CVSS. The existing
+severity labels (critical/high/medium/low/info) are broad buckets — a CVSS
+score with an attack vector component lets a team say "this Critical is
+network-exploitable without auth, that Critical requires local access" and
+triage accordingly. For CVE-backed findings (`recon.ts`'s Shodan CVEs,
+`webapp.ts`'s JS library CVEs) the CVSS score already exists on the CVE
+record — it's not being surfaced to the user today.
+**Impact/effort**: medium — the CVE-backed findings just need the existing
+CVSS field forwarded from the OSV/NVD response into `Finding`. For
+first-party findings (TLS/headers/exposure) a manual mapping table in
+`remediationText.ts` or a new `cvss.ts` module is needed; only a subset of
+checks have specific enough findings to warrant one.
+**Depends on**: none. **Category**: code. **Source**: roadmap 2026-09-14.
+
+## E-56 — Full migration automation (supabase db push in CI)
+
+**What**: upgrade `deploy.yml`'s E-49 migration-check job from "detect
+missing columns and fail the build" to "apply pending migrations
+automatically before deploy using `supabase db push`." This turns the
+current manual Supabase SQL-editor step into a zero-touch CI step.
+**Why**: the 2026-09-13 incident (migrations 019-026 never applied to
+production) happened because the apply step didn't exist anywhere in the
+pipeline. E-49 prevents the next deploy from crashing on missing columns,
+but still requires a human to apply the fix. E-56 removes that human step
+entirely.
+**How**: `supabase` CLI (`npx supabase db push --db-url $DATABASE_URL`)
+applies `sql/migrations/` in filename order, idempotently (Supabase tracks
+applied migrations in a `supabase_migrations` schema table). Needs a
+`DATABASE_URL` secret in GitHub (the direct Postgres connection string from
+Supabase's "Connect" page, not the PostgREST URL). The migration-check step
+then becomes a post-apply verification rather than a pre-deploy gate.
+**Depends on**: DATABASE_URL secret added to GitHub repo settings (manual).
+**Category**: code + money/time (one manual secret to add).
+**Source**: roadmap / incident post-mortem 2026-09-14.
+
+## E-57 — Health check curl in post-deploy step (completes BETA-2)
+
+**What**: `docs/ROADMAP.md` BETA-2 says "`GET /api/health` returns 200 with
+Supabase/Stripe/queue-depth sub-checks" and lists "curl in CI immediately
+post-deploy" as the verify method — that curl has never been added. Add a
+post-deploy step to `deploy.yml`'s `deploy` job that waits ~30s for the new
+Functions to warm up, then curls `$SITE_URL/api/health` and fails the
+workflow if the response isn't 200. Needs `SITE_URL` (the live
+`hebridescyber.co.uk` URL) added as a GitHub secret.
+**Why**: without this, a deploy that breaks the health endpoint goes
+unnoticed until a customer reports it. The endpoint was built for exactly
+this purpose (E-04, 2026-09-04) but is never actually exercised in CI.
+**Impact/effort**: trivial code change (3 lines in deploy.yml) plus one
+GitHub secret.
+**Depends on**: E-04 (already done). **Category**: code. **Source**: audit /
+BETA-2 verify-method gap, 2026-09-14.

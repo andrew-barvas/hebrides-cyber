@@ -160,20 +160,107 @@ migrations are missing.
 
 ---
 
-## After Sprint 4
+---
 
-The honest next candidates, unordered:
-- **Free staging environment**: Azure SWA preview deployments + a second
-  free-tier Supabase project, tied to E-20's `pull_request` trigger (now
-  done). Zero cost; would have caught the migration gap before production.
-- **Full migration automation**: upgrade E-49 from a detection step to
-  actual `supabase db push` in CI, so migrations are applied automatically
-  on deploy rather than just failing when they're missing.
-- **Branch-protection rules**: configure GitHub to require the `check` job
-  to pass before merging PRs (completes E-20's full intent).
-- E-13 (Supabase backup/restore documentation), E-21 (httpOnly-cookie auth),
-  E-26 (Terraform scaffold), E-32 (cloud posture scanning), E-33 (API-spec
-  testing).
+## Sprint 5 — Production closure + pipeline hardening (2026-09-14 – 2026-09-28)
 
-Re-generate `docs/FUNCTIONALITY-MATRIX.md` and re-check every
-`docs/ROADMAP.md` Beta criterion before planning a Sprint 5.
+**Theme**: close the live incident completely, remove the manual migration
+step so it can never recur, and give the pipeline a real safety net for
+future deploys.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 0 | **E-49** (manual) | Apply migrations 019–026 to production Supabase | ⛔ blocked — owner pastes the prepared script in the Supabase SQL Editor | Incident is not resolved until this is done; admin panel, monitored-targets UI, and asset-inventory views all fail until then |
+| 1 | **E-56** | Full migration automation — `supabase db push` in CI | ⬜ | Turns the manual apply step into a zero-touch CI operation; needs `DATABASE_URL` added as a GitHub secret (owner action) then ~10 lines in deploy.yml |
+| 2 | — | Free staging environment | ⬜ | Azure SWA preview deployments are automatic on PR; needs a second free-tier Supabase project (owner action) and `STAGING_SUPABASE_*` secrets wired to `deploy.yml`'s `pull_request` build |
+| 3 | — | GitHub branch-protection rules | ⛔ manual | Completes E-20's full intent — requires the `check` job to pass before any PR can merge; GitHub Settings > Branches (owner action, not code) |
+| 4 | **E-57** | Health check curl in post-deploy step | ⬜ | 3-line deploy.yml change; makes BETA-2's verify-method actually green |
+| 5 | **E-03** | Sentry account + `SENTRY_DSN` in Azure app settings | ⛔ manual | Code shipped 2026-09-04; BETA-1 stays red until a real DSN is set (owner action — free Sentry Developer plan, 5k errors/month) |
+
+**Owner-action items (not code)**: 0 (Supabase SQL Editor), 3 (GitHub
+settings), 5 (Sentry account). All three can be done in under 30 minutes
+combined and unlock everything else in this sprint.
+
+**Sprint 5 exit check**: admin panel loads without error, CI applies
+migrations automatically on the next push, PR preview environments exist,
+branch protection blocks merges without a passing `check`, health endpoint
+curled post-deploy, first real Sentry error appears within 60s of a
+triggered canary.
+
+---
+
+## Sprint 6 — Revenue unblock + auth security (2026-09-29 – 2026-10-12)
+
+**Theme**: make paying work end-to-end and fix the one structural auth
+security issue (localStorage JWT) before it becomes a liability.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | **E-07** | Configure live Stripe Price IDs | ⛔ blocked on owner's Stripe Dashboard access | Still the highest-priority item in the whole backlog — paid signup is completely broken without real Price IDs. Not a dev task |
+| 2 | **E-21** | Migrate auth off localStorage to httpOnly cookies | ⬜ | Supabase JWT currently stored in localStorage → readable by any XSS. Large but high-priority for a security product; see E-21's own entry for the migration strategy |
+| 3 | **E-13** | Document + actually test Supabase backup/restore | ⬜ | LIVE-4 blocker; restoring from a backup has never actually been exercised against a real project |
+| 4 | — | POC verification with a real demo account | ⬜ manual | Run POC-1 through POC-4 against production (`npm run seed:users`, then trigger a scan, follow the flow the roadmap describes) — marks those rows green rather than just "probably correct" |
+
+**Sprint 6 exit check**: Stripe Checkout completes end-to-end for all three
+tiers against real Stripe; auth tokens are in httpOnly cookies (no
+localStorage JWT visible to JS); a Supabase restore has been demonstrated
+against a scratch project; POC-1/POC-4 are green on ROADMAP.md.
+
+---
+
+## Sprint 7 — User-facing feature expansion (2026-10-13 – 2026-10-26)
+
+**Theme**: richer notifications (close the gap between "webhook users" and
+everyone else), better UX, and the first export capability.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | **E-50** | Email notifications on scan completion | ⬜ | Currently zero proactive contact for customers without Slack/Teams. Resend is already wired; this follows `sendSlackAlert`'s pattern exactly |
+| 2 | **E-51** | Custom notification rules (score threshold, severity filter) | ⬜ | Without a threshold, every nightly "score went from 91 to 90" fires an alert — trains owners to ignore notifications. Two migration columns + a conditional |
+| 3 | **E-30** | Per-finding "retest" button | ⬜ | Already logged and scoped — a targeted re-run of one check module rather than a full rescan |
+| 4 | **E-52** | Score-trend sparklines on the fleet / monitored-targets view | ⬜ | E-27 fleet view shows current score only; sparkline needs 7 rows from `scans` per target — the data is already there |
+| 5 | **E-53** | CSV / JSON findings export | ⬜ | Low effort (client-side transform), meaningful for customers doing manual triage or feeding into a GRC tool |
+
+**Sprint 7 exit check**: a customer with no Slack/Teams integration receives
+a scan-completion email; threshold rules suppress low-delta score-change
+noise; per-finding retest triggers a real re-run in on-demand workflow; fleet
+view shows trend direction per target; "Download findings" button produces a
+valid CSV.
+
+---
+
+## Sprint 8 — Advanced scanning + integrations (2026-10-27 – 2026-11-09)
+
+**Theme**: expand the scanner surface to cloud/API scope and connect to the
+on-call tooling security teams already use.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | **E-32** | Cloud posture scanning (AWS/Azure/GCP) | ⬜ | Credential-onboarding design is the hard part (see E-32's own entry) — the scanning logic is straightforward once that's settled. Real competitive differentiator vs. web-only scanners |
+| 2 | **E-33** | API-spec testing (OpenAPI/Swagger-driven) | ⬜ | `api_specs` table was created by migration 023; spec-driven testing finds what a crawler can't — every declared but unlinkable endpoint |
+| 3 | **E-54** | PagerDuty / Opsgenie alert integration | ⬜ | Extends the existing `ticket_integrations` / `ticket_links` pattern to on-call tooling; resolves incidents automatically when findings are fixed |
+| 4 | **E-55** | CVSS-scored findings | ⬜ | CVE-backed findings already carry a CVSS score from OSV/NVD — just not surfaced to the user. Adds a vector-string badge to `FindingCard` and the CVSS field to CSV export |
+| 5 | **E-26** | Terraform scaffold — complete the Container Apps path | ⬜ | Unblocks the SWA → Container Apps migration when SWA's free-tier execution ceiling becomes a real constraint again (it already forced the queue-worker architecture once) |
+
+**Sprint 8 exit check**: at least one cloud provider's public misconfiguration
+checks run for a connected account; a customer-supplied OpenAPI spec drives
+systematic endpoint testing; a Critical finding fires a PagerDuty incident
+and resolves it automatically on the next clean scan; CVSS scores appear on
+CVE-backed findings; Terraform plan runs clean for Container Apps.
+
+---
+
+## After Sprint 8
+
+Deferred long-horizon items (explicitly not forgotten):
+- E-21 if not done in Sprint 6 (httpOnly cookie auth — large but the right
+  long-term auth model).
+- SOC 2 / ISO 27001 — out of scope for the segment this product serves, per
+  `docs/COMPETITIVE-ANALYSIS.md` §6(c); revisit only if a customer
+  explicitly blocks on it.
+- 24/7 MDR / dark-web monitoring beyond HIBP — same §6(c) decision.
+- Full white-label reseller path (Partner Portal beyond what E-39 shipped) —
+  needs pricing design before code.
+
+Re-run `docs/FUNCTIONALITY-MATRIX.md`'s audit and re-check `docs/ROADMAP.md`
+Beta/Live criteria before committing to Sprint 9 scope.
