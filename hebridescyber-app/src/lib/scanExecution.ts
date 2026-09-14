@@ -44,6 +44,7 @@ import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./sc
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
 import { sendCriticalAlertEmail } from "./scanAlerts";
+import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
 
@@ -763,6 +764,7 @@ export async function executeScan(
     await dispatchScanCompletedWebhooks(supabaseAdmin, ownerId, report);
     await sendChangeAlertIfDue(supabaseAdmin, ownerId, report, findings);
     await sendCriticalAlertEmail(supabaseAdmin, ownerId, report);
+    await sendScanCompletionEmail(supabaseAdmin, ownerId, report);
     // Opt-in and off by default — no-ops entirely unless the owner enabled
     // auto-close on their Jira/Linear integration.
     await autoCloseFixedFindingTickets(supabaseAdmin, ownerId, report);
