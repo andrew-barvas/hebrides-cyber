@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
 
@@ -8,6 +8,14 @@ import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth"
 // the seeded demo accounts (admin, basic/pro/agency/no-plan customers from
 // `npm run seed:users`) are usable without inbox access.
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams?.get("redirect") ?? "/dashboard";
