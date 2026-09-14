@@ -47,6 +47,7 @@ import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
+import { forwardToSiem } from "./siemIntegration";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -771,6 +772,15 @@ export async function executeScan(
     // Opt-in and off by default — no-ops entirely unless the owner enabled
     // auto-close on their Jira/Linear integration.
     await autoCloseFixedFindingTickets(supabaseAdmin, ownerId, report);
+    await forwardToSiem(supabaseAdmin, ownerId, {
+      eventType: "scan.completed",
+      timestamp: new Date().toISOString(),
+      actorId: ownerId,
+      resourceType: "scan",
+      resourceId: scanId,
+      severity: score !== undefined && score < 50 ? "high" : "info",
+      metadata: { targetUrl, score, findingsCount: findings.length },
+    });
   } catch (err) {
     console.error(`[scanExecution] post-completion notifications failed for scan ${scanId}:`, (err as Error).message);
   }
