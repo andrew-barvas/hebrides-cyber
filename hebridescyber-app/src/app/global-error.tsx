@@ -33,6 +33,7 @@ export default function GlobalError({
             >
               Try again
             </button>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- global-error replaces the root layout; Next.js router/Link may not be available */}
             <a
               href="/"
               style={{ padding: "0.625rem 1.25rem", borderRadius: 6, background: "transparent", color: "#39FFC0", fontSize: "0.8125rem", fontWeight: 600, border: "1px solid #1C2940", textDecoration: "none" }}
