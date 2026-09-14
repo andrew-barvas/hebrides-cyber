@@ -2,7 +2,6 @@ import { supabase } from "./supabaseClient";
 import type { Session, User } from "@supabase/supabase-js";
 
 // Thin helpers around Supabase Auth, used by the dashboard pages.
-// TODO: add proper error handling / toasts for production use.
 
 // supabase-js v2 serialises auth calls (getSession/getUser/mfa.*) behind a
 // navigator.locks-based mutex shared across tabs. If that lock is ever left
@@ -72,7 +71,7 @@ export async function getUser(): Promise<User | null> {
 // monitoring. Google OAuth (below) is offered as a faster alternative for
 // users who'd rather not check email.
 export async function signInWithMagicLink(email: string) {
-  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
   return supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
 }
 
@@ -164,12 +163,3 @@ export async function unenrollMfaFactor(factorId: string) {
   return supabase.auth.mfa.unenroll({ factorId });
 }
 
-// TODO (production hardening): sessions currently live in localStorage via
-// supabase-js's default browser storage — readable by any script on the
-// page (XSS risk) and not sent to the server automatically. The stronger
-// pattern for Next.js is @supabase/ssr with httpOnly cookies + a proxy.ts
-// (Next.js 16+ renamed middleware.ts to proxy.ts) that redirects
-// unauthenticated requests server-side before a protected page even
-// renders. Worth doing before this handles real
-// customer accounts at scale; deferred here to keep this scaffold's auth
-// surface small and easy to follow.

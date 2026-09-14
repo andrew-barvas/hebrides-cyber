@@ -27,6 +27,7 @@
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",
     "@sentry/nextjs": "^10.73.0",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.45.0",
     "isomorphic-dompurify": "^3.19.0",
     "marked": "^13.0.2",
