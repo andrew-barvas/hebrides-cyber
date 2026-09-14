@@ -31,6 +31,8 @@ export type ViewFinding = {
   complianceRefs?: ComplianceRef[];
   fixDifficulty?: FixDifficulty;
   estimatedFixMinutes?: number;
+  cvssScore?: number;
+  cvssVector?: string;
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -500,6 +502,19 @@ export function FindingCard({
       <div className="mb-1 flex items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
         <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
+        {finding.cvssScore != null && (
+          <span
+            className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+              finding.cvssScore >= 9 ? "border-red-400/30 bg-red-400/10 text-red-400" :
+              finding.cvssScore >= 7 ? "border-orange-400/30 bg-orange-400/10 text-orange-400" :
+              finding.cvssScore >= 4 ? "border-yellow-400/30 bg-yellow-400/10 text-yellow-400" :
+              "border-blue-400/30 bg-blue-400/10 text-blue-400"
+            }`}
+            title={finding.cvssVector ?? `CVSS ${finding.cvssScore}`}
+          >
+            CVSS {finding.cvssScore.toFixed(1)}
+          </span>
+        )}
         {finding.status === "new" && (
           <span className="rounded-full border border-neon/30 bg-neon/10 px-1.5 py-0.5 text-[10px] font-semibold text-neon">NEW</span>
         )}

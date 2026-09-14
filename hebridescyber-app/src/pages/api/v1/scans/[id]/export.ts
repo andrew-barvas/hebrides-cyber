@@ -15,13 +15,15 @@ function csvEscape(value: string): string {
 }
 
 function findingsToCsv(findings: Finding[]): string {
-  const header = ["severity", "title", "detail", "check_id", "cve_ids", "compliance_refs"];
+  const header = ["severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "compliance_refs"];
   const rows = findings.map((f) => [
     f.severity,
     f.title,
     f.detail,
     f.checkId ?? "",
     (f.cveIds ?? []).join("; "),
+    f.cvssScore != null ? String(f.cvssScore) : "",
+    f.cvssVector ?? "",
     (f.complianceRefs ?? []).map((r) => `${r.framework}: ${r.control}`).join("; "),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(",")).join("\r\n");
