@@ -18,6 +18,7 @@ import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
+export { enrichFindingsWithCvss } from "./cvssEnrich";
 import * as FIX from "./remediationText";
 
 export type {
@@ -102,6 +103,10 @@ export type Finding = {
   fixDifficulty?: FixDifficulty;
   /** Rough remediation time estimate in minutes, derived from fixDifficulty. */
   estimatedFixMinutes?: number;
+  /** CVSS v3.1 base score (0.0–10.0), when the finding maps to a known CVE. */
+  cvssScore?: number;
+  /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
+  cvssVector?: string;
 };
 
 // ---- ZAP (optional — requires running ZAP daemon) -------------------------
