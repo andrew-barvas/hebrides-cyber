@@ -1653,3 +1653,91 @@ Direct Object Reference (IDOR) vulnerability where users can access
 other users' data by changing the ID parameter. Implement proper
 authentication and authorization checks on all data-access endpoints.
 Use non-sequential identifiers (UUIDs) where possible.`;
+
+// --- Cloud posture (E-32) ---
+
+export const AWS_PUBLIC_S3_BUCKET = `This S3 bucket is missing one or more PublicAccessBlock settings, or
+has no PublicAccessBlock at all. Enable all four settings on every
+bucket:
+
+\`\`\`
+aws s3api put-public-access-block \\
+  --bucket BUCKET_NAME \\
+  --public-access-block-configuration \\
+    BlockPublicAcls=true,IgnorePublicAcls=true,\\
+    BlockPublicPolicy=true,RestrictPublicBuckets=true
+\`\`\`
+
+Also enable account-level S3 Block Public Access in the AWS console
+under S3 > Block Public Access settings for this account.`;
+
+export const AWS_PUBLIC_S3_POLICY = `This S3 bucket has a bucket policy that grants public access. Review
+the bucket policy with:
+
+\`\`\`
+aws s3api get-bucket-policy --bucket BUCKET_NAME
+\`\`\`
+
+Remove any Statement with \`"Principal": "*"\` or
+\`"Principal": {"AWS": "*"}\` unless the bucket genuinely needs to
+serve public content. Even then, prefer CloudFront with an OAI/OAC
+over direct public bucket access.`;
+
+export const AWS_ACCOUNT_PUBLIC_ACCESS = `The AWS account does not have account-level S3 Block Public Access
+fully enabled. This is a defence-in-depth control that prevents any
+bucket in the account from being accidentally made public. Enable it:
+
+**AWS Console:** S3 → Block Public Access settings for this account →
+enable all four checkboxes.
+
+**CLI:**
+\`\`\`
+aws s3control put-public-access-block \\
+  --account-id ACCOUNT_ID \\
+  --public-access-block-configuration \\
+    BlockPublicAcls=true,IgnorePublicAcls=true,\\
+    BlockPublicPolicy=true,RestrictPublicBuckets=true
+\`\`\``;
+
+export const AZURE_PUBLIC_BLOB = `This Azure Storage account has allowBlobPublicAccess enabled. Even
+if no containers are currently public, any user with the right
+permissions can create a public container. Disable it:
+
+**Azure Portal:** Storage account → Configuration → Allow Blob
+anonymous access → Disabled.
+
+**CLI:**
+\`\`\`
+az storage account update \\
+  --name ACCOUNT_NAME \\
+  --resource-group RG_NAME \\
+  --allow-blob-public-access false
+\`\`\``;
+
+export const AZURE_HTTP_TRAFFIC = `This Azure Storage account allows unencrypted HTTP traffic. Enforce
+HTTPS-only:
+
+**Azure Portal:** Storage account → Configuration → Secure transfer
+required → Enabled.
+
+**CLI:**
+\`\`\`
+az storage account update \\
+  --name ACCOUNT_NAME \\
+  --resource-group RG_NAME \\
+  --https-only true
+\`\`\``;
+
+export const AZURE_WEAK_TLS = `This Azure Storage account allows TLS versions below 1.2. Set the
+minimum to TLS 1.2:
+
+**Azure Portal:** Storage account → Configuration → Minimum TLS
+version → Version 1.2.
+
+**CLI:**
+\`\`\`
+az storage account update \\
+  --name ACCOUNT_NAME \\
+  --resource-group RG_NAME \\
+  --min-tls-version TLS1_2
+\`\`\``;

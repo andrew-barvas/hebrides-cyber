@@ -3,45 +3,259 @@
 // credentials in cloud_credentials table.
 //
 // This is the first slice: AWS S3 bucket policy checks, Azure storage
-// account public access checks, GCP bucket IAM checks. Extended checks
-// (IAM policy review, network security groups, encryption-at-rest) are
-// future work.
+// account public access checks. Extended checks (IAM policy review,
+// network security groups, encryption-at-rest, GCP) are future work.
+//
+// AWS calls use SigV4-signed fetch (no SDK dependency) — the three S3
+// APIs we need (ListBuckets, GetPublicAccessBlock, GetBucketPolicyStatus)
+// are simple XML responses that don't need the full SDK.
+import { createHmac, createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Finding } from "./index";
+import { AWS_PUBLIC_S3_BUCKET, AWS_PUBLIC_S3_POLICY, AWS_ACCOUNT_PUBLIC_ACCESS, AZURE_PUBLIC_BLOB, AZURE_HTTP_TRAFFIC, AZURE_WEAK_TLS } from "./remediationText";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_BUCKETS_TO_CHECK = 100;
 
-type CloudCheckResult =
+export type CloudCheckResult =
   | { status: "checked"; findings: Finding[]; provider: string }
   | { status: "not_applicable"; note: string }
   | { status: "not_configured"; note: string }
   | { status: "error"; note: string; findings: Finding[] };
 
-// ---- AWS S3 public bucket check (uses STS + S3 APIs) -----------------------
+// ---- AWS SigV4 signing helpers ---------------------------------------------
 
-async function checkAwsPublicBuckets(credentials: {
+function hmacSha256(key: Buffer | string, data: string): Buffer {
+  return createHmac("sha256", key).update(data).digest();
+}
+
+function sha256Hex(data: string): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function getSignatureKey(secretKey: string, dateStamp: string, region: string, service: string): Buffer {
+  const kDate = hmacSha256(`AWS4${secretKey}`, dateStamp);
+  const kRegion = hmacSha256(kDate, region);
+  const kService = hmacSha256(kRegion, service);
+  return hmacSha256(kService, "aws4_request");
+}
+
+async function awsSignedFetch(
+  url: string,
+  credentials: { accessKeyId: string; secretAccessKey: string },
+  region: string,
+  service: string
+): Promise<Response> {
+  const parsedUrl = new URL(url);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const dateStamp = amzDate.slice(0, 8);
+
+  const canonicalQuerystring = parsedUrl.searchParams.toString();
+  const payloadHash = sha256Hex("");
+  const canonicalHeaders = `host:${parsedUrl.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+
+  const canonicalRequest = [
+    "GET",
+    parsedUrl.pathname,
+    canonicalQuerystring,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join("\n");
+
+  const signingKey = getSignatureKey(credentials.secretAccessKey, dateStamp, region, service);
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+  const authHeader = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return fetch(url, {
+    headers: {
+      Authorization: authHeader,
+      "x-amz-date": amzDate,
+      "x-amz-content-sha256": payloadHash,
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+}
+
+// ---- AWS S3 public bucket check --------------------------------------------
+
+function extractXmlValues(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}>([^<]*)</${tag}>`, "g");
+  const values: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) values.push(m[1]);
+  return values;
+}
+
+function extractXmlBool(xml: string, tag: string): boolean | null {
+  const match = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+  if (!match) return null;
+  return match[1].toLowerCase() === "true";
+}
+
+export async function checkAwsPublicBuckets(credentials: {
   accessKeyId: string;
   secretAccessKey: string;
   region?: string;
 }): Promise<Finding[]> {
-  // AWS SDK calls would go here — for now, we use the AWS CLI-compatible
-  // approach of signing requests manually. This is a scaffold that will be
-  // replaced with actual AWS SDK v3 calls when the dependency is added.
-  //
-  // The check logic:
-  // 1. List S3 buckets (s3:ListBuckets)
-  // 2. For each bucket, check GetBucketPolicyStatus (s3:GetBucketPolicyStatus)
-  // 3. Flag buckets where IsPublic is true
-  // 4. Check GetPublicAccessBlock (s3:GetPublicAccessBlock)
-  // 5. Flag buckets without BlockPublicAccess enabled
+  const findings: Finding[] = [];
+  const region = credentials.region || "us-east-1";
 
-  void credentials;
-  return [];
+  try {
+    // 1. ListBuckets — always goes to s3.amazonaws.com (global endpoint)
+    const listRes = await awsSignedFetch(
+      "https://s3.amazonaws.com/",
+      credentials,
+      "us-east-1",
+      "s3"
+    );
+    if (!listRes.ok) return findings;
+    const listXml = await listRes.text();
+
+    const bucketNames = extractXmlValues(listXml, "Name");
+    const bucketsToCheck = bucketNames.slice(0, MAX_BUCKETS_TO_CHECK);
+
+    // 2. For each bucket, check PublicAccessBlock and BucketPolicyStatus
+    for (const bucket of bucketsToCheck) {
+      try {
+        // GetPublicAccessBlock
+        const pabRes = await awsSignedFetch(
+          `https://${bucket}.s3.${region}.amazonaws.com/?publicAccessBlock`,
+          credentials,
+          region,
+          "s3"
+        );
+
+        if (pabRes.status === 404) {
+          // No PublicAccessBlock configured at all — this is a finding
+          findings.push({
+            severity: "high",
+            title: `AWS S3 bucket missing PublicAccessBlock: ${bucket}`,
+            detail: `S3 bucket "${bucket}" has no PublicAccessBlock configuration. Without it, bucket policies and ACLs can grant public access.`,
+            checkId: `cloudPosture.awsPublicS3:${bucket}`,
+            remediation: AWS_PUBLIC_S3_BUCKET,
+          });
+          continue;
+        }
+
+        if (pabRes.ok) {
+          const pabXml = await pabRes.text();
+          const blockPublicAcls = extractXmlBool(pabXml, "BlockPublicAcls");
+          const blockPublicPolicy = extractXmlBool(pabXml, "BlockPublicPolicy");
+          const ignorePublicAcls = extractXmlBool(pabXml, "IgnorePublicAcls");
+          const restrictPublicBuckets = extractXmlBool(pabXml, "RestrictPublicBuckets");
+
+          if (!blockPublicAcls || !blockPublicPolicy || !ignorePublicAcls || !restrictPublicBuckets) {
+            const missing: string[] = [];
+            if (!blockPublicAcls) missing.push("BlockPublicAcls");
+            if (!blockPublicPolicy) missing.push("BlockPublicPolicy");
+            if (!ignorePublicAcls) missing.push("IgnorePublicAcls");
+            if (!restrictPublicBuckets) missing.push("RestrictPublicBuckets");
+            findings.push({
+              severity: "high",
+              title: `AWS S3 bucket has incomplete PublicAccessBlock: ${bucket}`,
+              detail: `S3 bucket "${bucket}" does not have all four PublicAccessBlock settings enabled. Missing: ${missing.join(", ")}.`,
+              checkId: `cloudPosture.awsPublicS3:${bucket}`,
+              remediation: AWS_PUBLIC_S3_BUCKET,
+            });
+            continue;
+          }
+        }
+
+        // GetBucketPolicyStatus — check if bucket policy grants public access
+        const policyRes = await awsSignedFetch(
+          `https://${bucket}.s3.${region}.amazonaws.com/?policyStatus`,
+          credentials,
+          region,
+          "s3"
+        );
+
+        if (policyRes.ok) {
+          const policyXml = await policyRes.text();
+          const isPublic = extractXmlBool(policyXml, "IsPublic");
+          if (isPublic === true) {
+            findings.push({
+              severity: "critical",
+              title: `AWS S3 bucket policy allows public access: ${bucket}`,
+              detail: `S3 bucket "${bucket}" has a bucket policy that grants public access. This may expose sensitive data to the internet.`,
+              checkId: `cloudPosture.awsPublicS3Policy:${bucket}`,
+              remediation: AWS_PUBLIC_S3_POLICY,
+            });
+          }
+        }
+      } catch {
+        // Per-bucket errors (permissions, region mismatch) — skip silently
+      }
+    }
+  } catch {
+    // ListBuckets failed — credential or network issue
+  }
+  return findings;
+}
+
+// ---- AWS IAM check: account-level S3 public access block -------------------
+
+export async function checkAwsAccountPublicAccess(credentials: {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region?: string;
+}): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const region = credentials.region || "us-east-1";
+
+  try {
+    const res = await awsSignedFetch(
+      `https://s3-control.${region}.amazonaws.com/v20180820/configuration/publicAccessBlock`,
+      { ...credentials },
+      region,
+      "s3"
+    );
+
+    if (res.status === 404) {
+      findings.push({
+        severity: "high",
+        title: "AWS account-level S3 PublicAccessBlock not configured",
+        detail: "The AWS account does not have account-level S3 Block Public Access enabled. Individual buckets can be made public unless each one has its own block.",
+        checkId: "cloudPosture.awsAccountPublicAccess",
+        remediation: AWS_ACCOUNT_PUBLIC_ACCESS,
+      });
+    } else if (res.ok) {
+      const xml = await res.text();
+      const blockAll = extractXmlBool(xml, "BlockPublicAcls") &&
+        extractXmlBool(xml, "BlockPublicPolicy") &&
+        extractXmlBool(xml, "IgnorePublicAcls") &&
+        extractXmlBool(xml, "RestrictPublicBuckets");
+
+      if (!blockAll) {
+        findings.push({
+          severity: "medium",
+          title: "AWS account-level S3 PublicAccessBlock is incomplete",
+          detail: "The AWS account has S3 Block Public Access configured but not all four settings are enabled.",
+          checkId: "cloudPosture.awsAccountPublicAccess",
+          remediation: AWS_ACCOUNT_PUBLIC_ACCESS,
+        });
+      }
+    }
+  } catch {
+    // s3-control API may not be available — skip
+  }
+  return findings;
 }
 
 // ---- Azure storage public access check -------------------------------------
 
-async function checkAzurePublicStorage(credentials: {
+export async function checkAzurePublicStorage(credentials: {
   tenantId: string;
   clientId: string;
   clientSecret: string;
@@ -49,7 +263,6 @@ async function checkAzurePublicStorage(credentials: {
 }): Promise<Finding[]> {
   const findings: Finding[] = [];
   try {
-    // Get Azure access token
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${credentials.tenantId}/oauth2/v2.0/token`,
       {
@@ -67,7 +280,6 @@ async function checkAzurePublicStorage(credentials: {
     if (!tokenRes.ok) return findings;
     const { access_token } = (await tokenRes.json()) as { access_token: string };
 
-    // List storage accounts
     const storageRes = await fetch(
       `https://management.azure.com/subscriptions/${credentials.subscriptionId}/providers/Microsoft.Storage/storageAccounts?api-version=2023-01-01`,
       {
@@ -77,7 +289,14 @@ async function checkAzurePublicStorage(credentials: {
     );
     if (!storageRes.ok) return findings;
     const { value: accounts } = (await storageRes.json()) as {
-      value: Array<{ name: string; properties?: { allowBlobPublicAccess?: boolean } }>;
+      value: Array<{
+        name: string;
+        properties?: {
+          allowBlobPublicAccess?: boolean;
+          minimumTlsVersion?: string;
+          supportsHttpsTrafficOnly?: boolean;
+        };
+      }>;
     };
 
     for (const acct of accounts ?? []) {
@@ -87,6 +306,28 @@ async function checkAzurePublicStorage(credentials: {
           title: `Azure Storage account allows public blob access: ${acct.name}`,
           detail: `Storage account "${acct.name}" has allowBlobPublicAccess enabled, meaning individual containers can be set to public.`,
           checkId: `cloudPosture.azurePublicBlob:${acct.name}`,
+          remediation: AZURE_PUBLIC_BLOB,
+        });
+      }
+
+      if (acct.properties?.supportsHttpsTrafficOnly === false) {
+        findings.push({
+          severity: "medium",
+          title: `Azure Storage account allows HTTP traffic: ${acct.name}`,
+          detail: `Storage account "${acct.name}" does not enforce HTTPS-only traffic. Data in transit may be intercepted.`,
+          checkId: `cloudPosture.azureHttpTraffic:${acct.name}`,
+          remediation: AZURE_HTTP_TRAFFIC,
+        });
+      }
+
+      const tls = acct.properties?.minimumTlsVersion;
+      if (tls && tls !== "TLS1_2") {
+        findings.push({
+          severity: "medium",
+          title: `Azure Storage account allows weak TLS: ${acct.name}`,
+          detail: `Storage account "${acct.name}" allows TLS version ${tls}. Minimum should be TLS 1.2.`,
+          checkId: `cloudPosture.azureWeakTls:${acct.name}`,
+          remediation: AZURE_WEAK_TLS,
         });
       }
     }
@@ -95,6 +336,8 @@ async function checkAzurePublicStorage(credentials: {
   }
   return findings;
 }
+
+// ---- Orchestrator ----------------------------------------------------------
 
 export async function runCloudPostureChecks(
   supabaseAdmin: SupabaseClient,
@@ -115,8 +358,12 @@ export async function runCloudPostureChecks(
     for (const cred of creds) {
       const credentials = cred.credentials_encrypted as Record<string, string>;
       if (cred.provider === "aws" && credentials.accessKeyId) {
-        const f = await checkAwsPublicBuckets(credentials as Parameters<typeof checkAwsPublicBuckets>[0]);
-        allFindings.push(...f);
+        const awsCreds = credentials as Parameters<typeof checkAwsPublicBuckets>[0];
+        const [bucketFindings, accountFindings] = await Promise.all([
+          checkAwsPublicBuckets(awsCreds),
+          checkAwsAccountPublicAccess(awsCreds),
+        ]);
+        allFindings.push(...bucketFindings, ...accountFindings);
       } else if (cred.provider === "azure" && credentials.tenantId) {
         const f = await checkAzurePublicStorage(credentials as Parameters<typeof checkAzurePublicStorage>[0]);
         allFindings.push(...f);

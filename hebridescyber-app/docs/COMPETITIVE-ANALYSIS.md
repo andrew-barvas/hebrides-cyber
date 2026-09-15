@@ -357,7 +357,22 @@ The following gaps were closed in Sprint 15 alongside the SBOM/EASM work:
 Remaining high-priority gap: **CSPM** (E-32, Cloud Security Posture Management)
 — sequenced into Sprint 16.
 
-### Competitive positioning after Sprint 15
+### Sprint 16 update (2026-09-15): cloud posture scanning + auth hardening
+
+| Item | Status | Notes |
+|------|--------|-------|
+| **E-21 httpOnly cookie auth** | ✅ done | Already migrated to @supabase/ssr. Fixed middleware location |
+| **E-32 Cloud posture (AWS)** | ✅ done | SigV4-signed S3 checks: PublicAccessBlock, BucketPolicyStatus, account-level block |
+| **E-32 Cloud posture (Azure)** | ✅ done | Storage public blob access, HTTPS enforcement, TLS version checks |
+| **Cloud credentials API** | ✅ done | CRUD at /api/account/cloud-credentials, Agency-plan gated |
+| **Cloud credentials UI** | ✅ done | CloudCredentialsConfig component on dashboard |
+| **Compliance mapping** | ✅ done | 6 new cloudPosture.* checkIds mapped to 7 frameworks |
+| **Remediation text** | ✅ done | AWS CLI + Azure CLI fix guidance for all 6 check types |
+
+CSPM gap is now **closed for AWS and Azure**. GCP is scoped but not yet
+implemented (no GCP customers in the immediate target market).
+
+### Competitive positioning after Sprint 16
 
 Hebrides Cyber now has **feature parity or superiority** versus SME-tier
 competitors (Intruder, Probely, Beagle, Pentest-Tools) on every dimension
@@ -365,12 +380,14 @@ except trust apparatus (D11) and support model (D12) — both of which are
 business maturity gaps, not code gaps. The product's enterprise feature set
 (SCIM, MSP portal, RBAC, 7-framework compliance, SIEM, SLA monitoring)
 exceeds what most SME-priced competitors offer at any tier. With SBOM
-generation and EASM now live, the product also leads on regulatory readiness
-(EU CRA) and attack surface visibility — both areas where most SME-priced
-competitors offer nothing.
+generation, EASM, and now **cloud posture scanning (AWS + Azure)** live,
+the product leads on regulatory readiness (EU CRA), attack surface
+visibility, and cloud security — areas where most SME-priced competitors
+offer nothing. The CSPM gap that was the last major competitive shortfall
+is now closed.
 
-The remaining high-priority gap (CSPM) is sequenced into Sprint 16
-(`docs/SPRINT-PLAN.md`).
+No remaining high-priority code gaps. Sprint 17 is a business/launch
+sprint (`docs/SPRINT-PLAN.md`).
 
 ---
 

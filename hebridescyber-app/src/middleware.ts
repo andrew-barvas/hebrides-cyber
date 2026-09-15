@@ -5,7 +5,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createMiddlewareClient } from "@/lib/supabase/middleware";
 
-export async function proxy(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { supabase, response } = createMiddlewareClient(req);
 
   const { data: { user } } = await supabase.auth.getUser();

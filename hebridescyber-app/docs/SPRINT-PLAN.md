@@ -334,8 +334,8 @@ dev tasks.
 | 2 | — | Domain registration (hebridescyber.com + .co.uk) | ⛔ blocked on owner action | Required for grant applications, marketing, and basic credibility. See `marketing/10-formalisation-and-funding-roadmap.md` §1 |
 | 3 | **E-49** | Apply pending migrations to production Supabase | ⛔ blocked on owner (SQL editor paste) | Admin panel, monitored-targets, asset inventory all fail until migrations 019-026 are applied |
 | 4 | **E-03** | Create Sentry account, set SENTRY_DSN | ⛔ blocked on owner | Code shipped 2026-09-04; observability still not live. Free Sentry Developer plan, 5k errors/month |
-| 5 | **E-21** | httpOnly cookie auth migration | ⬜ | Security product storing JWTs in localStorage is a credibility risk. Large but high-priority |
-| 6 | **E-32** | Cloud posture scanning (AWS starter — public S3, IAM basics) | ⬜ | Already scoped in ENHANCEMENTS.md; start with AWS (largest market share) |
+| 5 | **E-21** | httpOnly cookie auth migration | ✅ | Already migrated to @supabase/ssr cookies. Fixed middleware location (proxy.ts → middleware.ts) |
+| 6 | **E-32** | Cloud posture scanning (AWS starter — public S3, IAM basics) | ✅ | AWS SigV4-signed S3 checks (ListBuckets, PublicAccessBlock, PolicyStatus), Azure storage checks (public blob, HTTPS, TLS), credential management API + UI, 7-framework compliance mapping, remediation text. 933 tests passing |
 | 7 | — | Push test coverage toward 55%/45% | ⬜ | Maintain momentum on test hardening |
 
 **Sprint 16 exit check**: Stripe Checkout completes end-to-end for all

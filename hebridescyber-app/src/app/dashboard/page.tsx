@@ -12,6 +12,7 @@ import MonitoredTargets from "@/components/MonitoredTargets";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
+import CloudCredentialsConfig from "@/components/CloudCredentialsConfig";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
@@ -384,6 +385,7 @@ export default function DashboardPage() {
 
         {/* Scheduled report delivery — any paid plan */}
         {plan !== "none" && <ScheduledReportsConfig />}
+        {plan === "agency" && <CloudCredentialsConfig />}
 
         {/* Security overview — most recently completed scan */}
         {overviewScan && (

@@ -34,7 +34,8 @@ export type ExtendedToolName =
   | "metadataLeak"
   | "kiterunner"
   | "arjun"
-  | "sessionCheck";
+  | "sessionCheck"
+  | "cloudPosture";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -67,6 +68,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "kiterunner",
   "arjun",
   "sessionCheck",
+  "cloudPosture",
 ];
 
 export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint";
@@ -95,6 +97,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     photon: true,
     gospider: true,
     metadataLeak: true,
+    cloudPosture: true,
   },
 };
 

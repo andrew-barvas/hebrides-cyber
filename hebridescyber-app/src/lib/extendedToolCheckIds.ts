@@ -39,6 +39,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "kiterunner",
   "arjun",
   "sessionCheck",
+  "cloudPosture",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {
