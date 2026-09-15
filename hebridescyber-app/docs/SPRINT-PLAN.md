@@ -294,10 +294,39 @@ statements ≥ 45%.
 
 ---
 
-## Sprint 15 — Production readiness closure (2026-09-29 – 2026-10-12)
+## Sprint 15 — SBOM + EASM + competitor table-stakes (2026-09-29 – 2026-10-12)
+
+**Theme**: build competitive differentiators (SBOM, EASM) and complete the
+"table-stakes" features that are nearly done but not wired up. Moved ahead
+of the former Sprint 15 (now 16) because production-readiness items are
+mostly owner-action blockers, not dev work.
+
+| Priority | ID | What | Status | Why |
+|---|---|---|---|---|
+| 1 | — | Complete scheduled report delivery (`send-scheduled-reports.ts` + cron workflow) | ✅ done | 80% built, delivery was broken. Every competitor has this |
+| 2 | — | Scheduled reports dashboard UI (`ScheduledReportsConfig` component) | ✅ done | Without UI, the feature is invisible despite the API existing |
+| 3 | — | SBOM generation (CycloneDX 1.5 JSON via `sbomExport.ts` + `GET /api/v1/scans/{id}/sbom`) | ✅ done | EU Cyber Resilience Act compliance; data already existed, just needed formatting |
+| 4 | — | EASM discovery module (`easmDiscovery.ts` — crt.sh + DNS brute-force + HTTP probing) | ✅ done | Biggest genuine competitive gap; builds on existing `recon.ts`/`subdomains.ts`/`assetInventory.ts` |
+| 5 | **E-55** | CVSS badges on FindingCard | ✅ already done | Data flows through findings, was already displayed |
+| 6 | **E-53** | CSV/JSON download button on scan report | ✅ already done | API existed, UI button already added |
+| 7 | **E-52** | Score-trend sparklines on fleet view | ✅ already done | Data existed, chart component already rendered |
+| 8 | — | `/sbom` landing page | ✅ done | SEO landing page for SBOM compliance searches |
+| 9 | — | `/agencies` landing page | ✅ done | Better conversion page for Agency tier |
+
+**Sprint 15 exit check**: `GET /api/v1/scans/{id}/sbom` returns valid
+CycloneDX 1.5 JSON; `.github/workflows/scheduled-reports.yml` fires
+hourly and delivers due reports; EASM discovers subdomains via crt.sh +
+DNS brute-force; both landing pages render correctly.
+
+---
+
+## Sprint 16 — Production readiness closure (2026-10-13 – 2026-10-26)
 
 **Theme**: the product has enterprise features but can't take money. Fix the
-revenue-blocking items that have been deferred since Sprint 1.
+revenue-blocking items that have been deferred since Sprint 1. Moved after
+Sprint 15 because these are mostly owner-action items (Stripe Dashboard,
+domain registration, Supabase SQL Editor, Sentry account creation), not
+dev tasks.
 
 | Priority | ID | What | Status | Why |
 |---|---|---|---|---|
@@ -306,29 +335,12 @@ revenue-blocking items that have been deferred since Sprint 1.
 | 3 | **E-49** | Apply pending migrations to production Supabase | ⛔ blocked on owner (SQL editor paste) | Admin panel, monitored-targets, asset inventory all fail until migrations 019-026 are applied |
 | 4 | **E-03** | Create Sentry account, set SENTRY_DSN | ⛔ blocked on owner | Code shipped 2026-09-04; observability still not live. Free Sentry Developer plan, 5k errors/month |
 | 5 | **E-21** | httpOnly cookie auth migration | ⬜ | Security product storing JWTs in localStorage is a credibility risk. Large but high-priority |
+| 6 | **E-32** | Cloud posture scanning (AWS starter — public S3, IAM basics) | ⬜ | Already scoped in ENHANCEMENTS.md; start with AWS (largest market share) |
+| 7 | — | Push test coverage toward 55%/45% | ⬜ | Maintain momentum on test hardening |
 
-**Sprint 15 exit check**: Stripe Checkout completes end-to-end for all
+**Sprint 16 exit check**: Stripe Checkout completes end-to-end for all
 three tiers, domain resolves to the live app, migrations applied to
 production, Sentry capturing real errors, auth tokens in httpOnly cookies.
-
----
-
-## Sprint 16 — SBOM + EASM foundation (2026-10-13 – 2026-10-26)
-
-**Theme**: build the first two high-priority competitive differentiators
-from `docs/COMPETITIVE-ANALYSIS.md` §10.
-
-| Priority | ID | What | Status | Why |
-|---|---|---|---|---|
-| 1 | — | SBOM generation (CycloneDX export from `dependencyManifest.ts`) | ⬜ | EU Cyber Resilience Act compliance; low effort — format existing data as standards-compliant output |
-| 2 | — | EASM discovery module (continuous subdomain/asset enumeration) | ⬜ | Biggest genuine competitive gap; extend existing `recon.ts`/`subdomains.ts` into a scheduled discovery pipeline |
-| 3 | **E-32** | Cloud posture scanning (AWS starter — public S3, IAM basics) | ⬜ | Already scoped in ENHANCEMENTS.md; start with AWS (largest market share) |
-| 4 | — | Push test coverage toward 55%/45% | ⬜ | Maintain momentum on test hardening |
-
-**Sprint 16 exit check**: `dependencyManifest.ts` output can be exported
-as valid CycloneDX 1.5 JSON; a scheduled EASM job discovers subdomains
-not in the target list; at least one AWS posture check (public S3) runs
-for a connected account; coverage statements ≥ 50%.
 
 ---
 

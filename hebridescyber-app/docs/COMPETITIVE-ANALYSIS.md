@@ -338,18 +338,39 @@ Scored by relevance to the SME segment this product actually serves.
 | 9 | **Attack path analysis** | Qualys, XM Cyber, Pentera | Automated attack graph traversal — needs enterprise network complexity to be meaningful |
 | 10 | **Autonomous pen testing** | Pentera, NodeZero, Horizon3.ai | AI-agent-driven pen testing. Frontier technology, 12-18 months from SME pricing. Watch space but don't build yet |
 
-### Competitive positioning after Sprint 13
+### Sprint 15 update (2026-09-14): table-stakes and differentiators closed
+
+The following gaps were closed in Sprint 15 alongside the SBOM/EASM work:
+
+| Item | Status | Notes |
+|---|---|---|
+| **SBOM generation** (CycloneDX 1.5) | ✅ done | `sbomExport.ts` + `GET /api/v1/scans/{id}/sbom` |
+| **EASM discovery** | ✅ done | `easmDiscovery.ts` — crt.sh + DNS brute-force + HTTP probing → `asset_inventory` |
+| **Scheduled report delivery** | ✅ done | Was 80% built; `send-scheduled-reports.ts` + hourly cron now sends due reports |
+| **Scheduled reports dashboard UI** | ✅ done | `ScheduledReportsConfig` component on dashboard |
+| **CVSS badges on findings** (E-55) | ✅ already done | Data flowed through; FindingCard already rendered badges |
+| **CSV/JSON download** (E-53) | ✅ already done | Both UI button and API endpoint existed |
+| **Score-trend sparklines** (E-52) | ✅ already done | `FleetOverview.tsx` MiniSparkline already rendered |
+| **`/sbom` landing page** | ✅ done | SEO page for SBOM compliance searches |
+| **`/agencies` landing page** | ✅ done | Conversion page for Agency tier |
+
+Remaining high-priority gap: **CSPM** (E-32, Cloud Security Posture Management)
+— sequenced into Sprint 16.
+
+### Competitive positioning after Sprint 15
 
 Hebrides Cyber now has **feature parity or superiority** versus SME-tier
 competitors (Intruder, Probely, Beagle, Pentest-Tools) on every dimension
 except trust apparatus (D11) and support model (D12) — both of which are
 business maturity gaps, not code gaps. The product's enterprise feature set
 (SCIM, MSP portal, RBAC, 7-framework compliance, SIEM, SLA monitoring)
-exceeds what most SME-priced competitors offer at any tier.
+exceeds what most SME-priced competitors offer at any tier. With SBOM
+generation and EASM now live, the product also leads on regulatory readiness
+(EU CRA) and attack surface visibility — both areas where most SME-priced
+competitors offer nothing.
 
-The three high-priority gaps (SBOM, EASM, CSPM) represent the next
-meaningful product differentiation opportunity and are sequenced into
-Sprint 16 (`docs/SPRINT-PLAN.md`).
+The remaining high-priority gap (CSPM) is sequenced into Sprint 16
+(`docs/SPRINT-PLAN.md`).
 
 ---
 

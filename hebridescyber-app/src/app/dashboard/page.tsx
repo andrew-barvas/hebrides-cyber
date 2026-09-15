@@ -11,6 +11,7 @@ import DomainVerification from "@/components/DomainVerification";
 import MonitoredTargets from "@/components/MonitoredTargets";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
+import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
@@ -380,6 +381,9 @@ export default function DashboardPage() {
 
         {/* Partner portal — Agency tier only */}
         {plan === "agency" && <PartnerPortalPanel />}
+
+        {/* Scheduled report delivery — any paid plan */}
+        {plan !== "none" && <ScheduledReportsConfig />}
 
         {/* Security overview — most recently completed scan */}
         {overviewScan && (

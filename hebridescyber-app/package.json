@@ -22,7 +22,8 @@
     "newsletter:weekly": "tsx src/scripts/generate-weekly-newsletter.ts",
     "retention:cleanup": "tsx src/scripts/cleanup-retention.ts",
     "account:erase": "tsx src/scripts/erase-user-data.ts",
-    "digest:monthly": "tsx src/scripts/send-monthly-digest.ts"
+    "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",
+    "reports:send": "tsx src/scripts/send-scheduled-reports.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",
