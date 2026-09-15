@@ -132,7 +132,7 @@ export default function Webhooks({ token }: { token: string }) {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://your-server.example.com/webhooks/hebrides"
-          className="min-w-[240px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="min-w-0 w-full sm:min-w-[240px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
         />
         <input
           type="text"
@@ -140,7 +140,7 @@ export default function Webhooks({ token }: { token: string }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Label (optional)"
-          className="min-w-[140px] rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="min-w-0 w-full sm:min-w-[140px] sm:w-auto rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
         />
         <button
           type="submit"

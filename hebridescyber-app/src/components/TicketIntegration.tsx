@@ -221,7 +221,7 @@ export default function TicketIntegration() {
                     placeholder="https://yourteam.atlassian.net"
                     value={jiraBaseUrl}
                     onChange={(e) => setJiraBaseUrl(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                   <input
                     type="email"
@@ -229,7 +229,7 @@ export default function TicketIntegration() {
                     placeholder="you@company.com (Atlassian account email)"
                     value={jiraEmail}
                     onChange={(e) => setJiraEmail(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                   <input
                     type="password"
@@ -237,7 +237,7 @@ export default function TicketIntegration() {
                     placeholder="API token (id.atlassian.com/manage-profile/security/api-tokens)"
                     value={jiraApiToken}
                     onChange={(e) => setJiraApiToken(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                   <input
                     type="text"
@@ -245,7 +245,7 @@ export default function TicketIntegration() {
                     placeholder="Project key (e.g. SEC)"
                     value={jiraProjectKey}
                     onChange={(e) => setJiraProjectKey(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                 </>
               ) : (
@@ -256,7 +256,7 @@ export default function TicketIntegration() {
                     placeholder="Linear API key (linear.app/settings/api)"
                     value={linearApiKey}
                     onChange={(e) => setLinearApiKey(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                   <input
                     type="text"
@@ -264,7 +264,7 @@ export default function TicketIntegration() {
                     placeholder="Team id"
                     value={linearTeamId}
                     onChange={(e) => setLinearTeamId(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                   />
                 </>
               )}

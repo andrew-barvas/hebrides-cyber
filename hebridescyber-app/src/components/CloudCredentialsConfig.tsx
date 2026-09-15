@@ -282,9 +282,9 @@ export default function CloudCredentialsConfig() {
           {credentials.map((cred) => (
             <li
               key={cred.id}
-              className="flex items-center justify-between rounded border border-cyberborder bg-cyberbg px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded border border-cyberborder bg-cyberbg px-3 py-2"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-block rounded bg-neon/10 px-2 py-0.5 text-xs font-mono text-neon">
                   {providerLabel[cred.provider]}
                 </span>

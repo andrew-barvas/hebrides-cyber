@@ -344,6 +344,31 @@ production, Sentry capturing real errors, auth tokens in httpOnly cookies.
 
 ---
 
+## Sprint 16.5 — Pre-launch polish (2026-09-15)
+
+**Theme**: final competitive gap analysis + mobile optimisation + email
+notifications. The last code sprint before business/launch work in S17.
+Triggered by a fresh competitor audit that confirmed Hebrides Cyber leads
+on features but was missing table-stakes email notifications and had
+mobile layout issues in several components.
+
+| Priority | ID | What | Status |
+|---|---|---|---|
+| 1 | **E-50** | Scan completion email notifications (Resend) | ✅ `scanCompletionEmail.ts` + pipeline wiring |
+| 2 | **E-51** | Notification threshold rules (score + severity) | ✅ `notificationRules.ts` — pure, tested |
+| 3 | — | Notification preferences API | ✅ `GET/PATCH /api/account/notification-prefs` |
+| 4 | — | Notification preferences UI | ✅ `NotificationPrefsSection` on dashboard |
+| 5 | — | Mobile optimisation (8 components) | ✅ Responsive inputs, flex-wrap, break-all fixes |
+| 6 | — | Theme bug: `placeholder-white/30` → `placeholder-cybertext/30` | ✅ 19 occurrences across 7 files |
+| 7 | — | CloudCredentialsConfig mobile wrapping | ✅ flex-wrap on credential list items |
+| 8 | — | Competitive analysis refresh | ✅ Updated `docs/COMPETITIVE-ANALYSIS.md` with 2026-09-15 pricing data |
+
+**Sprint 16.5 exit check**: email notifications fire on scan completion,
+users can configure thresholds on the dashboard, all inputs are usable on
+a 375px viewport, placeholder text is visible in both themes.
+
+---
+
 ## Sprint 17 — Launch & customer acquisition (2026-10-27 – 2026-11-09)
 
 **Theme**: everything needed to go from "product exists" to "customers

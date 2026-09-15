@@ -386,8 +386,45 @@ visibility, and cloud security — areas where most SME-priced competitors
 offer nothing. The CSPM gap that was the last major competitive shortfall
 is now closed.
 
-No remaining high-priority code gaps. Sprint 17 is a business/launch
-sprint (`docs/SPRINT-PLAN.md`).
+No remaining high-priority code gaps after Sprint 16.
+
+### Sprint 16.5 update (2026-09-15): pre-launch polish + competitor table-stakes
+
+Final competitive audit before Sprint 17 (business/launch sprint).
+Competitor pricing verified 2026-09-15:
+
+| Competitor | Lowest paid tier | Verified |
+|---|---|---|
+| **Intruder.io** | $299/mo (Essential) | 2026-09-15 |
+| **Probely** | EUR 98/mo (Pro) | 2026-09-15 |
+| **Astra Security** | $69/mo (Scanner) | 2026-09-15 |
+| **Beagle Security** | $49/mo (Startup) | 2026-09-15 |
+| **Pentest-Tools.com** | $95/mo (Basic) | 2026-09-15 |
+| **HostedScan** (new entrant) | $39/mo (Basic) | 2026-09-15 |
+
+**Note**: Crashtest Security was acquired by Veracode (2024) and is no
+longer an independent competitor in this segment.
+
+Key emerging industry trends (2026):
+- MCP-based auto-remediation agents gaining traction
+- Autonomous AI pentest agents (Pentera, NodeZero) — still 12-18 months
+  from SME pricing
+- NIS2/DORA/CRA compliance becoming table-stakes for EU-selling SaaS
+
+Items closed in Sprint 16.5:
+
+| Item | Status | Notes |
+|---|---|---|
+| **E-50 Email notifications** | ✅ done | `scanCompletionEmail.ts` + Resend integration |
+| **E-51 Notification thresholds** | ✅ done | `notificationRules.ts` — score threshold + severity filter |
+| **Notification preferences UI** | ✅ done | `NotificationPrefsSection` on dashboard |
+| **Notification preferences API** | ✅ done | `GET/PATCH /api/account/notification-prefs` |
+| **Mobile optimisation** | ✅ done | 8 components fixed — responsive inputs, flex-wrap, break-all |
+| **Theme bug fix** | ✅ done | `placeholder-white/30` → `placeholder-cybertext/30` across 7 files (19 occurrences) |
+
+Hebrides Cyber at £20/mo now undercuts every head-on competitor by 2-15x
+while matching or exceeding their feature sets. The product is
+launch-ready. Sprint 17 is a business/launch sprint.
 
 ---
 

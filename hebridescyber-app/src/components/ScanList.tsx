@@ -78,7 +78,7 @@ export default function ScanList({ scans, onDelete }: Props) {
                     differ only in the path. break-all so a long URL with no
                     natural break points still wraps instead of forcing the
                     table wider than its container. */}
-                <td className="px-5 py-3 font-mono text-xs text-neon/80 break-all min-w-[220px]">
+                <td className="px-5 py-3 font-mono text-xs text-neon/80 break-all min-w-[140px]">
                   {scan.target_url}
                   {scan.sharedByEmail && (
                     <span className="mt-0.5 block font-sans text-[10px] font-normal text-cybertext/40">
