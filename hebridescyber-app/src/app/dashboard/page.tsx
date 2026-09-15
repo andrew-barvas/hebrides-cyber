@@ -13,6 +13,7 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
 import CloudCredentialsConfig from "@/components/CloudCredentialsConfig";
+import NotificationPrefsSection from "@/components/NotificationPrefsSection";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
@@ -455,7 +456,7 @@ export default function DashboardPage() {
                     {overviewScan.target_url}
                   </Link>
                 </h3>
-                <div className="flex flex-shrink-0 gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {(
                     [
                       ["all", `All (${overviewFindings.length})`],
@@ -571,7 +572,7 @@ export default function DashboardPage() {
               placeholder="https://your-site.com"
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
-              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
             />
             <button
               type="submit"
@@ -620,7 +621,7 @@ export default function DashboardPage() {
                 placeholder="https://hooks.slack.com/services/…"
                 value={slackWebhookUrl}
                 onChange={(e) => setSlackWebhookUrl(e.target.value)}
-                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
               />
               <button
                 type="submit"
@@ -656,7 +657,7 @@ export default function DashboardPage() {
                 placeholder="https://outlook.office.com/webhook/…"
                 value={teamsWebhookUrl}
                 onChange={(e) => setTeamsWebhookUrl(e.target.value)}
-                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+                className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 font-mono text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
               />
               <button
                 type="submit"
@@ -669,6 +670,9 @@ export default function DashboardPage() {
             {teamsMessage && <p className="mt-2 text-xs text-neon">{teamsMessage}</p>}
           </div>
         )}
+
+        {/* Email notification preferences — all plans */}
+        {plan !== "none" && <NotificationPrefsSection />}
       </div>
     </div>
   );

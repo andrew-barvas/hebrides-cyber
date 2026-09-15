@@ -82,7 +82,7 @@ export default function DomainVerification() {
             placeholder="https://your-site.com"
             value={targetUrl}
             onChange={(e) => setTargetUrl(e.target.value)}
-            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors"
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
           />
           <button
             disabled={busy}

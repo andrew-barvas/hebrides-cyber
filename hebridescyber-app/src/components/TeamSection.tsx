@@ -150,7 +150,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
                 placeholder="Team name (e.g. Acme Security)"
-                className="min-w-[200px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                className="min-w-0 w-full sm:min-w-[200px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
               />
               <button
                 type="submit"
@@ -173,12 +173,12 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@example.com"
-                  className="min-w-[200px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                  className="min-w-0 w-full sm:min-w-[200px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                 />
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as TeamRole)}
-                  className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
+                  className="w-full sm:w-auto rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
                 >
                   {(["member", "auditor", "developer", "admin"] as const).map((role) => (
                     <option key={role} value={role}>{ROLE_LABELS[role]}</option>

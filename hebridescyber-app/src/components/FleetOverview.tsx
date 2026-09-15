@@ -166,7 +166,7 @@ export default function FleetOverview() {
           <tbody className="divide-y divide-cyberborder">
             {rows.map((row) => (
               <tr key={row.targetId}>
-                <td className="py-2.5 pr-3 font-mono text-xs text-cybertext/80">{row.targetUrl}</td>
+                <td className="py-2.5 pr-3 font-mono text-xs text-cybertext/80 break-all max-w-[180px]">{row.targetUrl}</td>
                 <td className="py-2.5 pr-3">
                   {row.latestScore !== null ? (
                     <span className={`font-semibold ${scoreColor(row.latestScore)}`}>{row.latestScore}/100</span>

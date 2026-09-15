@@ -163,7 +163,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 function AdminInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors ${className}`}
       {...props}
     />
   );
@@ -172,7 +172,7 @@ function AdminInput({ className = "", ...props }: React.InputHTMLAttributes<HTML
 function AdminTextarea({ className = "", ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-white/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors ${className}`}
       {...props}
     />
   );
