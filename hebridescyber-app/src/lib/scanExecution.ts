@@ -48,6 +48,7 @@ import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
+import { runCloudPostureChecks } from "./scanners/cloudPosture";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -694,6 +695,29 @@ export async function executeScan(
         if (difficulty) {
           finding.fixDifficulty = difficulty;
           finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+        }
+      }
+
+      // E-32: Cloud posture scanning — runs separately from runExtendedTools
+      // because it needs supabaseAdmin + ownerId (not targetUrl).
+      if (toolConfig.cloudPosture) {
+        try {
+          const cpResult = await runCloudPostureChecks(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).cloudPosture = cpResult;
+          if (cpResult.status === "checked") {
+            for (const finding of cpResult.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+              const difficulty = getFixDifficulty(finding.checkId);
+              if (difficulty) {
+                finding.fixDifficulty = difficulty;
+                finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+              }
+            }
+            findings.push(...cpResult.findings);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).cloudPosture = { status: "error", note: "Cloud posture check failed" };
         }
       }
     }

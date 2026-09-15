@@ -201,6 +201,14 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "sessionCheck.no-rate-limit": [OWASP_A07, CIS_16],
   "sessionCheck.session-fixation": [OWASP_A07, CIS_16],
   "sessionCheck.idor-indicator": [OWASP_A01, CIS_3],
+
+  // --- Cloud posture (E-32) ---
+  "cloudPosture.awsPublicS3": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "cloudPosture.awsPublicS3Policy": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "cloudPosture.awsAccountPublicAccess": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
+  "cloudPosture.azurePublicBlob": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "cloudPosture.azureHttpTraffic": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
+  "cloudPosture.azureWeakTls": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
 };
 
 /** The part of a checkId before its first ":" — see module header. */
