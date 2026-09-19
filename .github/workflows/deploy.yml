@@ -156,6 +156,9 @@ jobs:
           check_table_column "team_members" "role" || FAILED=1
           check_table_column "asset_inventory" "id" || FAILED=1
           check_table_column "api_specs" "id" || FAILED=1
+          check_table_column "subscriptions" "notify_email" || FAILED=1
+          check_table_column "cloud_credentials" "id" || FAILED=1
+          check_table_column "scheduled_reports" "id" || FAILED=1
 
           if [ "$FAILED" -ne 0 ]; then
             echo ""

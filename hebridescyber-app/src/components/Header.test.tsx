@@ -27,7 +27,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/supabaseClient", () => ({
   supabase: {
     auth: {
-      getSession: getSessionMock,
       onAuthStateChange: onAuthStateChangeMock,
     },
     from: fromMock,
@@ -36,13 +35,14 @@ vi.mock("@/lib/supabaseClient", () => ({
 
 vi.mock("@/lib/auth", () => ({
   signOut: signOutMock,
+  getSession: getSessionMock,
 }));
 
 beforeEach(() => {
   state.pathname = "/";
   state.session = null;
   state.isAdmin = false;
-  getSessionMock.mockReset().mockImplementation(() => Promise.resolve({ data: { session: state.session } }));
+  getSessionMock.mockReset().mockImplementation(() => Promise.resolve(state.session));
   onAuthStateChangeMock.mockReset().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
   fromMock.mockReset().mockImplementation(() => ({
     select: () => ({

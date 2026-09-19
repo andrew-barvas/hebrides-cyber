@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
+import { isMissingSchemaError } from "@/lib/dbErrors";
 
 const createSchema = z.object({
   targetUrl: z.string().url().nullable().default(null),
@@ -33,8 +34,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json({ reports: data });
+    // Migration 032 not applied to this database yet — degrade to "no
+    // reports" rather than 500ing the Dashboard for every paid-plan
+    // account on every load.
+    if (error && !isMissingSchemaError(error)) {
+      return res.status(500).json({ error: error.message });
+    }
+    return res.status(200).json({ reports: isMissingSchemaError(error) ? [] : data });
   }
 
   if (req.method === "POST") {
@@ -54,7 +60,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
+      }
+      return res.status(500).json({ error: error.message });
+    }
     return res.status(201).json(data);
   }
 
@@ -74,7 +85,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
+      }
+      return res.status(500).json({ error: error.message });
+    }
     return res.status(200).json({ ok: true });
   }
 
@@ -88,7 +104,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
+      }
+      return res.status(500).json({ error: error.message });
+    }
     return res.status(200).json({ ok: true });
   }
 
