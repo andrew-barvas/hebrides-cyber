@@ -126,4 +126,17 @@ describe("MonitoredTargets", () => {
 
     expect(await screen.findByText("duplicate key value")).toBeInTheDocument();
   });
+
+  // Regression guard for the 2026-09-19 incident: monitored_targets_cap()
+  // was missing on the live database (migration 018 not yet applied),
+  // which 404'd the rpc() call. The form must stay enabled rather than
+  // defaulting to a cap of 0 and locking every account out of adding sites.
+  it("leaves the add-site form enabled when the cap RPC call fails (e.g. migration not applied)", async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: "Could not find the function", code: "PGRST202" } });
+    render(<MonitoredTargets />);
+
+    await waitFor(() => expect(screen.getByPlaceholderText("https://client-site.com")).toBeEnabled());
+    expect(screen.queryByText(/sites? used/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add site" })).toBeEnabled();
+  });
 });
