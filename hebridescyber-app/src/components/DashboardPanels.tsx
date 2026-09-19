@@ -1,6 +1,7 @@
 "use client";
 
 import type { ViewFinding } from "@/components/ScanReportView";
+import type { DetectedTech } from "@/lib/scanners/fingerprint";
 
 type WafStatus = {
   status: "completed";
@@ -37,7 +38,8 @@ type ExtendedResults = {
 
 type ScanResults = {
   fingerprint?: {
-    technologies?: string[];
+    status?: string;
+    technologies?: DetectedTech[];
   };
   extended?: ExtendedResults;
   findings?: ViewFinding[];
@@ -65,7 +67,7 @@ export function WafIndicator({ results }: { results: ScanResults }) {
             <p className="text-xs text-cybertext/50">{w.vendor}</p>
           )}
           {detected && (
-            <p className="text-xs text-cybertext/40">Confidence: {Math.round(w.confidence * 100)}%</p>
+            <p className="text-xs text-cybertext/40">Confidence: {Math.round(w.confidence)}%</p>
           )}
         </div>
       </div>
@@ -120,10 +122,10 @@ export function TechStackPanel({ results }: { results: ScanResults }) {
       <div className="flex flex-wrap gap-1.5">
         {techs.slice(0, 12).map((tech) => (
           <span
-            key={tech}
+            key={`${tech.name}-${tech.category}`}
             className="rounded-full border border-cyberborder bg-cyberbg/60 px-2 py-0.5 text-[10px] text-cybertext/60"
           >
-            {tech}
+            {tech.name}{tech.version ? ` ${tech.version}` : ""}
           </span>
         ))}
         {techs.length > 12 && (
