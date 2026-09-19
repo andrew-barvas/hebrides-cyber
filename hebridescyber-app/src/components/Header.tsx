@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { signOut } from "@/lib/auth";
+import { getSession, signOut } from "@/lib/auth";
 
 function ThemeToggle() {
   const [dark, setDark] = useState(true);
@@ -67,7 +67,7 @@ export default function Header() {
       const { data } = await supabase.from("users").select("is_admin").eq("id", session.user.id).maybeSingle();
       setIsAdmin(Boolean(data?.is_admin));
     }
-    supabase.auth.getSession().then(({ data }) => refresh(data.session));
+    getSession().then(refresh);
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => refresh(session));
     return () => subscription.subscription.unsubscribe();
   }, []);

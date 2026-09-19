@@ -6,6 +6,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
+import { isMissingSchemaError } from "@/lib/dbErrors";
 
 const awsSchema = z.object({
   provider: z.literal("aws"),
@@ -61,7 +62,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    // Migration 030 not applied to this database yet — degrade to "no
+    // credentials" rather than 500ing the Dashboard for every Agency
+    // account on every load.
+    if (error && !isMissingSchemaError(error)) {
+      return res.status(500).json({ error: error.message });
+    }
     return res.status(200).json({ credentials: data ?? [] });
   }
 
@@ -97,7 +103,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (existing.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
 
     const { error } = await supabaseAdmin.from("cloud_credentials").delete().eq("id", parsed.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        return res.status(503).json({ error: "Cloud credentials aren't available on this account yet — try again shortly." });
+      }
+      return res.status(500).json({ error: error.message });
+    }
     return res.status(200).json({ ok: true });
   }
 
@@ -115,6 +126,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     { onConflict: "owner,provider,label" }
   );
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      return res.status(503).json({ error: "Cloud credentials aren't available on this account yet — try again shortly." });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   return res.status(200).json({ ok: true });
 }
