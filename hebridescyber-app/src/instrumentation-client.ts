@@ -11,11 +11,23 @@
 import * as Sentry from "@sentry/nextjs";
 import { scrubSentryEvent } from "@/lib/sentryScrub";
 
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: 0.1,
-  beforeSend: scrubSentryEvent,
-});
+// Only initialise when a real DSN is configured (still pending E-03 as of
+// 2026-09 — see docs/SPRINT-PLAN.md). Sentry.init() wires up its browser
+// performance/tracing instrumentation (PerformanceObserver-based web-vitals
+// collection) unconditionally as part of registering its integrations, even
+// with an empty dsn — that instrumentation has been observed throwing
+// "Cannot read properties of undefined (reading 'startTime')" from Sentry's
+// own bundled code on some page loads. With no DSN there's nowhere for
+// events to go anyway, so there's no reason to carry that risk for zero
+// benefit; this re-enables itself automatically once NEXT_PUBLIC_SENTRY_DSN
+// is set.
+if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 0.1,
+    beforeSend: scrubSentryEvent,
+  });
+}
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

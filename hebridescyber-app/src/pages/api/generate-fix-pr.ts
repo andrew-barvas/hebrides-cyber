@@ -232,6 +232,22 @@ type ConcreteVersion = { major: number; minor: number; patch: number };
 const MAX_PACKAGES_QUERIED = 150;
 const QUERY_CONCURRENCY = 10;
 
+// 2026-09-19 incident: this whole request runs synchronously inside one
+// Azure Static Web Apps Function invocation (see run-scan.ts's header for
+// why that execution model already burned this app once for the scan
+// pipeline). Each OSV.dev lookup below has its own 5s timeout
+// (OSV_TIMEOUT_MS in scanners/osv.ts) but nothing previously bounded the
+// TOTAL time this loop could run — a real repo's package.json (dozens of
+// dependencies) at QUERY_CONCURRENCY=10 could take 150/10 * up-to-5s well
+// past the platform's own execution ceiling, which kills the function
+// before openRemediationPr/openDependencyBumpPr's own try/catch ever gets a
+// chance to run — surfacing to the browser as a bare 502 with no JSON body,
+// not the app's own graceful error response. This deadline makes the OSV
+// phase itself best-effort in time, not just in outcome: once it's passed,
+// remaining packages are treated as "no fix found" (skipped, not bumped)
+// rather than letting the loop keep going toward the platform's hard kill.
+const OSV_LOOKUP_DEADLINE_MS = 8_000;
+
 /** Accepts only `X.Y.Z`, `^X.Y.Z`, or `~X.Y.Z` — anything else (compound
  *  ranges, `>=`, `||`, tags, workspace/git specifiers) returns null and the
  *  caller skips that dependency. See the module header for why this is
@@ -269,12 +285,30 @@ function rangeAlreadyPermits(declared: DeclaredVersion, fixed: ConcreteVersion):
   return fixed.major === 0 && fixed.minor === 0 && fixed.patch === declared.patch;
 }
 
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+/**
+ * `deadlineAt`/`fallback` bound total wall-clock time: once Date.now()
+ * passes deadlineAt, any item not yet started is passed to `fallback(item)`
+ * instead of `fn(item)` — see OSV_LOOKUP_DEADLINE_MS's comment above for why
+ * this matters on a platform that kills the whole request past its own
+ * ceiling. `fallback` takes the item (not a static value) so it can still
+ * carry that item's own data through unchanged.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+  deadlineAt?: number,
+  fallback?: (item: T) => R
+): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let index = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (index < items.length) {
       const i = index++;
+      if (deadlineAt !== undefined && Date.now() > deadlineAt && fallback) {
+        results[i] = fallback(items[i]);
+        continue;
+      }
       results[i] = await fn(items[i]);
     }
   });
@@ -310,10 +344,21 @@ export async function buildDependencyBumpPlan(pkg: PackageJsonShape): Promise<{
 
   const withDeclared = parsed.filter((p): p is typeof p & { declared: DeclaredVersion } => p.declared !== null);
 
-  const checked = await mapWithConcurrency(withDeclared, QUERY_CONCURRENCY, async (p) => ({
-    ...p,
-    fixInfo: await lookupOsvFixInfo("npm", p.name, `${p.declared.major}.${p.declared.minor}.${p.declared.patch}`),
-  }));
+  const deadlineAt = Date.now() + OSV_LOOKUP_DEADLINE_MS;
+  const checked = await mapWithConcurrency(
+    withDeclared,
+    QUERY_CONCURRENCY,
+    async (p) => ({
+      ...p,
+      fixInfo: await lookupOsvFixInfo("npm", p.name, `${p.declared.major}.${p.declared.minor}.${p.declared.patch}`),
+    }),
+    deadlineAt,
+    // Deadline fallback: treated identically to "nothing OSV flagged" (see
+    // the noFixAvailable check just below) — never incorrectly reported as
+    // vulnerable just because there wasn't time left to check it. Keeps
+    // this item's own name/section/declared intact, only fixInfo is stubbed.
+    (p) => ({ ...p, fixInfo: { cveIds: [], osvIds: [], fixedVersion: null } })
+  );
 
   const bumps: DependencyBumpCandidate[] = [];
   for (const c of checked) {

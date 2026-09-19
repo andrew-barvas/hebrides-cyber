@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let query = supabaseAdmin
     .from("audit_logs")
-    .select("id, actor_id, actor_email, action, resource_type, resource_id, metadata, created_at", { count: "exact" })
+    .select("id, actor_email, action, resource_type, resource_id, metadata, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + pageSize - 1);
 

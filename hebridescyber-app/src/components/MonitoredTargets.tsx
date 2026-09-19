@@ -33,8 +33,12 @@ export default function MonitoredTargets() {
     setTargets(list);
 
     if (user) {
-      const { data: capValue } = await supabase.rpc("monitored_targets_cap", { p_owner: user.id });
-      setCap(typeof capValue === "number" ? capValue : 0);
+      // On error (e.g. migration 018 not yet applied to this database —
+      // the function doesn't exist), leave cap as null ("unknown") rather
+      // than defaulting to 0, which would wrongly disable the add-site
+      // form for every account regardless of their real usage.
+      const { data: capValue, error: capError } = await supabase.rpc("monitored_targets_cap", { p_owner: user.id });
+      if (!capError && typeof capValue === "number") setCap(capValue);
     }
 
     // Only non-secret column — see target_auth_credentials' own SELECT
