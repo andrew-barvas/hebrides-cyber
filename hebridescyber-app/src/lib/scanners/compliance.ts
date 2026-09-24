@@ -209,6 +209,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "cloudPosture.azurePublicBlob": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
   "cloudPosture.azureHttpTraffic": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
   "cloudPosture.azureWeakTls": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+
+  // --- Strix AI pentest (Sprint 18) ---
+  "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
 };
 
 /** The part of a checkId before its first ":" — see module header. */

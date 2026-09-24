@@ -1741,3 +1741,47 @@ az storage account update \\
   --resource-group RG_NAME \\
   --min-tls-version TLS1_2
 \`\`\``;
+
+// --- Strix AI pentest (Sprint 18) ---
+
+export function strixRemediation(vulnClass: string): string {
+  const base = `Strix (AI pentest agent) validated this vulnerability with a
+working proof-of-concept exploit. This is not a speculative detection —
+the agent confirmed exploitability against the live target.`;
+
+  const byClass: Record<string, string> = {
+    sqli: `${base}\n\nSQL injection confirmed. Use parameterised queries or
+prepared statements for all database access. Never concatenate user input
+into SQL strings. Review the ORM/query builder configuration and enable
+strict parameterisation.`,
+    xss: `${base}\n\nCross-site scripting confirmed. Encode all user-supplied
+output with context-appropriate escaping (HTML entity encoding for HTML
+content, JavaScript encoding for script contexts). Implement a strict
+Content Security Policy.`,
+    ssrf: `${base}\n\nServer-side request forgery confirmed. Validate and
+allowlist all URLs the application fetches. Block internal/private IP
+ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254)
+at the network level and in application code.`,
+    rce: `${base}\n\nRemote code execution confirmed. This is the highest-
+severity class of vulnerability. Patch the affected component immediately.
+If no patch is available, take the affected service offline or restrict
+network access to it until one is.`,
+    "auth-bypass": `${base}\n\nAuthentication bypass confirmed. Review and
+harden the authentication flow — ensure session tokens are validated on
+every request, enforce re-authentication for sensitive operations, and
+check that no debug/backdoor endpoints exist in production.`,
+    idor: `${base}\n\nInsecure Direct Object Reference confirmed. Implement
+server-side authorization checks on every data-access endpoint. Verify
+the authenticated user has permission to access the requested resource,
+not just that they hold a valid session.`,
+    "path-traversal": `${base}\n\nPath traversal confirmed. Never use raw
+user input to construct file paths. Use a allowlist of permitted files or
+resolve the canonical path and verify it stays within the intended
+directory before reading or serving it.`,
+    "default-creds": `${base}\n\nDefault or weak credentials confirmed on a
+live service. Change them immediately — this is one of the most automated
+attack vectors, targeted by bots continuously.`,
+  };
+
+  return byClass[vulnClass] ?? base;
+}

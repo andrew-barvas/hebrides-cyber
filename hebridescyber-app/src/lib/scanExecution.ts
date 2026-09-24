@@ -37,7 +37,7 @@ import { runMetadataLeakCheck } from "../worker/tools/metadataLeak";
 import { runKiterunner } from "../worker/tools/kiterunner";
 import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
-import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, strixRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -49,6 +49,7 @@ import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
+import { runStrix } from "../worker/tools/strix";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -132,6 +133,7 @@ async function runExtendedTools(
     kiterunnerResult,
     arjunResult,
     sessionCheckResult,
+    strixResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -241,6 +243,9 @@ async function runExtendedTools(
     toolConfig.sessionCheck
       ? runSessionCheck(targetUrl)
       : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.strix
+      ? runStrix(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
   ]);
 
   const extended = {
@@ -267,6 +272,7 @@ async function runExtendedTools(
     kiterunner: kiterunnerResult.status === "fulfilled" ? kiterunnerResult.value : { status: "error" as const, note: String(kiterunnerResult.reason) },
     arjun: arjunResult.status === "fulfilled" ? arjunResult.value : { status: "error" as const, note: String(arjunResult.reason) },
     sessionCheck: sessionCheckResult.status === "fulfilled" ? sessionCheckResult.value : { status: "error" as const, note: String(sessionCheckResult.reason) },
+    strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -584,6 +590,21 @@ async function runExtendedTools(
         title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
         detail: f.detail,
         remediation: remediationMap[f.type],
+      });
+    }
+  }
+
+  // Strix AI pentest — LLM-validated findings with proof-of-concept exploits
+  if (extended.strix.status === "completed" && "findings" in extended.strix) {
+    const strixFindings = (extended.strix as { status: "completed"; findings: Array<{ severity: string; title: string; detail: string; vulnClass: string; exploit: string; agentRemediation: string }> }).findings;
+    for (const f of strixFindings) {
+      const exploitNote = f.exploit ? `\n\nProof of concept:\n${f.exploit}` : "";
+      findings.push({
+        checkId: `strix.finding:${f.vulnClass || f.title}`,
+        severity: (f.severity as Finding["severity"]) || "medium",
+        title: `[Strix AI] ${f.title}`,
+        detail: `${f.detail}${exploitNote}`,
+        remediation: f.agentRemediation || strixRemediation(f.vulnClass),
       });
     }
   }

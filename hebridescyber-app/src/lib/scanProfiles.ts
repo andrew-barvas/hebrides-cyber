@@ -35,7 +35,8 @@ export type ExtendedToolName =
   | "kiterunner"
   | "arjun"
   | "sessionCheck"
-  | "cloudPosture";
+  | "cloudPosture"
+  | "strix";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -69,16 +70,17 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "arjun",
   "sessionCheck",
   "cloudPosture",
+  "strix",
 ];
 
-export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint";
+export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "ai-pentest";
 
 // A reasonable starting proposal for the api/cms/osint subsets, not a
 // locked product decision — easy to adjust later since it's one config
 // table with no other code depending on the exact membership.
 const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolean>>> = {
   safe: {},
-  full: Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
+  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => n !== "strix").map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
   api: { nuclei: true, zap: true, sqlmap: true, xsser: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
@@ -99,6 +101,13 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     metadataLeak: true,
     cloudPosture: true,
   },
+  // AI-powered pentest: runs Strix alongside the full active-scan suite.
+  // Strix uses LLM inference ($2-5/scan), so this profile is gated to
+  // Agency tier or higher — see docs/SPRINT-PLAN.md Sprint 18.
+  "ai-pentest": {
+    ...Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, true])),
+    strix: true,
+  } as Record<ExtendedToolName, boolean>,
 };
 
 /**
