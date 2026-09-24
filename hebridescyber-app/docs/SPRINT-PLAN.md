@@ -407,9 +407,24 @@ Sprint 17 update for full context.
 | 5 | `.github/workflows/scheduled-scans.yml` — Strix install + LLM API secrets | ✅ done (2026-09-24) | Small | LLM API key decision |
 | 6 | Pricing decision — Agency tier inclusion vs on-demand add-on vs new tier | ⛔ blocked — needs E-07 resolved + first revenue data | Business | E-07 resolved, first revenue data |
 
+**Sprint 18b — Cairn AGPL-isolated integration** (2026-09-24):
+
+| Priority | What | Status | Effort | Dependencies |
+|----------|------|--------|--------|-------------|
+| 1 | `src/worker/tools/cairn.ts` — AGPL-isolated CLI wrapper (subprocess only, no linking) | ✅ done (2026-09-24) | 1 day | Cairn binary on runner |
+| 2 | Add `"cairn"` to `ExtendedToolName` + `"ai-pentest"` profile | ✅ done (2026-09-24) | Small | #1 |
+| 3 | Wire into `scanExecution.ts` `runExtendedTools()` + findings derivation | ✅ done (2026-09-24) | 1 day | #1-2 |
+| 4 | Remediation text + compliance mapping + fix difficulty for Cairn checkIds | ✅ done (2026-09-24) | Small | #3 |
+| 5 | `.github/workflows/scheduled-scans.yml` — Cairn install step | ✅ done (2026-09-24) | Small | None |
+| 6 | `cairn.test.ts` unit tests (8 tests) | ✅ done (2026-09-24) | Small | #1 |
+| 7 | Fix `scanProfiles.test.ts` — `full` profile excludes cost-gated tools | ✅ done (2026-09-24) | Small | #2 |
+
+**AGPL-3.0 safety**: Cairn runs only as an isolated standalone binary via
+`child_process.execFile`. No linking, embedding, importing, or shared
+libraries. Communicates via temporary JSON files. SaaS backend remains
+proprietary. This is the "aggregate" model under AGPL-3.0.
+
 **Not in Sprint 18**:
-- Cairn integration — AGPL-3.0 license is incompatible with commercial SaaS
-  without legal review. Excluded from the integration roadmap.
 - Hermes deployment — general-purpose agent orchestrator (MIT, commercially
   safe), but needs persistent server infrastructure (Container Apps or VM)
   and paying customer base to justify. Scoped as Sprint 20+ at earliest.

@@ -41,6 +41,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "sessionCheck",
   "cloudPosture",
   "strix",
+  "cairn",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

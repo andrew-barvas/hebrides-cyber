@@ -1785,3 +1785,46 @@ attack vectors, targeted by bots continuously.`,
 
   return byClass[vulnClass] ?? base;
 }
+
+// --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
+
+export function cairnRemediation(vulnClass: string): string {
+  const base = `Cairn (autonomous exploitation engine) discovered and validated
+this vulnerability through state-space exploration. The finding was
+confirmed through an automated exploit chain, not a signature match.`;
+
+  const byClass: Record<string, string> = {
+    sqli: `${base}\n\nSQL injection confirmed via autonomous exploitation.
+Use parameterised queries or prepared statements for all database
+interactions. Never concatenate user input into SQL. Audit all query
+construction paths in the affected endpoint.`,
+    xss: `${base}\n\nCross-site scripting confirmed. Apply context-aware
+output encoding — HTML-encode for HTML contexts, JavaScript-encode for
+script contexts. Deploy a strict Content Security Policy.`,
+    rce: `${base}\n\nRemote code execution confirmed. This is the highest
+severity class. Patch or take offline immediately. Investigate for signs
+of prior exploitation and rotate all credentials the affected service
+can access.`,
+    "privilege-escalation": `${base}\n\nPrivilege escalation confirmed.
+Review the authorization model — ensure every privileged operation
+checks the caller's actual role, not just session validity. Implement
+principle of least privilege across all service accounts.`,
+    "file-inclusion": `${base}\n\nFile inclusion (LFI/RFI) confirmed.
+Never use user input to construct file paths without validation.
+Allowlist permitted files, resolve canonical paths, and block traversal
+sequences (../) at both the application and web server level.`,
+    "auth-bypass": `${base}\n\nAuthentication bypass confirmed. Review the
+authentication flow for logic errors — check that every protected
+endpoint validates credentials, that session tokens cannot be predicted
+or reused, and that no debug/test endpoints exist in production.`,
+    ssrf: `${base}\n\nServer-side request forgery confirmed. Validate and
+allowlist all URLs the application fetches. Block access to internal
+IP ranges and cloud metadata endpoints at the network layer.`,
+    "insecure-deserialization": `${base}\n\nInsecure deserialization
+confirmed. Never deserialize untrusted data with language-native
+serialization (Java ObjectInputStream, Python pickle, PHP unserialize).
+Use safe formats like JSON with schema validation.`,
+  };
+
+  return byClass[vulnClass] ?? base;
+}

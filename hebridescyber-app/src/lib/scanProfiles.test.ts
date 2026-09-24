@@ -2,8 +2,21 @@ import { describe, it, expect } from "vitest";
 import { resolveToolConfig, EXTENDED_TOOL_NAMES } from "./scanProfiles";
 
 describe("resolveToolConfig", () => {
-  it("'full' enables every extended tool — locks in equivalence with the old unconditional runExtendedTools behaviour", () => {
+  it("'full' enables every extended tool except cost-gated AI tools", () => {
     const config = resolveToolConfig("full");
+    const costGated = new Set(["strix", "cairn"]);
+    for (const name of EXTENDED_TOOL_NAMES) {
+      if (costGated.has(name)) {
+        expect(config[name]).toBe(false);
+      } else {
+        expect(config[name]).toBe(true);
+      }
+    }
+    expect(Object.keys(config).length).toBe(EXTENDED_TOOL_NAMES.length);
+  });
+
+  it("'ai-pentest' enables every extended tool including cost-gated AI tools", () => {
+    const config = resolveToolConfig("ai-pentest");
     for (const name of EXTENDED_TOOL_NAMES) {
       expect(config[name]).toBe(true);
     }
