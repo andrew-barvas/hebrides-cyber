@@ -389,9 +389,40 @@ their free scan.
 
 ---
 
-## After Sprint 17
+## Sprint 18 (scoped) — AI-Powered Scanning with Strix (2026-11-10+)
+
+**Theme**: integrate Strix (Apache 2.0 AI pentest agent) as a premium scan
+tier, adding LLM-powered vulnerability chaining and proof-of-concept
+exploit validation on top of the existing 24+ tool suite. Triggered by the
+July–September 2026 Strix/Cairn/Hermes attack campaign that compromised
+27+ companies at $25.46/target — see `docs/COMPETITIVE-ANALYSIS.md` §10
+Sprint 17 update for full context.
+
+| Priority | What | Status | Effort | Dependencies |
+|----------|------|--------|--------|-------------|
+| 1 | `src/worker/tools/strix.ts` — Strix CLI wrapper (pattern: `nuclei.ts`) | ✅ done (2026-09-24) | 1 day | Strix CLI available on GitHub Actions runner |
+| 2 | Add `"strix"` to `ExtendedToolName` + new `"ai-pentest"` scan profile | ✅ done (2026-09-24) | Small | #1 |
+| 3 | Wire into `scanExecution.ts` `runExtendedTools()` + findings derivation | ✅ done (2026-09-24) | 1 day | #1-2 |
+| 4 | Remediation text + compliance mapping + fix difficulty for Strix checkIds | ✅ done (2026-09-24) | Small | #3 |
+| 5 | `.github/workflows/scheduled-scans.yml` — Strix install + LLM API secrets | ✅ done (2026-09-24) | Small | LLM API key decision |
+| 6 | Pricing decision — Agency tier inclusion vs on-demand add-on vs new tier | ⛔ blocked — needs E-07 resolved + first revenue data | Business | E-07 resolved, first revenue data |
+
+**Not in Sprint 18**:
+- Cairn integration — AGPL-3.0 license is incompatible with commercial SaaS
+  without legal review. Excluded from the integration roadmap.
+- Hermes deployment — general-purpose agent orchestrator (MIT, commercially
+  safe), but needs persistent server infrastructure (Container Apps or VM)
+  and paying customer base to justify. Scoped as Sprint 20+ at earliest.
+
+---
+
+## After Sprint 18
 
 Deferred long-horizon items (explicitly not forgotten):
+- **Hermes agent deployment** — customer-facing AI assistant via Slack/email,
+  scan orchestration, operational automation. MIT license, commercially safe.
+  Depends on Container Apps deployment path being live and 20+ paying
+  customers to justify the infrastructure. Sprint 20+.
 - SOC 2 / ISO 27001 — out of scope for the segment this product serves, per
   `docs/COMPETITIVE-ANALYSIS.md` §6(c); revisit only if a customer
   explicitly blocks on it.
@@ -404,4 +435,4 @@ Deferred long-horizon items (explicitly not forgotten):
   segment.
 
 Re-run `docs/FUNCTIONALITY-MATRIX.md`'s audit and re-check `docs/ROADMAP.md`
-Scale criteria before committing to Sprint 18 scope.
+Scale criteria before committing to Sprint 19 scope.

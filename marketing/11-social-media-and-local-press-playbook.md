@@ -97,6 +97,14 @@ content): never claim a capability or result that isn't true yet.
    evidence-discipline scanning philosophy, the remediation ladder — the
    genuinely differentiated technical angles from
    `docs/COMPETITIVE-ANALYSIS.md` §5. X/Twitter and LinkedIn.
+5. **AI threat awareness** (added 2026-09-24) — the documented
+   Strix/Cairn/Hermes attack campaign (July–September 2026, Unit 42 /
+   Gambit Security / BleepingComputer / SecurityWeek). 27+ companies
+   compromised at $25.46/target. Concrete, current, documented threat
+   that directly affects the SME segment. Lead with the threat, close
+   with what automated scanning catches. LinkedIn-primary (decision-maker
+   audience), X/Twitter for technical deep-dives. See `/ai-threats`
+   landing page and `07-cold-outreach-emails.md` template E.
 
 ## 5. First 30 days — a starting calendar, not a rigid schedule
 
@@ -110,6 +118,66 @@ content): never claim a capability or result that isn't true yet.
 After 30 days: drop whichever pillar/platform combination got the least
 engagement, double down on whichever got the most — don't keep a fixed
 schedule going on faith once real data exists.
+
+### 5.1. AI threat awareness content series (pillar 5)
+
+A 3-part LinkedIn series, adaptable for X/Twitter threads. Based on the
+publicly documented Strix/Cairn/Hermes campaign — all claims below are
+sourced from Palo Alto Unit 42, Gambit Security, BleepingComputer, and
+SecurityWeek reporting. Never present unverified claims or speculative
+extensions of this data.
+
+**Post 1 — The headline stat (awareness)**
+> AI agents just compromised 27+ businesses and stole 600,000 payment card
+> records — for $25 per target.
+>
+> This isn't hypothetical. Between July and September 2026, open-source AI
+> tools (Strix, Cairn, Hermes) were chained together to systematically
+> breach online retailers and small businesses. The human operator typed
+> fewer than 2,000 commands. The AI agents did the rest — scanning,
+> exploiting, and extracting data 24/7.
+>
+> Online retailers were the primary target. If you accept payments through
+> your website, this applies to you.
+>
+> [Link to /ai-threats for detail]
+
+**Post 2 — How it works (education)**
+> How do AI agents hack a business?
+>
+> Step 1: They scan your site in minutes — identifying technologies,
+> finding exposed endpoints, mapping your attack surface.
+>
+> Step 2: They test for known vulnerabilities — outdated libraries, missing
+> security headers, exposed configuration files, weak authentication.
+>
+> Step 3: They exploit what they find — chaining multiple weaknesses to
+> gain access, install payment skimmers, or extract databases.
+>
+> Step 4: They do this to hundreds of targets in parallel, 24 hours a day.
+>
+> The defence isn't complicated: find and fix these vulnerabilities before
+> the AI does. That's exactly what automated security scanning does.
+>
+> [Link to /what-we-check]
+
+**Post 3 — What you can do (product tie-in)**
+> Every vulnerability class that AI attack agents exploit — injection, XSS,
+> exposed APIs, outdated libraries, missing security headers — is covered
+> by a standard automated security scan.
+>
+> At Hebrides Cyber, we run 25+ automated checks against your website and
+> infrastructure. If an AI agent would find it, we find it first — and give
+> you specific, actionable fixes.
+>
+> Free scan, one-page report, no commitment.
+>
+> [Link to /dashboard]
+
+**Timing**: space these 2-3 days apart, or run as a LinkedIn "series" if
+the platform supports threading. Cross-post shorter versions to X/Twitter.
+Adapt post 1 for a local Facebook group with the angle "This affects local
+businesses too — not just big companies."
 
 ---
 

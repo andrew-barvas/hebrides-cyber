@@ -336,7 +336,7 @@ Scored by relevance to the SME segment this product actually serves.
 | 7 | **IAST/RASP** (agent-based interactive testing) | Invicti, Acunetix, Contrast Security | Requires instrumenting the running application — enterprise deployment model incompatible with SME self-serve |
 | 8 | **Mobile app security testing** | Probely, Invicti, NowSecure | APK/IPA analysis is a different product category entirely; would dilute focus |
 | 9 | **Attack path analysis** | Qualys, XM Cyber, Pentera | Automated attack graph traversal — needs enterprise network complexity to be meaningful |
-| 10 | **Autonomous pen testing** | Pentera, NodeZero, Horizon3.ai | AI-agent-driven pen testing. Frontier technology, 12-18 months from SME pricing. Watch space but don't build yet |
+| 10 | **Autonomous AI pen testing** | Pentera, NodeZero, Horizon3.ai; open-source: Strix (Apache 2.0), Cairn (AGPL-3.0), Hermes (MIT) | **Reclassified from "watch space" to high priority** — see Sprint 17 update below. Open-source AI pentest agents (Strix, Cairn, Hermes) were chained together in a documented July–September 2026 campaign that compromised 27+ companies at $25.46/target average. SME pricing is already here via the open-source path. Strix (Apache 2.0) is the integration candidate for defensive use |
 
 ### Sprint 15 update (2026-09-14): table-stakes and differentiators closed
 
@@ -407,8 +407,19 @@ longer an independent competitor in this segment.
 
 Key emerging industry trends (2026):
 - MCP-based auto-remediation agents gaining traction
-- Autonomous AI pentest agents (Pentera, NodeZero) — still 12-18 months
-  from SME pricing
+- **Autonomous AI pentest agents have arrived at SME pricing** — the
+  July–September 2026 Strix/Cairn/Hermes campaign (documented by Palo Alto
+  Unit 42, Gambit Security, BleepingComputer, SecurityWeek) compromised 27+
+  companies and stole 600,000+ payment card records at $25.46/target average
+  cost. Open-source tools (Strix: Apache 2.0, Hermes: MIT) make this
+  accessible to anyone with an LLM API key. **This invalidates the prior
+  "12-18 months from SME pricing" assessment** — the threat is live now, and
+  the tools are commercially viable for defensive use. SMEs (online retailers
+  especially) are the primary target segment. Hebrides Cyber's existing scan
+  suite already covers the vulnerability classes these agents exploit (OWASP
+  Top 10, injection, XSS, SSRF, auth bypass, exposed endpoints, outdated
+  libraries); Strix integration as a premium tier is the next step — see
+  Sprint 18 scope
 - NIS2/DORA/CRA compliance becoming table-stakes for EU-selling SaaS
 
 Items closed in Sprint 16.5:
@@ -425,6 +436,47 @@ Items closed in Sprint 16.5:
 Hebrides Cyber at £20/mo now undercuts every head-on competitor by 2-15x
 while matching or exceeding their feature sets. The product is
 launch-ready. Sprint 17 is a business/launch sprint.
+
+### Sprint 17 update (2026-09-24): AI-agent threat landscape shift
+
+**Major industry event**: the July–September 2026 autonomous AI attack
+campaign (Unit 42 / Gambit Security / BleepingComputer / SecurityWeek).
+Three open-source tools were chained together by a Chinese-speaking threat
+actor:
+
+| Tool | Role in campaign | License | Defensive viability |
+|------|-----------------|---------|-------------------|
+| **Strix** (usestrix/strix, 43k+ stars) | Autonomous vulnerability discovery — 146 deep scans, 633 hours of scanner time | Apache 2.0 | **Safe for commercial integration** |
+| **Cairn** (oritera/Cairn) | End-to-end exploitation — ran autonomously for hours per target until achieving shell/admin access | AGPL-3.0 | **Problematic** — copyleft requirement rules out direct SaaS integration without legal review |
+| **Hermes** (NousResearch/hermes-agent) | Orchestrator — 1,951 commands across 260 sessions, coordinated the other two | MIT | **Safe for commercial integration** — general-purpose agent platform, not security-specific |
+
+**Campaign impact**: 27+ companies compromised, 600,000+ payment card
+records stolen. Total cost: $12k–$18k in LLM API fees, averaging
+**$25.46 per compromised target**. Online retailers and SMEs with web
+presence were the primary targets — exactly Hebrides Cyber's customer
+segment. Campaign reportedly still active.
+
+**Competitive implications**:
+- Gap #10 ("Autonomous pen testing") reclassified from "Low priority /
+  watch space" to **"High priority / threat-driven"** — the assumption that
+  this was "12-18 months from SME pricing" is falsified
+- No head-on competitor (Intruder, Probely, Astra, Beagle, Pentest-Tools,
+  HostedScan) offers AI-agent-powered pentesting at SME pricing
+- Hebrides Cyber's existing 24+ tool suite already covers the OWASP Top 10
+  vulnerability classes these agents exploit — the defensive coverage
+  exists; the positioning opportunity is making customers aware of the
+  threat and offering Strix-powered validation as a premium tier
+- **Strix integration** (Apache 2.0) scoped for Sprint 18 as a premium scan
+  profile — adds LLM-powered vulnerability chaining and proof-of-concept
+  exploit validation on top of the existing tool suite
+- **Cairn excluded** from integration plans due to AGPL-3.0 licensing
+- **Hermes** (MIT) scoped as a long-term operational agent (customer-facing
+  AI assistant, scan orchestration) — post-launch, depends on Container
+  Apps deployment path and customer base justifying the infrastructure
+
+**New marketing assets**: `/ai-threats` landing page, AI-threat-angle cold
+outreach template, LinkedIn content series — all leveraging the documented
+campaign as compelling, specific, timely sales material for SME buyers.
 
 ---
 

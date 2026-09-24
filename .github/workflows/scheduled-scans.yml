@@ -216,6 +216,25 @@ jobs:
           pip3 install --break-system-packages arjun \
             || echo "arjun install failed — arjun.ts will report status: not_configured"
 
+      - name: Install strix
+        # Strix AI pentest agent (Apache 2.0, https://github.com/usestrix/strix).
+        # Needs Docker (available on GitHub Actions runners) and an LLM API key
+        # (STRIX_LLM_API_KEY secret). strix.ts degrades to status: "not_configured"
+        # when the binary is absent, and the "ai-pentest" scan profile is the
+        # only one that enables it — other profiles skip it entirely.
+        env:
+          STRIX_VERSION: 0.5.0
+        run: |
+          curl -fsSL \
+            "https://github.com/usestrix/strix/releases/download/v${STRIX_VERSION}/strix_${STRIX_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/strix.tar.gz \
+            || echo "strix download failed — strix.ts will report status: not_configured"
+          if [ -f /tmp/strix.tar.gz ]; then
+            sudo tar -xzf /tmp/strix.tar.gz -C /usr/local/bin strix
+            sudo chmod +x /usr/local/bin/strix
+            rm /tmp/strix.tar.gz
+          fi
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \
@@ -279,6 +298,11 @@ jobs:
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
           HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
+          # Strix AI pentest agent (Sprint 18) — needs an LLM API key to run.
+          # strix.ts reads STRIX_LLM_API_KEY from process.env and passes it
+          # to the strix CLI. Only the "ai-pentest" scan profile enables strix;
+          # other profiles skip it regardless of whether this secret is set.
+          STRIX_LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
         run: npm run queue:run-worker
 
       - name: Stop ZAP daemon

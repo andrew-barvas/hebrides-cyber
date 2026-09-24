@@ -65,6 +65,31 @@ If now isn't a good time, I can send a short checklist you can run yourself.
 Best,
 Andrew
 
+---
+
+## E. Online retailer / e-commerce (AI threat angle)
+
+**Subject:** AI agents are compromising online shops for $25 — is [Business Name] protected?
+
+Hi [Name],
+
+I'm Andrew from Hebrides Cyber. I wanted to flag something specific to online retailers.
+
+Earlier this year, a group used open-source AI tools to breach 27+ businesses and steal over 600,000 payment card records. The entire operation cost them less than $25 per company in AI compute fees. Online shops with payment forms were the primary target.
+
+The vulnerabilities they exploited — outdated libraries, missing security headers, exposed configuration files, weak email authentication — are exactly what our automated Security Score scan checks for.
+
+I can run a free scan for [Business Name] right now. You'll get a one-page report showing what an AI agent would find on your site, with specific fixes for each issue. No obligation, takes 15 minutes.
+
+Shall I set it up?
+
+Best,
+Andrew
+Hebrides Cyber — hebridescyber.co.uk
+
+---
+
 ## TODO
 - [ ] Build the actual local business contact list before sending template A
+- [ ] Build an online retailer contact list for template E (Shopify/WooCommerce UK stores, local e-commerce businesses)
 - [ ] Set up a proper sending domain (SPF/DKIM/DMARC on hebridescyber.co.uk) before any cold outreach campaign, to avoid spam flags

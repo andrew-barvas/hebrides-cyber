@@ -138,6 +138,9 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "sessionCheck.no-rate-limit": "moderate",
   "sessionCheck.session-fixation": "hard",
   "sessionCheck.idor-indicator": "hard",
+
+  // --- Strix AI pentest (Sprint 18) ---
+  "strix.finding": "hard",
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {
