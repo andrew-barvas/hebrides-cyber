@@ -189,6 +189,8 @@ resource "azurerm_container_registry" "main" {
   # would remove this, but is disproportionate infra for one deploy
   # pipeline at this scale. Revisit if a second consumer of this registry
   # ever appears.
+  # checkov:skip=CKV_AZURE_163: retention policy requires Premium SKU — Basic is appropriate for this single-app deploy pipeline
+  # checkov:skip=CKV_AZURE_233: zone redundancy requires Premium SKU — overkill for a single-region hobby-scale registry
 }
 
 resource "azurerm_log_analytics_workspace" "container_apps" {
