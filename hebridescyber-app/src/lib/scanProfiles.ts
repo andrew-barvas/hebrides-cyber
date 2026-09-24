@@ -36,7 +36,8 @@ export type ExtendedToolName =
   | "arjun"
   | "sessionCheck"
   | "cloudPosture"
-  | "strix";
+  | "strix"
+  | "cairn";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -71,6 +72,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "sessionCheck",
   "cloudPosture",
   "strix",
+  "cairn",
 ];
 
 export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "ai-pentest";
@@ -80,7 +82,7 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "ai-pentes
 // table with no other code depending on the exact membership.
 const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolean>>> = {
   safe: {},
-  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => n !== "strix").map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
+  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => n !== "strix" && n !== "cairn").map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
   api: { nuclei: true, zap: true, sqlmap: true, xsser: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;

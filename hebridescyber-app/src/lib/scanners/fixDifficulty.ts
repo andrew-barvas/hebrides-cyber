@@ -141,6 +141,9 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": "hard",
+
+  // --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
+  "cairn.finding": "hard",
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {

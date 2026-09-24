@@ -212,6 +212,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+
+  // --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
+  "cairn.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, OWASP_A01, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
 };
 
 /** The part of a checkId before its first ":" — see module header. */

@@ -235,6 +235,27 @@ jobs:
             rm /tmp/strix.tar.gz
           fi
 
+      - name: Install cairn
+        # Cairn autonomous exploitation engine (AGPL-3.0).
+        # AGPL ISOLATION: Cairn runs as a completely separate OS process via
+        # child_process.execFile. No linking, no embedding, no shared libraries,
+        # no API route execution. Only normalized JSON output is consumed.
+        # This is the "aggregate" model under AGPL-3.0 — invoking a binary
+        # via CLI and reading its output does not create a derivative work.
+        # See src/worker/tools/cairn.ts header for the full legal rationale.
+        env:
+          CAIRN_VERSION: 1.0.0
+        run: |
+          curl -fsSL \
+            "https://github.com/oritera/Cairn/releases/download/v${CAIRN_VERSION}/cairn_${CAIRN_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/cairn.tar.gz \
+            || echo "cairn download failed — cairn.ts will report status: not_configured"
+          if [ -f /tmp/cairn.tar.gz ]; then
+            sudo tar -xzf /tmp/cairn.tar.gz -C /usr/local/bin cairn
+            sudo chmod +x /usr/local/bin/cairn
+            rm /tmp/cairn.tar.gz
+          fi
+
       - name: Start ZAP daemon
         run: |
           docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \

@@ -37,7 +37,7 @@ import { runMetadataLeakCheck } from "../worker/tools/metadataLeak";
 import { runKiterunner } from "../worker/tools/kiterunner";
 import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
-import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, strixRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, xsserRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -50,6 +50,7 @@ import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runStrix } from "../worker/tools/strix";
+import { runCairn } from "../worker/tools/cairn";
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -134,6 +135,7 @@ async function runExtendedTools(
     arjunResult,
     sessionCheckResult,
     strixResult,
+    cairnResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -246,6 +248,11 @@ async function runExtendedTools(
     toolConfig.strix
       ? runStrix(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
+    // AGPL-3.0 isolation: Cairn runs as a standalone binary via subprocess.
+    // No linking, no embedding, no shared libraries. See cairn.ts header.
+    toolConfig.cairn
+      ? runCairn(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
   ]);
 
   const extended = {
@@ -273,6 +280,7 @@ async function runExtendedTools(
     arjun: arjunResult.status === "fulfilled" ? arjunResult.value : { status: "error" as const, note: String(arjunResult.reason) },
     sessionCheck: sessionCheckResult.status === "fulfilled" ? sessionCheckResult.value : { status: "error" as const, note: String(sessionCheckResult.reason) },
     strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
+    cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -605,6 +613,25 @@ async function runExtendedTools(
         title: `[Strix AI] ${f.title}`,
         detail: `${f.detail}${exploitNote}`,
         remediation: f.agentRemediation || strixRemediation(f.vulnClass),
+      });
+    }
+  }
+
+  // Cairn autonomous exploitation — AGPL-3.0 isolated via subprocess
+  if (extended.cairn.status === "completed" && "findings" in extended.cairn) {
+    const cairnFindings = (extended.cairn as { status: "completed"; findings: Array<{ severity: string; title: string; detail: string; vulnClass: string; evidence: string; endpoint: string; cveIds: string[]; exploitSteps: string[] }> }).findings;
+    for (const f of cairnFindings) {
+      const stepsNote = f.exploitSteps.length > 0
+        ? `\n\nExploit chain:\n${f.exploitSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        : "";
+      const evidenceNote = f.evidence ? `\n\nEvidence: ${f.evidence}` : "";
+      findings.push({
+        checkId: `cairn.finding:${f.vulnClass || f.title}`,
+        severity: (f.severity as Finding["severity"]) || "high",
+        title: `[Cairn] ${f.title}`,
+        detail: `${f.detail}${evidenceNote}${stepsNote}`,
+        remediation: cairnRemediation(f.vulnClass),
+        cveIds: f.cveIds.length > 0 ? f.cveIds : undefined,
       });
     }
   }
