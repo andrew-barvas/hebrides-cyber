@@ -59,6 +59,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       client_reference_id: userData.user.id,
       customer_email: userData.user.email,
       metadata: { plan },
+      // Also stamped onto the Subscription object itself (not just this
+      // Checkout Session) — webhook.ts's customer.subscription.updated
+      // handler reads sub.metadata.plan, and without this it was always
+      // undefined, silently falling back to "basic" on every renewal,
+      // proration, or billing-portal plan change for Pro/Agency customers.
+      subscription_data: { metadata: { plan } },
       success_url: `${siteUrl}/dashboard?checkout=success`,
       cancel_url: `${siteUrl}/pricing?checkout=cancelled`,
     });

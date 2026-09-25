@@ -33,6 +33,8 @@ function makeBuilder(table: string) {
     insert: () => builder,
     update: () => builder,
     eq: () => builder,
+    order: () => builder,
+    limit: () => builder,
     single: next,
     maybeSingle: next,
     then: (resolve: (v: unknown) => void) => next().then(resolve),
@@ -213,6 +215,36 @@ describe("POST /api/run-scan", () => {
       expect(res._getStatusCode()).toBe(200);
       expect(res._getJSONData()).toMatchObject({ ok: false, status: "failed" });
       expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();
+    });
+
+    it("falls back to a generic message when no scan_jobs row has a last_error", async () => {
+      queues.scans = [{ data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "failed" }, error: null }];
+      queues.scan_jobs = [{ data: null, error: null }];
+      const { req, res } = mockReqRes({ scanId: "scan-1" });
+
+      await handler(req, res);
+
+      expect(res._getJSONData()).toMatchObject({ ok: false, status: "failed", error: "Scan failed — try running it again." });
+    });
+
+    // Regression test: scan_jobs.last_error was captured by
+    // run-queued-scan-jobs.ts's failJob() but never read back here, so a
+    // customer whose scan failed for a specific, actionable reason (target
+    // unreachable, SSRF rejection, runner timeout) only ever saw a generic
+    // "try again" with no indication of what actually went wrong.
+    it("surfaces scan_jobs.last_error as the failure reason when present", async () => {
+      queues.scans = [{ data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "failed" }, error: null }];
+      queues.scan_jobs = [{ data: { last_error: "target unreachable: ECONNREFUSED" }, error: null }];
+      const { req, res } = mockReqRes({ scanId: "scan-1" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getJSONData()).toMatchObject({
+        ok: false,
+        status: "failed",
+        error: "Scan failed: target unreachable: ECONNREFUSED",
+      });
     });
 
     it("returns 202 for a scan already running, without re-queuing", async () => {
