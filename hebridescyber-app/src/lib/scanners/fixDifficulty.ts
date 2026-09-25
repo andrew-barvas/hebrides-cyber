@@ -144,6 +144,25 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
   "cairn.finding": "hard",
+
+  // --- API spec scanning (E-33) ---
+  "api-spec.auth-bypass": "moderate",   // requires wiring auth middleware, not just a config toggle
+  "api-spec.method-confusion": "easy",  // restrict allowed HTTP methods on each route
+  "api-spec.schema-violation": "easy",  // add server-side request validation
+  "api-spec.excessive-data": "easy",    // use a serialisation layer / DTO to control response fields
+  "api-spec.undocumented-fields": "easy",
+  "api-spec.sqli": "hard",             // parameterised queries + full audit of query construction
+  "api-spec.xss": "hard",              // output encoding + CSP, can touch many templates
+  "api-spec.sqli-path": "hard",
+
+  // --- Business logic (passive) ---
+  "business-logic.csrf-missing": "moderate", // needs per-form token integration
+  "business-logic.external-form-action": "easy", // verify and fix the action attribute
+  "business-logic.autocomplete-sensitive": "trivial", // add autocomplete attribute
+  "business-logic.sequential-url": "hard", // requires server-side workflow refactoring
+  "business-logic.predictable-ids": "hard", // requires ID scheme change + auth checks
+  "business-logic.open-redirect": "moderate", // validate redirect targets server-side
+  "business-logic.no-rate-limit": "moderate", // add rate-limiting middleware
 };
 
 const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {

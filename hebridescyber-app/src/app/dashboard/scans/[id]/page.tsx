@@ -10,6 +10,8 @@ import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, Cr
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import FixWizard from "@/components/FixWizard";
+import CeReadinessPanel from "@/components/CeReadinessPanel";
+import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
 
 type Finding = ViewFinding;
@@ -441,6 +443,9 @@ export default function ScanDetailPage() {
 
           {/* Compliance mapping */}
           <ComplianceSummary findings={taggedOrdered} />
+
+          {/* Cyber Essentials readiness assessment */}
+          <CeReadinessPanel report={assessCeReadiness(taggedOrdered)} />
 
           {/* Attack chains */}
           <CriticalPaths findings={taggedOrdered} />

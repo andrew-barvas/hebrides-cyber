@@ -16,6 +16,8 @@ import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
 import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
+import { checkBusinessLogic, type BusinessLogicResult } from "./businessLogic";
+import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -25,6 +27,7 @@ export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
+  BusinessLogicResult, ApiSpecResult,
 };
 
 export type ScanResults = {
@@ -45,6 +48,8 @@ export type ScanResults = {
   waybackDiscovery: WaybackDiscoveryResult;
   hibp: HibpResult;
   wpVulnDb: WpVulnDbResult;
+  businessLogic: BusinessLogicResult;
+  apiSpec: ApiSpecResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -140,8 +145,16 @@ async function checkZap(targetUrl: string): Promise<ZapResult> {
  * Runs all scanner checks. TLS, headers, DNS, exposure, fingerprint, and
  * port probes run in parallel (independent, read-only). Playwright (heavy)
  * and ZAP (async server-side) run after.
+ *
+ * The optional supabaseAdmin/ownerId pair enables checks that need the
+ * database (API spec lookup). When omitted (e.g. scan-local.ts), those
+ * checks fall back to auto-discovery or return not_configured.
  */
-export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
+export async function runAllChecks(
+  targetUrl: string,
+  supabaseAdmin?: import("@supabase/supabase-js").SupabaseClient,
+  ownerId?: string
+): Promise<ScanResults> {
   const settled1 = await Promise.allSettled([
     checkTls(targetUrl),
     checkHeaders(targetUrl),
@@ -155,6 +168,7 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     checkSafeBrowsing(targetUrl),
     checkWaybackDiscovery(targetUrl),
     checkHibp(targetUrl),
+    checkBusinessLogic(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -173,6 +187,7 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
   const safeBrowsing = unwrap(settled1[9], { status: "error" } as SafeBrowsingResult);
   const waybackDiscovery = unwrap(settled1[10], { status: "error" } as WaybackDiscoveryResult);
   const hibp = unwrap(settled1[11], { status: "error" } as HibpResult);
+  const businessLogic = unwrap(settled1[12], { status: "error", note: "check crashed" } as BusinessLogicResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -187,10 +202,15 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     checkPlaywrightPageLoad(targetUrl),
     checkWebApp(targetUrl, cms),
     checkZap(targetUrl),
+    // API spec passive checks need the database to look up stored specs.
+    // When supabaseAdmin/ownerId are not provided (scan-local.ts), pass
+    // null so the check skips the DB lookup and falls back to auto-discovery.
+    checkApiSpecPassive(targetUrl, supabaseAdmin ?? null, ownerId ?? null),
   ]);
   const playwright = unwrap(settled2[0], { status: "error" } as PlaywrightResult);
   const webapp = unwrap(settled2[1], { status: "error" } as WebAppResult);
   const zap = unwrap(settled2[2], { status: "error", note: "ZAP check crashed" } as unknown as ZapResult);
+  const apiSpec = unwrap(settled2[3], { status: "not_configured", findings: [], endpointsTested: 0, specSource: "none" } as ApiSpecResult);
 
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
@@ -216,6 +236,8 @@ export async function runAllChecks(targetUrl: string): Promise<ScanResults> {
     waybackDiscovery,
     hibp,
     wpVulnDb,
+    businessLogic,
+    apiSpec,
     zap,
   };
 }
@@ -678,6 +700,92 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         remediation: FIX.hibpBreachRemediation(breach.dataClasses),
       });
     }
+  }
+
+  // --- Business Logic -------------------------------------------------------
+  if (results.businessLogic.status === "checked") {
+    const { csrf, externalForms, autocompleteIssues, sequentialUrls, predictableIds, openRedirects, rateLimiting } =
+      results.businessLogic;
+
+    if (csrf.formsFound > 0 && csrf.formsWithoutToken > 0) {
+      findings.push({
+        checkId: "business-logic.csrf-missing",
+        severity: "high",
+        title: `${csrf.formsWithoutToken} form(s) missing CSRF token protection`,
+        detail: `${csrf.formsWithoutToken} of ${csrf.formsFound} state-changing form(s) have no CSRF token (hidden input or meta tag). This allows cross-site request forgery attacks.`,
+        remediation: FIX.BUSINESS_LOGIC_CSRF_MISSING,
+      });
+    }
+
+    for (const form of externalForms) {
+      findings.push({
+        checkId: `business-logic.external-form-action:${form.targetDomain}`,
+        severity: "medium",
+        title: `Form posts data to external domain: ${form.targetDomain}`,
+        detail: `A form action points to ${form.formAction} — data submitted through this form leaves the site. Verify this is intentional.`,
+        remediation: FIX.BUSINESS_LOGIC_EXTERNAL_FORM_ACTION,
+      });
+    }
+
+    for (const issue of autocompleteIssues) {
+      findings.push({
+        checkId: `business-logic.autocomplete-sensitive:${issue.fieldName}`,
+        severity: "low",
+        title: `Sensitive ${issue.fieldType} field "${issue.fieldName}" allows autocomplete`,
+        detail: issue.autocompleteValue
+          ? `Field has autocomplete="${issue.autocompleteValue}" instead of "off" or "new-password". Browser autofill may store sensitive data locally.`
+          : `Field has no autocomplete attribute. Browser autofill may store sensitive data locally.`,
+        remediation: FIX.BUSINESS_LOGIC_AUTOCOMPLETE,
+      });
+    }
+
+    if (sequentialUrls.length > 0) {
+      findings.push({
+        checkId: "business-logic.sequential-url",
+        severity: "info",
+        title: `Sequential workflow URL pattern detected (${sequentialUrls.length} link(s))`,
+        detail: `Links with sequential step patterns found: ${sequentialUrls.slice(0, 3).map((s) => s.pattern).join(", ")}${sequentialUrls.length > 3 ? ` (+${sequentialUrls.length - 3} more)` : ""}. These may allow step-skipping if server-side workflow state is not enforced.`,
+        remediation: FIX.BUSINESS_LOGIC_SEQUENTIAL_URL,
+      });
+    }
+
+    if (predictableIds.length > 0) {
+      findings.push({
+        checkId: "business-logic.predictable-ids",
+        severity: "medium",
+        title: `Predictable numeric resource IDs in ${predictableIds.length} link(s)`,
+        detail: `Links with small sequential numeric IDs found: ${predictableIds.slice(0, 3).map((p) => p.url).join(", ")}${predictableIds.length > 3 ? ` (+${predictableIds.length - 3} more)` : ""}. These resources may be enumerable if authorisation checks are missing.`,
+        remediation: FIX.BUSINESS_LOGIC_PREDICTABLE_IDS,
+      });
+    }
+
+    for (const redirect of openRedirects) {
+      findings.push({
+        checkId: `business-logic.open-redirect:${redirect.parameter}`,
+        severity: "medium",
+        title: `Open redirect via "${redirect.parameter}" parameter`,
+        detail: `The server redirected to ${redirect.redirectedTo} when the "${redirect.parameter}" query parameter was set to an external URL. This can be used in phishing attacks.`,
+        remediation: FIX.BUSINESS_LOGIC_OPEN_REDIRECT,
+      });
+    }
+
+    if (rateLimiting.checked && !rateLimiting.rateLimited && rateLimiting.endpoint) {
+      findings.push({
+        checkId: "business-logic.no-rate-limit",
+        severity: "medium",
+        title: `No rate limiting detected on login endpoint (${rateLimiting.endpoint})`,
+        detail: `${rateLimiting.requestsSent} rapid POST requests to ${rateLimiting.endpoint} received no rate-limiting response (no 429 status or Retry-After header). Brute-force attacks are not throttled.`,
+        remediation: FIX.BUSINESS_LOGIC_NO_RATE_LIMIT,
+      });
+    }
+  }
+
+  // --- API Spec (OpenAPI/Swagger-driven endpoint testing) -------------------
+  // Findings are already fully formed (with checkId and remediation) by the
+  // scanner module itself — no per-finding derivation needed here, just
+  // append them.
+  if (results.apiSpec.status === "completed") {
+    findings.push(...results.apiSpec.findings);
   }
 
   // --- WPScan Vulnerability Database (WordPress plugin CVE matches) ---------
