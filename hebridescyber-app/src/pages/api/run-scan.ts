@@ -134,7 +134,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   // --- Step 2: verify ownership, then actually run the scan -------------
   const { data: scan, error: fetchError } = await supabaseAdmin
     .from("scans")
-    .select("id, owner, target_url, proof_token, status")
+    .select("id, owner, target_url, proof_token, status, progress, started_at")
     .eq("id", scanId)
     .maybeSingle();
 
@@ -166,7 +166,13 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   }
 
   if (scan.status === "queued" || scan.status === "running") {
-    return res.status(202).json({ ok: true, scanId, status: scan.status });
+    return res.status(202).json({
+      ok: true,
+      scanId,
+      status: scan.status,
+      progress: (scan as Record<string, unknown>).progress ?? null,
+      started_at: (scan as Record<string, unknown>).started_at ?? null,
+    });
   }
 
   // scan.status === "pending" — first time step 2 has been reached for this

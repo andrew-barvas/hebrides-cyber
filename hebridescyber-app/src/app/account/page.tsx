@@ -13,6 +13,7 @@ import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
 import BrandingSection from "@/components/BrandingSection";
 import AccountDeletion from "@/components/AccountDeletion";
+import ApiSpecConfig from "@/components/ApiSpecConfig";
 
 type Plan = "none" | "basic" | "pro" | "agency";
 
@@ -180,6 +181,9 @@ export default function AccountPage() {
 
         {/* Connect a repository (dependency manifest scanning) */}
         <ConnectRepo />
+
+        {/* API spec scanning */}
+        <ApiSpecConfig />
 
         {/* Ticket integration (Jira/Linear) */}
         <TicketIntegration />

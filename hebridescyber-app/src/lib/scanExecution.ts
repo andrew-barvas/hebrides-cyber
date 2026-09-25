@@ -51,6 +51,25 @@ import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
+import { checkApiSpecInjection } from "./scanners/apiSpec";
+
+export type ScanProgress = {
+  phase: "base" | "extended" | "enrichment" | "complete";
+  checks_completed: string[];
+  checks_total: number;
+  current_check: string | null;
+  elapsed_ms: number;
+};
+
+async function updateScanProgress(
+  supabaseAdmin: SupabaseClient,
+  scanId: string,
+  progress: ScanProgress,
+): Promise<void> {
+  try {
+    await supabaseAdmin.from("scans").update({ progress }).eq("id", scanId);
+  } catch { /* best-effort — never block the scan */ }
+}
 
 export type ScanExecutionResult =
   | { ok: true; score: number; summary: string; report: ScanReport }
@@ -97,7 +116,9 @@ async function runExtendedTools(
   githubRepo: string | null,
   authCredential: AuthCredential | null,
   detectedTechnologies: string[],
-  toolConfig: Record<ExtendedToolName, boolean>
+  toolConfig: Record<ExtendedToolName, boolean>,
+  supabaseAdmin: SupabaseClient,
+  ownerId: string
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -136,6 +157,7 @@ async function runExtendedTools(
     sessionCheckResult,
     strixResult,
     cairnResult,
+    apiSpecInjectionResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -253,6 +275,10 @@ async function runExtendedTools(
     toolConfig.cairn
       ? runCairn(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
+    // API spec injection checks — SQL injection and XSS against spec-documented parameters
+    toolConfig.apiSpecInjection
+      ? checkApiSpecInjection(targetUrl, supabaseAdmin, ownerId)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], endpointsTested: 0 as const, specSource: "none" as const }),
   ]);
 
   const extended = {
@@ -281,6 +307,7 @@ async function runExtendedTools(
     sessionCheck: sessionCheckResult.status === "fulfilled" ? sessionCheckResult.value : { status: "error" as const, note: String(sessionCheckResult.reason) },
     strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
     cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
+    apiSpecInjection: apiSpecInjectionResult.status === "fulfilled" ? apiSpecInjectionResult.value : { status: "error", findings: [], note: String(apiSpecInjectionResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -636,6 +663,12 @@ async function runExtendedTools(
     }
   }
 
+  // API spec injection checks — findings are already fully formed with
+  // checkId and remediation, same pattern as ZAP/deepTls/subdomains.
+  if (extended.apiSpecInjection.status === "completed" && "findings" in extended.apiSpecInjection) {
+    findings.push(...(extended.apiSpecInjection as { status: "completed"; findings: Finding[] }).findings);
+  }
+
   // recon.ts's base checkDns pass already reports a single "N subdomains
   // found via crt.sh" finding (recon.subdomains-found). When Subfinder also
   // ran and found anything, its per-host findings are strictly more useful
@@ -665,6 +698,10 @@ export async function executeScan(
 
   const profile: ScanProfile = options.profile ?? "safe";
 
+  const scanStartTime = Date.now();
+
+  await supabaseAdmin.from("scans").update({ started_at: new Date().toISOString() }).eq("id", scanId);
+
   await logAuditEvent(supabaseAdmin, {
     actorId: ownerId,
     action: "scan.started",
@@ -673,9 +710,28 @@ export async function executeScan(
     metadata: { target_url: targetUrl, scan_profile: profile },
   });
 
+  const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "businessLogic"];
+  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 25 : BASE_CHECK_NAMES.length;
+
+  await updateScanProgress(supabaseAdmin, scanId, {
+    phase: "base",
+    checks_completed: [],
+    checks_total: totalChecks,
+    current_check: "TLS, headers, DNS, exposure...",
+    elapsed_ms: 0,
+  });
+
   try {
-    const results = await runAllChecks(targetUrl);
+    const results = await runAllChecks(targetUrl, supabaseAdmin, ownerId);
     ({ findings } = summariseResults(results));
+
+    await updateScanProgress(supabaseAdmin, scanId, {
+      phase: profile !== "safe" ? "extended" : "enrichment",
+      checks_completed: BASE_CHECK_NAMES,
+      checks_total: totalChecks,
+      current_check: profile !== "safe" ? "Running extended tool suite..." : "Enriching findings...",
+      elapsed_ms: Date.now() - scanStartTime,
+    });
 
     // "safe" early-exits before any of the repo_connections/monitored_targets/
     // target_auth_credentials lookups below — preserving today's behaviour of
@@ -723,7 +779,7 @@ export async function executeScan(
       const detectedTechnologies = results.fingerprint.status === "checked" ? results.fingerprint.technologies.map((t) => t.name) : [];
 
       const toolConfig = resolveToolConfig(profile, options.toolOverrides);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig);
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
@@ -770,6 +826,14 @@ export async function executeScan(
       }
     }
 
+    await updateScanProgress(supabaseAdmin, scanId, {
+      phase: "enrichment",
+      checks_completed: BASE_CHECK_NAMES.concat(profile !== "safe" ? ["extended-tools"] : []),
+      checks_total: totalChecks,
+      current_check: "Enriching with CVSS scores, generating summary...",
+      elapsed_ms: Date.now() - scanStartTime,
+    });
+
     // E-55: enrich CVE-backed findings with CVSS scores from NVD (best-effort)
     try { await enrichFindingsWithCvss(findings); } catch { /* never block scan completion */ }
 
@@ -784,7 +848,17 @@ export async function executeScan(
     });
     if (resultsError) throw new Error(resultsError.message);
 
-    await supabaseAdmin.from("scans").update({ status: "completed" }).eq("id", scanId);
+    await supabaseAdmin.from("scans").update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      progress: {
+        phase: "complete",
+        checks_completed: BASE_CHECK_NAMES.concat(profile !== "safe" ? ["extended-tools"] : []),
+        checks_total: totalChecks,
+        current_check: null,
+        elapsed_ms: Date.now() - scanStartTime,
+      } satisfies ScanProgress,
+    }).eq("id", scanId);
     await logAuditEvent(supabaseAdmin, {
       actorId: ownerId,
       action: "scan.completed",

@@ -261,13 +261,21 @@ export default function DashboardPage() {
       let runBody = await pollRunScan(true);
       let polls = 0;
       while ((runBody.status === "queued" || runBody.status === "running") && polls < MAX_POLLS) {
-        const phase = runBody.status === "queued"
-          ? "Scan queued — waiting for a runner to pick it up…"
-          : polls < 8
-            ? "Scanning — checking TLS, headers, DNS…"
-            : polls < 20
-              ? "Scanning — probing endpoints, detecting technologies…"
-              : "Scanning — running deep checks, almost done…";
+        const progress = runBody.progress as { phase?: string; checks_completed?: string[]; checks_total?: number; current_check?: string; elapsed_ms?: number } | null;
+        let phase: string;
+        if (runBody.status === "queued") {
+          phase = "Scan queued — waiting for a runner to pick it up…";
+        } else if (progress?.current_check) {
+          const pct = progress.checks_total ? Math.round(((progress.checks_completed?.length ?? 0) / progress.checks_total) * 100) : 0;
+          const elapsed = progress.elapsed_ms ? `${Math.round(progress.elapsed_ms / 1000)}s` : "";
+          phase = `Scanning (${pct}%)${elapsed ? ` · ${elapsed}` : ""} — ${progress.current_check}`;
+        } else if (polls < 8) {
+          phase = "Scanning — checking TLS, headers, DNS…";
+        } else if (polls < 20) {
+          phase = "Scanning — probing endpoints, detecting technologies…";
+        } else {
+          phase = "Scanning — running deep checks, almost done…";
+        }
         setScanMessage(phase);
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
         runBody = await pollRunScan(false);

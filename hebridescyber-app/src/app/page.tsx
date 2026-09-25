@@ -46,6 +46,8 @@ export default function HomePage() {
         <ProductPreview />
       </section>
 
+      <TrustBadges />
+
       {/* Why us — sr-only h2 keeps heading hierarchy: h1 → h2 → h3 */}
       <section className="mx-auto max-w-5xl px-6 py-16">
         <h2 className="sr-only">Why choose Hebrides Cyber</h2>
@@ -146,6 +148,35 @@ const testimonials = [
     role: "Administrator, church website",
   },
 ];
+
+const trustBadges = [
+  { label: "OWASP Top 10", desc: "Aligned checks" },
+  { label: "Cyber Essentials", desc: "Readiness mapping" },
+  { label: "CIS Controls v8", desc: "Compliance coverage" },
+  { label: "ISO 27001", desc: "Control mapping" },
+  { label: "NIS2 / DORA", desc: "EU compliance" },
+  { label: "PCI DSS", desc: "Payment security" },
+];
+
+function TrustBadges() {
+  return (
+    <section className="border-t border-cyberborder bg-cyberbg px-6 py-12">
+      <p className="mx-auto mb-6 max-w-5xl text-center font-mono text-xs uppercase tracking-widest text-cybertext/40">
+        Compliance frameworks we map to
+      </p>
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-8 gap-y-4">
+        {trustBadges.map((b) => (
+          <div key={b.label} className="flex flex-col items-center gap-1">
+            <span className="rounded border border-neon/30 bg-neon/10 px-3 py-1 font-mono text-xs font-semibold text-neon">
+              {b.label}
+            </span>
+            <span className="text-[10px] text-cybertext/40">{b.desc}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function Testimonials() {
   return (

@@ -1788,6 +1788,269 @@ attack vectors, targeted by bots continuously.`,
 
 // --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
 
+// ---------------------------------------------------------------------------
+// Business logic (src/lib/scanners/businessLogic.ts) — passive checks for
+// common application-layer flaws: missing CSRF tokens, forms posting to
+// external domains, autocomplete on sensitive fields, sequential workflow
+// URLs, predictable resource IDs, open redirects, and absent rate limiting.
+// ---------------------------------------------------------------------------
+
+export const BUSINESS_LOGIC_CSRF_MISSING = `Add CSRF tokens to every form that performs a state-changing action (POST,
+PUT, PATCH, DELETE). Without a token, an attacker-controlled page can submit
+requests on behalf of a logged-in user.
+
+Most frameworks handle this automatically:
+
+**Django:** enabled by default — confirm \`{% csrf_token %}\` is inside every
+\`<form>\` tag that uses \`method="post"\`.
+
+**Rails:** enabled by default — \`protect_from_forgery with: :exception\` in
+\`ApplicationController\`, and the meta tag \`csrf-token\` in the layout.
+
+**Laravel:** add \`@csrf\` inside every Blade form.
+
+**Express (csurf / csrf-csrf):**
+\`\`\`js
+const csrf = require("csurf");
+app.use(csrf({ cookie: true }));
+// then in the form: <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+\`\`\`
+
+**Next.js / React SPA:** set a CSRF cookie on session creation and send it
+back as a custom header (\`X-CSRF-Token\`) on every mutating fetch. The
+server compares cookie to header — the same-origin policy guarantees only
+your own code can read the cookie.
+
+For AJAX-only forms, the \`SameSite=Lax\` cookie attribute is partial
+protection, but a CSRF token is the proper defence.`;
+
+export const BUSINESS_LOGIC_EXTERNAL_FORM_ACTION = `A form on this page sends data to a different domain. This may be
+intentional (a payment processor, a third-party survey tool) or it may
+indicate data exfiltration — either injected markup or a legitimate form
+whose action was changed.
+
+1. **Verify the target domain is expected.** If the form posts to a known
+   third-party service you integrated, this is informational only.
+2. **If it's unexpected**, inspect the page source or CMS template for
+   injected or modified \`<form action="...">\` attributes. Compare against
+   version control or a known-good backup.
+3. **Protect against future injection** by tightening your CSP's
+   \`form-action\` directive to allow only your own origin and any
+   third-party targets you genuinely use:
+
+\`\`\`
+Content-Security-Policy: form-action 'self' https://checkout.stripe.com
+\`\`\``;
+
+export const BUSINESS_LOGIC_AUTOCOMPLETE = `Sensitive fields (passwords, credit card numbers, SSNs) should disable
+browser autofill to reduce the risk of credentials being stored in
+cleartext on shared or compromised devices.
+
+Add \`autocomplete="off"\` or \`autocomplete="new-password"\` to these fields:
+
+\`\`\`html
+<input type="password" name="password" autocomplete="new-password">
+<input type="text" name="cc-number" autocomplete="off">
+\`\`\`
+
+\`autocomplete="new-password"\` is the most reliably honoured value for
+password fields — browsers treat \`off\` as a suggestion they may override,
+but \`new-password\` tells them the user is creating (not reusing) a
+credential.
+
+PCI DSS explicitly requires that cardholder data is never stored
+unnecessarily — browser autofill of card numbers is a form of local storage
+the site can and should prevent.`;
+
+export const BUSINESS_LOGIC_SEQUENTIAL_URL = `The page contains links with sequential URL patterns (step1, step2,
+checkout/1, checkout/2) that suggest a multi-step workflow. Sequential steps
+can sometimes be skipped by manipulating the URL directly — for example,
+jumping from step 1 to step 5 to bypass validation or payment.
+
+1. **Enforce server-side workflow state.** Each step should verify the
+   previous step was completed before allowing access — check a session
+   flag or database record, not just the URL.
+2. **Use unpredictable step identifiers** (UUIDs or signed tokens) instead
+   of bare sequence numbers, so steps can't be guessed or enumerated.
+3. **Test manually** — try accessing later steps directly without completing
+   earlier ones and confirm the server rejects the request.`;
+
+export const BUSINESS_LOGIC_PREDICTABLE_IDS = `The page exposes links with small sequential numeric IDs (e.g. \`/user/1\`,
+\`/order/2\`, \`/invoice/3\`). If these resources lack proper authorisation
+checks, an attacker can enumerate every record by incrementing the ID —
+an Insecure Direct Object Reference (IDOR) vulnerability.
+
+1. **Add authorisation checks** on every endpoint that serves a resource by
+   ID — verify the authenticated user is allowed to access that specific
+   record, not just that they hold a valid session.
+2. **Use non-sequential identifiers** (UUIDs, nanoids, or hashed IDs) for
+   any resource that's referenced in client-visible URLs or API responses.
+   This is defence in depth, not a replacement for authorisation.
+3. **Rate-limit enumeration** — even with proper auth, a logged-in user
+   iterating through every ID in a table is a data-scraping signal worth
+   detecting.`;
+
+export const BUSINESS_LOGIC_OPEN_REDIRECT = `A redirect parameter on this page accepts an arbitrary external URL. An
+attacker can craft a link that starts at your trusted domain and lands the
+victim on a phishing page — the browser's address bar shows your domain
+right up until the redirect fires, which is why open redirects are a
+standard building block in phishing campaigns.
+
+1. **Validate redirect targets server-side.** Maintain an allow-list of
+   permitted redirect destinations (or at minimum restrict to same-origin
+   paths only):
+
+\`\`\`js
+const target = req.query.next;
+const url = new URL(target, \`https://\${req.hostname}\`);
+if (url.origin !== \`https://\${req.hostname}\`) {
+  return res.redirect("/");
+}
+res.redirect(url.pathname + url.search);
+\`\`\`
+
+2. **Never pass a full URL in a query parameter** if a relative path
+   (\`/dashboard\`, \`/account\`) would serve the same purpose.
+3. **Log redirect-parameter abuse** — a spike in redirect attempts to
+   unknown domains is an early indicator of a phishing campaign targeting
+   your users.`;
+
+export const BUSINESS_LOGIC_NO_RATE_LIMIT = `The login endpoint does not appear to enforce rate limiting — five rapid
+requests all received normal responses with no 429 status, Retry-After
+header, or rate-limit indicator. This allows brute-force password guessing
+at high speed.
+
+Implement rate limiting at the application or reverse-proxy level:
+
+**Express (express-rate-limit):**
+\`\`\`js
+const rateLimit = require("express-rate-limit");
+app.use("/login", rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: "Too many login attempts — try again in a minute.",
+}));
+\`\`\`
+
+**nginx:**
+\`\`\`nginx
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+location /login {
+  limit_req zone=login burst=3 nodelay;
+}
+\`\`\`
+
+Also consider:
+- Progressive delays (1s, 2s, 4s...) after each failure.
+- CAPTCHA after 3–5 failed attempts.
+- Account lockout after 10 failures (with a reset mechanism that doesn't
+  allow denial-of-service via intentional lockout of another user's account).
+- Alerting on brute-force patterns in your logs.`;
+
+// --- API spec scanning (E-33, src/lib/scanners/apiSpec.ts) ---------------
+
+export const API_SPEC_AUTH_BYPASS = `This API endpoint is documented as requiring authentication in the OpenAPI
+spec but responded successfully without any credentials. This is a broken
+access control vulnerability.
+
+1. **Verify the endpoint's authentication middleware is actually applied** —
+   not just documented. A common pattern is declaring \`security:\` in the spec
+   but forgetting to wire the auth guard in the route registration.
+2. **Add authentication enforcement** at the framework level (middleware/filter)
+   rather than per-handler, so new endpoints are protected by default.
+3. **Test with and without credentials** after the fix to confirm the endpoint
+   now returns 401/403 for unauthenticated requests.
+
+Re-scan to confirm the finding clears.`;
+
+export const API_SPEC_METHOD_CONFUSION = `This endpoint accepted an HTTP method that is not documented in the API spec.
+Undocumented methods can bypass access controls that are only applied to the
+expected method, or trigger unintended side effects (e.g. a DELETE on a
+path that only expects GET).
+
+1. **Restrict allowed methods** on each route to only those documented in the
+   spec — return 405 Method Not Allowed for anything else.
+2. **Most frameworks support this natively:**
+
+\`\`\`
+// Express
+router.route('/api/items').get(handler); // only GET allowed
+
+// Next.js API route
+if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+\`\`\`
+
+3. **Check your reverse proxy** — some (nginx, Apache) allow method restrictions
+   at the server level too, which is defence in depth.`;
+
+export const API_SPEC_SCHEMA_VIOLATION = `This API endpoint accepted a request with missing required fields without
+returning a validation error. Missing server-side validation allows:
+
+- **Data integrity issues** — records created without mandatory fields
+- **Business logic bypass** — required-field checks in the frontend can be
+  trivially skipped by calling the API directly
+- **Injection attacks** — unexpected types/values reach processing code that
+  assumes validated input
+
+1. **Add server-side request validation** that enforces the same schema the
+   spec documents. Most frameworks have middleware for this:
+
+\`\`\`
+// Express + express-openapi-validator
+app.use(OpenApiValidator.middleware({ apiSpec: './openapi.yaml' }));
+
+// Zod / joi / yup validation in any framework
+const schema = z.object({ name: z.string(), email: z.string().email() });
+const parsed = schema.safeParse(req.body);
+if (!parsed.success) return res.status(400).json(parsed.error);
+\`\`\`
+
+2. **Return 400 Bad Request** with a clear error message for invalid input —
+   never silently accept malformed data.`;
+
+export const API_SPEC_EXCESSIVE_DATA = `This API endpoint returns fields in its response that are not documented in
+the OpenAPI spec. Undocumented fields — especially ones with names suggesting
+sensitive data (passwords, tokens, internal IDs) — are a potential data leak.
+
+This is OWASP API Security Top 10 #3: Excessive Data Exposure.
+
+1. **Review every field** the endpoint returns and confirm each one is intended
+   for the consumer. Remove any that are not — especially internal IDs, hashed
+   passwords, tokens, or debug fields.
+2. **Use a serialisation layer** (a DTO / view model / GraphQL selection set)
+   that explicitly lists the fields to return, rather than passing raw database
+   records to the response.
+3. **Keep the spec in sync** with what the API actually returns — if a field
+   is intentionally returned, document it; if it's not documented, don't
+   return it.`;
+
+export const API_SPEC_SQLI = `SQL injection detected via API spec parameter testing. The server returned
+a database error message when an injection payload was sent in a documented
+API parameter.
+
+**The fix is always the same: use parameterised queries.**
+
+- Never concatenate user input into SQL strings — use prepared statements
+  or your ORM's query builder.
+- Add input validation as defence in depth: type-check and constrain
+  parameter values to their documented types (numeric IDs should reject
+  non-numeric input before reaching the database layer).
+- Apply least privilege to the database user the API connects with.
+
+Re-scan after fixing to confirm the error messages are no longer returned.`;
+
+export const API_SPEC_XSS = `Cross-site scripting detected via API spec parameter testing. A script tag
+payload sent in a documented API parameter was reflected unescaped in the
+response body.
+
+1. **HTML-encode all user-supplied output** — use your framework's built-in
+   escaping (React, Vue, Angular all escape by default in templates).
+2. **Set Content-Type: application/json** on API responses that return data,
+   not HTML — browsers won't execute scripts in a JSON response.
+3. **Add a Content-Security-Policy header** that restricts \`script-src\`.
+4. **Validate input** against the documented parameter types — a numeric ID
+   parameter should reject HTML tags before processing.`;
+
 export function cairnRemediation(vulnClass: string): string {
   const base = `Cairn (autonomous exploitation engine) discovered and validated
 this vulnerability through state-space exploration. The finding was

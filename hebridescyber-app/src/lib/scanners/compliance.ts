@@ -215,6 +215,25 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
 
   // --- Cairn autonomous exploitation (AGPL-3.0, subprocess-isolated) ---
   "cairn.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, OWASP_A01, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+
+  // --- API spec scanning (E-33) ---
+  "api-spec.auth-bypass": [CE_ACCESS, OWASP_A01, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21, DORA_ART9],
+  "api-spec.method-confusion": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, CIS_16, PCI_REQ6, ISO_A12],
+  "api-spec.schema-violation": [CE_SECURE_CONFIG, OWASP_A05, CIS_16, PCI_REQ6, ISO_A12],
+  "api-spec.excessive-data": [CE_SECURE_CONFIG, OWASP_A01, CIS_3, CIS_16, PCI_REQ6, ISO_A9, NIS2_ART21],
+  "api-spec.undocumented-fields": [CE_SECURE_CONFIG, OWASP_A01, CIS_3, CIS_16, PCI_REQ6, ISO_A9],
+  "api-spec.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "api-spec.xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "api-spec.sqli-path": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+
+  // --- Business logic (passive) ---
+  "business-logic.csrf-missing": [CE_SECURE_CONFIG, OWASP_A01, CIS_16, PCI_REQ6, ISO_A12],
+  "business-logic.external-form-action": [OWASP_A05, CIS_16, ISO_A12],
+  "business-logic.autocomplete-sensitive": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
+  "business-logic.sequential-url": [OWASP_A01, CIS_16, ISO_A12],
+  "business-logic.predictable-ids": [OWASP_A01, CIS_3, CIS_16, PCI_REQ6, ISO_A9],
+  "business-logic.open-redirect": [CE_SECURE_CONFIG, OWASP_A01, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "business-logic.no-rate-limit": [CE_ACCESS, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9],
 };
 
 /** The part of a checkId before its first ":" — see module header. */
