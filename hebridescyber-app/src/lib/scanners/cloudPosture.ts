@@ -2,17 +2,32 @@
 // AWS/Azure/GCP accounts using read-only API calls. Requires stored
 // credentials in cloud_credentials table.
 //
-// This is the first slice: AWS S3 bucket policy checks, Azure storage
-// account public access checks. Extended checks (IAM policy review,
-// network security groups, encryption-at-rest, GCP) are future work.
+// AWS S3 bucket policy checks, Azure storage account public access checks,
+// and GCS bucket public access checks. Extended checks (IAM policy review
+// beyond public-member bindings, network security groups, encryption-at-rest)
+// are future work.
 //
 // AWS calls use SigV4-signed fetch (no SDK dependency) — the three S3
 // APIs we need (ListBuckets, GetPublicAccessBlock, GetBucketPolicyStatus)
-// are simple XML responses that don't need the full SDK.
-import { createHmac, createHash } from "crypto";
+// are simple XML responses that don't need the full SDK. GCP has no
+// equivalent simple request-signing scheme, so its service account
+// authenticates via a self-signed JWT exchanged for an OAuth2 access token
+// (RFC 7523), then calls the JSON Cloud Storage API directly — still no SDK
+// dependency, just fetch + Node's crypto.
+import { createHmac, createHash, createSign } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Finding } from "./index";
-import { AWS_PUBLIC_S3_BUCKET, AWS_PUBLIC_S3_POLICY, AWS_ACCOUNT_PUBLIC_ACCESS, AZURE_PUBLIC_BLOB, AZURE_HTTP_TRAFFIC, AZURE_WEAK_TLS } from "./remediationText";
+import {
+  AWS_PUBLIC_S3_BUCKET,
+  AWS_PUBLIC_S3_POLICY,
+  AWS_ACCOUNT_PUBLIC_ACCESS,
+  AZURE_PUBLIC_BLOB,
+  AZURE_HTTP_TRAFFIC,
+  AZURE_WEAK_TLS,
+  GCP_PUBLIC_ACCESS_PREVENTION,
+  GCP_UNIFORM_ACCESS,
+  GCP_PUBLIC_BUCKET,
+} from "./remediationText";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BUCKETS_TO_CHECK = 100;
@@ -337,6 +352,167 @@ export async function checkAzurePublicStorage(credentials: {
   return findings;
 }
 
+// ---- GCP OAuth2 JWT-bearer token exchange -----------------------------------
+//
+// GCP has no simple "sign a GET request" scheme like AWS SigV4 — a service
+// account authenticates by self-signing a JWT and exchanging it for a
+// short-lived OAuth2 access token (RFC 7523), which is then sent as a normal
+// Bearer token on subsequent calls.
+
+/** Base64url encode (no padding), per RFC 4648 §5 — used for the JWT header/claims/signature. */
+export function base64UrlEncode(input: Buffer | string): string {
+  const base64 = Buffer.isBuffer(input) ? input.toString("base64") : Buffer.from(input).toString("base64");
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export async function getGcpAccessToken(serviceAccountKeyJson: string): Promise<string | null> {
+  try {
+    const key = JSON.parse(serviceAccountKeyJson) as {
+      client_email?: string;
+      private_key?: string;
+      token_uri?: string;
+    };
+    const clientEmail = key.client_email;
+    const privateKey = key.private_key;
+    const tokenUri = key.token_uri || "https://oauth2.googleapis.com/token";
+    if (!clientEmail || !privateKey) return null;
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const header = { alg: "RS256", typ: "JWT" };
+    const claims = {
+      iss: clientEmail,
+      scope: "https://www.googleapis.com/auth/devstorage.read_only",
+      aud: tokenUri,
+      exp: nowSeconds + 3600,
+      iat: nowSeconds,
+    };
+
+    const headerB64 = base64UrlEncode(JSON.stringify(header));
+    const claimsB64 = base64UrlEncode(JSON.stringify(claims));
+    const signingInput = `${headerB64}.${claimsB64}`;
+
+    const signatureB64 = createSign("RSA-SHA256").update(signingInput).sign(privateKey, "base64");
+    const signatureB64Url = base64UrlEncode(Buffer.from(signatureB64, "base64"));
+
+    const jwt = `${signingInput}.${signatureB64Url}`;
+
+    const tokenRes = await fetch(tokenUri, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!tokenRes.ok) return null;
+    const { access_token } = (await tokenRes.json()) as { access_token: string };
+    return access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- GCS public bucket check -------------------------------------------------
+
+export async function checkGcpPublicStorage(credentials: {
+  projectId: string;
+  serviceAccountKey: string;
+}): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  const accessToken = await getGcpAccessToken(credentials.serviceAccountKey);
+  if (!accessToken) return findings;
+
+  try {
+    const listRes = await fetch(
+      `https://storage.googleapis.com/storage/v1/b?project=${encodeURIComponent(credentials.projectId)}&fields=items(name)`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }
+    );
+    if (!listRes.ok) return findings;
+    const { items } = (await listRes.json()) as { items?: Array<{ name: string }> };
+    const buckets = (items ?? []).map((b) => b.name).slice(0, MAX_BUCKETS_TO_CHECK);
+
+    for (const bucket of buckets) {
+      try {
+        const metaRes = await fetch(
+          `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}?fields=iamConfiguration`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }
+        );
+
+        if (metaRes.ok) {
+          const meta = (await metaRes.json()) as {
+            iamConfiguration?: {
+              publicAccessPrevention?: string;
+              uniformBucketLevelAccess?: { enabled?: boolean };
+            };
+          };
+
+          const pap = meta.iamConfiguration?.publicAccessPrevention;
+          if (pap !== "enforced") {
+            findings.push({
+              severity: "high",
+              title: `GCS bucket missing Public Access Prevention: ${bucket}`,
+              detail: `GCS bucket "${bucket}" does not have Public Access Prevention enforced (current: ${pap ?? "inherited"}). Without it, IAM bindings or ACLs can grant public access.`,
+              checkId: `cloudPosture.gcpPublicAccessPrevention:${bucket}`,
+              remediation: GCP_PUBLIC_ACCESS_PREVENTION,
+            });
+          }
+
+          if (meta.iamConfiguration?.uniformBucketLevelAccess?.enabled === false) {
+            findings.push({
+              severity: "medium",
+              title: `GCS bucket uses legacy ACLs instead of uniform access: ${bucket}`,
+              detail: `GCS bucket "${bucket}" has Uniform bucket-level access disabled, meaning legacy per-object ACLs can grant access that's harder to audit for public exposure.`,
+              checkId: `cloudPosture.gcpUniformAccess:${bucket}`,
+              remediation: GCP_UNIFORM_ACCESS,
+            });
+          }
+        }
+
+        const iamRes = await fetch(
+          `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/iam`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          }
+        );
+
+        if (iamRes.ok) {
+          const iamPolicy = (await iamRes.json()) as {
+            bindings?: Array<{ role: string; members?: string[] }>;
+          };
+          const isPublic = (iamPolicy.bindings ?? []).some((b) =>
+            (b.members ?? []).some((m) => m === "allUsers" || m === "allAuthenticatedUsers")
+          );
+          if (isPublic) {
+            findings.push({
+              severity: "critical",
+              title: `GCS bucket is publicly accessible: ${bucket}`,
+              detail: `GCS bucket "${bucket}" has an IAM binding granting access to "allUsers" or "allAuthenticatedUsers". This exposes its contents to the internet.`,
+              checkId: `cloudPosture.gcpPublicBucket:${bucket}`,
+              remediation: GCP_PUBLIC_BUCKET,
+            });
+          }
+        }
+      } catch {
+        // Per-bucket errors (permissions, deleted bucket) — skip silently
+      }
+    }
+  } catch {
+    // ListBuckets failed — credential or network issue
+  }
+
+  return findings;
+}
+
 // ---- Orchestrator ----------------------------------------------------------
 
 export async function runCloudPostureChecks(
@@ -367,8 +543,10 @@ export async function runCloudPostureChecks(
       } else if (cred.provider === "azure" && credentials.tenantId) {
         const f = await checkAzurePublicStorage(credentials as Parameters<typeof checkAzurePublicStorage>[0]);
         allFindings.push(...f);
+      } else if (cred.provider === "gcp" && credentials.serviceAccountKey) {
+        const f = await checkGcpPublicStorage(credentials as Parameters<typeof checkGcpPublicStorage>[0]);
+        allFindings.push(...f);
       }
-      // GCP checks would follow the same pattern
     }
 
     return { status: "checked", findings: allFindings, provider: creds.map((c) => c.provider).join(",") };

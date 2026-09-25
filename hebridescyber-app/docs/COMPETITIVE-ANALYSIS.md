@@ -364,13 +364,16 @@ Remaining high-priority gap: **CSPM** (E-32, Cloud Security Posture Management)
 | **E-21 httpOnly cookie auth** | ✅ done | Already migrated to @supabase/ssr. Fixed middleware location |
 | **E-32 Cloud posture (AWS)** | ✅ done | SigV4-signed S3 checks: PublicAccessBlock, BucketPolicyStatus, account-level block |
 | **E-32 Cloud posture (Azure)** | ✅ done | Storage public blob access, HTTPS enforcement, TLS version checks |
-| **Cloud credentials API** | ✅ done | CRUD at /api/account/cloud-credentials, Agency-plan gated |
+| **E-32 Cloud posture (GCP)** | ✅ done | JWT-bearer OAuth2 token exchange (no SDK dependency) + GCS bucket checks: Public Access Prevention, uniform bucket-level access, IAM `allUsers`/`allAuthenticatedUsers` bindings |
+| **Cloud credentials API** | ✅ done | CRUD at /api/account/cloud-credentials, Agency-plan gated, all three providers |
 | **Cloud credentials UI** | ✅ done | CloudCredentialsConfig component on dashboard |
-| **Compliance mapping** | ✅ done | 6 new cloudPosture.* checkIds mapped to 7 frameworks |
-| **Remediation text** | ✅ done | AWS CLI + Azure CLI fix guidance for all 6 check types |
+| **Compliance mapping** | ✅ done | 9 cloudPosture.* checkIds (AWS/Azure/GCP) mapped to 7 frameworks |
+| **Remediation text** | ✅ done | AWS CLI + Azure CLI + gcloud CLI fix guidance for all 9 check types |
 
-CSPM gap is now **closed for AWS and Azure**. GCP is scoped but not yet
-implemented (no GCP customers in the immediate target market).
+CSPM gap is now **closed for AWS, Azure, and GCP** — the third provider was
+completed in a later pass once the credentials-storage side (schema + API
+route) had already shipped for GCP; only the GCS-scanning logic itself was
+outstanding.
 
 ### Competitive positioning after Sprint 16
 
@@ -380,8 +383,8 @@ except trust apparatus (D11) and support model (D12) — both of which are
 business maturity gaps, not code gaps. The product's enterprise feature set
 (SCIM, MSP portal, RBAC, 7-framework compliance, SIEM, SLA monitoring)
 exceeds what most SME-priced competitors offer at any tier. With SBOM
-generation, EASM, and now **cloud posture scanning (AWS + Azure)** live,
-the product leads on regulatory readiness (EU CRA), attack surface
+generation, EASM, and now **cloud posture scanning (AWS + Azure + GCP)**
+live, the product leads on regulatory readiness (EU CRA), attack surface
 visibility, and cloud security — areas where most SME-priced competitors
 offer nothing. The CSPM gap that was the last major competitive shortfall
 is now closed.

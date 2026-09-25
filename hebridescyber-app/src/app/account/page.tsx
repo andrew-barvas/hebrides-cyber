@@ -9,6 +9,7 @@ import Webhooks from "@/components/Webhooks";
 import RequestAudit from "@/components/RequestAudit";
 import ConnectRepo from "@/components/ConnectRepo";
 import TicketIntegration from "@/components/TicketIntegration";
+import OncallIntegrationConfig from "@/components/OncallIntegrationConfig";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
 import BrandingSection from "@/components/BrandingSection";
@@ -187,6 +188,9 @@ export default function AccountPage() {
 
         {/* Ticket integration (Jira/Linear) */}
         <TicketIntegration />
+
+        {/* On-call alerting (PagerDuty/Opsgenie) */}
+        <OncallIntegrationConfig />
 
         {/* Team */}
         {token && userId && <TeamSection token={token} currentUserId={userId} />}

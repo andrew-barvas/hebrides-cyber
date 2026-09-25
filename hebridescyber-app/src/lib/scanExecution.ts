@@ -46,6 +46,7 @@ import { syncAssetInventory } from "./assetInventory";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
+import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
@@ -918,6 +919,10 @@ export async function executeScan(
     // Opt-in and off by default — no-ops entirely unless the owner enabled
     // auto-close on their Jira/Linear integration.
     await autoCloseFixedFindingTickets(supabaseAdmin, ownerId, report);
+    // E-54: page on-call via PagerDuty/Opsgenie for new critical findings,
+    // and resolve those incidents/alerts once a later scan confirms fixed.
+    await triggerOncallAlerts(supabaseAdmin, ownerId, report);
+    await resolveOncallAlerts(supabaseAdmin, ownerId, report);
     await forwardToSiem(supabaseAdmin, ownerId, {
       eventType: "scan.completed",
       timestamp: new Date().toISOString(),

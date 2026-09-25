@@ -145,6 +145,11 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   // --- WPScan Vulnerability Database ---
   "wpvdb.plugin-vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
 
+  // --- Software CVE DB (E-24) — WordPress core / PHP / Apache CVE matches,
+  // same "outdated software" category as fingerprint.risky-library above.
+  "softwareCveDb.wordpressCore": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A8, ISO_A12, NIS2_ART21],
+  "softwareCveDb.nvdCpe": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A8, ISO_A12, NIS2_ART21],
+
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "xsser.xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
@@ -209,6 +214,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "cloudPosture.azurePublicBlob": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
   "cloudPosture.azureHttpTraffic": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
   "cloudPosture.azureWeakTls": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+  "cloudPosture.gcpPublicBucket": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
+  "cloudPosture.gcpPublicAccessPrevention": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
+  "cloudPosture.gcpUniformAccess": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],

@@ -1263,6 +1263,88 @@ export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: st
 }
 
 // ---------------------------------------------------------------------------
+// Software CVE DB (src/lib/scanners/softwareCveDb.ts, E-24) — real CVE
+// matches for the three fingerprint.ts riskySoftware entries OSV.dev can't
+// cover: WordPress core (via WPScan), PHP and Apache (via NVD's CPE-based
+// lookup). Distinct from OUTDATED_LIBRARY above, which is used for the
+// generic "no CVE data available, upgrade anyway" case across all of
+// KNOWN_RISKY — these three carry real, matched CVE ids, so the guidance
+// gets to be specific about it.
+// ---------------------------------------------------------------------------
+
+export const SOFTWARE_CVE_WORDPRESS_CORE = `Update WordPress core to the latest version. This is a confirmed CVE match
+from WPScan's vulnerability database against the exact core version detected
+— not the general "keep WordPress updated" reminder.
+
+1. **Back up the site and database first** — files and database, not just
+   one or the other.
+2. Update from **Dashboard → Updates**, or via WP-CLI:
+
+\`\`\`bash
+wp core update
+wp core update-db
+\`\`\`
+
+3. Re-scan afterwards to confirm the finding clears.
+
+Core updates are usually low-risk compared to plugin/theme updates — WordPress
+maintains backward compatibility carefully across minor and even major
+releases — but test on staging first if the site has heavy custom
+functionality or an old, unmaintained theme.`;
+
+export const SOFTWARE_CVE_PHP = `Upgrade the server's PHP version. These are real CVEs from the National
+Vulnerability Database matched against the exact PHP version this site is
+running — an end-of-life PHP release accumulates unpatched vulnerabilities
+with no vendor fix coming, ever.
+
+1. **Check your current PHP support window** at
+   [php.net/supported-versions](https://www.php.net/supported-versions.php) —
+   only actively supported branches receive security patches.
+2. Upgrade via your host's control panel, or directly:
+
+\`\`\`bash
+# Debian/Ubuntu
+sudo apt install php8.3-fpm
+sudo a2dismod php8.1 && sudo a2enmod php8.3   # Apache
+sudo systemctl restart php8.3-fpm nginx        # nginx + php-fpm
+\`\`\`
+
+3. **Test before switching production traffic** — a major PHP version bump can
+   break code relying on removed/deprecated functions (this is common enough
+   that it's the main reason old PHP versions linger). Run your test suite,
+   or at minimum smoke-test key flows, against the new version on staging.
+4. Re-scan afterwards to confirm.
+
+If you're on shared hosting with no version control, this is a conversation
+with your host or a reason to move providers — there is no secure way to stay
+on an end-of-life PHP branch indefinitely.`;
+
+export const SOFTWARE_CVE_APACHE = `Upgrade Apache httpd to a current release. These are real CVEs from the
+National Vulnerability Database matched against the exact Apache version this
+server is advertising.
+
+1. Upgrade via your OS package manager:
+
+\`\`\`bash
+# Debian/Ubuntu
+sudo apt update && sudo apt install --only-upgrade apache2
+
+# RHEL/CentOS/Alma
+sudo dnf update httpd
+\`\`\`
+
+2. **Review the changelog for your version jump** — a config directive
+   deprecated or changed behaviour between major Apache versions can break a
+   site's \`.htaccess\`/vhost config if copied forward blindly. Test on staging
+   first.
+3. Restart (not just reload) after upgrading, and re-scan to confirm the
+   version string changed.
+
+If Apache is fronted by a managed platform or reverse proxy, confirm which
+layer is actually advertising the outdated \`Server\` header — the fix may
+belong to your hosting provider rather than a server you control directly.`;
+
+// ---------------------------------------------------------------------------
 // Wayback historical path discovery (src/lib/scanners/waybackDiscovery.ts)
 // ---------------------------------------------------------------------------
 
@@ -1741,6 +1823,52 @@ az storage account update \\
   --resource-group RG_NAME \\
   --min-tls-version TLS1_2
 \`\`\``;
+
+export const GCP_PUBLIC_ACCESS_PREVENTION = `This GCS bucket does not have Public Access Prevention enforced. Without
+it, an IAM binding or legacy ACL can grant public access without an
+additional safety net catching it. Enforce it:
+
+**Console:** Cloud Storage → bucket → Permissions → Public access
+prevention → Enforce.
+
+**CLI:**
+\`\`\`
+gcloud storage buckets update gs://BUCKET \\
+  --public-access-prevention=enforced
+\`\`\``;
+
+export const GCP_UNIFORM_ACCESS = `This GCS bucket uses legacy per-object ACLs instead of uniform
+bucket-level access. Legacy ACLs are harder to audit for public exposure
+since they can be set per-object, independent of the bucket's IAM policy.
+Switch to uniform access:
+
+**Console:** Cloud Storage → bucket → Permissions → Access control →
+Uniform.
+
+**CLI:**
+\`\`\`
+gcloud storage buckets update gs://BUCKET \\
+  --uniform-bucket-level-access
+\`\`\`
+
+This is a one-way switch within 90 days of enabling it — existing ACLs
+stop being enforced in favour of the bucket's IAM policy, so confirm
+nothing depends on a per-object ACL before switching.`;
+
+export const GCP_PUBLIC_BUCKET = `This GCS bucket's IAM policy grants access to \`allUsers\` or
+\`allAuthenticatedUsers\`, meaning anyone on the internet (or anyone with a
+Google account) can access it. Review and remove the binding:
+
+\`\`\`
+gcloud storage buckets get-iam-policy gs://BUCKET
+gcloud storage buckets remove-iam-policy-binding gs://BUCKET \\
+  --member=allUsers --role=ROLE_FROM_ABOVE
+gcloud storage buckets remove-iam-policy-binding gs://BUCKET \\
+  --member=allAuthenticatedUsers --role=ROLE_FROM_ABOVE
+\`\`\`
+
+If the bucket genuinely needs to serve public content, prefer a signed URL
+or Cloud CDN in front of it over a fully public, listable bucket.`;
 
 // --- Strix AI pentest (Sprint 18) ---
 

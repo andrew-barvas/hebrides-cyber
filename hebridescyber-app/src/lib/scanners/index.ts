@@ -16,6 +16,7 @@ import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
 import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
+import { checkSoftwareCveDb, type SoftwareCveDbResult } from "./softwareCveDb";
 import { checkBusinessLogic, type BusinessLogicResult } from "./businessLogic";
 import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
@@ -27,7 +28,7 @@ export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
-  BusinessLogicResult, ApiSpecResult,
+  BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult,
 };
 
 export type ScanResults = {
@@ -48,6 +49,7 @@ export type ScanResults = {
   waybackDiscovery: WaybackDiscoveryResult;
   hibp: HibpResult;
   wpVulnDb: WpVulnDbResult;
+  softwareCveDb: SoftwareCveDbResult;
   businessLogic: BusinessLogicResult;
   apiSpec: ApiSpecResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
@@ -218,6 +220,13 @@ export async function runAllChecks(
     webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : []
   );
 
+  // Depends on fingerprint's riskySoftware detection (WordPress core, PHP,
+  // Apache), so it can't join the Promise.allSettled batch above either —
+  // same "enrichment runs after its input resolves" pattern as wpVulnDb.
+  const softwareCveDb = await checkSoftwareCveDb(
+    fingerprint.status === "checked" ? fingerprint.riskySoftware : []
+  );
+
   return {
     target_url: targetUrl,
     checked_at: new Date().toISOString(),
@@ -236,6 +245,7 @@ export async function runAllChecks(
     waybackDiscovery,
     hibp,
     wpVulnDb,
+    softwareCveDb,
     businessLogic,
     apiSpec,
     zap,
@@ -803,6 +813,21 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           cveIds: vuln.cveIds,
         });
       }
+    }
+  }
+
+  // --- Software CVE DB (WordPress core / PHP / Apache CVE matches) ----------
+  // Findings are already fully formed (with checkId and cveIds) by the
+  // module itself — unlike wpVulnDb above, no per-vulnerability derivation
+  // is needed here, just attach remediation text and append.
+  if (results.softwareCveDb.status === "checked") {
+    for (const finding of results.softwareCveDb.findings) {
+      const remediation = finding.checkId?.startsWith("softwareCveDb.wordpressCore")
+        ? FIX.SOFTWARE_CVE_WORDPRESS_CORE
+        : finding.checkId?.includes("nvdCpe:php-php")
+          ? FIX.SOFTWARE_CVE_PHP
+          : FIX.SOFTWARE_CVE_APACHE;
+      findings.push({ ...finding, remediation });
     }
   }
 
