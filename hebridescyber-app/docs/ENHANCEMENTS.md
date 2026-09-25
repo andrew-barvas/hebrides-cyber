@@ -1193,6 +1193,23 @@ most of that same document's other claims.
 
 ## E-33 — API-spec-aware security testing (OpenAPI/Swagger-driven)
 
+**Status: fixed (2026-09-25).** Shipped as `src/lib/scanners/apiSpec.ts`,
+split across the two-tier pipeline exactly as the original spec proposed:
+`checkApiSpecPassive()` (base suite, `index.ts`) parses a stored or
+auto-discovered OpenAPI 2.x/3.x spec and tests every declared endpoint for
+auth bypass, undocumented-method confusion, missing-field schema
+validation, and excess data exposure against the documented response
+schema; `checkApiSpecInjection()` (extended suite,
+`scanExecution.ts`'s `runExtendedTools()`) runs SQLi/XSS probes against
+declared parameters, gated the same way the rest of the extended tool
+suite is. Customers supply a spec via `POST /api/account/api-spec`
+(URL fetch or raw JSON paste, same "customer points us at a resource"
+shape as `connect-repo.ts`) and manage it from `ApiSpecConfig.tsx` on the
+account page. `checkId` namespace is `api-spec.<check-name>:<method>:<path>`.
+Auto-discovery at well-known paths (`/openapi.json`, `/swagger.json`, etc.)
+covers targets with no stored spec. Remediation text, compliance mapping,
+and fix-difficulty entries added alongside.
+
 **What**: today's API coverage is incidental — ZAP's active scan exercises
 whatever endpoints it discovers by crawling, and `sqlmap.ts`/`xsser.ts`/
 `commix.ts` test whatever forms/parameters they find the same way. Nothing
@@ -1390,6 +1407,19 @@ checks have specific enough findings to warrant one.
 
 ## E-56 — Full migration automation (supabase db push in CI)
 
+**Status: fixed (2026-09-25).** `.github/workflows/deploy.yml`'s
+`migration-check` job now runs `supabase db push --db-url "$DATABASE_URL"`
+before the schema-verification step, gated on the `DATABASE_URL` secret
+being set (`if: ${{ env.DATABASE_URL != '' }}`) — falls back to
+verify-only mode (E-49's original behaviour) when that secret isn't
+present yet, so adoption is incremental rather than a hard cutover. A
+failed `db push` degrades to a `::warning::` annotation plus the
+verify-only fallback rather than hard-failing the job, since a partial
+apply is recoverable but a silent skip of the verification step is not.
+Requires the `DATABASE_URL` GitHub secret (the direct Postgres connection
+string from Supabase's Connect page) — owner action, see the workflow
+file's header comment for the full secrets list.
+
 **What**: upgrade `deploy.yml`'s E-49 migration-check job from "detect
 missing columns and fail the build" to "apply pending migrations
 automatically before deploy using `supabase db push`." This turns the
@@ -1410,6 +1440,15 @@ then becomes a post-apply verification rather than a pre-deploy gate.
 **Source**: roadmap / incident post-mortem 2026-09-14.
 
 ## E-57 — Health check curl in post-deploy step (completes BETA-2)
+
+**Status: fixed (2026-09-25).** `.github/workflows/deploy.yml`'s `deploy`
+job now has a "Post-deploy health check (E-57)" step that waits 45s for
+Azure Functions warm-up then curls `${SITE_URL}/api/health`, gated on the
+`SITE_URL` secret being set. A non-200 response emits a `::warning::`
+annotation rather than failing the workflow outright (the deploy already
+succeeded at that point — a degraded health check is worth surfacing, not
+worth reverting a deploy over automatically). Requires the `SITE_URL`
+GitHub secret (the live `hebridescyber.co.uk` URL) — owner action.
 
 **What**: `docs/ROADMAP.md` BETA-2 says "`GET /api/health` returns 200 with
 Supabase/Stripe/queue-depth sub-checks" and lists "curl in CI immediately
