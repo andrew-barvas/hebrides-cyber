@@ -143,4 +143,81 @@ describe("parseOpenApiSpec", () => {
     const endpoints = parseOpenApiSpec(spec);
     expect(endpoints).toHaveLength(4);
   });
+
+  it("extracts requestBody properties from OpenAPI 3.x", () => {
+    const spec = {
+      openapi: "3.0.0",
+      paths: {
+        "/api/users": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    properties: { name: { type: "string" }, email: { type: "string" } },
+                    required: ["name", "email"],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const endpoints = parseOpenApiSpec(spec);
+    expect(endpoints[0].requestBodyRequired).toBe(true);
+    expect(endpoints[0].requestBodyProperties).toEqual(["name", "email"]);
+  });
+
+  it("extracts response properties for data exposure checks", () => {
+    const spec = {
+      openapi: "3.0.0",
+      paths: {
+        "/api/users/{id}": {
+          get: {
+            responses: {
+              "200": {
+                content: {
+                  "application/json": {
+                    schema: {
+                      properties: { id: {}, name: {}, email: {}, ssn: {} },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const endpoints = parseOpenApiSpec(spec);
+    expect(endpoints[0].responseProperties).toEqual(["id", "name", "email", "ssn"]);
+  });
+
+  it("defaults requestBodyProperties and responseProperties to empty arrays", () => {
+    const spec = {
+      openapi: "3.0.0",
+      paths: { "/api/simple": { get: {} } },
+    };
+    const endpoints = parseOpenApiSpec(spec);
+    expect(endpoints[0].requestBodyProperties).toEqual([]);
+    expect(endpoints[0].responseProperties).toEqual([]);
+  });
+
+  it("handles Swagger 2.0 format", () => {
+    const spec = {
+      swagger: "2.0",
+      paths: {
+        "/pets": {
+          get: {
+            parameters: [{ name: "limit", in: "query" }],
+          },
+        },
+      },
+    };
+    const endpoints = parseOpenApiSpec(spec);
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0].path).toBe("/pets");
+  });
 });
