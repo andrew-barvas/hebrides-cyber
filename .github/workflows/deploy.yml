@@ -159,6 +159,8 @@ jobs:
           check_table_column "subscriptions" "notify_email" || FAILED=1
           check_table_column "cloud_credentials" "id" || FAILED=1
           check_table_column "scheduled_reports" "id" || FAILED=1
+          check_table_column "ticket_integrations" "pagerduty_routing_key" || FAILED=1
+          check_table_column "ticket_integrations" "opsgenie_api_key" || FAILED=1
 
           if [ "$FAILED" -ne 0 ]; then
             echo ""
