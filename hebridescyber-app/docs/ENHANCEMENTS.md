@@ -698,6 +698,27 @@ backlog.
 
 ## E-24 — CVE references beyond JS libraries
 
+**Status: fixed (2026-09-25).** Shipped as `src/lib/scanners/softwareCveDb.ts`,
+a new enrichment module following `wpvdb.ts`'s exact pattern — it takes
+`fingerprint.ts`'s already-detected `riskySoftware` and adds real CVE data
+from two data sources per the plan this section originally called for:
+WordPress core via WPScan's `/wordpresses/{version}` endpoint (the same
+`WPSCAN_API_TOKEN`-gated API `wpvdb.ts` already uses for plugins, keyed by
+version instead of slug — reuses its exported `vulnerabilityAppliesToVersion`
+and `wpVulnSeverity` rather than duplicating them), and PHP/Apache via NVD's
+CVE API 2.0 queried by CPE name (`cpeName=cpe:2.3:a:<vendor>:<product>:...`),
+the same endpoint `newsletter.ts`'s `fetchRecentHighSeverityCves` already
+calls successfully, just with a version-scoped query instead of a date range.
+PHP/Apache CVEs are bundled into one `Finding` per software item (capped at
+30 `cveIds`) rather than one finding per CVE, to avoid flooding a report for
+an old install with dozens of individual findings — severity is derived from
+the highest matched CVSS score (critical ≥ 9, high ≥ 7, else medium). Wired
+into `runAllChecks()`/`summariseResults()` in `src/lib/scanners/index.ts` as
+a post-batch enrichment step after `fingerprint` resolves, exactly like
+`wpVulnDb`. New `COMPLIANCE_MAP`/`FIX_DIFFICULTY_MAP` entries and three new
+`remediationText.ts` constants (`SOFTWARE_CVE_WORDPRESS_CORE`,
+`SOFTWARE_CVE_PHP`, `SOFTWARE_CVE_APACHE`) round it out.
+
 **What**: `fingerprint.ts`'s broader `riskySoftware` detection (WordPress
 core, PHP, Apache version flags) is still prose-only — no live CVE lookup
 the way `osv.ts` does for npm-ecosystem JS libraries.
@@ -1362,6 +1383,33 @@ consumers (public-API surface, follows existing v1 conventions).
 **Depends on**: none. **Category**: code. **Source**: roadmap 2026-09-14.
 
 ## E-54 — PagerDuty / Opsgenie alert integration
+
+**Status: fixed (2026-09-25).** Shipped as `src/lib/oncallAlerts.ts`, wired
+into `executeScan()`'s Phase 2 notification block alongside the other
+never-throwing post-completion hooks. Reuses `ticket_integrations`
+(provider `'pagerduty'`/`'opsgenie'`, extended by migration 028 plus the
+dedicated `pagerduty_routing_key`/`opsgenie_api_key` columns added by
+`sql/migrations/039_oncall_credential_columns.sql`) — an owner can have both
+providers connected at once, and both get paged. Unlike the Jira/Linear
+auto-close feature, there is no separate opt-in flag: for these two
+providers a row existing in `ticket_integrations` **is** the "active" signal
+(same precedent as `slack_webhook_url`), so `auto_close_enabled` stays
+irrelevant to this path. `triggerOncallAlerts()` fires
+`createPagerDutyIncident()`/`createOpsgenieAlert()` (from
+`src/lib/oncallIntegrations.ts`) for every *new* Critical-severity finding
+only — narrower than the critical+high email alert, matching this feature's
+literal "new Critical severity finding" spec. `resolveOncallAlerts()` closes
+the incident/alert for every *fixed* finding regardless of severity, since
+resolving a dedup_key/alias that was never triggered is a harmless no-op in
+both APIs. Neither function uses a ledger table: both PagerDuty's
+`dedup_key` and Opsgenie's `alias` are caller-supplied idempotent
+identifiers, so `computeOncallDedupKey(ownerId, targetHost, checkId)`
+(a truncated SHA-256, prefixed `hc-`) is simply recomputed at resolve time
+rather than stored. Credentials are saved via
+`POST /api/account/oncall-integration` (validated against the real
+PagerDuty/Opsgenie API before being written, same "verify before saving"
+precedent as `ticket-integration.ts`) and managed from the account page's
+`OncallIntegrationConfig` panel.
 
 **What**: when a scan finds a new Critical severity finding, open a
 PagerDuty incident or Opsgenie alert (owner's choice), using the same

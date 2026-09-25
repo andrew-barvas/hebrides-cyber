@@ -85,6 +85,10 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   // --- WPScan Vulnerability Database ---
   "wpvdb.plugin-vulnerability": "easy", // usually a plugin update
 
+  // --- Software CVE DB (E-24) ---
+  "softwareCveDb.wordpressCore": "easy", // core update, usually low-risk/backward-compatible
+  "softwareCveDb.nvdCpe": "moderate", // PHP/Apache version bumps can break compatibility
+
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": "hard",
   "xsser.xss": "hard",
@@ -154,6 +158,21 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "api-spec.sqli": "hard",             // parameterised queries + full audit of query construction
   "api-spec.xss": "hard",              // output encoding + CSP, can touch many templates
   "api-spec.sqli-path": "hard",
+
+  // --- Cloud posture (E-32): toggling a cloud console setting or running
+  // one CLI command in every case, so easy across the board — "moderate"
+  // reserved for the confirmed-public-policy findings, which also warrant
+  // reviewing what was exposed and rotating anything sensitive, not just
+  // flipping the setting back.
+  "cloudPosture.awsPublicS3": "easy",
+  "cloudPosture.awsPublicS3Policy": "moderate", // also warrants reviewing what was exposed
+  "cloudPosture.awsAccountPublicAccess": "easy",
+  "cloudPosture.azurePublicBlob": "easy",
+  "cloudPosture.azureHttpTraffic": "easy",
+  "cloudPosture.azureWeakTls": "easy",
+  "cloudPosture.gcpPublicAccessPrevention": "easy",
+  "cloudPosture.gcpUniformAccess": "moderate", // may require re-issuing signed URLs for anything relying on legacy ACLs
+  "cloudPosture.gcpPublicBucket": "moderate", // also warrants reviewing what was exposed
 
   // --- Business logic (passive) ---
   "business-logic.csrf-missing": "moderate", // needs per-form token integration
