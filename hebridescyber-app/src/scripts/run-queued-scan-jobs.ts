@@ -205,6 +205,13 @@ async function runOne(
     return false;
   }
 
+  // Transition the scan to "running" now that a worker has actually claimed
+  // it — run-scan.ts only sets "queued" at enqueue time, since a queued scan
+  // may sit for hours if the on-demand dispatch fails and the daily cron is
+  // the fallback. The "running" status should mean "a worker is actively
+  // scanning right now", not "a scan_jobs row exists somewhere".
+  await supabaseAdmin.from("scans").update({ status: "running" }).eq("id", scanId);
+
   const outcome = await executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
     profile: scanConfig.profile,
     toolOverrides: scanConfig.toolOverrides,

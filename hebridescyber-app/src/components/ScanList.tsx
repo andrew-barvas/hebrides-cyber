@@ -6,12 +6,9 @@ import Link from "next/link";
 export type Scan = {
   id: string;
   target_url: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "queued" | "running" | "completed" | "failed";
   created_at: string;
   score?: number | null;
-  // Set only when this scan belongs to a team owner other than the current
-  // viewer — see the "Team" section in Account. Own scans leave this unset
-  // rather than showing "shared by you", which would just be noise.
   sharedByEmail?: string | null;
 };
 
@@ -98,6 +95,11 @@ export default function ScanList({ scans, onDelete }: Props) {
                 </td>
                 <td className="px-4 py-3 text-xs text-cybertext/40 whitespace-nowrap">
                   {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {(scan.status === "queued" || scan.status === "running") && (
+                    <span className="block text-[10px] text-cybertext/30 mt-0.5">
+                      {formatElapsed(scan.created_at)} ago
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-3">
@@ -167,13 +169,34 @@ function ScoreBadge({ score }: { score: number }) {
 function StatusBadge({ status }: { status: Scan["status"] }) {
   const colours: Record<Scan["status"], string> = {
     pending:   "bg-cybertext/10 text-cybertext/60",
+    queued:    "bg-blue-400/10 text-blue-400",
     running:   "bg-amber-400/10 text-amber-400",
     completed: "bg-neon/10 text-neon",
     failed:    "bg-red-400/10 text-red-400",
   };
+  const labels: Record<Scan["status"], string> = {
+    pending:   "pending",
+    queued:    "queued",
+    running:   "scanning",
+    completed: "completed",
+    failed:    "failed",
+  };
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colours[status]}`}>
-      {status}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${colours[status]}`}>
+      {(status === "queued" || status === "running") && (
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+      )}
+      {labels[status]}
     </span>
   );
+}
+
+function formatElapsed(isoDate: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 }

@@ -18,12 +18,15 @@ const OWN_GITHUB_REPO = "andrew-barvas/hebrides-cyber";
  * unset, or GitHub's API being briefly unavailable, must never turn a
  * successful "queued" response into a 500, since the job is safely queued
  * either way and the daily cron is a real fallback, just a slower one.
+ *
+ * Returns true if the dispatch succeeded, false otherwise — callers can
+ * use this to surface better feedback to the user about expected wait time.
  */
-export async function triggerOnDemandWorkflow(): Promise<void> {
+export async function triggerOnDemandWorkflow(): Promise<boolean> {
   const pat = process.env.GITHUB_PAT;
   if (!pat) {
     console.warn("[onDemandScanTrigger] GITHUB_PAT not set — queued scan will wait for the next scheduled-scans.yml cron.");
-    return;
+    return false;
   }
   try {
     const res = await fetch(
@@ -41,8 +44,11 @@ export async function triggerOnDemandWorkflow(): Promise<void> {
     );
     if (!res.ok) {
       console.warn(`[onDemandScanTrigger] on-demand-scan.yml dispatch failed (${res.status}) — falling back to the daily cron.`);
+      return false;
     }
+    return true;
   } catch (err) {
     console.warn("[onDemandScanTrigger] on-demand-scan.yml dispatch threw — falling back to the daily cron:", (err as Error).message);
+    return false;
   }
 }

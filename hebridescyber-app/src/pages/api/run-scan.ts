@@ -165,8 +165,8 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     return res.status(200).json({ ok: false, scanId, status: "failed", error: "Scan failed — try running it again." });
   }
 
-  if (scan.status === "running") {
-    return res.status(202).json({ ok: true, scanId, status: "running" });
+  if (scan.status === "queued" || scan.status === "running") {
+    return res.status(202).json({ ok: true, scanId, status: scan.status });
   }
 
   // scan.status === "pending" — first time step 2 has been reached for this
@@ -185,7 +185,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     return res.status(400).json({ error: `SSRF check failed: ${(err as Error).message}` });
   }
 
-  await supabaseAdmin.from("scans").update({ status: "running", owner_verified: true }).eq("id", scanId);
+  await supabaseAdmin.from("scans").update({ status: "queued", owner_verified: true }).eq("id", scanId);
 
   // Enqueue rather than call executeScan() directly — see
   // .github/workflows/on-demand-scan.yml's header comment for why running
@@ -207,12 +207,14 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   // Awaited so the dispatch call isn't cut off by the function returning —
   // but it never throws or blocks the response beyond its own 6s timeout,
   // see triggerOnDemandWorkflow's doc comment.
-  await triggerOnDemandWorkflow();
+  const dispatched = await triggerOnDemandWorkflow();
 
   return res.status(202).json({
     ok: true,
     scanId,
     status: "queued",
-    message: "Scan queued — this usually takes under a minute.",
+    message: dispatched
+      ? "Scan queued — a runner is spinning up, usually takes under a minute."
+      : "Scan queued — it will be picked up by the next scheduled run.",
   });
 }

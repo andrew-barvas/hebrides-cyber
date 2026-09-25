@@ -113,7 +113,7 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
 
   const { data: scan, error: createErr } = await supabaseAdmin
     .from("scans")
-    .insert({ owner: ownerId, target_url: targetUrl, status: "running", owner_verified: true })
+    .insert({ owner: ownerId, target_url: targetUrl, status: "queued", owner_verified: true })
     .select("id")
     .single();
 
