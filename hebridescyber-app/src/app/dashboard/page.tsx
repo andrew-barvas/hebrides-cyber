@@ -261,14 +261,25 @@ export default function DashboardPage() {
       let runBody = await pollRunScan(true);
       let polls = 0;
       while ((runBody.status === "queued" || runBody.status === "running") && polls < MAX_POLLS) {
-        setScanMessage(runBody.status === "queued" ? "Scan queued…" : "Scan running…");
+        const phase = runBody.status === "queued"
+          ? "Scan queued — waiting for a runner to pick it up…"
+          : polls < 8
+            ? "Scanning — checking TLS, headers, DNS…"
+            : polls < 20
+              ? "Scanning — probing endpoints, detecting technologies…"
+              : "Scanning — running deep checks, almost done…";
+        setScanMessage(phase);
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
         runBody = await pollRunScan(false);
         polls++;
       }
 
       if (runBody.status === "queued" || runBody.status === "running") {
-        setScanMessage("Still running — refresh the page in a minute to see the result.");
+        setScanMessage(
+          runBody.status === "queued"
+            ? "Scan is queued and will be picked up shortly. Check back in a few minutes — the page will update automatically."
+            : "Scan is still running — this can take a few minutes for larger sites. Check back shortly."
+        );
       } else if (runBody.status === "failed" || runBody.ok === false) {
         throw new Error(runBody.error ?? "Scan failed — try again.");
       } else {
