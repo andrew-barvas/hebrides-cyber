@@ -162,7 +162,26 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   }
 
   if (scan.status === "failed") {
-    return res.status(200).json({ ok: false, scanId, status: "failed", error: "Scan failed — try running it again." });
+    // scan_jobs.last_error carries the real failure reason (set by
+    // run-queued-scan-jobs.ts's failJob()) but was never read back here —
+    // the dashboard always showed a generic "try again" with no indication
+    // of what actually went wrong (e.g. SSRF rejection, target unreachable,
+    // GitHub Actions runner timeout). Most recent job row wins in case a
+    // scan was retried and failed more than once.
+    const { data: job } = await supabaseAdmin
+      .from("scan_jobs")
+      .select("last_error")
+      .eq("scan_id", scanId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return res.status(200).json({
+      ok: false,
+      scanId,
+      status: "failed",
+      error: job?.last_error ? `Scan failed: ${job.last_error}` : "Scan failed — try running it again.",
+    });
   }
 
   if (scan.status === "queued" || scan.status === "running") {
