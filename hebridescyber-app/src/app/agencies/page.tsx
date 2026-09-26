@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "For Agencies & MSPs — Hebrides Cyber",
   description:
-    "White-label security scanning for digital agencies and managed service providers. Fleet overview, custom scan policies, SLA monitoring, and branded PDF reports from £75/month.",
+    "White-label security scanning for digital agencies. Monitor up to 15 client sites with a fleet overview, per-site scan profiles, branded PDF reports and Jira/Linear ticketing — from £75/month.",
 };
 
 type Capability = {
@@ -13,62 +13,77 @@ type Capability = {
   body: string;
 };
 
+// Every entry here must describe something a paying Agency customer can use
+// today — this page is the sales pitch for a £75/mo plan. Planned work goes
+// in `roadmap` below, clearly labelled, and moves up only once it ships.
 const capabilities: Capability[] = [
-  {
-    icon: "🏢",
-    title: "MSP partner portal",
-    body: "Manage all client sites from one dashboard. Onboard clients, assign scan policies, and monitor SLA compliance without switching accounts. Full multi-tenant isolation — each client sees only their own data.",
-  },
   {
     icon: "📊",
     title: "Fleet overview",
-    body: "See every client site at a glance: score, trend sparkline, open findings count, and last scan date. Worst scores surface first so you catch problems before your clients do.",
+    body: "See every client site at a glance: latest score, trend, open findings and last scan date. Worst scores surface first so you catch problems before your clients do.",
   },
   {
     icon: "🎨",
-    title: "White-label reports",
-    body: "PDF and web reports carry your brand, not ours. Upload your logo, set your company name, and deliver branded Security Score reports your clients associate with your service.",
+    title: "White-label PDF reports",
+    body: "Upload your logo and company name, and every PDF Security Score report you send carries your brand, not ours.",
   },
   {
     icon: "📋",
-    title: "Custom scan policies",
-    body: "Different clients need different check suites. Create reusable scan policies — which checks to run, severity thresholds, scan windows — and assign them per client or per site.",
-  },
-  {
-    icon: "⏱️",
-    title: "SLA monitoring",
-    body: "Set response-time targets per severity. Track mean time to remediate across your client portfolio. Get alerted when a site is at risk of breaching its SLA — not after.",
+    title: "Per-site scan profiles",
+    body: "Different clients need different check suites. Pick a profile for each site — from a safe passive baseline to full, API- or CMS-focused active suites — and daily scheduled scans run the right tools for it.",
   },
   {
     icon: "🔗",
-    title: "Ticketing integrations",
-    body: "Route findings directly to your team's workflow — Jira, Linear, ServiceNow, or GitHub Issues. One-click ticket creation with automatic deduplication and auto-close when findings are resolved.",
+    title: "Jira & Linear ticketing",
+    body: "Send a finding to Jira or Linear in one click. Tickets are de-duplicated per finding, and can close themselves when a later scan confirms the fix.",
   },
   {
     icon: "📈",
-    title: "Compliance across 7 frameworks",
-    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, and DORA. Generate compliance-ready reports for client audits without extra work.",
+    title: "Findings mapped to 7 frameworks",
+    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA, and each report includes a Cyber Essentials readiness view.",
   },
   {
     icon: "📧",
     title: "Scheduled reports",
-    body: "Automated daily, weekly, or monthly security summaries sent to your team or directly to clients. CSV and JSON formats for integration with your existing reporting tools.",
+    body: "Daily, weekly or monthly security summaries sent to your team or straight to clients, with CSV and JSON exports for your own reporting tools.",
+  },
+];
+
+const roadmap: Capability[] = [
+  {
+    icon: "🏢",
+    title: "MSP partner portal",
+    body: "Onboard clients and give each one access to only their own sites and reports.",
+  },
+  {
+    icon: "⏱️",
+    title: "SLA monitoring",
+    body: "Remediation targets per severity, time-to-fix across your portfolio, and alerts before a site breaches its SLA.",
+  },
+  {
+    icon: "🧾",
+    title: "Compliance report export",
+    body: "A downloadable per-framework report for client audits, built from the mapping every finding already carries.",
+  },
+  {
+    icon: "🎫",
+    title: "ServiceNow & GitHub Issues",
+    body: "The same one-click ticketing, dedupe and auto-close you get with Jira and Linear today.",
   },
 ];
 
 const pricingFeatures = [
-  "Unlimited client sites",
+  "Up to 15 client sites",
+  "Daily scheduled scans",
   "Fleet overview dashboard",
   "White-label PDF reports",
-  "Custom scan policies",
-  "SLA monitoring",
-  "MSP partner portal",
+  "Per-site scan profiles",
   "Priority email support",
-  "All 7 compliance frameworks",
-  "Jira / Linear / ServiceNow integration",
+  "Findings mapped to 7 compliance frameworks",
+  "Jira / Linear ticketing with auto-close",
   "Scheduled report delivery",
   "SBOM generation (CycloneDX 1.5)",
-  "CI/CD SDK + GitHub Action",
+  "GitHub Action + GitLab / Bitbucket CI templates",
 ];
 
 function CapabilityCard({ capability }: { capability: Capability }) {
@@ -98,8 +113,8 @@ export default function AgenciesPage() {
             Security scanning for agencies and MSPs
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
-            Manage security across your entire client portfolio from one platform. White-label
-            reports, fleet-wide visibility, and automated compliance — without building it yourself.
+            Monitor your clients&apos; sites from one platform. White-label reports, fleet-wide
+            visibility and compliance-mapped findings — without building it yourself.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
@@ -122,11 +137,15 @@ export default function AgenciesPage() {
         <div className="mb-8">
           <p className="mb-1 font-mono text-xs text-neon/60">// the problem</p>
           <p className="text-sm text-cybertext/60 leading-relaxed">
-            You manage 10, 50, or 200 client websites. Each one needs security monitoring, but
+            You look after a portfolio of client websites. Each one needs security monitoring, but
             you can&apos;t run a separate tool per site, and your clients expect branded reports —
-            not a forwarded email from a tool they&apos;ve never heard of. Hebrides Cyber&apos;s Agency
-            tier gives you one dashboard for every client, one scan pipeline for every site, and
-            reports that carry your brand.
+            not a forwarded email from a tool they&apos;ve never heard of. The Agency tier covers up
+            to 15 client sites from one dashboard and one scan pipeline, with reports that carry
+            your brand. Looking after more than that?{" "}
+            <Link href="/contact" className="text-neon hover:underline">
+              Talk to us
+            </Link>
+            .
           </p>
         </div>
 
@@ -134,6 +153,34 @@ export default function AgenciesPage() {
           {capabilities.map((c) => (
             <CapabilityCard key={c.title} capability={c} />
           ))}
+        </div>
+
+        <div className="mt-16">
+          <p className="mb-1 font-mono text-xs text-neon/60">// on the roadmap</p>
+          <h2 className="mb-2 text-2xl font-bold">Coming to the Agency plan</h2>
+          <p className="mb-6 text-sm text-cybertext/60">
+            Not available yet — listed so you know where the plan is heading.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {roadmap.map((c) => (
+              <div key={c.title} className="rounded-lg border border-dashed border-cyberborder p-5">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex-shrink-0 text-xl opacity-70" aria-hidden="true">
+                    {c.icon}
+                  </span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-mono text-sm font-semibold text-cybertext">{c.title}</h3>
+                      <span className="rounded-full border border-cyberborder px-2 py-0.5 text-[11px] font-medium text-cybermuted">
+                        Coming soon
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-sm leading-relaxed text-cybertext/70">{c.body}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-16 rounded-xl border border-cyberborder bg-cyberpanel p-8">
@@ -160,9 +207,9 @@ export default function AgenciesPage() {
           <p className="mb-1 font-mono text-xs text-neon/60">// resell security under your brand</p>
           <h2 className="mb-2 text-2xl font-bold">White-label security as a service</h2>
           <p className="mb-6 text-cybertext/70">
-            Your clients see your brand on every report, every email, and every dashboard.
-            Add security scanning as a line item in your existing retainer — or build a
-            standalone security offering on top of our infrastructure.
+            Your clients see your brand on the security reports you send them. Add scanning as a
+            line item in your existing retainer — or build a standalone security offering on top
+            of our infrastructure.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
