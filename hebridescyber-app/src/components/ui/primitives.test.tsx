@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import Link from "next/link";
 import { Button } from "./button";
 import { Alert } from "./alert";
 import { CardTitle } from "./card";
@@ -29,7 +30,7 @@ describe("Button", () => {
   it("asChild renders the child element (a link stays a link) with button styling and no type attribute", () => {
     render(
       <Button asChild variant="secondary">
-        <a href="/pricing">Compare plans</a>
+        <Link href="/pricing">Compare plans</Link>
       </Button>
     );
     const link = screen.getByRole("link", { name: "Compare plans" });
@@ -115,7 +116,7 @@ describe("StatCard", () => {
 
 describe("EmptyState", () => {
   it("always pairs the message with a next step", () => {
-    render(<EmptyState title="No completed scans yet" description="Run one." action={<a href="/dashboard/scans">Run your first scan</a>} />);
+    render(<EmptyState title="No completed scans yet" description="Run one." action={<Link href="/dashboard/scans">Run your first scan</Link>} />);
     expect(screen.getByRole("heading", { name: "No completed scans yet" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run your first scan" })).toHaveAttribute("href", "/dashboard/scans");
   });
