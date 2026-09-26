@@ -93,27 +93,39 @@ type CookieAnalysis = {
   issues: string[];
 };
 
+// Azure Static Web Apps / App Service set these session-affinity cookies at
+// the infrastructure layer. The app cannot configure them, so flagging them
+// as insecure would mislead customers about actionable issues.
+const PLATFORM_COOKIES = new Set(["arraaffinity", "arraaffinitysameSite".toLowerCase()]);
+
 function analyseCookies(setCookieHeaders: string[]): CookieAnalysis[] {
-  return setCookieHeaders.map((raw) => {
-    const parts = raw.split(";").map((p) => p.trim());
-    const namePart = parts[0] ?? "";
-    const name = namePart.split("=")[0].trim();
-    const attrs = parts.slice(1).map((p) => p.toLowerCase());
+  return setCookieHeaders
+    .filter((raw) => {
+      const cookieName = raw.split(";")[0]?.split("=")[0]?.trim().toLowerCase() ?? "";
+      return !PLATFORM_COOKIES.has(cookieName);
+    })
+    .map((raw) => {
+      const parts = raw.split(";").map((p) => p.trim());
+      const namePart = parts[0] ?? "";
+      const name = namePart.split("=")[0].trim();
+      const attrs = parts.slice(1).map((p) => p.toLowerCase());
 
-    const secure = attrs.includes("secure");
-    const httpOnly = attrs.includes("httponly");
-    const sameSiteAttr = attrs.find((a) => a.startsWith("samesite="));
-    const sameSite = sameSiteAttr ? sameSiteAttr.replace("samesite=", "") : null;
-    const hasHostPrefix = name.startsWith("__Host-");
-    const hasSecurePrefix = name.startsWith("__Secure-");
+      const secure = attrs.includes("secure");
+      const httpOnly = attrs.includes("httponly");
+      const sameSiteAttr = attrs.find((a) => a.startsWith("samesite="));
+      const sameSite = sameSiteAttr ? sameSiteAttr.replace("samesite=", "") : null;
+      const hasHostPrefix = name.startsWith("__Host-");
+      const hasSecurePrefix = name.startsWith("__Secure-");
 
-    const issues: string[] = [];
-    if (!secure) issues.push("Missing Secure flag — cookie sent over HTTP");
-    if (!httpOnly) issues.push("Missing HttpOnly flag — accessible via document.cookie");
-    if (!sameSite || sameSite === "none") issues.push("SameSite not set to Strict/Lax — CSRF risk");
+      const issues: string[] = [];
+      if (!secure) issues.push("Missing Secure flag — cookie sent over HTTP");
+      if (!httpOnly) issues.push("Missing HttpOnly flag — accessible via document.cookie");
+      // SameSite=None; Secure is a valid cross-site cookie per RFC 6265bis —
+      // only flag when None is set WITHOUT Secure, or when SameSite is absent entirely.
+      if (!sameSite || (sameSite === "none" && !secure)) issues.push("SameSite not set to Strict/Lax — CSRF risk");
 
-    return { name, secure, httpOnly, sameSite, hasHostPrefix, hasSecurePrefix, issues };
-  });
+      return { name, secure, httpOnly, sameSite, hasHostPrefix, hasSecurePrefix, issues };
+    });
 }
 
 // ---- CORS analysis ---------------------------------------------------------

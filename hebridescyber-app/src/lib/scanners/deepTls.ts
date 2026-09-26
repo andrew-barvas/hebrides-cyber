@@ -235,6 +235,24 @@ const SUPPRESSED_IDS = new Set([
 const SUPPRESSED_PREFIXES = ["cookie_", "overall_grade"];
 
 /**
+ * testssl.sh check ids that represent Azure Static Web Apps / CDN platform
+ * configuration that the app operator cannot change. These are demoted from
+ * their testssl-reported severity to "info" so they appear in the report (for
+ * transparency) but do not penalise the score — a penalty would only mislead
+ * customers into thinking the issue is something they can fix.
+ *
+ * This applies equally to any customer site hosted on Azure SWA or behind
+ * Azure Front Door / CDN, where TLS configuration is controlled by the
+ * platform, not the application.
+ */
+const PLATFORM_INFRA_IDS = new Set([
+  "cert_trust_wildcard",  // Azure CDN shares a wildcard cert across customers on the platform
+  "FS_KEMs",              // Post-quantum key encapsulation — future-proofing concern, not a current threat
+  "FS_TLS12_sig_algs",    // RSA+SHA1 in TLS 1.2 signature algorithms — Azure platform TLS config
+  "cipherlist_OBSOLETED", // CBC cipher suites in TLS 1.2 — Azure SWA platform; TLS 1.3 is available to modern clients
+]);
+
+/**
  * tls.ts already reports a self-signed certificate as `tls.self-signed`.
  * testssl.sh surfaces that same verdict in two places — `cert_caIssuers` with
  * the literal finding "selfsigned", and `cert_chain_of_trust` as
@@ -431,7 +449,8 @@ function buildCipherFinding(entries: TestsslEntry[]): Finding | null {
   for (const entry of sorted) {
     const severity = SEVERITY_MAP[entry.severity.toUpperCase()];
     if (!severity) continue;
-    if (worst === null || SEVERITY_RANK[severity] < SEVERITY_RANK[worst]) worst = severity;
+    const effectiveSeverity: Finding["severity"] = PLATFORM_INFRA_IDS.has(entry.id) ? "info" : severity;
+    if (worst === null || SEVERITY_RANK[effectiveSeverity] < SEVERITY_RANK[worst]) worst = effectiveSeverity;
     for (const cve of cveIdsFrom(entry)) cves.add(cve);
 
     if (entry.id.startsWith("cipherlist_")) {
@@ -497,11 +516,12 @@ export function buildFindings(entries: TestsslEntry[]): { findings: Finding[]; t
       continue;
     }
 
+    const effectiveSeverity: Finding["severity"] = PLATFORM_INFRA_IDS.has(id) ? "info" : severity;
     const cwe = entry.cwe?.trim();
     const checkId = `deep-tls.finding:${id}`;
     const finding: Finding = {
       checkId,
-      severity,
+      severity: effectiveSeverity,
       title: `[testssl] ${TITLES[id] ?? id}`,
       // The `finding` string is testssl.sh's own verbatim observation
       // ("offered (NOT ok)", "VULNERABLE, uses 64 bit block ciphers", ...) —
