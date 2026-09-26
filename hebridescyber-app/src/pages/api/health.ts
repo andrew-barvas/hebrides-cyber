@@ -14,6 +14,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getStripe } from "@/lib/stripeClient";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+
+const HEALTH_RATE_LIMIT = { max: 120, windowSeconds: 60 * 60 };
 
 type CheckResult = { ok: boolean };
 type QueueCheckResult = CheckResult & { depth: number | null };
@@ -51,6 +54,15 @@ async function checkQueue(): Promise<QueueCheckResult> {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+
+  // Every call fans out to Supabase and Stripe, so an unthrottled public
+  // health endpoint is a cheap way to burn someone else's API quota. 120/h
+  // per IP comfortably fits a monitor polling once a minute.
+  const limit = await checkRateLimit(getClientIp(req), "health", HEALTH_RATE_LIMIT);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Too many requests" });
+  }
 
   const [supabase, stripe, queue] = await Promise.all([checkSupabase(), checkStripe(), checkQueue()]);
 

@@ -198,7 +198,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   // scan, so this is the only branch that verifies ownership and enqueues.
   if (!(await isOwnershipVerified(scan.owner, scan.target_url, scan.proof_token, req))) {
     return res.status(401).json({
-      error: "This domain hasn't been verified yet — use the \"Verify domain ownership\" section below, then run your scan again.",
+      error: "This domain hasn't been verified yet — verify it under Dashboard → Assets, then run your scan again.",
       code: "domain_not_verified",
     });
   }

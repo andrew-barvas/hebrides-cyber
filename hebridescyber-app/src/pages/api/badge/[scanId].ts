@@ -1,5 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+
+// Loaded by every visitor of every page a customer embeds it on, so the
+// budget is per *viewer* IP and generous — it exists to stop a loop
+// hammering the database, not to meter normal browsing.
+const BADGE_RATE_LIMIT = { max: 600, windowSeconds: 60 * 60 };
 
 // Embeddable Security Score badge: <img src="/api/badge/<scanId>.svg">.
 // Uses the service role key deliberately — this is a *public* badge by
@@ -41,6 +47,12 @@ function renderBadgeSvg(score: number | null): string {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const limit = await checkRateLimit(getClientIp(req), "badge", BADGE_RATE_LIMIT);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).end();
+  }
+
   const scanIdParam = req.query.scanId;
   const scanId = (Array.isArray(scanIdParam) ? scanIdParam[0] : scanIdParam)?.replace(/\.svg$/, "");
 

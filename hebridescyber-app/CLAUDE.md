@@ -125,7 +125,7 @@ Four distinct, non-overlapping "help me fix this" features — don't conflate th
 - `remediationText.ts` — static markdown, attached to every finding unconditionally (see above).
 - `src/lib/aiRemediation.ts` / `POST /api/scans/[id]/ai-fix` — on-demand, per-finding, sends the finding + detected tech stack to Azure OpenAI for a stack-specific fix (only live if `AZURE_OPENAI_*` is configured).
 - `POST /api/generate-fix-pr` — opens a real GitHub pull request. Auth resolves via `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` (see below); for dependency findings it bumps the actual version in `package.json` (via `osv.ts`'s `lookupOsvFixInfo`), not just a recommendations file.
-- `POST /api/scans/[id]/create-ticket` — opens a real Jira issue or Linear issue from one finding, via `src/lib/ticketIntegrations.ts`. Reuses the finding's own detail/remediation text as the ticket body rather than generating new prose — the point of this feature is "send existing guidance to where my team tracks work," not a fifth kind of write-up. Requires a saved `ticket_integrations` row (`sql/migrations/013_ticket_integrations.sql`, one per owner+provider, written only by `src/pages/api/account/ticket-integration.ts` after a real validate call against Jira/Linear's own API — same "verify before saving" precedent as `connect-repo.ts`). The "Create ticket" button in `ScanReportView.tsx`'s `FindingCard` only renders when the caller has already confirmed an integration exists (`hasTicketIntegration` prop) — it never has to know which provider is behind it.
+- `POST /api/scans/[id]/create-ticket` — opens a real Jira, Linear, ServiceNow or GitHub issue from one finding, via `buildProviderClient()` in `src/lib/ticketLinks.ts` (clients in `ticketIntegrations.ts` and `ticketProviders.ts`). Reuses the finding's own detail/remediation text as the ticket body rather than generating new prose — the point of this feature is "send existing guidance to where my team tracks work," not a fifth kind of write-up. Requires a saved `ticket_integrations` row (`sql/migrations/013_ticket_integrations.sql`, one per owner+provider, written only by `src/pages/api/account/ticket-integration.ts` after a real validate call against Jira/Linear's own API — same "verify before saving" precedent as `connect-repo.ts`). The "Create ticket" button in `ScanReportView.tsx`'s `FindingCard` only renders when the caller has already confirmed an integration exists (`hasTicketIntegration` prop) — it never has to know which provider is behind it.
 
 ### Ticket lifecycle: dedupe and auto-close
 
@@ -182,12 +182,33 @@ Rules when adding UI:
 - Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode (the parity block in `globals.css`). Alpha tuned for white-on-black reads far too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
 - `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled right down in light mode.
 
+Three more per-theme tokens meet WCAG AA without the parity overrides above — prefer them over alpha steps in new code: `cybermuted` (secondary text), `danger`, `warning`. The shadcn/ui names (`bg-primary`, `text-muted-foreground`, `border-input`, …) are aliases onto the same variables so CLI-generated components render on-brand; don't use them in hand-written code.
+
+### UI primitives
+
+New UI is composed from `src/components/ui/` — the shadcn/ui pattern, hand-written against the cyber tokens (lowercase filenames there, matching shadcn). `components.json` is configured so `npx shadcn@2 add <component>` works for Radix-backed pieces (dialog, dropdown, tooltip); **never run `shadcn init`**, it overwrites `globals.css` and `tailwind.config.cjs`. Current set: `button` (primary/secondary/ghost/danger; `asChild` to style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the `// section` overline with the `//` hidden from screen readers), `input`/`label` (every input gets a label, `sr-only` if visually redundant), `alert` (danger → `role="alert"`, else `role="status"`), `stat-card`, `segmented-control` (`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()` (`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another panel/button/input — the older feature components still do, and migrate incrementally.
+
+### App shell
+
+`src/components/app-shell/AppShell.tsx`, mounted by `src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+) or scrolling section tabs, plus one session + subscription load exposed through `useAppSession()`. Use its `plan` for feature gating (the stored plan only while `status === "active"`, else `"none"`) and `billingPlan` for billing display. It also runs the MFA (AAL2) step-up redirect for every route it wraps — `middleware.ts` only checks authentication. Pages inside it render content only: no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
+
+| Route | Holds |
+|---|---|
+| `/dashboard` | Overview — KPIs, trends, latest findings, onboarding checklist |
+| `/dashboard/scans` | `RunScanForm` + paginated scan list |
+| `/dashboard/scans/history` | Trends (per-site score/category history) |
+| `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
+| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` rather than disappearing |
+| `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
+
+Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`, `activeNavHref` — longest segment-prefix wins).
+
 ### Database schema
 
 Key tables (all in `sql/migrations/`):
 - `users` — profile data keyed to `auth.users`; `is_admin` grants admin panel access
 - `subscriptions` — plan, status, slack_webhook_url, ms_teams_webhook_url (`src/lib/msTeams.ts` — independent of Slack, either/both/neither), brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
-- `ticket_integrations` — one row per owner+provider (`jira`/`linear`); no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`). `auto_close_enabled` (`016_ticket_links.sql`) opts into auto-close, default false. Because the table is unique on `(owner, provider)`, an owner can have **two** rows — every read must `.order("created_at", { ascending: false }).limit(1)` before `.maybeSingle()`, which would otherwise throw on exactly those accounts
+- `ticket_integrations` — one row per owner+provider: trackers (`jira`/`linear`/`servicenow`/`github`) **and** on-call rows (`pagerduty`/`opsgenie`, 028) share this table, so a ticketing read must filter on `TICKET_PROVIDERS` — use `findTicketIntegration()` (ticketLinks.ts) rather than querying it directly; no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`). `auto_close_enabled` (`016_ticket_links.sql`) opts into auto-close, default false. Because the table is unique on `(owner, provider)`, an owner can have **two** rows — every read must `.order("created_at", { ascending: false }).limit(1)` before `.maybeSingle()`, which would otherwise throw on exactly those accounts
 - `ticket_links` — finding→issue ledger for dedupe and auto-close (`016_ticket_links.sql`); owner-readable, service-role-write-only (a forgeable row could suppress ticketing for a real finding)
 - `scans` + `scan_results` — scan records and findings/score; RLS-protected by owner
 - `scan_jobs` — the on-demand + scheduled queue (`008_scan_jobs.sql`); `claim_scan_job()` RPC does the `SKIP LOCKED` claim

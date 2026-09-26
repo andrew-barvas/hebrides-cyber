@@ -13,6 +13,7 @@ import FixWizard from "@/components/FixWizard";
 import CeReadinessPanel from "@/components/CeReadinessPanel";
 import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
+import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 
 type Finding = ViewFinding;
 
@@ -274,14 +275,19 @@ export default function ScanDetailPage() {
   // read straight through the browser's own session, same as
   // TicketIntegration.tsx's own status check, rather than a second API
   // route just to answer "does one exist."
+  // Existence check over tracker rows only: .maybeSingle() used to error for
+  // any owner with two rows (two trackers, or a tracker plus an on-call
+  // provider in the same table), hiding the button from exactly the accounts
+  // with the most integrations — and a PagerDuty-only account showed it.
   useEffect(() => {
     if (!result) return;
     supabase
       .from("ticket_integrations")
       .select("provider")
-      .maybeSingle()
+      .in("provider", [...TICKET_PROVIDERS])
+      .limit(1)
       .then(
-        ({ data }) => setHasTicketIntegration(Boolean(data)),
+        ({ data }) => setHasTicketIntegration((data?.length ?? 0) > 0),
         () => {
           // Non-fatal — findings just render without the "Create ticket" button.
         }
@@ -301,28 +307,30 @@ export default function ScanDetailPage() {
       );
   }, [result]);
 
+  // Rendered inside the dashboard AppShell, which owns the page background
+  // and container — these states only need to fill the content column.
   if (loading) {
     return (
-      <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-cybertext/30">// loading scan report…</p>
+      <div className="flex min-h-[40vh] items-center justify-center" role="status">
+        <p className="font-mono text-sm text-cybermuted">// loading scan report…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="text-sm text-red-400">{error}</p>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-danger" role="alert">{error}</p>
       </div>
     );
   }
 
   if (!result) {
     return (
-      <div className="bg-cyberbg min-h-screen flex items-center justify-center text-center px-6">
-        <p className="text-sm text-cybertext/50">
+      <div className="flex min-h-[40vh] items-center justify-center px-6 text-center">
+        <p className="text-sm text-cybermuted">
           No results yet — the scan may still be running.{" "}
-          <Link href="/dashboard" className="text-neon underline">← Dashboard</Link>
+          <Link href="/dashboard/scans" className="text-neon underline">View all scans</Link>
         </p>
       </div>
     );
@@ -358,17 +366,15 @@ export default function ScanDetailPage() {
         @page { margin: 1.5cm; }
       `}</style>
 
-      <div className="bg-cyberbg min-h-screen text-cybertext print:bg-white print:text-slate-800">
-        <div className="bg-grid pointer-events-none fixed inset-0 opacity-20 print:hidden" />
-
-        <div className="relative mx-auto max-w-3xl px-6 py-12 space-y-8 print:py-0 print:space-y-6">
+      <div className="text-cybertext print:bg-white print:text-slate-800">
+        <div className="max-w-3xl space-y-8 print:max-w-none print:space-y-6">
           {/* Header */}
           <div>
             <Link
-              href="/dashboard"
-              className="no-print inline-block mb-3 font-mono text-xs text-cybertext/40 hover:text-neon transition-colors"
+              href="/dashboard/scans"
+              className="no-print inline-block mb-3 font-mono text-xs text-cybermuted hover:text-neon transition-colors"
             >
-              ← Back to dashboard
+              ← All scans
             </Link>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>

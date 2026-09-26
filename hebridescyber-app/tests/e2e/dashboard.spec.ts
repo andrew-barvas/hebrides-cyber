@@ -18,6 +18,21 @@ test("login page shows sign-in form", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Send magic link" })).toBeVisible();
 });
 
+// LIVE-5 (docs/ROADMAP.md): protected routes are enforced server-side by
+// src/middleware.ts, not by client JS reading a stored token. Asserting on the
+// raw HTTP response (redirects not followed) is what proves that — a
+// client-side guard would return 200 and redirect only after hydration.
+for (const path of ["/dashboard", "/dashboard/integrations", "/account", "/admin"]) {
+  test(`unauthenticated ${path} is redirected to /login by the server`, async ({ request }) => {
+    const res = await request.get(path, { maxRedirects: 0 });
+    expect(res.status()).toBeGreaterThanOrEqual(300);
+    expect(res.status()).toBeLessThan(400);
+    const location = new URL(res.headers()["location"], "http://localhost");
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("redirect")).toBe(path);
+  });
+}
+
 test("pricing page is reachable and shows plan options", async ({ page }) => {
   await page.goto("/pricing");
   await expect(page).toHaveURL(/\/pricing$/);

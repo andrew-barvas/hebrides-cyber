@@ -21,9 +21,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildProviderClient,
   findOpenTicketLinks,
+  findTicketIntegration,
   markTicketLinkClosed,
   ticketHostOf,
-  type TicketIntegrationRow,
 } from "./ticketLinks";
 import type { ScanReport } from "./scanReport";
 
@@ -50,17 +50,14 @@ export async function autoCloseFixedFindingTickets(
     );
     if (fixedCheckIds.size === 0) return NOOP;
 
-    const { data: integration } = await supabaseAdmin
-      .from("ticket_integrations")
-      .select("provider, jira_base_url, jira_email, jira_api_token, jira_project_key, linear_api_key, linear_team_id, auto_close_enabled")
-      .eq("owner", ownerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Trackers only — before findTicketIntegration filtered by provider,
+    // connecting PagerDuty or Opsgenie (same table, 028) after Jira made this
+    // pick the on-call row and silently stop auto-closing.
+    const integration = await findTicketIntegration(supabaseAdmin, ownerId);
 
     if (!integration?.auto_close_enabled) return NOOP;
 
-    const client = buildProviderClient(integration as TicketIntegrationRow);
+    const client = buildProviderClient(integration);
     if (!client) {
       console.error(`[ticketAutoClose] ${integration.provider} integration for owner ${ownerId} is missing credentials — skipping`);
       return NOOP;

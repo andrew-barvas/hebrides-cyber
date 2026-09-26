@@ -91,7 +91,7 @@ const managedServices: Service[] = [
     icon: "🔍",
     desc: "Ongoing tracking of outdated libraries, CMS versions, and known CVEs in your dependencies — with remediation PRs opened automatically in your repository when safe fixes are available.",
     includes: [
-      "Real dependency scanning (npm, pip, Composer) via OSV.dev, once you connect a repository (Account → Connect a repository)",
+      "Real dependency scanning (npm, pip, Composer) via OSV.dev, once you connect a repository (Dashboard → Integrations → Connect a repository)",
       "CVE matching against your specific declared dependency versions",
       "Findings tagged new/fixed automatically on every re-scan",
     ],

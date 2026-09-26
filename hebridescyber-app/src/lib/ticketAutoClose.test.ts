@@ -30,6 +30,7 @@ function makeSupabase(): SupabaseClient {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    in: () => builder,
     order: () => builder,
     limit: () => builder,
     maybeSingle: () => Promise.resolve({ data: integrationRow }),
