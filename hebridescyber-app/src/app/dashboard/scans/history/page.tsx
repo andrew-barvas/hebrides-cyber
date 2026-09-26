@@ -8,10 +8,16 @@
 // reasoning.
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Download, TrendingUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import CategorySparklines from "@/components/CategorySparklines";
 import { findFullScoreHistoryClient, findCategoryHistoryClient, type CategoryCountPoint } from "@/lib/clientScanHistory";
+import { Button } from "@/components/ui/button";
+import { Card, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Target = { id: string; target_url: string };
 
@@ -72,72 +78,74 @@ export default function ScoreHistoryPage() {
   const selectedTarget = targets.find((t) => t.id === selectedId);
 
   return (
-    <div className="bg-cyberbg min-h-screen text-cybertext">
-      <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
-      <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./score --history</p>
-            <h1 className="text-2xl font-bold text-cybertext sm:text-3xl">Score History</h1>
-          </div>
-          <Link
-            href="/dashboard"
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
-          >
-            ← Dashboard
-          </Link>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="$ ./score --history"
+        title="Trends"
+        description="Full score history and findings by category for each monitored site."
+      />
 
-        {loadingTargets ? (
-          <p className="font-mono text-sm text-cybertext/30">// loading…</p>
-        ) : targets.length === 0 ? (
-          <p className="text-sm text-cybertext/50">No monitored sites yet — add one from the dashboard to see its score history here.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="target-select" className="text-xs text-cybertext/50">
-                Site:
-              </label>
-              <select
-                id="target-select"
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext focus:border-neon focus:outline-none"
+      {loadingTargets ? (
+        <Skeleton className="h-64 rounded-xl" />
+      ) : targets.length === 0 ? (
+        <EmptyState
+          icon={<TrendingUp />}
+          title="No monitored sites yet"
+          description="Trends are built from scheduled scans of the sites you monitor. Add one to start collecting history."
+          action={
+            <Button asChild>
+              <Link href="/dashboard/assets">Go to Assets</Link>
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="target-select" className="text-sm text-cybermuted">
+              Site
+            </label>
+            <select
+              id="target-select"
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              className="h-9 rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/40"
+            >
+              {targets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.target_url}
+                </option>
+              ))}
+            </select>
+            {scorePoints.length > 0 && selectedTarget && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="ml-auto"
+                onClick={() => downloadScoreHistoryCsv(selectedTarget.target_url, scorePoints)}
               >
-                {targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.target_url}
-                  </option>
-                ))}
-              </select>
-              {scorePoints.length > 0 && selectedTarget && (
-                <button
-                  onClick={() => downloadScoreHistoryCsv(selectedTarget.target_url, scorePoints)}
-                  className="ml-auto rounded-md border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
-                >
-                  ↓ Export CSV
-                </button>
-              )}
-            </div>
-
-            {loadingHistory ? (
-              <p className="font-mono text-sm text-cybertext/30">// loading history…</p>
-            ) : (
-              <>
-                <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-                  <ScoreTrend points={scorePoints} />
-                  {scorePoints.length >= 2 && <p className="mt-2 text-[10px] text-cybertext/30">{scorePoints.length} scans shown.</p>}
-                </div>
-
-                <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-                  <p className="mb-3 text-xs font-semibold text-cybertext/50 uppercase tracking-wide">Findings by category, over time</p>
-                  <CategorySparklines history={categoryHistory} />
-                </div>
-              </>
+                <Download aria-hidden="true" />
+                Export CSV
+              </Button>
             )}
-          </>
-        )}
-      </div>
+          </div>
+
+          {loadingHistory ? (
+            <Skeleton className="h-64 rounded-xl" />
+          ) : (
+            <>
+              <Card>
+                <ScoreTrend points={scorePoints} />
+                {scorePoints.length >= 2 && <p className="mt-2 text-xs text-cybermuted">{scorePoints.length} scans shown.</p>}
+              </Card>
+
+              <Card>
+                <CardTitle className="mb-3">findings by category, over time</CardTitle>
+                <CategorySparklines history={categoryHistory} />
+              </Card>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

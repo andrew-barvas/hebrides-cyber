@@ -8,9 +8,20 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildScanReport, findPreviousFindings, pendingScanReport } from "@/lib/scanReport";
 import { isExpired } from "@/lib/reportShares";
 import { logAuditEvent } from "@/lib/audit";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+
+// Per viewer IP. Plenty for someone reading a report someone shared with
+// them; also caps how fast any one client can probe for valid tokens.
+const SHARED_REPORT_RATE_LIMIT = { max: 120, windowSeconds: 60 * 60 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+
+  const limit = await checkRateLimit(getClientIp(req), "shared-report", SHARED_REPORT_RATE_LIMIT);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: "Too many requests — try again later." });
+  }
 
   const token = req.query.token as string;
 
