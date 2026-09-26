@@ -21,8 +21,14 @@ export function getClientIp(req: NextApiRequest): string {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-const WINDOW_SECONDS = 60 * 60; // 1 hour
-const MAX_REQUESTS = 10; // per key, per window
+export type RateLimitPolicy = { max: number; windowSeconds: number };
+
+// 10 per hour suits expensive, deliberate actions (starting a scan, sending
+// the contact form). Read-only public endpoints that are hit passively —
+// an embedded badge loads on every page view of a customer's site, uptime
+// monitors poll /api/health every minute — need their own, larger budget via
+// the `policy` argument, or legitimate traffic would be throttled.
+export const DEFAULT_RATE_LIMIT: RateLimitPolicy = { max: 10, windowSeconds: 60 * 60 };
 
 const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -33,12 +39,16 @@ export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 // run-scan.ts and v1/scans.ts deliberately share "run-scan" (one combined
 // scan-creation quota per owner regardless of entry point); a caller with a
 // different purpose (e.g. contact.ts's spam protection) should pass its own.
-export async function checkRateLimit(key: string, namespace: string = "run-scan"): Promise<RateLimitResult> {
+export async function checkRateLimit(
+  key: string,
+  namespace: string = "run-scan",
+  policy: RateLimitPolicy = DEFAULT_RATE_LIMIT
+): Promise<RateLimitResult> {
   const namespacedKey = `${namespace}:${key}`;
   if (upstashUrl && upstashToken) {
-    return checkRateLimitRedis(namespacedKey);
+    return checkRateLimitRedis(namespacedKey, policy);
   }
-  return checkRateLimitInMemory(namespacedKey);
+  return checkRateLimitInMemory(namespacedKey, policy);
 }
 
 /**
@@ -52,7 +62,7 @@ export async function checkRateLimit(key: string, namespace: string = "run-scan"
  * publishes a Lua script for this) if the fixed-window edge case becomes
  * a real problem in practice.
  */
-async function checkRateLimitRedis(key: string): Promise<RateLimitResult> {
+async function checkRateLimitRedis(key: string, policy: RateLimitPolicy): Promise<RateLimitResult> {
   const redisKey = `ratelimit:${key}`;
 
   try {
@@ -63,12 +73,12 @@ async function checkRateLimitRedis(key: string): Promise<RateLimitResult> {
 
     if (count === 1) {
       // First request in this window — set expiry so the key self-cleans.
-      await fetch(`${upstashUrl}/expire/${encodeURIComponent(redisKey)}/${WINDOW_SECONDS}`, {
+      await fetch(`${upstashUrl}/expire/${encodeURIComponent(redisKey)}/${policy.windowSeconds}`, {
         headers: { Authorization: `Bearer ${upstashToken}` },
       });
     }
 
-    if (count > MAX_REQUESTS) {
+    if (count > policy.max) {
       const ttlRes = await fetch(`${upstashUrl}/ttl/${encodeURIComponent(redisKey)}`, {
         headers: { Authorization: `Bearer ${upstashToken}` },
       });
@@ -92,16 +102,16 @@ async function checkRateLimitRedis(key: string): Promise<RateLimitResult> {
 // / UPSTASH_REDIS_REST_TOKEN before relying on rate limiting in production.
 const inMemoryBuckets = new Map<string, { count: number; resetAt: number }>();
 
-function checkRateLimitInMemory(key: string): RateLimitResult {
+function checkRateLimitInMemory(key: string, policy: RateLimitPolicy): RateLimitResult {
   const now = Date.now();
-  const windowMs = WINDOW_SECONDS * 1000;
+  const windowMs = policy.windowSeconds * 1000;
   const bucket = inMemoryBuckets.get(key);
 
   if (!bucket || bucket.resetAt < now) {
     inMemoryBuckets.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, retryAfterSeconds: 0 };
   }
-  if (bucket.count >= MAX_REQUESTS) {
+  if (bucket.count >= policy.max) {
     return { allowed: false, retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000) };
   }
   bucket.count += 1;
