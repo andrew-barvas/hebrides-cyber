@@ -66,8 +66,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsed = parseBody(patchSchema, req.body, res);
     if (!parsed) return;
     const { scanId, action } = parsed;
+
+    // Fetch the linked scan_jobs row so we can reset it alongside scans.
+    const { data: scan } = await supabaseAdmin.from("scans").select("job_id").eq("id", scanId).maybeSingle();
+
     if (action === "cancel") {
       await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
+      if (scan?.job_id) {
+        await supabaseAdmin
+          .from("scan_jobs")
+          .update({ status: "failed", last_error: "Cancelled by admin" })
+          .eq("id", scan.job_id);
+      }
       await logAuditEvent(supabaseAdmin, {
         actorId: adminId,
         action: "admin.scan_cancelled",
@@ -77,7 +87,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ ok: true });
     }
     if (action === "retry") {
-      await supabaseAdmin.from("scans").update({ status: "pending" }).eq("id", scanId);
+      await supabaseAdmin.from("scans").update({ status: "queued" }).eq("id", scanId);
+      if (scan?.job_id) {
+        await supabaseAdmin
+          .from("scan_jobs")
+          .update({ status: "pending", claimed_at: null, claimed_by: null })
+          .eq("id", scan.job_id);
+      }
       await logAuditEvent(supabaseAdmin, {
         actorId: adminId,
         action: "admin.scan_retried",

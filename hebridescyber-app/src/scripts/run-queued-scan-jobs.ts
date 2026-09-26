@@ -48,6 +48,16 @@ async function main() {
   const workerId = process.env.WORKER_ID ?? `local-${process.pid}`;
   const startedAt = Date.now();
 
+  // Reset any scan_jobs rows stuck in 'running' for >30 minutes — handles
+  // runners killed mid-job (OOM, timeout, restart) so the job gets re-claimed
+  // on this run rather than staying orphaned indefinitely.
+  const { data: resetCount, error: resetError } = await supabaseAdmin.rpc("reset_stale_scan_jobs");
+  if (resetError) {
+    console.warn(`[${workerId}] reset_stale_scan_jobs: ${resetError.message}`);
+  } else if ((resetCount as number) > 0) {
+    console.log(`[${workerId}] reset ${resetCount} stale job(s) to pending — they will be re-claimed now.`);
+  }
+
   let processed = 0;
   let succeeded = 0;
   let failed = 0;
