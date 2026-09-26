@@ -19,6 +19,47 @@ function snowAuthHeader(username: string, password: string): string {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
+/**
+ * ServiceNow cloud instances all live at https://<instance>.service-now.com.
+ * Requiring exactly that shape is also the SSRF guard: the instance URL is
+ * customer-supplied and fetched server-side, so without it an attacker could
+ * point this at an internal address and read the response via the error text.
+ */
+export function isServiceNowInstanceUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (
+      url.protocol === "https:" &&
+      /^[a-z0-9-]+\.service-now\.com$/i.test(url.hostname) &&
+      !url.port &&
+      !url.username &&
+      !url.password &&
+      (url.pathname === "/" || url.pathname === "")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function findServiceNowSysId(
+  config: Pick<ServiceNowConfig, "instanceUrl" | "username" | "password" | "tableName">,
+  issueKey: string,
+): Promise<{ ok: true; sysId: string } | { ok: false; error: string }> {
+  const base = config.instanceUrl.replace(/\/$/, "");
+  const table = config.tableName || "incident";
+  const res = await fetch(
+    `${base}/api/now/table/${encodeURIComponent(table)}?sysparm_query=number=${encodeURIComponent(issueKey)}&sysparm_fields=sys_id&sysparm_limit=1`,
+    {
+      headers: { Authorization: snowAuthHeader(config.username, config.password), Accept: "application/json" },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    },
+  );
+  if (!res.ok) return { ok: false, error: `ServiceNow lookup failed (${res.status})` };
+  const body = (await res.json()) as { result?: Array<{ sys_id?: string }> };
+  const sysId = body.result?.[0]?.sys_id;
+  return sysId ? { ok: true, sysId } : { ok: false, error: `Incident ${issueKey} not found` };
+}
+
 export async function validateServiceNowCredentials(
   config: Pick<ServiceNowConfig, "instanceUrl" | "username" | "password">,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -116,21 +157,9 @@ export async function closeServiceNowIncident(
   const base = config.instanceUrl.replace(/\/$/, "");
   const table = config.tableName || "incident";
   try {
-    // Look up sys_id from number
-    const lookupRes = await fetch(
-      `${base}/api/now/table/${encodeURIComponent(table)}?sysparm_query=number=${encodeURIComponent(issueKey)}&sysparm_fields=sys_id&sysparm_limit=1`,
-      {
-        headers: {
-          Authorization: snowAuthHeader(config.username, config.password),
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      },
-    );
-    if (!lookupRes.ok) return { ok: false, error: `ServiceNow lookup failed (${lookupRes.status})` };
-    const lookupBody = (await lookupRes.json()) as { result?: Array<{ sys_id?: string }> };
-    const sysId = lookupBody.result?.[0]?.sys_id;
-    if (!sysId) return { ok: false, error: `Incident ${issueKey} not found` };
+    const found = await findServiceNowSysId(config, issueKey);
+    if (!found.ok) return found;
+    const sysId = found.sysId;
 
     const res = await fetch(`${base}/api/now/table/${encodeURIComponent(table)}/${sysId}`, {
       method: "PATCH",
@@ -143,6 +172,34 @@ export async function closeServiceNowIncident(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `ServiceNow close failed (${res.status})` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `Could not reach ServiceNow: ${(err as Error).message}` };
+  }
+}
+
+/** Adds a work note (internal, not customer-visible) to an incident. */
+export async function addServiceNowComment(
+  config: Pick<ServiceNowConfig, "instanceUrl" | "username" | "password" | "tableName">,
+  issueKey: string,
+  text: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const base = config.instanceUrl.replace(/\/$/, "");
+  const table = config.tableName || "incident";
+  try {
+    const found = await findServiceNowSysId(config, issueKey);
+    if (!found.ok) return found;
+    const res = await fetch(`${base}/api/now/table/${encodeURIComponent(table)}/${found.sysId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: snowAuthHeader(config.username, config.password),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ work_notes: text }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return { ok: false, error: `ServiceNow comment failed (${res.status})` };
     return { ok: true };
   } catch (err) {
     return { ok: false, error: `Could not reach ServiceNow: ${(err as Error).message}` };
@@ -172,6 +229,15 @@ export async function validateGitHubIssuesCredentials(
     if (res.status === 401) return { ok: false, error: "GitHub rejected the token" };
     if (res.status === 404) return { ok: false, error: "Repository not found or token lacks access" };
     if (!res.ok) return { ok: false, error: `GitHub returned HTTP ${res.status}` };
+    // Otherwise every ticket would fail later with an opaque 410. An
+    // unreadable body isn't evidence either way, so it doesn't block saving.
+    let hasIssues: boolean | undefined;
+    try {
+      hasIssues = ((await res.json()) as { has_issues?: boolean }).has_issues;
+    } catch {
+      hasIssues = undefined;
+    }
+    if (hasIssues === false) return { ok: false, error: "Issues are turned off for this repository" };
     return { ok: true };
   } catch (err) {
     return { ok: false, error: `Could not reach GitHub: ${(err as Error).message}` };

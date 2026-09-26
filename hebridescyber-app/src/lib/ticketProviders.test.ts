@@ -6,7 +6,73 @@ import {
   getGitHubIssue,
   createServiceNowIncident,
   getServiceNowIncident,
+  addServiceNowComment,
+  isServiceNowInstanceUrl,
 } from "./ticketProviders";
+
+// The instance URL is customer-supplied and fetched server-side, so this is
+// the SSRF boundary for the ServiceNow integration.
+describe("isServiceNowInstanceUrl", () => {
+  it.each(["https://acme.service-now.com", "https://acme.service-now.com/", "https://dev-12345.service-now.com"])("accepts %s", (url) => {
+    expect(isServiceNowInstanceUrl(url)).toBe(true);
+  });
+
+  it.each([
+    "http://acme.service-now.com", // not https
+    "https://169.254.169.254", // cloud metadata
+    "https://localhost",
+    "https://service-now.com.evil.example",
+    "https://evil.example/acme.service-now.com",
+    "https://acme.service-now.com.evil.example",
+    "https://a.b.service-now.com", // nested subdomain
+    "https://acme.service-now.com:8443",
+    "https://user:pass@acme.service-now.com",
+    "https://acme.service-now.com/api/now/table/sys_user",
+    "not a url",
+  ])("rejects %s", (url) => {
+    expect(isServiceNowInstanceUrl(url)).toBe(false);
+  });
+});
+
+describe("addServiceNowComment", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("looks up the incident by number, then writes an internal work note", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ result: [{ sys_id: "abc123" }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await addServiceNowComment(
+      { instanceUrl: "https://acme.service-now.com", username: "u", password: "p" },
+      "INC0012345",
+      "Re-detected"
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock.mock.calls[0][0]).toContain("sysparm_query=number=INC0012345");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://acme.service-now.com/api/now/table/incident/abc123");
+    expect(fetchMock.mock.calls[1][1].method).toBe("PATCH");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ work_notes: "Re-detected" });
+  });
+
+  it("reports an incident that no longer exists", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ result: [] }) }));
+    const result = await addServiceNowComment({ instanceUrl: "https://acme.service-now.com", username: "u", password: "p" }, "INC0", "x");
+    expect(result).toEqual({ ok: false, error: "Incident INC0 not found" });
+  });
+});
+
+describe("validateGitHubIssuesCredentials — issues disabled", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("refuses a repository with Issues turned off, rather than failing every ticket later", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ has_issues: false }) }));
+    const result = await validateGitHubIssuesCredentials({ token: "t", owner: "acme", repo: "webapp" });
+    expect(result).toEqual({ ok: false, error: "Issues are turned off for this repository" });
+  });
+});
 
 describe("ServiceNow", () => {
   beforeEach(() => { vi.stubGlobal("fetch", vi.fn()); });

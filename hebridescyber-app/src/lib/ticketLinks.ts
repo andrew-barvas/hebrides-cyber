@@ -1,7 +1,7 @@
 // The finding -> issue ledger (sql/migrations/016_ticket_links.sql) and the
 // provider-agnostic client both the manual "Create ticket" button and the
-// automatic close-on-fixed hook drive, so neither has to branch on
-// jira-vs-linear beyond resolving the client once.
+// automatic close-on-fixed hook drive, so neither has to branch on which
+// tracker is connected beyond resolving the client once.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addJiraComment,
@@ -15,8 +15,19 @@ import {
   type CreateIssueResult,
   type IssueState,
 } from "./ticketIntegrations";
+import {
+  addGitHubIssueComment,
+  addServiceNowComment,
+  closeGitHubIssue,
+  closeServiceNowIncident,
+  createGitHubIssue,
+  createServiceNowIncident,
+  getGitHubIssue,
+  getServiceNowIncident,
+} from "./ticketProviders";
+import { TICKET_PROVIDERS, type TicketProvider } from "./ticketProviderList";
 
-export type TicketProvider = "jira" | "linear";
+export { TICKET_PROVIDERS, type TicketProvider };
 
 /** The columns every ticket code path selects out of ticket_integrations. */
 export type TicketIntegrationRow = {
@@ -27,8 +38,68 @@ export type TicketIntegrationRow = {
   jira_project_key?: string | null;
   linear_api_key?: string | null;
   linear_team_id?: string | null;
+  servicenow_instance_url?: string | null;
+  servicenow_username?: string | null;
+  servicenow_password?: string | null;
+  github_token?: string | null;
+  github_owner?: string | null;
+  github_repo?: string | null;
   auto_close_enabled?: boolean | null;
 };
+
+/**
+ * The newest tracker integration for an owner, or null. Service-role only —
+ * the row includes credentials.
+ *
+ * Selects `*` rather than naming columns on purpose: columns get added by
+ * migrations that are applied by hand (040 added ServiceNow/GitHub), and a
+ * named column that doesn't exist yet makes PostgREST reject the whole query
+ * — which would break Jira/Linear ticketing in the window between a deploy
+ * and its migration. The provider filter matters as much: on-call rows
+ * (PagerDuty/Opsgenie, 028) live in the same table.
+ */
+export async function findTicketIntegration(supabaseAdmin: SupabaseClient, owner: string): Promise<TicketIntegrationRow | null> {
+  const { data } = await supabaseAdmin
+    .from("ticket_integrations")
+    .select("*")
+    .eq("owner", owner)
+    .in("provider", [...TICKET_PROVIDERS])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as TicketIntegrationRow | null) ?? null;
+}
+
+/** What the settings UI may show about a connection — never a credential. */
+export type TicketIntegrationSummary = {
+  provider: TicketProvider;
+  /** Where tickets go, e.g. "project SEC", "acme/webapp", "acme.service-now.com". */
+  destination: string | null;
+  autoCloseEnabled: boolean;
+};
+
+export function summariseTicketIntegration(row: TicketIntegrationRow): TicketIntegrationSummary {
+  let destination: string | null = null;
+  switch (row.provider) {
+    case "jira":
+      destination = row.jira_project_key ? `project ${row.jira_project_key}` : null;
+      break;
+    case "servicenow":
+      try {
+        destination = row.servicenow_instance_url ? new URL(row.servicenow_instance_url).hostname : null;
+      } catch {
+        destination = null;
+      }
+      break;
+    case "github":
+      destination = row.github_owner && row.github_repo ? `${row.github_owner}/${row.github_repo}` : null;
+      break;
+    case "linear":
+      destination = null; // team ids are opaque UUIDs — nothing useful to show
+      break;
+  }
+  return { provider: row.provider, destination, autoCloseEnabled: Boolean(row.auto_close_enabled) };
+}
 
 export type TicketLink = {
   id: string;
@@ -75,34 +146,75 @@ export type TicketProviderClient = {
  * deep inside a scan's notification phase.
  */
 export function buildProviderClient(integration: TicketIntegrationRow): TicketProviderClient | null {
-  if (integration.provider === "jira") {
-    const { jira_base_url: baseUrl, jira_email: email, jira_api_token: apiToken, jira_project_key: projectKey } = integration;
-    if (!baseUrl || !email || !apiToken || !projectKey) return null;
-    const creds = { baseUrl, email, apiToken };
-    return {
-      provider: "jira",
-      createIssue: (ticket) => createJiraIssue({ ...creds, projectKey }, ticket),
-      getIssue: (issueKey) => getJiraIssue(creds, issueKey),
-      addComment: (issueKey, text) => addJiraComment(creds, issueKey, text),
-      closeIssue: async (issueKey) => {
-        const outcome = await transitionJiraIssueToDone(creds, issueKey);
-        return outcome.ok ? { ok: true, detail: outcome.transitionName } : outcome;
-      },
-    };
-  }
+  switch (integration.provider) {
+    case "jira": {
+      const { jira_base_url: baseUrl, jira_email: email, jira_api_token: apiToken, jira_project_key: projectKey } = integration;
+      if (!baseUrl || !email || !apiToken || !projectKey) return null;
+      const creds = { baseUrl, email, apiToken };
+      return {
+        provider: "jira",
+        createIssue: (ticket) => createJiraIssue({ ...creds, projectKey }, ticket),
+        getIssue: (issueKey) => getJiraIssue(creds, issueKey),
+        addComment: (issueKey, text) => addJiraComment(creds, issueKey, text),
+        closeIssue: async (issueKey) => {
+          const outcome = await transitionJiraIssueToDone(creds, issueKey);
+          return outcome.ok ? { ok: true, detail: outcome.transitionName } : outcome;
+        },
+      };
+    }
 
-  const { linear_api_key: apiKey, linear_team_id: teamId } = integration;
-  if (!apiKey || !teamId) return null;
-  return {
-    provider: "linear",
-    createIssue: (ticket) => createLinearIssue({ apiKey, teamId }, ticket),
-    getIssue: (issueKey) => getLinearIssue(apiKey, issueKey),
-    addComment: (issueKey, text) => addLinearComment(apiKey, issueKey, text),
-    closeIssue: async (issueKey) => {
-      const outcome = await closeLinearIssue(apiKey, issueKey);
-      return outcome.ok ? { ok: true, detail: outcome.stateName } : outcome;
-    },
-  };
+    case "linear": {
+      const { linear_api_key: apiKey, linear_team_id: teamId } = integration;
+      if (!apiKey || !teamId) return null;
+      return {
+        provider: "linear",
+        createIssue: (ticket) => createLinearIssue({ apiKey, teamId }, ticket),
+        getIssue: (issueKey) => getLinearIssue(apiKey, issueKey),
+        addComment: (issueKey, text) => addLinearComment(apiKey, issueKey, text),
+        closeIssue: async (issueKey) => {
+          const outcome = await closeLinearIssue(apiKey, issueKey);
+          return outcome.ok ? { ok: true, detail: outcome.stateName } : outcome;
+        },
+      };
+    }
+
+    case "servicenow": {
+      const { servicenow_instance_url: instanceUrl, servicenow_username: username, servicenow_password: password } = integration;
+      if (!instanceUrl || !username || !password) return null;
+      const config = { instanceUrl, username, password };
+      return {
+        provider: "servicenow",
+        createIssue: (ticket) => createServiceNowIncident(config, ticket),
+        getIssue: (issueKey) => getServiceNowIncident(config, issueKey),
+        addComment: (issueKey, text) => addServiceNowComment(config, issueKey, text),
+        closeIssue: async (issueKey) => {
+          const outcome = await closeServiceNowIncident(config, issueKey);
+          return outcome.ok ? { ok: true, detail: "Resolved" } : outcome;
+        },
+      };
+    }
+
+    case "github": {
+      const { github_token: token, github_owner: owner, github_repo: repo } = integration;
+      if (!token || !owner || !repo) return null;
+      const config = { token, owner, repo };
+      return {
+        provider: "github",
+        createIssue: (ticket) => createGitHubIssue(config, ticket),
+        getIssue: (issueKey) => getGitHubIssue(config, issueKey),
+        addComment: (issueKey, text) => addGitHubIssueComment(config, issueKey, text),
+        closeIssue: async (issueKey) => {
+          const outcome = await closeGitHubIssue(config, issueKey);
+          return outcome.ok ? { ok: true, detail: "closed as completed" } : outcome;
+        },
+      };
+    }
+
+    default:
+      // An on-call row (pagerduty/opsgenie) or anything else that isn't an
+      // issue tracker — callers should have filtered on TICKET_PROVIDERS.
+      return null;
+  }
 }
 
 // ---- Duplicate detection -----------------------------------------------------

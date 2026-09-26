@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "For Agencies & MSPs — Hebrides Cyber",
   description:
-    "White-label security scanning for digital agencies. Monitor up to 15 client sites with a fleet overview, per-site scan profiles, branded PDF reports and Jira/Linear ticketing — from £75/month.",
+    "White-label security scanning for digital agencies. Monitor up to 15 client sites with a fleet overview, per-site scan profiles, branded PDF reports and one-click ticketing — from £75/month.",
 };
 
 type Capability = {
@@ -34,8 +34,8 @@ const capabilities: Capability[] = [
   },
   {
     icon: "🔗",
-    title: "Jira & Linear ticketing",
-    body: "Send a finding to Jira or Linear in one click. Tickets are de-duplicated per finding, and can close themselves when a later scan confirms the fix.",
+    title: "Ticketing integrations",
+    body: "Send a finding to Jira, Linear, ServiceNow or GitHub Issues in one click. Tickets are de-duplicated per finding, and can close themselves when a later scan confirms the fix.",
   },
   {
     icon: "📈",
@@ -65,11 +65,6 @@ const roadmap: Capability[] = [
     title: "Compliance report export",
     body: "A downloadable per-framework report for client audits, built from the mapping every finding already carries.",
   },
-  {
-    icon: "🎫",
-    title: "ServiceNow & GitHub Issues",
-    body: "The same one-click ticketing, dedupe and auto-close you get with Jira and Linear today.",
-  },
 ];
 
 const pricingFeatures = [
@@ -80,7 +75,7 @@ const pricingFeatures = [
   "Per-site scan profiles",
   "Priority email support",
   "Findings mapped to 7 compliance frameworks",
-  "Jira / Linear ticketing with auto-close",
+  "Jira, Linear, ServiceNow & GitHub Issues ticketing",
   "Scheduled report delivery",
   "SBOM generation (CycloneDX 1.5)",
   "GitHub Action + GitLab / Bitbucket CI templates",

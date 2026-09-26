@@ -13,6 +13,7 @@ import FixWizard from "@/components/FixWizard";
 import CeReadinessPanel from "@/components/CeReadinessPanel";
 import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
+import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 
 type Finding = ViewFinding;
 
@@ -274,14 +275,19 @@ export default function ScanDetailPage() {
   // read straight through the browser's own session, same as
   // TicketIntegration.tsx's own status check, rather than a second API
   // route just to answer "does one exist."
+  // Existence check over tracker rows only: .maybeSingle() used to error for
+  // any owner with two rows (two trackers, or a tracker plus an on-call
+  // provider in the same table), hiding the button from exactly the accounts
+  // with the most integrations — and a PagerDuty-only account showed it.
   useEffect(() => {
     if (!result) return;
     supabase
       .from("ticket_integrations")
       .select("provider")
-      .maybeSingle()
+      .in("provider", [...TICKET_PROVIDERS])
+      .limit(1)
       .then(
-        ({ data }) => setHasTicketIntegration(Boolean(data)),
+        ({ data }) => setHasTicketIntegration((data?.length ?? 0) > 0),
         () => {
           // Non-fatal — findings just render without the "Create ticket" button.
         }
