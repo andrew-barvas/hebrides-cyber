@@ -1,290 +1,235 @@
 "use client";
 
+// Connect one issue tracker (Jira, Linear, ServiceNow or GitHub Issues) so a
+// finding can become a ticket in one click. Status comes from
+// GET /api/account/ticket-integration, which returns a summary with no
+// credentials in it — this component never reads ticket_integrations
+// directly, so it can't accidentally request a secret column.
+
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
+import { TICKET_PROVIDER_LABELS, TICKET_PROVIDERS, type TicketProvider } from "@/lib/ticketProviderList";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { Input, Label } from "@/components/ui/input";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
-type Provider = "jira" | "linear";
+type Summary = { provider: TicketProvider; destination: string | null; autoCloseEnabled: boolean };
 
-// Only non-secret columns — jira_api_token/linear_api_key are never
-// requested back from the browser once saved, an application-layer rule
-// (Postgres RLS is row-level, not column-level) — see
-// sql/migrations/013_ticket_integrations.sql's header.
-type IntegrationStatus = {
-  provider: Provider;
-  jira_base_url: string | null;
-  jira_project_key: string | null;
-  linear_team_id: string | null;
-  auto_close_enabled: boolean | null;
+type FieldSpec = {
+  name: string;
+  label: string;
+  type: "url" | "email" | "text" | "password";
+  placeholder?: string;
+  help?: string;
 };
 
+const FIELDS: Record<TicketProvider, FieldSpec[]> = {
+  jira: [
+    { name: "baseUrl", label: "Jira site URL", type: "url", placeholder: "https://yourteam.atlassian.net" },
+    { name: "email", label: "Atlassian account email", type: "email", placeholder: "you@company.com" },
+    { name: "apiToken", label: "API token", type: "password", help: "Create one at id.atlassian.com → Security → API tokens." },
+    { name: "projectKey", label: "Project key", type: "text", placeholder: "SEC" },
+  ],
+  linear: [
+    { name: "apiKey", label: "API key", type: "password", help: "linear.app → Settings → API → Personal API keys." },
+    { name: "teamId", label: "Team ID", type: "text" },
+  ],
+  servicenow: [
+    { name: "instanceUrl", label: "Instance URL", type: "url", placeholder: "https://acme.service-now.com" },
+    { name: "username", label: "Integration username", type: "text" },
+    { name: "password", label: "Password", type: "password", help: "Use a dedicated integration user that can create and update incidents." },
+  ],
+  github: [
+    { name: "repository", label: "Repository", type: "text", placeholder: "owner/repo" },
+    { name: "token", label: "Access token", type: "password", help: "A fine-grained token with Issues: read and write on this repository." },
+  ],
+};
+
+async function authedFetch(input: string, init: RequestInit = {}) {
+  const session = await getSession();
+  if (!session) throw new Error("Your session has expired — sign in again.");
+  const res = await fetch(input, {
+    ...init,
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body;
+}
+
 export default function TicketIntegration() {
-  const [status, setStatus] = useState<IntegrationStatus | null>(null);
+  const [status, setStatus] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<Provider>("jira");
+  const [provider, setProvider] = useState<TicketProvider>("jira");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  // Jira fields
-  const [jiraBaseUrl, setJiraBaseUrl] = useState("");
-  const [jiraEmail, setJiraEmail] = useState("");
-  const [jiraApiToken, setJiraApiToken] = useState("");
-  const [jiraProjectKey, setJiraProjectKey] = useState("");
-
-  // Linear fields
-  const [linearApiKey, setLinearApiKey] = useState("");
-  const [linearTeamId, setLinearTeamId] = useState("");
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    // Ordered + limited rather than a bare .maybeSingle(): the table is
-    // unique on (owner, provider), so an owner who connected both Jira and
-    // Linear has two rows and maybeSingle() would error on exactly that
-    // account. Newest connection wins, matching create-ticket.ts.
-    const { data } = await supabase
-      .from("ticket_integrations")
-      .select("provider, jira_base_url, jira_project_key, linear_team_id, auto_close_enabled")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    setStatus((data as IntegrationStatus | null) ?? null);
-    setLoading(false);
+    try {
+      const body = await authedFetch("/api/account/ticket-integration");
+      setStatus((body.integration as Summary | null) ?? null);
+    } catch (err) {
+      setResult({ ok: false, text: (err as Error).message });
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  async function setAutoClose(enabled: boolean) {
-    setError(null);
-    setMessage(null);
-    const token = await withToken();
-    if (!token || !status) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/account/ticket-integration", {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: status.provider, autoCloseEnabled: enabled }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Could not update auto-close");
-      setMessage(
-        enabled
-          ? "Auto-close on. Tickets will be closed automatically once a later scan confirms the finding is gone."
-          : "Auto-close off. Tickets stay open until you close them yourself."
-      );
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    authedFetch("/api/account/ticket-integration")
+      .then((body) => {
+        if (!cancelled) setStatus((body.integration as Summary | null) ?? null);
+      })
+      .catch((err) => {
+        if (!cancelled) setResult({ ok: false, text: (err as Error).message });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  async function withToken(): Promise<string | null> {
-    const session = await getSession();
-    if (!session) {
-      setError("Not signed in.");
-      return null;
+  async function run(action: () => Promise<string>) {
+    setBusy(true);
+    setResult(null);
+    try {
+      const text = await action();
+      setResult({ ok: true, text });
+      await load();
+    } catch (err) {
+      setResult({ ok: false, text: (err as Error).message });
+    } finally {
+      setBusy(false);
     }
-    return session.access_token;
   }
 
-  async function save(e: React.FormEvent) {
+  function connect(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setMessage(null);
-    const token = await withToken();
-    if (!token) return;
-    setBusy(true);
-    try {
-      const body =
-        provider === "jira"
-          ? { provider, baseUrl: jiraBaseUrl.trim(), email: jiraEmail.trim(), apiToken: jiraApiToken.trim(), projectKey: jiraProjectKey.trim() }
-          : { provider, apiKey: linearApiKey.trim(), teamId: linearTeamId.trim() };
-
-      const res = await fetch("/api/account/ticket-integration", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const responseBody = await res.json();
-      if (!res.ok) throw new Error(responseBody.error ?? "Could not save ticket integration");
-      setMessage(`Connected to ${provider === "jira" ? "Jira" : "Linear"} — a "Create ticket" button now appears on scan findings.`);
-      setJiraApiToken("");
-      setLinearApiKey("");
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
+    const trimmed = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()]));
+    let payload: Record<string, string> = { provider, ...trimmed };
+    if (provider === "github") {
+      const [owner = "", repo = ""] = (trimmed.repository ?? "").split("/");
+      payload = { provider, owner, repo, token: trimmed.token ?? "" };
     }
+    void run(async () => {
+      await authedFetch("/api/account/ticket-integration", { method: "POST", body: JSON.stringify(payload) });
+      setValues({});
+      return `Connected to ${TICKET_PROVIDER_LABELS[provider]} — a "Create ticket" button now appears on scan findings.`;
+    });
   }
 
-  async function disconnect(p: Provider) {
-    setError(null);
-    const token = await withToken();
-    if (!token) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/account/ticket-integration", {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: p }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Could not disconnect");
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function disconnect(p: TicketProvider) {
+    void run(async () => {
+      await authedFetch("/api/account/ticket-integration", { method: "DELETE", body: JSON.stringify({ provider: p }) });
+      return `Disconnected ${TICKET_PROVIDER_LABELS[p]}.`;
+    });
+  }
+
+  function setAutoClose(p: TicketProvider, enabled: boolean) {
+    void run(async () => {
+      await authedFetch("/api/account/ticket-integration", { method: "PATCH", body: JSON.stringify({ provider: p, autoCloseEnabled: enabled }) });
+      return enabled
+        ? "Auto-close on. Tickets close automatically once a later scan confirms the finding is gone."
+        : "Auto-close off. Tickets stay open until you close them yourself.";
+    });
   }
 
   return (
-    <details className="rounded-lg border border-cyberborder bg-cyberpanel">
-      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
-        Ticket integration <span className="font-normal text-cybertext/40">(create Jira/Linear issues from findings)</span>
-      </summary>
-      <div className="px-5 pb-5 pt-1 space-y-4">
-        {loading ? (
-          <p className="font-mono text-xs text-cybertext/30">// loading…</p>
-        ) : status ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3">
-              <div className="text-sm text-cybertext/70">
-                Connected to <span className="font-semibold text-neon">{status.provider === "jira" ? "Jira" : "Linear"}</span>
-                {status.provider === "jira" && status.jira_project_key && (
-                  <span className="text-cybertext/40"> — project {status.jira_project_key}</span>
-                )}
-              </div>
-              <button
-                onClick={() => disconnect(status.provider)}
-                disabled={busy}
-                className="text-xs text-cybertext/40 hover:text-red-400 disabled:opacity-40 transition-colors"
-              >
-                Disconnect
-              </button>
-            </div>
+    <Card>
+      <CardTitle>ticket integration</CardTitle>
+      <CardDescription className="mb-4 mt-1">
+        Turn any finding into a ticket in your tracker with one click, instead of copying remediation text by hand.
+      </CardDescription>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-cyberborder p-3">
-              <input
-                type="checkbox"
-                checked={Boolean(status.auto_close_enabled)}
-                disabled={busy}
-                onChange={(e) => setAutoClose(e.target.checked)}
-                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-neon"
-              />
-              <span className="text-sm text-cybertext/70">
-                Close tickets automatically when fixed
-                <span className="mt-0.5 block text-xs text-cybertext/40">
-                  When a later scan of the same site no longer finds the issue, we move its ticket to your
-                  workflow&apos;s done status and add a comment saying when it was verified. Off by default —
-                  nothing in {status.provider === "jira" ? "Jira" : "Linear"} moves unless you turn this on.
-                </span>
-              </span>
-            </label>
-          </div>
-        ) : (
-          <>
-            <p className="text-sm text-cybertext/60">
-              Connect Jira or Linear so any finding can be turned into a real ticket with one click, instead of
-              copying remediation text by hand.
+      {loading ? (
+        <p className="font-mono text-xs text-cybermuted" role="status">
+          // loading…
+        </p>
+      ) : status ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3">
+            <p className="text-sm text-cybertext">
+              Connected to <span className="font-semibold text-neon">{TICKET_PROVIDER_LABELS[status.provider]}</span>
+              {status.destination && <span className="text-cybermuted"> — {status.destination}</span>}
             </p>
+            <Button variant="ghost" size="sm" onClick={() => disconnect(status.provider)} disabled={busy}>
+              Disconnect
+            </Button>
+          </div>
 
-            <div className="flex gap-2">
-              {(["jira", "linear"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setProvider(p)}
-                  className={`rounded-full px-3 py-1 text-xs font-mono border transition-colors ${
-                    provider === p
-                      ? "bg-neon text-cyberbg border-neon"
-                      : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
-                  }`}
-                >
-                  {p === "jira" ? "Jira" : "Linear"}
-                </button>
-              ))}
-            </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-cyberborder p-3">
+            <input
+              type="checkbox"
+              checked={status.autoCloseEnabled}
+              disabled={busy}
+              onChange={(e) => setAutoClose(status.provider, e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-neon"
+            />
+            <span className="text-sm text-cybertext">
+              Close tickets automatically when fixed
+              <span className="mt-0.5 block text-xs text-cybermuted">
+                When a later scan of the same site no longer finds the issue, we close its ticket and note when it was
+                verified. Off by default — nothing in {TICKET_PROVIDER_LABELS[status.provider]} changes unless you turn
+                this on.
+              </span>
+            </span>
+          </label>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <SegmentedControl
+            aria-label="Choose a tracker"
+            value={provider}
+            onChange={(p) => {
+              setProvider(p);
+              setValues({});
+              setResult(null);
+            }}
+            options={TICKET_PROVIDERS.map((p) => ({ value: p, label: TICKET_PROVIDER_LABELS[p] }))}
+          />
 
-            <form onSubmit={save} className="space-y-2">
-              {provider === "jira" ? (
-                <>
-                  <input
-                    type="url"
+          <form onSubmit={connect} className="space-y-3">
+            {FIELDS[provider].map((field) => {
+              const id = `ticket-${provider}-${field.name}`;
+              return (
+                <div key={id} className="space-y-1.5">
+                  <Label htmlFor={id}>{field.label}</Label>
+                  <Input
+                    id={id}
+                    type={field.type}
                     required
-                    placeholder="https://yourteam.atlassian.net"
-                    value={jiraBaseUrl}
-                    onChange={(e) => setJiraBaseUrl(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                    placeholder={field.placeholder}
+                    autoComplete={field.type === "password" ? "off" : undefined}
+                    value={values[field.name] ?? ""}
+                    onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
+                    aria-describedby={field.help ? `${id}-help` : undefined}
                   />
-                  <input
-                    type="email"
-                    required
-                    placeholder="you@company.com (Atlassian account email)"
-                    value={jiraEmail}
-                    onChange={(e) => setJiraEmail(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
-                  />
-                  <input
-                    type="password"
-                    required
-                    placeholder="API token (id.atlassian.com/manage-profile/security/api-tokens)"
-                    value={jiraApiToken}
-                    onChange={(e) => setJiraApiToken(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Project key (e.g. SEC)"
-                    value={jiraProjectKey}
-                    onChange={(e) => setJiraProjectKey(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
-                  />
-                </>
-              ) : (
-                <>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Linear API key (linear.app/settings/api)"
-                    value={linearApiKey}
-                    onChange={(e) => setLinearApiKey(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Team id"
-                    value={linearTeamId}
-                    onChange={(e) => setLinearTeamId(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
-                  />
-                </>
-              )}
-              <button
-                disabled={busy}
-                className="rounded-md bg-neon px-4 py-2.5 text-sm font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 shadow-glowsm transition-opacity"
-              >
-                {busy ? "Connecting…" : "Connect"}
-              </button>
-            </form>
-          </>
-        )}
+                  {field.help && (
+                    <p id={`${id}-help`} className="text-xs text-cybermuted">
+                      {field.help}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            <Button type="submit" disabled={busy}>
+              {busy ? "Connecting…" : `Connect ${TICKET_PROVIDER_LABELS[provider]}`}
+            </Button>
+          </form>
+        </div>
+      )}
 
-        {error && (
-          <p className="text-sm text-red-400" role="alert">
-            {error}
-          </p>
-        )}
-        {message && <p className="text-sm text-neon">{message}</p>}
-      </div>
-    </details>
+      {result && (
+        <Alert variant={result.ok ? "success" : "danger"} className="mt-4">
+          {result.text}
+        </Alert>
+      )}
+    </Card>
   );
 }

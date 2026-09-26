@@ -22,7 +22,7 @@ import {
   recordTicketLink,
   ticketHostOf,
   touchTicketLink,
-  type TicketIntegrationRow,
+  findTicketIntegration,
 } from "@/lib/ticketLinks";
 import { callerCanActFor } from "@/lib/teamAccess";
 import type { Finding, ScanResults } from "@/lib/scanners";
@@ -68,25 +68,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const finding = (stored.findings ?? []).find((f) => f.checkId === checkId);
   if (!finding) return res.status(404).json({ error: `No finding with checkId "${checkId}" on this scan` });
 
-  // ticket_integrations is unique on (owner, provider), so an owner who has
-  // connected BOTH Jira and Linear has two rows — a bare .maybeSingle() here
-  // used to throw on exactly that account. Take the most recently connected
-  // one deterministically instead.
-  const { data: integration } = await supabaseAdmin
-    .from("ticket_integrations")
-    .select("provider, jira_base_url, jira_email, jira_api_token, jira_project_key, linear_api_key, linear_team_id, auto_close_enabled")
-    .eq("owner", actingOwnerId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // An owner can have several ticket_integrations rows — more than one
+  // tracker, plus PagerDuty/Opsgenie on-call rows (028). findTicketIntegration
+  // filters to trackers and takes the newest deterministically.
+  const integration = await findTicketIntegration(supabaseAdmin, actingOwnerId);
 
   if (!integration) {
-    return res.status(501).json({ error: "No ticket integration configured — connect Jira or Linear in Account settings first." });
+    return res.status(501).json({ error: "No ticket integration configured — connect a tracker under Dashboard → Integrations first." });
   }
 
-  const client = buildProviderClient(integration as TicketIntegrationRow);
+  const client = buildProviderClient(integration);
   if (!client) {
-    return res.status(501).json({ error: `The saved ${integration.provider} integration is missing required credentials — reconnect it in Account settings.` });
+    return res.status(501).json({ error: `The saved ${integration.provider} integration is missing required credentials — reconnect it under Dashboard → Integrations.` });
   }
 
   const targetHost = ticketHostOf(scan.target_url);
