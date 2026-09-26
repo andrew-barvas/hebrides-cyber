@@ -10,13 +10,13 @@ drop function if exists public.claim_scan_job(text);
 create or replace function public.claim_scan_job(worker_id text)
 returns table (id uuid, owner uuid, target_url text, scan_id uuid, scan_profile text)
 language plpgsql
-as $func$
+as '
 declare
   next_id uuid;
 begin
   select scan_jobs.id into next_id
   from public.scan_jobs
-  where scan_jobs.status = 'pending'
+  where scan_jobs.status = ''pending''
   order by scan_jobs.created_at
   for update skip locked
   limit 1;
@@ -27,8 +27,8 @@ begin
 
   return query
     update public.scan_jobs
-    set status = 'running', claimed_at = now(), claimed_by = worker_id, attempts = attempts + 1
+    set status = ''running'', claimed_at = now(), claimed_by = worker_id, attempts = attempts + 1
     where scan_jobs.id = next_id
     returning scan_jobs.id, scan_jobs.owner, scan_jobs.target_url, scan_jobs.scan_id, scan_jobs.scan_profile;
 end;
-$func$;
+';
