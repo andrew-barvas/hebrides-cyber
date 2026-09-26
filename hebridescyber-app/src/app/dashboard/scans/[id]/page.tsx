@@ -43,8 +43,9 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
   const [status, setStatus] = useState<ScanRunStatus | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(0);
+  const [sinceSeconds, setSinceSeconds] = useState<number | null>(null);
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  useEffect(() => { onCompleteRef.current = onComplete; });
 
   useEffect(() => {
     let cancelled = false;
@@ -71,14 +72,15 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
     return () => { cancelled = true; clearInterval(interval); };
   }, [scanId]);
 
-  // Tick the elapsed counter every second so the display looks live
+  // Tick the elapsed counter and "since last update" display every second.
   useEffect(() => {
     const tick = setInterval(() => {
-      if (!status?.started_at) return;
-      setElapsedMs(Date.now() - new Date(status.started_at).getTime());
+      const now = Date.now();
+      if (status?.started_at) setElapsedMs(now - new Date(status.started_at).getTime());
+      setSinceSeconds(lastUpdated ? Math.round((now - lastUpdated) / 1000) : null);
     }, 1000);
     return () => clearInterval(tick);
-  }, [status?.started_at]);
+  }, [status?.started_at, lastUpdated]);
 
   if (!status) {
     return (
@@ -97,7 +99,6 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
   const bar = "█".repeat(filledBars) + "░".repeat(20 - filledBars);
   const phase = progress?.phase ?? "base";
   const currentCheck = progress?.current_check ?? "Initialising…";
-  const since = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
 
   const isFailed = status.status === "failed";
 
@@ -107,9 +108,9 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
         <p className="text-neon/60 uppercase tracking-widest text-[10px]">
           {isFailed ? "// scan failed" : "// active scan"}
         </p>
-        {since !== null && (
+        {sinceSeconds !== null && (
           <p className="text-cybertext/30 text-[10px]">
-            {since < 5 ? "live" : `updated ${since}s ago`}
+            {sinceSeconds < 5 ? "live" : `updated ${sinceSeconds}s ago`}
           </p>
         )}
       </div>
