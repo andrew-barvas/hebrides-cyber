@@ -182,6 +182,27 @@ Rules when adding UI:
 - Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode (the parity block in `globals.css`). Alpha tuned for white-on-black reads far too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
 - `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled right down in light mode.
 
+Three more per-theme tokens meet WCAG AA without the parity overrides above — prefer them over alpha steps in new code: `cybermuted` (secondary text), `danger`, `warning`. The shadcn/ui names (`bg-primary`, `text-muted-foreground`, `border-input`, …) are aliases onto the same variables so CLI-generated components render on-brand; don't use them in hand-written code.
+
+### UI primitives
+
+New UI is composed from `src/components/ui/` — the shadcn/ui pattern, hand-written against the cyber tokens (lowercase filenames there, matching shadcn). `components.json` is configured so `npx shadcn@2 add <component>` works for Radix-backed pieces (dialog, dropdown, tooltip); **never run `shadcn init`**, it overwrites `globals.css` and `tailwind.config.cjs`. Current set: `button` (primary/secondary/ghost/danger; `asChild` to style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the `// section` overline with the `//` hidden from screen readers), `input`/`label` (every input gets a label, `sr-only` if visually redundant), `alert` (danger → `role="alert"`, else `role="status"`), `stat-card`, `segmented-control` (`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()` (`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another panel/button/input — the older feature components still do, and migrate incrementally.
+
+### App shell
+
+`src/components/app-shell/AppShell.tsx`, mounted by `src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+) or scrolling section tabs, plus one session + subscription load exposed through `useAppSession()`. Use its `plan` for feature gating (the stored plan only while `status === "active"`, else `"none"`) and `billingPlan` for billing display. It also runs the MFA (AAL2) step-up redirect for every route it wraps — `middleware.ts` only checks authentication. Pages inside it render content only: no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
+
+| Route | Holds |
+|---|---|
+| `/dashboard` | Overview — KPIs, trends, latest findings, onboarding checklist |
+| `/dashboard/scans` | `RunScanForm` + paginated scan list |
+| `/dashboard/scans/history` | Trends (per-site score/category history) |
+| `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
+| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` rather than disappearing |
+| `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
+
+Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`, `activeNavHref` — longest segment-prefix wins).
+
 ### Database schema
 
 Key tables (all in `sql/migrations/`):

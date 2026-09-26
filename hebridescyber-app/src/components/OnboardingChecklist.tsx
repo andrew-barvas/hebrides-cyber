@@ -70,34 +70,36 @@ export default function OnboardingChecklist({
 }: Props) {
   const [dismissed, setDismissed] = useState(readDismissed);
 
+  // Each step deep-links to the dashboard section that completes it — these
+  // were same-page anchors ("…below") when the dashboard was one long page.
   const steps: OnboardingStep[] = [
     {
       key: "verify",
       label: "Verify a domain you own",
       done: verifiedDomain,
-      href: "#domain-verification",
-      actionLabel: "Verify below",
+      href: "/dashboard/assets#domain-verification",
+      actionLabel: "Verify a domain",
     },
     {
       key: "scan",
       label: "Run your first scan",
       done: hasScanned,
-      href: "#run-a-scan",
-      actionLabel: "Run one below",
+      href: "/dashboard/scans#run-a-scan",
+      actionLabel: "Run a scan",
     },
     {
       key: "report",
       label: "Read your first report",
       done: hasReport,
-      href: "#scan-history",
-      actionLabel: "View below",
+      href: "/dashboard/scans#scan-history",
+      actionLabel: "View scans",
     },
     {
       key: "alert",
       label: alertChannelIsSlackTeams ? "Connect Slack or Teams for alerts" : "Set up a webhook for alerts",
       done: hasAlertChannel,
-      href: "/account",
-      actionLabel: "Set up in Account",
+      href: "/dashboard/integrations#alerts",
+      actionLabel: "Set up alerts",
     },
   ];
 

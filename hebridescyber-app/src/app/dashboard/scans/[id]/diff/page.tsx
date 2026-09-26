@@ -6,6 +6,10 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import DiffView from "@/components/DiffView";
 import { listCompletedScansForTarget, type ScanListEntry } from "@/lib/clientScanHistory";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ScanDiffPage() {
   const params = useParams<{ id: string }>();
@@ -30,30 +34,30 @@ export default function ScanDiffPage() {
   }, [params?.id]);
 
   return (
-    <div className="bg-cyberbg min-h-screen text-cybertext">
-      <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
-      <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./diff</p>
-            <h1 className="text-2xl font-bold text-cybertext break-all sm:text-3xl">{targetUrl ?? "Compare scans"}</h1>
-          </div>
-          <Link
-            href={`/dashboard/scans/${params?.id}`}
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
-          >
-            ← Back to report
-          </Link>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="$ ./diff"
+        title={<span className="break-all">{targetUrl ?? "Compare scans"}</span>}
+        description="See exactly what changed between two scans of the same site."
+        actions={
+          <Button asChild variant="secondary">
+            <Link href={`/dashboard/scans/${params?.id}`}>← Back to report</Link>
+          </Button>
+        }
+      />
 
-        {loading ? (
-          <p className="font-mono text-sm text-cybertext/30">// loading…</p>
-        ) : !targetUrl || !params?.id ? (
-          <p className="text-sm text-cybertext/50">Could not load this scan.</p>
-        ) : (
-          <DiffView scans={scans} initialScanId={params.id} />
-        )}
-      </div>
+      {loading ? (
+        <Skeleton className="h-64 rounded-xl" />
+      ) : !targetUrl || !params?.id ? (
+        <Alert variant="danger" title="Could not load this scan">
+          It may have been deleted, or it hasn&apos;t finished yet.{" "}
+          <Link href="/dashboard/scans" className="font-medium text-neon hover:underline">
+            View all scans
+          </Link>
+        </Alert>
+      ) : (
+        <DiffView scans={scans} initialScanId={params.id} />
+      )}
     </div>
   );
 }
