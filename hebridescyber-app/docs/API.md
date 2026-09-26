@@ -159,7 +159,7 @@ this account — not an error.
 ## Webhooks
 
 Get a signed `POST` when a scan completes, instead of polling
-`GET /api/v1/scans/{id}`. Register one from **Account → Webhooks** — this is
+`GET /api/v1/scans/{id}`. Register one from **Dashboard → Integrations → Webhooks** — this is
 the one part of the API that isn't itself an API-key-authenticated endpoint,
 since minting a webhook is a write to your account, gated to a logged-in
 session the same way creating an API key is.
@@ -243,7 +243,7 @@ anything older than a few minutes.
   this — a delivery either succeeds within that single retry or it's recorded
   as failed and the scan request that triggered it moves on regardless.
 - After 20 consecutive failed deliveries, the webhook is automatically
-  disabled (visible in **Account → Webhooks**) rather than retried forever
+  disabled (visible in **Dashboard → Integrations → Webhooks**) rather than retried forever
   against a dead or mistyped endpoint. Re-registering with a working URL
   starts the failure count fresh.
 

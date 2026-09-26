@@ -25,14 +25,33 @@ describe("OnboardingChecklist", () => {
 
     expect(screen.getByText(/Verify a domain you own/)).toBeInTheDocument();
     expect(screen.getByText("○ Verify a domain you own")).toBeInTheDocument();
-    expect(screen.getByText("Verify below")).toBeInTheDocument();
+    expect(screen.getByText("Verify a domain")).toBeInTheDocument();
   });
 
   it("shows a done step without an action link", () => {
     render(<OnboardingChecklist {...allDone} verifiedDomain={false} />);
 
     expect(screen.getByText("✓ Run your first scan")).toBeInTheDocument();
-    expect(screen.queryByText("Run one below")).not.toBeInTheDocument();
+    expect(screen.queryByText("Run a scan")).not.toBeInTheDocument();
+  });
+
+  // The dashboard is split across pages now — a same-page "#anchor" link
+  // would silently go nowhere from the Overview.
+  it("deep-links each step to the dashboard page that completes it", () => {
+    render(
+      <OnboardingChecklist
+        verifiedDomain={false}
+        hasScanned={false}
+        hasReport={false}
+        hasAlertChannel={false}
+        alertChannelIsSlackTeams={false}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "Verify a domain" })).toHaveAttribute("href", "/dashboard/assets#domain-verification");
+    expect(screen.getByRole("link", { name: "Run a scan" })).toHaveAttribute("href", "/dashboard/scans#run-a-scan");
+    expect(screen.getByRole("link", { name: "View scans" })).toHaveAttribute("href", "/dashboard/scans#scan-history");
+    expect(screen.getByRole("link", { name: "Set up alerts" })).toHaveAttribute("href", "/dashboard/integrations#alerts");
   });
 
   it("shows the progress count", () => {

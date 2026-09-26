@@ -32,6 +32,11 @@ html {
   --c-glow-sm: 0.22;
   --c-grid: 11 61 91; /* atlantic, for the circuit-board grid */
   --c-grid-alpha: 0.05;
+  /* Secondary text, pre-blended rather than an alpha step so it needs none of
+     the parity overrides below: 5.2:1 on --c-bg, 5.6:1 on --c-panel. */
+  --c-muted: 97 105 113;
+  --c-danger: 185 28 28; /* red-700 — same light-mode swap as .text-red-400 below */
+  --c-warning: 180 83 9; /* amber-700 */
 }
 
 .dark {
@@ -44,6 +49,9 @@ html {
   --c-glow-sm: 0.45;
   --c-grid: 57 255 192;
   --c-grid-alpha: 0.08;
+  --c-muted: 151 153 156; /* 6.9:1 on --c-bg, 6.4:1 on --c-panel */
+  --c-danger: 248 113 113; /* red-400 */
+  --c-warning: 251 191 36; /* amber-400 */
 }
 
 body {
@@ -167,6 +175,31 @@ body {
   }
   .remediation-details > summary {
     display: none !important;
+  }
+}
+
+/* Keyboard focus ring for anything that doesn't style its own. :where() keeps
+   specificity at 0,1,0 (just the pseudo-class), so a component's explicit
+   focus:/focus-visible: utilities always win — this only fills the gaps where
+   the browser default ring was near-invisible on the dark theme. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--c-neon));
+  outline-offset: 2px;
+}
+
+/* WCAG 2.3.3 — respect the OS "reduce motion" setting. Durations go to
+   near-zero rather than 0 so transitionend/animationend listeners still fire. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

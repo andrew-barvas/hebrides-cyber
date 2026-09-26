@@ -1,30 +1,52 @@
 "use client";
 
-import Link from "next/link";
 import AssetInventory from "@/components/AssetInventory";
+import DomainVerification from "@/components/DomainVerification";
+import LockedFeature from "@/components/LockedFeature";
+import MonitoredTargets from "@/components/MonitoredTargets";
+import { useAppSession } from "@/components/app-shell/AppShell";
+import { CardDescription, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function AssetsPage() {
+  const { plan } = useAppSession();
+
   return (
-    <div className="bg-cyberbg min-h-screen text-cybertext">
-      <div className="bg-grid pointer-events-none fixed inset-0 opacity-20" />
-      <div className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6 space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./assets --inventory</p>
-            <h1 className="text-2xl font-bold text-cybertext sm:text-3xl">Asset Inventory</h1>
-          </div>
-          <Link
-            href="/dashboard"
-            className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
-          >
-            ← Dashboard
-          </Link>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="$ ./assets"
+        title="Assets"
+        description="Verify the domains you own, choose which ones we rescan on a schedule, and review everything discovered across your scans."
+      />
+
+      {/* Ownership first: it gates every scan, and OnboardingChecklist's
+          first step deep-links to this anchor. */}
+      <section id="domain-verification" className="scroll-mt-6">
+        <DomainVerification />
+      </section>
+
+      {/* Basic/Pro/Agency all get scheduled monitoring (E-01) — cadence and
+          per-plan target caps are enforced server-side (scanCadence.ts,
+          018_monitored_targets_plan_cap.sql); this only mirrors that gate. */}
+      {plan !== "none" ? (
+        <MonitoredTargets />
+      ) : (
+        <LockedFeature
+          title="monitored sites"
+          description="Rescan your sites automatically — weekly on Basic, daily on Pro and Agency — and get alerted when something new turns up."
+          availableOn="Paid plans"
+        />
+      )}
+
+      <section aria-labelledby="discovered-assets-heading" className="space-y-3">
+        <div>
+          <CardTitle id="discovered-assets-heading">discovered assets</CardTitle>
+          <CardDescription className="mt-1">
+            Domains and subdomains found across your scans, with detected CMS and cloud/CDN hints.
+          </CardDescription>
         </div>
-        <p className="text-sm text-cybertext/50">
-          Domains and subdomains discovered across your scans, with detected CMS and cloud/CDN hints.
-        </p>
         <AssetInventory />
-      </div>
+      </section>
     </div>
   );
 }
