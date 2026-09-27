@@ -33,6 +33,13 @@ for (const path of ["/dashboard", "/dashboard/integrations", "/account", "/admin
   });
 }
 
+// Regression: /login was once added to the middleware matcher, so a
+// signed-out GET /login redirected to /login, forever — nobody could sign in.
+test("unauthenticated /login is served directly, never redirected", async ({ request }) => {
+  const res = await request.get("/login", { maxRedirects: 0 });
+  expect(res.status()).toBe(200);
+});
+
 test("pricing page is reachable and shows plan options", async ({ page }) => {
   await page.goto("/pricing");
   await expect(page).toHaveURL(/\/pricing$/);

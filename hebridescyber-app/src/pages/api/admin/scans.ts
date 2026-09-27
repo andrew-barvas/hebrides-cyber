@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 import { logAuditEvent } from "@/lib/audit";
+import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { parseBody } from "@/lib/validate";
 
 const patchSchema = z.object({
@@ -67,17 +68,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!parsed) return;
     const { scanId, action } = parsed;
 
-    // Fetch the linked scan_jobs row so we can reset it alongside scans.
-    const { data: scan } = await supabaseAdmin.from("scans").select("job_id").eq("id", scanId).maybeSingle();
-
+    // Jobs link to scans via scan_jobs.scan_id. (scans.job_id is a leftover
+    // from the deleted BullMQ worker — nothing writes it, so keying on it
+    // meant cancel/retry never reached the job at all.)
     if (action === "cancel") {
       await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
-      if (scan?.job_id) {
-        await supabaseAdmin
-          .from("scan_jobs")
-          .update({ status: "failed", last_error: "Cancelled by admin" })
-          .eq("id", scan.job_id);
-      }
+      await supabaseAdmin
+        .from("scan_jobs")
+        .update({ status: "failed", last_error: "Cancelled by admin" })
+        .eq("scan_id", scanId)
+        .in("status", ["pending", "running"]);
       await logAuditEvent(supabaseAdmin, {
         actorId: adminId,
         action: "admin.scan_cancelled",
@@ -88,12 +88,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (action === "retry") {
       await supabaseAdmin.from("scans").update({ status: "queued" }).eq("id", scanId);
-      if (scan?.job_id) {
-        await supabaseAdmin
-          .from("scan_jobs")
-          .update({ status: "pending", claimed_at: null, claimed_by: null })
-          .eq("id", scan.job_id);
+      const { data: resetJobs } = await supabaseAdmin
+        .from("scan_jobs")
+        .update({ status: "pending", claimed_at: null, claimed_by: null, last_error: null })
+        .eq("scan_id", scanId)
+        .select("id");
+      // A scan that failed before it was ever enqueued has no job to reset —
+      // queue a fresh one, exactly as run-scan.ts does, or it would sit at
+      // "queued" forever.
+      if (!resetJobs?.length) {
+        const { data: scanRow } = await supabaseAdmin.from("scans").select("owner, target_url").eq("id", scanId).maybeSingle();
+        if (scanRow) {
+          await supabaseAdmin.from("scan_jobs").insert({ owner: scanRow.owner, target_url: scanRow.target_url, scan_id: scanId, status: "pending" });
+        }
       }
+      // Pick it up now rather than at the next daily cron.
+      await triggerOnDemandWorkflow();
       await logAuditEvent(supabaseAdmin, {
         actorId: adminId,
         action: "admin.scan_retried",

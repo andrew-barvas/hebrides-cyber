@@ -383,7 +383,23 @@ async function checkOpenRedirects(targetUrl: string): Promise<OpenRedirectData[]
   return results;
 }
 
-async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
+/**
+ * Statuses that show a POST actually reached credential-handling code:
+ * rejected (400/401/403/422), redirected after processing (3xx), or already
+ * throttled (429). A 200 is deliberately NOT on this list — client-rendered
+ * login pages (Next.js, SPAs that authenticate against a third-party API)
+ * answer any POST with the same page, which says nothing about whether
+ * credentials are rate-limited, and 404/405/501 mean there's no handler.
+ * Without this, every such site got a "no rate limiting" finding for an
+ * endpoint that has no credentials to protect (SCANNER-CONVENTIONS rule 1:
+ * no finding without evidence). The cost is a false negative for classic
+ * forms that re-render a 200 error page — the right side to err on here.
+ */
+export function postShowsCredentialHandling(status: number): boolean {
+  return status === 400 || status === 401 || status === 403 || status === 422 || status === 429 || (status >= 300 && status < 400);
+}
+
+export async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
   const origin = new URL(targetUrl).origin;
   const REQUEST_COUNT = 5;
 
@@ -405,6 +421,7 @@ async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
       // Now send rapid POST requests with dummy credentials.
       let rateLimited = false;
       let sent = 0;
+      let handlesCredentials = false;
 
       for (let i = 0; i < REQUEST_COUNT; i++) {
         try {
@@ -416,6 +433,7 @@ async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
             signal: AbortSignal.timeout(8_000),
           });
           sent++;
+          if (postShowsCredentialHandling(res.status)) handlesCredentials = true;
 
           if (
             res.status === 429 ||
@@ -433,13 +451,17 @@ async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
         }
       }
 
+      // No evidence this URL processes credentials — not a basis for a
+      // finding either way. Try the next candidate.
+      if (!handlesCredentials) continue;
+
       return { checked: true, endpoint: path, rateLimited, requestsSent: sent };
     } catch {
       // Endpoint not reachable — try next.
     }
   }
 
-  // No login endpoint found — cannot check rate limiting.
+  // No credential-handling login endpoint found — cannot check rate limiting.
   return { checked: false, endpoint: null, rateLimited: false, requestsSent: 0 };
 }
 

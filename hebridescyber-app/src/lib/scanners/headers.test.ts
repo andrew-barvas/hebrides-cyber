@@ -194,3 +194,25 @@ describe("checkHeaders", () => {
     }
   });
 });
+
+describe("cookie analysis — platform cookies and SameSite", () => {
+  it("leaves out Azure's ARR affinity cookies but still analyses the app's own", () => {
+    const result = buildHeaderAnalysis(
+      makeResponse({
+        "set-cookie":
+          "ARRAffinity=abc; path=/; secure; httponly, ARRAffinitySameSite=abc; path=/; secure; samesite=none; httponly, session=xyz; path=/",
+      })
+    );
+    // Regression: the filter set once held "arraaffinity" (typo), so nothing matched.
+    expect(result.cookies.map((c) => c.name)).toEqual(["session"]);
+    expect(result.cookies[0].issues.length).toBeGreaterThan(0);
+  });
+
+  it("accepts SameSite=None when Secure is set (RFC 6265bis) but flags it without Secure", () => {
+    const withSecure = buildHeaderAnalysis(makeResponse({ "set-cookie": "embed=1; path=/; secure; httponly; samesite=none" }));
+    expect(withSecure.cookies[0].issues).toEqual([]);
+
+    const withoutSecure = buildHeaderAnalysis(makeResponse({ "set-cookie": "embed=1; path=/; httponly; samesite=none" }));
+    expect(withoutSecure.cookies[0].issues).toContain("SameSite not set to Strict/Lax — CSRF risk");
+  });
+});

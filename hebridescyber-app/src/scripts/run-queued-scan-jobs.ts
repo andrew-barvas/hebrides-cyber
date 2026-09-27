@@ -48,7 +48,8 @@ async function main() {
   const workerId = process.env.WORKER_ID ?? `local-${process.pid}`;
   const startedAt = Date.now();
 
-  // Reset any scan_jobs rows stuck in 'running' for >30 minutes — handles
+  // Reset any scan_jobs rows stuck in 'running' past GitHub's job ceiling
+  // (see 041_reset_stale_scan_jobs.sql for why it can't be shorter) — handles
   // runners killed mid-job (OOM, timeout, restart) so the job gets re-claimed
   // on this run rather than staying orphaned indefinitely.
   const { data: resetCount, error: resetError } = await supabaseAdmin.rpc("reset_stale_scan_jobs");

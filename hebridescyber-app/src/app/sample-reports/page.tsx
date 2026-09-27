@@ -4,10 +4,12 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Sample Security Reports — Hebrides Cyber",
   description:
-    "See exactly what a Hebrides Cyber security scan report looks like — real findings, risk scores, and remediation guidance from anonymised customer scans.",
+    "Illustrative sample reports showing what a Hebrides Cyber scan reports: the score, each finding with its severity, and the specific fix.",
 };
 
-// Anonymised examples representative of real scan output categories.
+// Illustrative examples: fictional sites, built from the kinds of findings
+// our checks actually report. Never present these as real customer scans —
+// there is no customer data behind them.
 type Finding = {
   id: string;
   title: string;
@@ -23,7 +25,6 @@ type SampleReport = {
   siteType: string;
   score: number;
   grade: "A" | "B" | "C" | "D" | "F";
-  scannedAt: string;
   tlsGrade: string;
   headerScore: number;
   dnsScore: number;
@@ -55,7 +56,6 @@ const samples: SampleReport[] = [
     siteType: "E-commerce (WooCommerce)",
     score: 34,
     grade: "F",
-    scannedAt: "August 2025",
     tlsGrade: "B",
     headerScore: 20,
     dnsScore: 40,
@@ -108,7 +108,6 @@ const samples: SampleReport[] = [
     siteType: "Corporate (Next.js / Vercel)",
     score: 72,
     grade: "B",
-    scannedAt: "July 2025",
     tlsGrade: "A",
     headerScore: 70,
     dnsScore: 80,
@@ -152,7 +151,6 @@ const samples: SampleReport[] = [
     siteType: "SaaS (React + Node.js API)",
     score: 94,
     grade: "A",
-    scannedAt: "September 2025",
     tlsGrade: "A+",
     headerScore: 95,
     dnsScore: 100,
@@ -271,7 +269,7 @@ function ReportCard({ report }: { report: SampleReport }) {
             )}
           </div>
           <p className="text-xs text-cybertext/40 font-mono mb-2">
-            {report.siteType} · scanned {report.scannedAt}
+            {report.siteType} · illustrative example
           </p>
           <p className="text-sm text-cybertext/70 leading-relaxed">{report.summary}</p>
           {/* Sub-scores */}
@@ -325,13 +323,13 @@ export default function SampleReportsPage() {
         <div className="bg-grid pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative">
           <p className="mb-3 font-mono text-sm text-neon" aria-hidden="true">
-            <span className="text-cybertext/60">$</span> cat ./reports/anonymised/*.json
+            <span className="text-cybertext/60">$</span> cat ./reports/samples/*.json
           </p>
           <h1 className="mx-auto max-w-2xl text-4xl font-bold sm:text-5xl">Sample reports</h1>
           <p className="mx-auto mt-4 max-w-2xl text-cybertext/70">
-            Real findings from real scans, anonymised. This is exactly what you see in a Hebrides Cyber
-            report — the score, each finding with its severity and category, and the specific fix for each.
-            No proprietary scoring black boxes.
+            Illustrative examples — the sites are fictional, but every finding is one our checks really
+            report. The layout matches a real Hebrides Cyber report: the score, each finding with its
+            severity and category, and the specific fix for each. No proprietary scoring black boxes.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
