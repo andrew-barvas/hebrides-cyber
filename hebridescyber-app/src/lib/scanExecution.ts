@@ -9,7 +9,7 @@
 // row, verifying ownership, and the SSRF check (validateNoSsrf). This
 // function assumes all of that already happened.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary, enrichFindingsWithCvss, type Finding } from "./scanners";
+import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary, enrichFindingsWithCvss, enrichFindingsWithThreatIntel, type Finding } from "./scanners";
 import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanReport";
 import { dispatchScanCompletedWebhooks } from "./webhooks";
 import { sendSlackAlert } from "./slack";
@@ -846,6 +846,9 @@ export async function executeScan(
 
     // E-55: enrich CVE-backed findings with CVSS scores from NVD (best-effort)
     try { await enrichFindingsWithCvss(findings); } catch { /* never block scan completion */ }
+    // CISA KEV + FIRST EPSS: is anyone actually exploiting these CVEs? Same
+    // best-effort contract — absent intel means "unknown", never "safe".
+    try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
 
     summary = await generateAiSummary(results, findings);
     score = scoreFromFindings(findings);

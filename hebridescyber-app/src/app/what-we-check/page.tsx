@@ -151,6 +151,28 @@ const categories: CheckCategory[] = [
     ],
   },
   {
+    id: "takeover",
+    icon: "🪝",
+    name: "Dangling DNS & Subdomain Takeover",
+    badge: "Runs on every scan",
+    desc: "Subdomains still pointing at cloud resources you've deleted — which someone else could re-create to serve content on your domain. Detection only: we never try to claim anything.",
+    checks: [
+      "Your site and every subdomain in Certificate Transparency logs checked for CNAMEs to Azure, AWS, GitHub Pages, Heroku, Shopify and other providers",
+      "Reported only with proof the resource is gone: the provider's name doesn't exist (NXDOMAIN), or the provider's own \"unclaimed\" page is served",
+    ],
+  },
+  {
+    id: "domain",
+    icon: "🗓️",
+    name: "Domain Registration",
+    badge: "Runs on every scan",
+    desc: "The one renewal that takes your website and your email down together. Read from your registry's own RDAP record.",
+    checks: [
+      "Registration expiry date — flagged 30 days out, and urgently inside 14",
+      "Registrar transfer lock on generic TLDs (.com, .net, .org and similar)",
+    ],
+  },
+  {
     id: "webapp",
     icon: "🧩",
     name: "Web Application Security",
@@ -314,6 +336,19 @@ export default function WhatWeCheckPage() {
                   "Live OSV.dev lookup for vulnerable JS libraries",
                   "Checks both direct advisory IDs and GHSA aliases",
                   "Falls back gracefully — no CVE claimed if OSV.dev is unreachable",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
+                id: "exploited",
+                icon: "🎯",
+                name: "Known-exploited flags",
+                desc: "Severity says how bad a flaw could be; this says whether attackers are using it. Every CVE we report is checked against CISA's Known Exploited Vulnerabilities catalog and scored with FIRST's EPSS model, and your report sorts the exploited ones first.",
+                checks: [
+                  "\"Actively exploited\" when a CVE is in CISA's KEV catalog, with ransomware use called out",
+                  "EPSS: the probability of exploitation activity in the next 30 days",
+                  "Never guessed — if either source is unreachable, the flag is left off rather than shown as safe",
                 ],
               }}
             />

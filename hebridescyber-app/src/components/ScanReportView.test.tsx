@@ -188,4 +188,44 @@ describe("sortFindingsBySeverity", () => {
     sortFindingsBySeverity(input);
     expect(input).toEqual(copy);
   });
+
+  it("puts known-exploited, then likelier, findings first within a severity — never above a higher severity", () => {
+    const input = [
+      finding({ title: "plain", severity: "high" }),
+      finding({ title: "epss-low", severity: "high", threatIntel: { knownExploited: false, epss: 0.02 } }),
+      finding({ title: "kev", severity: "high", threatIntel: { knownExploited: true, epss: 0.01 } }),
+      finding({ title: "epss-high", severity: "high", threatIntel: { knownExploited: false, epss: 0.6 } }),
+      finding({ title: "critical", severity: "critical" }),
+      finding({ title: "kev-medium", severity: "medium", threatIntel: { knownExploited: true } }),
+    ];
+    expect(sortFindingsBySeverity(input).map((f) => f.title)).toEqual(["critical", "kev", "epss-high", "epss-low", "plain", "kev-medium"]);
+  });
+});
+
+describe("FindingCard threat intel", () => {
+  it("flags a CISA KEV finding as actively exploited, naming the CVEs and ransomware use", () => {
+    render(
+      <FindingCard
+        finding={finding({
+          severity: "high",
+          cveIds: ["CVE-2021-44228"],
+          threatIntel: { knownExploited: true, kevCveIds: ["CVE-2021-44228"], ransomware: true, epss: 0.975, epssPercentile: 0.9999 },
+        })}
+      />
+    );
+    const kev = screen.getByText("Actively exploited · ransomware");
+    expect(kev).toHaveAttribute("title", expect.stringContaining("CVE-2021-44228"));
+    expect(screen.getByText("EPSS 98%")).toHaveAttribute("title", expect.stringContaining("higher than 99% of scored CVEs"));
+  });
+
+  it("shows EPSS alone for a CVE that isn't in KEV, and small probabilities honestly", () => {
+    render(<FindingCard finding={finding({ threatIntel: { knownExploited: false, epss: 0.004 } })} />);
+    expect(screen.queryByText(/Actively exploited/)).not.toBeInTheDocument();
+    expect(screen.getByText("EPSS <1%")).toBeInTheDocument();
+  });
+
+  it("shows nothing when threat intel wasn't looked up", () => {
+    render(<FindingCard finding={finding({ cveIds: ["CVE-2020-11022"] })} />);
+    expect(screen.queryByText(/EPSS|Actively exploited/)).not.toBeInTheDocument();
+  });
 });

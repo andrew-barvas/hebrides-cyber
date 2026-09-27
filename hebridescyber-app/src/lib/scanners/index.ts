@@ -19,16 +19,19 @@ import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
 import { checkSoftwareCveDb, type SoftwareCveDbResult } from "./softwareCveDb";
 import { checkBusinessLogic, type BusinessLogicResult } from "./businessLogic";
 import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
+import { checkTakeover, type TakeoverResult } from "./takeover";
+import { checkDomainRegistration, type DomainRegistrationResult } from "./domainRegistration";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
+export { enrichFindingsWithThreatIntel } from "./threatIntel";
 import * as FIX from "./remediationText";
 
 export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
-  BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult,
+  BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
 };
 
 export type ScanResults = {
@@ -52,6 +55,9 @@ export type ScanResults = {
   softwareCveDb: SoftwareCveDbResult;
   businessLogic: BusinessLogicResult;
   apiSpec: ApiSpecResult;
+  // Optional because scans stored before these checks existed lack them.
+  takeover?: TakeoverResult;
+  domainRegistration?: DomainRegistrationResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -114,6 +120,24 @@ export type Finding = {
   cvssScore?: number;
   /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
   cvssVector?: string;
+  /**
+   * Threat intelligence for CVE-backed findings (threatIntel.ts), applied as
+   * a final pass like CVSS. CVSS says how bad a flaw *could* be; these say
+   * whether anyone is actually using it. Absent = not looked up (no CVE, or
+   * the feed was unreachable) — never read absence as "not exploited".
+   */
+  threatIntel?: {
+    /** One of cveIds is in CISA's Known Exploited Vulnerabilities catalog. */
+    knownExploited: boolean;
+    /** The KEV-listed CVE ids, when knownExploited. */
+    kevCveIds?: string[];
+    /** CISA marks at least one as used in ransomware campaigns. */
+    ransomware?: boolean;
+    /** Highest FIRST EPSS probability (0–1) of exploitation in the next 30 days, across cveIds. */
+    epss?: number;
+    /** That CVE's EPSS percentile (0–1) among all scored CVEs. */
+    epssPercentile?: number;
+  };
   /** Arbitrary metadata for enrichment passes (proof-of-exploit, scanner-specific context). */
   metadata?: Record<string, unknown>;
 };
@@ -171,6 +195,7 @@ export async function runAllChecks(
     checkWaybackDiscovery(targetUrl),
     checkHibp(targetUrl),
     checkBusinessLogic(targetUrl),
+    checkDomainRegistration(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -190,6 +215,7 @@ export async function runAllChecks(
   const waybackDiscovery = unwrap(settled1[10], { status: "error" } as WaybackDiscoveryResult);
   const hibp = unwrap(settled1[11], { status: "error" } as HibpResult);
   const businessLogic = unwrap(settled1[12], { status: "error", note: "check crashed" } as BusinessLogicResult);
+  const domainRegistration = unwrap(settled1[13], { status: "error", note: "check crashed" } as DomainRegistrationResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -227,6 +253,12 @@ export async function runAllChecks(
     fingerprint.status === "checked" ? fingerprint.riskySoftware : []
   );
 
+  // Needs recon's Certificate Transparency subdomains as its candidate list.
+  const takeover = await checkTakeover(
+    targetUrl,
+    recon.status === "checked" ? recon.subdomains.map((s) => s.name) : []
+  ).catch((err: Error): TakeoverResult => ({ status: "error", note: err.message }));
+
   return {
     target_url: targetUrl,
     checked_at: new Date().toISOString(),
@@ -248,6 +280,8 @@ export async function runAllChecks(
     softwareCveDb,
     businessLogic,
     apiSpec,
+    takeover,
+    domainRegistration,
     zap,
   };
 }
@@ -828,6 +862,51 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           ? FIX.SOFTWARE_CVE_PHP
           : FIX.SOFTWARE_CVE_APACHE;
       findings.push({ ...finding, remediation });
+    }
+  }
+
+  // --- Dangling DNS / subdomain takeover ------------------------------------
+  if (results.takeover?.status === "checked") {
+    for (const record of results.takeover.dangling) {
+      findings.push({
+        checkId: `takeover.dangling-cname:${record.host}`,
+        severity: record.confidence === "high" ? "high" : "medium",
+        title: `Dangling DNS record: ${record.host} points to an unclaimed ${record.provider} resource`,
+        detail: `${record.host} is a CNAME to ${record.cname}, and ${record.evidence}.${record.confidence === "high" ? " Anyone can create a resource with that name and serve content on your subdomain." : " Whether someone else can claim it depends on the provider's current verification — the record is dangling either way."}`,
+        remediation: FIX.danglingCnameRemediation(record.host, record.cname, record.provider),
+      });
+    }
+  }
+
+  // --- Domain registration (RDAP) -------------------------------------------
+  if (results.domainRegistration?.status === "checked") {
+    const reg = results.domainRegistration;
+    const by = reg.registrar ? ` Registrar: ${reg.registrar}.` : "";
+    if (reg.daysUntilExpiry !== null && reg.daysUntilExpiry < 0) {
+      findings.push({
+        checkId: "domain.expired",
+        severity: "high",
+        title: `Domain registration for ${reg.domain} has expired`,
+        detail: `The registry lists ${reg.domain} as expiring on ${reg.expiresAt}. Renew it before the registrar's grace period ends.${by}`,
+        remediation: FIX.DOMAIN_EXPIRING,
+      });
+    } else if (reg.daysUntilExpiry !== null && reg.daysUntilExpiry <= 30) {
+      findings.push({
+        checkId: "domain.expiring",
+        severity: reg.daysUntilExpiry <= 14 ? "high" : "medium",
+        title: `Domain ${reg.domain} expires in ${reg.daysUntilExpiry} day${reg.daysUntilExpiry === 1 ? "" : "s"}`,
+        detail: `The registry lists the registration as expiring on ${reg.expiresAt}. If auto-renew is on and the card on file is valid, this will renew itself — otherwise the website and email stop working.${by}`,
+        remediation: FIX.DOMAIN_EXPIRING,
+      });
+    }
+    if (reg.transferLocked === false) {
+      findings.push({
+        checkId: "domain.transfer-lock-missing",
+        severity: "low",
+        title: `No registrar transfer lock on ${reg.domain}`,
+        detail: `The registry record has no "transfer prohibited" status (statuses: ${reg.statuses.join(", ") || "none"}).${by}`,
+        remediation: FIX.DOMAIN_TRANSFER_LOCK,
+      });
     }
   }
 

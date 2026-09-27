@@ -1512,3 +1512,105 @@ this purpose (E-04, 2026-09-04) but is never actually exercised in CI.
 GitHub secret.
 **Depends on**: E-04 (already done). **Category**: code. **Source**: audit /
 BETA-2 verify-method gap, 2026-09-14.
+
+## E-58 — CISA KEV + FIRST EPSS threat intel on CVE findings
+
+**Status: done (2026-09-27).** `src/lib/scanners/threatIntel.ts`, a final
+pass after CVSS enrichment in `executeScan()`. It adds "Actively exploited"
+and ransomware badges plus EPSS likelihood, and orders exploited findings
+first within a severity. The same data appears as `threat_intel` in
+`GET /api/v1/scans/{id}` and the webhook, and as `known_exploited`/`epss`
+CSV columns. Severity is never changed.
+**Why**: NCSC's EASM buyer's guide asks how findings are ranked by
+likelihood. CVSS alone ranks by potential impact.
+**Category**: code. **Source**: competitive refresh 2026-09-27
+(`docs/COMPETITIVE-ANALYSIS.md` §12).
+
+## E-59 — Dangling DNS / subdomain takeover detection
+
+**Status: done (2026-09-27).** `src/lib/scanners/takeover.ts`, base suite.
+It checks up to 60 hosts (the site plus CT-log subdomains) against 15
+provider patterns, and reports only with NXDOMAIN or the provider's own
+unclaimed-resource page as evidence.
+**Why**: listed under "DNS security" in NCSC's EASM guide. Previously it
+only ran inside nuclei's `takeover` tag on scheduled full scans.
+**Category**: code. **Source**: competitive refresh 2026-09-27.
+
+## E-60 — Domain registration expiry + transfer lock (RDAP)
+
+**Status: done (2026-09-27).** `src/lib/scanners/domainRegistration.ts`.
+Findings: `domain.expiring` (medium at ≤30 days, high at ≤14),
+`domain.expired`, and `domain.transfer-lock-missing` (gTLDs only).
+**Why**: an expired domain takes down the website and email together.
+Beagle offers this on its free tier.
+**Category**: code. **Source**: competitive refresh 2026-09-27.
+
+## E-61 — NCSC Web Check / Mail Check replacement landing page
+
+**Status: open.**
+**What**: a landing page for UK organisations that used NCSC Web Check or
+Mail Check (retired 31 March 2026). It maps what those services and NCSC's
+EASM buyer's guide cover to what we check, including the "Partial" rows
+in `docs/COMPETITIVE-ANALYSIS.md` §12 stated honestly.
+**Why**: a whole segment lost a free service, and NCSC now tells them to
+buy commercial EASM. It's time-sensitive.
+**Impact/effort**: high / low. **Category**: marketing.
+**Source**: competitive refresh 2026-09-27.
+
+## E-62 — Third-party script inventory and change alerts
+
+**Status: open.**
+**What**: record every external script source per scanned page, and flag
+new ones since the previous scan.
+**Why**: PCI DSS v4.0.1 6.4.3 (payment-page script inventory) and 11.6.1
+(change and tamper detection), plus NCSC's "external dependencies"
+category. It's also a common Magecart-style card-skimming vector for
+online shops.
+**Open question**: a "new script since last scan" finding disappears on
+the next scan. Decide whether that should count as "fixed" (it would
+auto-close tickets and SLA clocks) or live outside the finding model, for
+example as an inventory with acknowledgement.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: competitive refresh 2026-09-27.
+
+## E-63 — Continuous EASM discovery (wire `easmDiscovery.ts`)
+
+**Status: open.** `src/lib/easmDiscovery.ts` (crt.sh, DNS brute-force,
+HTTP probing → `asset_inventory`) has no importers.
+**What**: run it from the scheduled pipeline per monitored domain, and feed
+newly discovered hosts to `takeover.ts` and the Assets page.
+**Impact/effort**: medium / medium. **Category**: code.
+**Source**: importer audit 2026-09-27.
+
+## E-64 — Finding workflow state (accept risk / false positive / snooze)
+
+**Status: open.**
+**What**: per-finding state with a reason and optional expiry, keyed like
+`finding_lifecycle` (owner, host, checkId). Accepted or false-positive
+findings drop out of the score, alerts and SLA clocks, and come back when
+the acceptance expires.
+**Why**: expected by NCSC's checklist ("workflow features") and offered by
+Intruder and HostedScan. It's also the missing half of SLA reporting.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: competitive refresh 2026-09-27.
+
+## E-65 — Lookalike-domain monitoring
+
+**Status: open.**
+**What**: generate typo, omission, transposition, homoglyph and TLD-swap
+permutations of the customer's domain, and report registered ones,
+highlighting those with MX records. Passive DNS only, capped at a few
+hundred lookups.
+**Why**: phishing that impersonates the business is the most common attack
+UK SMEs report.
+**Impact/effort**: medium / medium. **Category**: code.
+**Source**: competitive refresh 2026-09-27.
+
+## E-66 — DMARC aggregate-report processing
+
+**Status: open.**
+**What**: accept DMARC `rua` reports at a mailbox we operate, parse the XML
+and show which senders pass or fail for the domain. This is the part of
+NCSC Mail Check that `dns.ts` doesn't replace.
+**Impact/effort**: medium / high (needs inbound mail infrastructure).
+**Category**: code + infrastructure. **Source**: competitive refresh 2026-09-27.
