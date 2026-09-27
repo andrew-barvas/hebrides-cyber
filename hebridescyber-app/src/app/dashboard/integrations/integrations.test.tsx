@@ -33,7 +33,10 @@ beforeEach(() => {
   session.plan = "none";
 });
 
-describe("Integrations page", () => {
+// vi.resetModules() makes every test re-import the page's whole component
+// tree cold; under `test:unit:coverage` on a busy machine that alone passed
+// the default 5s, and the timed-out render then leaked into the next test.
+describe("Integrations page", { timeout: 20_000 }, () => {
   it("groups every integration under one of four headings", async () => {
     session.plan = "agency";
     await renderPage();

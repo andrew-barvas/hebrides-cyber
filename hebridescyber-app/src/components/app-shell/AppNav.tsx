@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleUser, LayoutDashboard, Plug, Plus, ScanSearch, Server, TrendingUp, type LucideIcon } from "lucide-react";
+import { CircleUser, LayoutDashboard, Plug, Plus, ScanSearch, Server, Timer, TrendingUp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/dashboard/scans", label: "Scans", icon: ScanSearch },
   { href: "/dashboard/scans/history", label: "Trends", icon: TrendingUp },
   { href: "/dashboard/assets", label: "Assets", icon: Server },
+  { href: "/dashboard/sla", label: "SLAs", icon: Timer },
   { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
   { href: "/account", label: "Account", icon: CircleUser },
 ];

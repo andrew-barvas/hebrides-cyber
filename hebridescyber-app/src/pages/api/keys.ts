@@ -10,6 +10,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { mintApiKey } from "@/lib/apiKeys";
 import { logAuditEvent } from "@/lib/audit";
+import { isMissingSchemaError } from "@/lib/dbErrors";
 import { validateAllowlist } from "@/lib/ipAllowlist";
 import { parseBody } from "@/lib/validate";
 
@@ -55,10 +56,6 @@ function toClientKey(row: ApiKeyRow) {
   };
 }
 
-/** PostgREST "column not found" — the database hasn't had migration 042. */
-function allowlistNotMigrated(code: string | undefined): boolean {
-  return code === "PGRST204" || code === "42703";
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -96,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .maybeSingle();
 
     if (error) {
-      if (allowlistNotMigrated(error.code)) {
+      if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "IP allowlists aren't enabled on this server yet (database migration 042 pending)." });
       }
       return res.status(500).json({ error: error.message });
