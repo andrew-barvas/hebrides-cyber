@@ -236,15 +236,20 @@ const SUPPRESSED_PREFIXES = ["cookie_", "overall_grade"];
 
 /**
  * testssl.sh check ids that represent Azure Static Web Apps / CDN platform
- * configuration that the app operator cannot change. These are demoted from
- * their testssl-reported severity to "info" so they appear in the report (for
- * transparency) but do not penalise the score — a penalty would only mislead
- * customers into thinking the issue is something they can fix.
+ * configuration that the app operator cannot change. When — and only when —
+ * the target is detected as served by Azure's platform (PLATFORM_TLS_TECHNOLOGIES
+ * in the fingerprint), these are demoted to "info": still in the report for
+ * transparency, but not penalising a score for something the customer can't
+ * fix.
  *
- * This applies equally to any customer site hosted on Azure SWA or behind
- * Azure Front Door / CDN, where TLS configuration is controlled by the
- * platform, not the application.
+ * Never demoted for other targets. On a self-hosted nginx, obsolete CBC
+ * suites or SHA-1 signature algorithms are the operator's own configuration
+ * and a real, actionable finding.
  */
+export const PLATFORM_TLS_TECHNOLOGIES = ["Azure CDN", "Azure App Service"] as const;
+
+export type DeepTlsOptions = { platformManagedTls?: boolean };
+
 const PLATFORM_INFRA_IDS = new Set([
   "cert_trust_wildcard",  // Azure CDN shares a wildcard cert across customers on the platform
   "FS_KEMs",              // Post-quantum key encapsulation — future-proofing concern, not a current threat
@@ -435,7 +440,7 @@ function isCipherSuiteId(id: string): boolean {
  * "unchanged, less severe" rather than as five findings churning in and out of
  * the New/Fixed diff.
  */
-function buildCipherFinding(entries: TestsslEntry[]): Finding | null {
+function buildCipherFinding(entries: TestsslEntry[], platformManagedTls: boolean): Finding | null {
   if (entries.length === 0) return null;
 
   let worst: Finding["severity"] | null = null;
@@ -449,7 +454,7 @@ function buildCipherFinding(entries: TestsslEntry[]): Finding | null {
   for (const entry of sorted) {
     const severity = SEVERITY_MAP[entry.severity.toUpperCase()];
     if (!severity) continue;
-    const effectiveSeverity: Finding["severity"] = PLATFORM_INFRA_IDS.has(entry.id) ? "info" : severity;
+    const effectiveSeverity: Finding["severity"] = platformManagedTls && PLATFORM_INFRA_IDS.has(entry.id) ? "info" : severity;
     if (worst === null || SEVERITY_RANK[effectiveSeverity] < SEVERITY_RANK[worst]) worst = effectiveSeverity;
     for (const cve of cveIdsFrom(entry)) cves.add(cve);
 
@@ -493,7 +498,11 @@ function buildCipherFinding(entries: TestsslEntry[]): Finding | null {
  * so it can be exercised against captured testssl.sh output without needing
  * the binary.
  */
-export function buildFindings(entries: TestsslEntry[]): { findings: Finding[]; truncated: boolean; warnCount: number } {
+export function buildFindings(
+  entries: TestsslEntry[],
+  options: DeepTlsOptions = {}
+): { findings: Finding[]; truncated: boolean; warnCount: number } {
+  const platformManagedTls = options.platformManagedTls ?? false;
   const cipherEntries: TestsslEntry[] = [];
   const byCheckId = new Map<string, Finding>();
   let warnCount = 0;
@@ -516,7 +525,7 @@ export function buildFindings(entries: TestsslEntry[]): { findings: Finding[]; t
       continue;
     }
 
-    const effectiveSeverity: Finding["severity"] = PLATFORM_INFRA_IDS.has(id) ? "info" : severity;
+    const effectiveSeverity: Finding["severity"] = platformManagedTls && PLATFORM_INFRA_IDS.has(id) ? "info" : severity;
     const cwe = entry.cwe?.trim();
     const checkId = `deep-tls.finding:${id}`;
     const finding: Finding = {
@@ -539,7 +548,7 @@ export function buildFindings(entries: TestsslEntry[]): { findings: Finding[]; t
     }
   }
 
-  const cipherFinding = buildCipherFinding(cipherEntries);
+  const cipherFinding = buildCipherFinding(cipherEntries, platformManagedTls);
   if (cipherFinding?.checkId) byCheckId.set(cipherFinding.checkId, cipherFinding);
 
   const all = [...byCheckId.values()].sort((a, b) => {
@@ -566,7 +575,7 @@ export function buildFindings(entries: TestsslEntry[]): { findings: Finding[]; t
  *
  * Set TESTSSL_PATH to point at a testssl.sh outside $PATH.
  */
-export async function runDeepTls(targetUrl: string): Promise<DeepTlsResult> {
+export async function runDeepTls(targetUrl: string, options: DeepTlsOptions = {}): Promise<DeepTlsResult> {
   let host: string;
   let port: string;
   try {
@@ -606,7 +615,7 @@ export async function runDeepTls(targetUrl: string): Promise<DeepTlsResult> {
     });
 
     const entries = await readEntries();
-    const { findings, truncated, warnCount } = buildFindings(entries);
+    const { findings, truncated, warnCount } = buildFindings(entries, options);
     return {
       status: "completed",
       host,
@@ -627,7 +636,7 @@ export async function runDeepTls(targetUrl: string): Promise<DeepTlsResult> {
     // than discarding a mostly-complete run.
     const entries = await readEntries();
     if (entries.length > 0) {
-      const { findings, truncated, warnCount } = buildFindings(entries);
+      const { findings, truncated, warnCount } = buildFindings(entries, options);
       return {
         status: "completed",
         host,

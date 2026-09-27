@@ -21,7 +21,7 @@ import { runXsser } from "../worker/tools/xsser";
 import { runCommix } from "../worker/tools/commix";
 import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
-import { runDeepTls } from "./scanners/deepTls";
+import { runDeepTls, PLATFORM_TLS_TECHNOLOGIES } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
@@ -182,7 +182,9 @@ async function runExtendedTools(
       ? runSubdomainDiscovery(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, subdomains: [] as never[], findings: [] as Finding[] }),
     toolConfig.deepTls
-      ? runDeepTls(targetUrl)
+      ? runDeepTls(targetUrl, {
+          platformManagedTls: detectedTechnologies.some((t) => (PLATFORM_TLS_TECHNOLOGIES as readonly string[]).includes(t)),
+        })
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, findings: [] as Finding[] }),
     // All five of these are only attempted when the scan owner has a row in
     // repo_connections — see sql/migrations/009_repo_connections.sql — AND

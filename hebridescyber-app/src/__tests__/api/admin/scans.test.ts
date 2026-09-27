@@ -3,9 +3,10 @@ import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { makeAdminSupabaseMock } from "./_supabaseQueueMock";
 
-const { requireAdminMock, logAuditEventMock } = vi.hoisted(() => ({
+const { requireAdminMock, logAuditEventMock, triggerOnDemandWorkflowMock } = vi.hoisted(() => ({
   requireAdminMock: vi.fn(),
   logAuditEventMock: vi.fn(),
+  triggerOnDemandWorkflowMock: vi.fn().mockResolvedValue(true),
 }));
 const mock = makeAdminSupabaseMock();
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/adminAuth", () => ({
 }));
 
 vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
+vi.mock("@/lib/onDemandScanTrigger", () => ({ triggerOnDemandWorkflow: triggerOnDemandWorkflowMock }));
 
 import handler from "@/pages/api/admin/scans";
 
@@ -27,6 +29,7 @@ describe("/api/admin/scans", () => {
     mock.reset();
     requireAdminMock.mockReset();
     logAuditEventMock.mockReset().mockResolvedValue(undefined);
+    triggerOnDemandWorkflowMock.mockReset().mockResolvedValue(true);
   });
 
   it("returns 403 when the caller is not an admin", async () => {
@@ -113,32 +116,59 @@ describe("/api/admin/scans", () => {
       expect(res._getStatusCode()).toBe(400);
     });
 
-    it("cancel: sets status failed and logs an audit event", async () => {
+    it("cancel: fails the scan AND its live job, and logs an audit event", async () => {
       requireAdminMock.mockResolvedValue("admin-1");
       const { req, res } = mockReqRes({ method: "PATCH", body: { scanId: "s1", action: "cancel" } });
 
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
-      expect(mock.updated).toEqual([{ table: "scans", payload: { status: "failed" } }]);
+      expect(mock.updated).toEqual([
+        { table: "scans", payload: { status: "failed" } },
+        { table: "scan_jobs", payload: { status: "failed", last_error: "Cancelled by admin" } },
+      ]);
       expect(logAuditEventMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ action: "admin.scan_cancelled", resourceId: "s1", actorId: "admin-1" })
       );
     });
 
-    it("retry: sets status pending and logs an audit event", async () => {
+    it("retry: re-queues the scan, resets its existing job, dispatches a runner, and logs an audit event", async () => {
       requireAdminMock.mockResolvedValue("admin-1");
+      mock.setQueues({ scans: [{ error: null }], scan_jobs: [{ data: [{ id: "j1" }], error: null }] });
       const { req, res } = mockReqRes({ method: "PATCH", body: { scanId: "s1", action: "retry" } });
 
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
-      expect(mock.updated).toEqual([{ table: "scans", payload: { status: "queued" } }]);
+      expect(mock.updated).toEqual([
+        { table: "scans", payload: { status: "queued" } },
+        { table: "scan_jobs", payload: { status: "pending", claimed_at: null, claimed_by: null, last_error: null } },
+      ]);
+      expect(mock.inserted).toEqual([]);
+      expect(triggerOnDemandWorkflowMock).toHaveBeenCalledTimes(1);
       expect(logAuditEventMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ action: "admin.scan_retried" })
       );
+    });
+
+    // Regression: retry used to key on scans.job_id (a dead BullMQ column),
+    // so a scan with no job ended up "queued" with nothing to pick it up.
+    it("retry: enqueues a fresh job when the scan never had one", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setQueues({
+        scans: [{ error: null }, { data: { owner: "owner-9", target_url: "https://x.com" }, error: null }],
+        scan_jobs: [{ data: [], error: null }],
+      });
+      const { req, res } = mockReqRes({ method: "PATCH", body: { scanId: "s1", action: "retry" } });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(mock.inserted).toEqual([
+        { table: "scan_jobs", payload: { owner: "owner-9", target_url: "https://x.com", scan_id: "s1", status: "pending" } },
+      ]);
     });
   });
 

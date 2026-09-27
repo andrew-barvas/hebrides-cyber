@@ -54,6 +54,10 @@ const PATTERNS: Pattern[] = [
   { name: "Fastly", category: "CDN", headers: { "x-fastly-request-id": /.+/ } },
   { name: "Akamai", category: "CDN", headers: { "x-akamai-transformed": /.+/ } },
   { name: "Azure CDN", category: "CDN", headers: { "x-msedge-ref": /.+/, "x-azure-ref": /.+/ } },
+  // Azure App Service / Static Web Apps' managed Functions front end sets
+  // ARR session-affinity cookies; it sends no x-azure-ref on SWA, so this is
+  // the signal that TLS is terminated by Azure's platform (see deepTls.ts).
+  { name: "Azure App Service", category: "Hosting", headers: { "set-cookie": /\bARRAffinity=/i } },
 
   // ---- Frameworks (header-detected) -----------------------------------------
   { name: "Next.js", category: "Framework", headers: { "x-nextjs-cache": /.+/, "x-powered-by": /Next\.js/i } },

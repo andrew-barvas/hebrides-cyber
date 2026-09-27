@@ -95,8 +95,10 @@ type CookieAnalysis = {
 
 // Azure Static Web Apps / App Service set these session-affinity cookies at
 // the infrastructure layer. The app cannot configure them, so flagging them
-// as insecure would mislead customers about actionable issues.
-const PLATFORM_COOKIES = new Set(["arraaffinity", "arraaffinitysameSite".toLowerCase()]);
+// as insecure would mislead customers about actionable issues. Lowercase,
+// compared against the lowercased cookie name — "ARRAffinity" is
+// a-r-r-a-f-f…, a single "a" before the "ff".
+export const PLATFORM_COOKIES = new Set(["arraffinity", "arraffinitysamesite"]);
 
 function analyseCookies(setCookieHeaders: string[]): CookieAnalysis[] {
   return setCookieHeaders
