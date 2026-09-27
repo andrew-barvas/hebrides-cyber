@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -16,6 +16,162 @@ import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/client
 import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 
 type Finding = ViewFinding;
+
+type ScanRunStatus = {
+  id: string;
+  status: string;
+  target_url: string;
+  progress: {
+    phase: "base" | "extended" | "enrichment" | "complete";
+    checks_completed: string[];
+    checks_total: number;
+    current_check: string | null;
+    elapsed_ms: number;
+  } | null;
+  started_at: string | null;
+};
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete: () => void }) {
+  const [status, setStatus] = useState<ScanRunStatus | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState(0);
+  const [sinceSeconds, setSinceSeconds] = useState<number | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => { onCompleteRef.current = onComplete; });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      const { data } = await supabase
+        .from("scans")
+        .select("id, status, target_url, progress, started_at")
+        .eq("id", scanId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setStatus(data as ScanRunStatus);
+        setLastUpdated(Date.now());
+        if (data.status === "completed" || data.status === "failed") {
+          onCompleteRef.current();
+          return;
+        }
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [scanId]);
+
+  // Tick the elapsed counter and "since last update" display every second.
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const now = Date.now();
+      if (status?.started_at) setElapsedMs(now - new Date(status.started_at).getTime());
+      setSinceSeconds(lastUpdated ? Math.round((now - lastUpdated) / 1000) : null);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [status?.started_at, lastUpdated]);
+
+  if (!status) {
+    return (
+      <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6 animate-pulse">
+        <div className="h-4 w-48 rounded bg-cyberborder/50 mb-3" />
+        <div className="h-3 w-32 rounded bg-cyberborder/30" />
+      </div>
+    );
+  }
+
+  const progress = status.progress;
+  const completed = progress?.checks_completed ?? [];
+  const total = progress?.checks_total ?? 1;
+  const pct = Math.round((completed.length / total) * 100);
+  const filledBars = Math.round(pct / 5);
+  const bar = "█".repeat(filledBars) + "░".repeat(20 - filledBars);
+  const phase = progress?.phase ?? "base";
+  const currentCheck = progress?.current_check ?? "Initialising…";
+
+  const isFailed = status.status === "failed";
+
+  return (
+    <div className={`rounded-xl border font-mono text-xs ${isFailed ? "border-red-500/30 bg-red-500/5" : "border-neon/20 bg-cyberpanel"} p-6`}>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-neon/60 uppercase tracking-widest text-[10px]">
+          {isFailed ? "// scan failed" : "// active scan"}
+        </p>
+        {sinceSeconds !== null && (
+          <p className="text-cybertext/30 text-[10px]">
+            {sinceSeconds < 5 ? "live" : `updated ${sinceSeconds}s ago`}
+          </p>
+        )}
+      </div>
+
+      <p className={`text-sm font-bold mb-4 ${isFailed ? "text-red-400" : "text-cybertext"} break-all`}>
+        {status.target_url}
+      </p>
+
+      {isFailed ? (
+        <div className="space-y-3">
+          <p className="text-red-400">Scan failed — this can happen when the worker was interrupted or timed out.</p>
+          <Link
+            href="/dashboard/scans"
+            className="inline-block text-neon hover:underline"
+          >
+            ← Back to scans
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-3 text-cybertext/70">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
+            <div>
+              <span className="text-cybertext/40">phase    </span>
+              <span className="text-neon">
+                {phase === "base" ? "base checks" : phase === "extended" ? "extended tools" : phase === "enrichment" ? "enrichment" : "complete"}
+              </span>
+            </div>
+            <div>
+              <span className="text-cybertext/40">elapsed  </span>
+              <span>{status.started_at ? formatElapsed(elapsedMs) : "—"}</span>
+            </div>
+          </div>
+
+          {progress && (
+            <div>
+              <span className="text-cybertext/40">progress </span>
+              <span className="text-neon">{bar}</span>
+              <span className="ml-2 text-cybertext/50">{completed.length}/{total}</span>
+            </div>
+          )}
+
+          <div className="truncate">
+            <span className="text-cybertext/40">current  </span>
+            <span>{currentCheck}</span>
+          </div>
+
+          {completed.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-cyberborder/50">
+              <p className="text-cybertext/40 mb-2">completed checks</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5">
+                {completed.map((c) => (
+                  <span key={c} className="text-neon/70">✓ {c}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type ScanResult = {
   id: string;
@@ -206,6 +362,7 @@ export default function ScanDetailPage() {
   const [hasTicketIntegration, setHasTicketIntegration] = useState(false);
   const [connectedRepo, setConnectedRepo] = useState<string | null>(null);
   const [wizardMode, setWizardMode] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   // Kept fresh via onAuthStateChange — reading it once on mount left this page
   // holding an expired token after a few hours idle, which silently 401'd the
   // share-link and AI-fix buttons while the page still looked signed in.
@@ -231,6 +388,7 @@ export default function ScanDetailPage() {
 
   useEffect(() => {
     if (!params?.id) return;
+    setLoading(true);
     (async () => {
       const { data, error: fetchError } = await supabase
         .from("scan_results")
@@ -244,7 +402,7 @@ export default function ScanDetailPage() {
       setError((err as Error).message);
       setLoading(false);
     });
-  }, [params?.id]);
+  }, [params?.id, refreshKey]);
 
   // Runs after the current scan loads, not alongside it — the previous-scan
   // lookup needs this scan's target_url and created_at first, and failing to
@@ -327,11 +485,24 @@ export default function ScanDetailPage() {
 
   if (!result) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center px-6 text-center">
-        <p className="text-sm text-cybermuted">
-          No results yet — the scan may still be running.{" "}
-          <Link href="/dashboard/scans" className="text-neon underline">View all scans</Link>
-        </p>
+      <div className="max-w-2xl space-y-4">
+        <div>
+          <Link
+            href="/dashboard/scans"
+            className="inline-block mb-3 font-mono text-xs text-cybermuted hover:text-neon transition-colors"
+          >
+            ← All scans
+          </Link>
+          <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./scan --live</p>
+          <h1 className="text-xl font-bold text-cybertext">Scan in progress</h1>
+          <p className="mt-1 text-sm text-cybertext/40">Results will appear here automatically when the scan completes.</p>
+        </div>
+        {params?.id && (
+          <ScanProgressPanel
+            scanId={params.id}
+            onComplete={() => setRefreshKey((k) => k + 1)}
+          />
+        )}
       </div>
     );
   }

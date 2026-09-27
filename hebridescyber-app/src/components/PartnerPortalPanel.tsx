@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
 
 type PartnerStats = {
   brandName: string | null;
@@ -19,46 +18,18 @@ export default function PartnerPortalPanel() {
 
   useEffect(() => {
     async function load() {
-      const [subRes, targetsRes, scansRes] = await Promise.all([
-        supabase
-          .from("subscriptions")
-          .select("brand_logo_url, brand_name")
-          .maybeSingle(),
-        supabase
-          .from("monitored_targets")
-          .select("id", { count: "exact", head: true }),
-        supabase
-          .from("scans")
-          .select("id, status")
-          .eq("status", "completed"),
-      ]);
-
-      const brandName = (subRes.data?.brand_name as string | null) ?? null;
-      const brandLogoUrl = (subRes.data?.brand_logo_url as string | null) ?? null;
-      const monitoredTargetCount = targetsRes.count ?? 0;
-      const totalScans = scansRes.data?.length ?? 0;
-
-      let latestScore: number | null = null;
-      let avgScore: number | null = null;
-      if (totalScans > 0) {
-        const { data: scoreData } = await supabase
-          .from("scan_results")
-          .select("score, scan_id")
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (scoreData && scoreData.length > 0) {
-          const scores = scoreData
-            .map((r) => r.score as number | null)
-            .filter((s): s is number => s !== null);
-          if (scores.length > 0) {
-            latestScore = scores[0];
-            avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-          }
-        }
+      const res = await fetch("/api/account/partner-portal");
+      // 403 = not on Agency plan — hide the panel silently.
+      if (res.status === 403) {
+        setLoading(false);
+        return;
       }
-
-      setStats({ brandName, brandLogoUrl, monitoredTargetCount, totalScans, latestScore, avgScore });
+      if (!res.ok) {
+        setLoading(false);
+        return;
+      }
+      const data = (await res.json()) as PartnerStats;
+      setStats(data);
       setLoading(false);
     }
 

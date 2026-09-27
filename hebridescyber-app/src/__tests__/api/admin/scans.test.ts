@@ -134,7 +134,7 @@ describe("/api/admin/scans", () => {
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
-      expect(mock.updated).toEqual([{ table: "scans", payload: { status: "pending" } }]);
+      expect(mock.updated).toEqual([{ table: "scans", payload: { status: "queued" } }]);
       expect(logAuditEventMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ action: "admin.scan_retried" })
