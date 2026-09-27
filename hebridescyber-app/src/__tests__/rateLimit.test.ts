@@ -42,8 +42,8 @@ describe("getClientIp", () => {
     return req;
   }
 
-  it("uses the first entry of x-forwarded-for when present", () => {
-    const req = mockReq({ "x-forwarded-for": "203.0.113.7, 10.0.0.1, 10.0.0.2" });
+  it("uses the entry our edge appended, not the leftmost one", () => {
+    const req = mockReq({ "x-forwarded-for": "198.51.100.1, 203.0.113.7, 10.0.0.2" });
     expect(getClientIp(req)).toBe("203.0.113.7");
   });
 

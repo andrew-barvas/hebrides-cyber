@@ -8,17 +8,48 @@
 // instances or after a cold start — see the warning below.
 
 import type { NextApiRequest } from "next";
+import { normaliseIp } from "./ipAllowlist";
 
-// Best-effort client IP for unauthenticated routes that have no ownerId to
-// key on (e.g. contact.ts). Azure Static Web Apps' Oryx-managed Functions
-// sit behind Azure's CDN, which sets x-forwarded-for as
-// "client, proxy1, proxy2, ..." — the first entry is the original client.
-// Falls back to the socket address for local dev, where no proxy is present.
+// How many X-Forwarded-For entries, counted from the right, our own
+// infrastructure appends. Measured against production on 2026-09-27 (via
+// /api/client-ip, sending forged headers): Azure Static Web Apps delivers
+//
+//   X-Forwarded-For: <anything the client sent>, <client ip>:<port>, <SWA edge ip>:<port>
+//
+// Azure appends and never replaces, so everything left of the last two
+// entries is whatever the caller chose to send. X-Client-IP is the edge's own
+// address, and X-Azure-ClientIP / X-Real-IP pass through from the client
+// untouched — none of them identify the caller. Override for a different
+// topology (Azure Container Apps appends one hop: TRUSTED_PROXY_HOPS=1).
+function trustedProxyHops(): number {
+  const n = Number(process.env.TRUSTED_PROXY_HOPS);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
+}
+
+/**
+ * The caller's IP address, for per-IP rate limits (routes with no owner to
+ * key on, e.g. contact.ts) and API-key IP allowlists (apiAuth.ts) — which is
+ * why it must never be a value the caller can forge. Port stripped: Azure's
+ * "ip:port" form made every connection its own rate-limit bucket. Falls back
+ * to the socket address when there's no proxy (local dev, e2e).
+ */
 export function getClientIp(req: NextApiRequest): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  if (forwardedValue) return forwardedValue.split(",")[0].trim();
-  return req.socket.remoteAddress ?? "unknown";
+  const header = req.headers["x-forwarded-for"];
+  const entries = (Array.isArray(header) ? header.join(",") : header ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    const socket = req.socket?.remoteAddress;
+    return (socket && normaliseIp(socket)) || socket || "unknown";
+  }
+
+  // Fewer entries than hops only happens off-platform (local dev, tests),
+  // where there's no proxy to trust anyway.
+  const hops = trustedProxyHops();
+  const chosen = entries.length >= hops ? entries[entries.length - hops] : entries[0];
+  return normaliseIp(chosen) ?? chosen;
 }
 
 export type RateLimitPolicy = { max: number; windowSeconds: number };

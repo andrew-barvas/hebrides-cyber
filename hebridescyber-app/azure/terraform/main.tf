@@ -282,6 +282,14 @@ resource "azurerm_container_app" "main" {
         name        = "SUPABASE_SERVICE_ROLE_KEY"
         secret_name = "supabase-service-role-key"
       }
+      # Container Apps' ingress appends one X-Forwarded-For entry; SWA (the
+      # default, 2) appends two. See getClientIp() in src/lib/rateLimit.ts.
+      # Unverified on this path — probe GET /api/client-ip with a forged
+      # X-Forwarded-For before relying on it.
+      env {
+        name  = "TRUSTED_PROXY_HOPS"
+        value = "1"
+      }
     }
   }
 

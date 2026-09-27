@@ -225,6 +225,8 @@ RLS is enabled on all tables. The only code path that bypasses it is server-side
 
 `src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) for shared-state rate limiting across Function instances. Falls back to an in-memory `Map` in dev — not safe across instances; don't rely on it in production.
 
+**Client IP: always `getClientIp(req)`, never a header directly.** Azure Static Web Apps *appends* to a client-supplied `X-Forwarded-For` (`<forged…>, <client>:<port>, <edge>:<port>`, measured in production), so the leftmost entry is attacker-controlled, and `X-Client-IP`/`X-Azure-ClientIP`/`X-Real-IP` are the edge's address or client pass-through. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2) from the right and strips the port. It feeds both per-IP rate limits and API-key IP allowlists (`apiAuth.ts`), so a forgeable value would be an auth bypass, not just a rate-limit one. `GET /api/client-ip` returns what it resolves — probe it with a forged `X-Forwarded-For` after any hosting change.
+
 ### Payments
 
 Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on `checkout.session.completed`, `invoice.payment_failed`, and `customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the three `STRIPE_PRICE_*` env vars (see `.env.example`).
