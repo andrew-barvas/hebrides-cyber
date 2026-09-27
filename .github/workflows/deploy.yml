@@ -104,24 +104,32 @@ jobs:
         with:
           node-version: 20
 
-      # E-56: apply pending migrations automatically via supabase CLI.
+      # E-56: apply pending migrations automatically via psql.
       # Requires DATABASE_URL (direct Postgres connection string from
       # Supabase Settings > Database > Connection string > URI).
-      # Safe to run repeatedly — supabase tracks applied migrations in
-      # supabase_migrations.schema_migrations and skips already-applied ones.
+      # All migrations use IF NOT EXISTS / DROP IF EXISTS so this is
+      # idempotent — safe to re-run on every deploy.
       - name: Apply pending migrations (E-56)
         if: ${{ env.DATABASE_URL != '' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -euo pipefail
-          npm install -g supabase@latest
-          echo "Applying pending migrations from hebridescyber-app/sql/migrations/..."
-          cd hebridescyber-app
-          supabase db push --db-url "$DATABASE_URL" || {
-            echo "::warning::supabase db push failed — falling back to verify-only mode"
+          echo "Applying migrations from hebridescyber-app/sql/migrations/..."
+          FAILED=0
+          for f in $(ls hebridescyber-app/sql/migrations/*.sql | sort -V); do
+            echo "  → $(basename $f)"
+            if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f" 2>&1; then
+              echo "::warning::Migration $(basename $f) failed (may already be applied or have a conflict)"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::warning::${FAILED} migration(s) reported errors — see above"
             echo "DB_PUSH_FAILED=true" >> "$GITHUB_ENV"
-          }
+          else
+            echo "All migrations applied successfully."
+          fi
 
       # E-49: verify expected columns exist as a post-apply safety net.
       - name: Verify schema objects exist

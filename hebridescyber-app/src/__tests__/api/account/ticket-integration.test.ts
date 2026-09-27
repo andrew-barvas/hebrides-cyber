@@ -101,7 +101,7 @@ describe("POST — ServiceNow", () => {
     validators.validateServiceNowCredentials.mockResolvedValue({ ok: false, error: "ServiceNow rejected the credentials" });
     const res = await call("POST", valid);
     expect(res._getStatusCode()).toBe(400);
-    expect(res._getJSONData().error).toBe("ServiceNow rejected the credentials");
+    expect((res._getJSONData() as { error: string }).error).toBe("ServiceNow rejected the credentials");
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
@@ -109,7 +109,7 @@ describe("POST — ServiceNow", () => {
     upsertMock.mockResolvedValue({ error: { code: "PGRST204", message: "Could not find the 'servicenow_instance_url' column" } });
     const res = await call("POST", valid);
     expect(res._getStatusCode()).toBe(503);
-    expect(res._getJSONData().error).toMatch(/isn't enabled on this deployment yet/);
+    expect((res._getJSONData() as { error: string }).error).toMatch(/isn't enabled on this deployment yet/);
   });
 });
 
