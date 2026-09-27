@@ -127,6 +127,22 @@ describe("GET /api/v1/scans/[id]/export", () => {
     expect(lines[1]).toContain("owasp-top-10: A03:2021 – Injection");
   });
 
+  // Titles quote text from the scanned site — a hostile site must not be able
+  // to plant a formula that runs when the customer opens the export.
+  it("neutralises spreadsheet formulas in CSV cells", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = {
+      data: { results: { findings: [{ severity: "low", title: '=HYPERLINK("http://evil")', detail: "d" }] } },
+    };
+    const { req, res } = mockReqRes({ id: "scan-1" });
+
+    await handler(req, res);
+
+    const row = (res._getData() as string).split("\r\n")[1];
+    expect(row).toContain(`"'=HYPERLINK(""http://evil"")"`);
+  });
+
   it("exports findings as JSON when format=json", async () => {
     authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
     supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };

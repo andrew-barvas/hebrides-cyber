@@ -8,11 +8,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import type { Finding } from "@/lib/scanners";
-
-function csvEscape(value: string): string {
-  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
-}
+import { csvCell } from "@/lib/csv";
 
 function findingsToCsv(findings: Finding[]): string {
   const header = ["severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "compliance_refs"];
@@ -26,7 +22,7 @@ function findingsToCsv(findings: Finding[]): string {
     f.cvssVector ?? "",
     (f.complianceRefs ?? []).map((r) => `${r.framework}: ${r.control}`).join("; "),
   ]);
-  return [header, ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(",")).join("\r\n");
+  return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

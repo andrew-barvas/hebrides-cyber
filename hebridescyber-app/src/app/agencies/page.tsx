@@ -39,8 +39,8 @@ const capabilities: Capability[] = [
   },
   {
     icon: "📈",
-    title: "Findings mapped to 7 frameworks",
-    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA, and each report includes a Cyber Essentials readiness view.",
+    title: "Compliance mapping & export",
+    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA. Download any scan as a per-framework control report (Markdown, CSV or JSON) for a client's audit pack, labelled as an automated indicator rather than a certification.",
   },
   {
     icon: "📧",
@@ -60,11 +60,6 @@ const roadmap: Capability[] = [
     title: "SLA monitoring",
     body: "Remediation targets per severity, time-to-fix across your portfolio, and alerts before a site breaches its SLA.",
   },
-  {
-    icon: "🧾",
-    title: "Compliance report export",
-    body: "A downloadable per-framework report for client audits, built from the mapping every finding already carries.",
-  },
 ];
 
 const pricingFeatures = [
@@ -74,7 +69,7 @@ const pricingFeatures = [
   "White-label PDF reports",
   "Per-site scan profiles",
   "Priority email support",
-  "Findings mapped to 7 compliance frameworks",
+  "Findings mapped to 7 compliance frameworks, with per-framework report export",
   "Jira, Linear, ServiceNow & GitHub Issues ticketing",
   "Scheduled report delivery",
   "SBOM generation (CycloneDX 1.5)",

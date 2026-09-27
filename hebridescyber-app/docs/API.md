@@ -127,6 +127,63 @@ applicable. Deliberately not exhaustive: a finding with no compliance refs
 either hasn't been categorised yet or doesn't map cleanly to any of the
 three frameworks — never force-fitted.
 
+### `GET /api/v1/scans/{id}/compliance`
+
+The same scan's findings grouped by framework control — ISO 27001, PCI DSS,
+Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA — as a
+document to hand to an auditor or a client. The dashboard's "Compliance
+report" button on a scan report downloads the Markdown version.
+
+| Query param | Default | Notes |
+|-------------|---------|-------|
+| `format` | `md` | `md`, `csv` or `json`; anything else is a `400` |
+
+Each control gets one of three results: `no_issues_found`, `issues_found`
+(medium/low/info findings only) or `high_severity_issues_found`. These are
+deliberately not "pass" and "fail". The control list covers only the
+controls our external checks map to, so `no_issues_found` means none of those
+checks detected a problem. It does **not** mean the control is implemented.
+Many controls in every framework (policies, internal process, physical
+security) can't be assessed from outside at all. Every format carries this
+disclaimer: the Markdown report opens with it, the CSV's first row is it, and
+JSON returns it as `disclaimer`.
+
+CSV columns: `framework, control, result, finding_count, findings`, one row
+per control. JSON:
+
+```json
+{
+  "disclaimer": "Automated indicator — not an audit, certification or attestation. …",
+  "generated_at": "2026-09-27T09:02:11.000Z",
+  "target_url": "https://example.com",
+  "frameworks": [
+    {
+      "framework": "cyber-essentials",
+      "label": "Cyber Essentials",
+      "controls_mapped": 5,
+      "controls_without_issues": 4,
+      "controls_with_issues": 1,
+      "controls": [
+        {
+          "control": "Secure configuration",
+          "result": "issues_found",
+          "findings": [{ "checkId": "headers.missing-recommended", "severity": "medium", "title": "…" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Scans stored before findings carried their own compliance refs are mapped
+from each finding's `check_id` at export time, so an older scan still
+exports a populated report.
+
+CSV exports from both `/export` and `/compliance` prefix any cell that starts
+with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
+can quote text from the scanned site, and without the prefix a spreadsheet
+would run such a cell as a formula.
+
 ### `GET /api/v1/targets/{host}/trend`
 
 Score history for every completed scan of `host` you own, oldest first — the

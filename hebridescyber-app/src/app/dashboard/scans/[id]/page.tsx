@@ -198,19 +198,26 @@ type ScanResult = {
 
 // Dashboard-only, same reasoning as AiTailoredFix in ScanReportView.tsx not
 // appearing on the public share page: this needs the owner's session token
-// (GET /api/v1/scans/{id}/export requires Authorization), which a public
-// share-link viewer never has and shouldn't need for a reduced view. Fetches
-// with an explicit Authorization header rather than a plain <a href> — a
-// browser GET from a link click can't attach that header itself.
+// (GET /api/v1/scans/{id}/export and /compliance require Authorization), which
+// a public share-link viewer never has and shouldn't need for a reduced view.
+// Fetches with an explicit Authorization header rather than a plain <a href> —
+// a browser GET from a link click can't attach that header itself.
+const EXPORTS = {
+  export: { suffix: "findings", label: (format: string) => `Export ${format.toUpperCase()}` },
+  compliance: { suffix: "compliance", label: () => "Compliance report" },
+} as const;
+
 function ExportButton({
   scanId,
   token,
+  kind = "export",
   format,
   targetUrl,
 }: {
   scanId: string;
   token: string | null;
-  format: "csv" | "json";
+  kind?: keyof typeof EXPORTS;
+  format: "csv" | "json" | "md";
   targetUrl: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -219,7 +226,7 @@ function ExportButton({
     if (!token) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/v1/scans/${scanId}/export?format=${format}`, {
+      const res = await fetch(`/api/v1/scans/${scanId}/${kind}?format=${format}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
@@ -228,7 +235,7 @@ function ExportButton({
       const a = document.createElement("a");
       const safeHost = targetUrl.replace(/^https?:\/\//, "").replace(/[^a-z0-9.-]/gi, "-");
       a.href = url;
-      a.download = `${safeHost}-findings.${format}`;
+      a.download = `${safeHost}-${EXPORTS[kind].suffix}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -248,7 +255,7 @@ function ExportButton({
       disabled={!token || busy}
       className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-40"
     >
-      {busy ? "Exporting…" : `↓ Export ${format.toUpperCase()}`}
+      {busy ? "Exporting…" : `↓ ${EXPORTS[kind].label(format)}`}
     </button>
   );
 }
@@ -556,6 +563,7 @@ export default function ScanDetailPage() {
               <div className="no-print flex shrink-0 flex-wrap gap-2">
                 <ReplayButton scanId={result.scan_id} token={sessionToken} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} format="csv" targetUrl={targetUrl} />
+                <ExportButton scanId={result.scan_id} token={sessionToken} kind="compliance" format="md" targetUrl={targetUrl} />
                 <button
                   onClick={() => window.print()}
                   className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
