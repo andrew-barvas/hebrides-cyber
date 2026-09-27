@@ -11,6 +11,13 @@
 //
 // 42703 = undefined_column (migration added columns to an existing table).
 // 42P01 = undefined_table (migration added a whole new table).
+// PostgREST answers some of these itself, from its schema cache, before
+// Postgres sees the query — and current versions do so for exactly the
+// cases above:
+// PGRST204 = a column in an insert/update/upsert payload doesn't exist.
+// PGRST205 = the table doesn't exist (PostgREST 12.2+; 42P01 before that).
+const MISSING_SCHEMA_CODES = new Set(["42703", "42P01", "PGRST204", "PGRST205"]);
+
 export function isMissingSchemaError(error: { code?: string | null } | null | undefined): boolean {
-  return error?.code === "42703" || error?.code === "42P01";
+  return MISSING_SCHEMA_CODES.has(error?.code ?? "");
 }

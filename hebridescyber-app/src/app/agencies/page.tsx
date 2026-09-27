@@ -43,6 +43,11 @@ const capabilities: Capability[] = [
     body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA. Download any scan as a per-framework control report (Markdown, CSV or JSON) for a client's audit pack, labelled as an automated indicator rather than a certification.",
   },
   {
+    icon: "⏱️",
+    title: "Remediation SLAs",
+    body: "Set fix-by targets per severity and see every open finding's deadline across your client sites, with median time-to-fix and an email before a site breaches. A passive re-scan never counts as a fix for something only the active tools can see.",
+  },
+  {
     icon: "📧",
     title: "Scheduled reports",
     body: "Daily, weekly or monthly security summaries sent to your team or straight to clients, with CSV and JSON exports for your own reporting tools.",
@@ -54,11 +59,6 @@ const roadmap: Capability[] = [
     icon: "🏢",
     title: "MSP partner portal",
     body: "Onboard clients and give each one access to only their own sites and reports.",
-  },
-  {
-    icon: "⏱️",
-    title: "SLA monitoring",
-    body: "Remediation targets per severity, time-to-fix across your portfolio, and alerts before a site breaches its SLA.",
   },
 ];
 
@@ -72,6 +72,7 @@ const pricingFeatures = [
   "Findings mapped to 7 compliance frameworks, with per-framework report export",
   "Jira, Linear, ServiceNow & GitHub Issues ticketing",
   "Scheduled report delivery",
+  "Remediation SLAs with breach alerts",
   "SBOM generation (CycloneDX 1.5)",
   "GitHub Action + GitLab / Bitbucket CI templates",
 ];

@@ -10,6 +10,14 @@ describe("isMissingSchemaError", () => {
     expect(isMissingSchemaError({ code: "42P01" })).toBe(true);
   });
 
+  // PostgREST's own schema-cache errors — what production actually returns
+  // for a missing table on PostgREST 12.2+, and for a missing column in a
+  // write payload.
+  it("returns true for PostgREST's PGRST205 (table) and PGRST204 (column)", () => {
+    expect(isMissingSchemaError({ code: "PGRST205" })).toBe(true);
+    expect(isMissingSchemaError({ code: "PGRST204" })).toBe(true);
+  });
+
   it("returns false for a different Postgres error code", () => {
     expect(isMissingSchemaError({ code: "23505" })).toBe(false);
   });

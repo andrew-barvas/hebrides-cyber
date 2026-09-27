@@ -136,6 +136,16 @@ Four distinct, non-overlapping "help me fix this" features — don't conflate th
 - Jira has no "set status" API — `transitionJiraIssueToDone()` lists the issue's *currently available* transitions and picks one whose target `statusCategory.key === "done"`, rather than string-matching a name like "Done" which breaks on any customised workflow. Linear's `WorkflowState.type` vocabulary is fixed workspace-wide, so its equivalent needs no such care.
 - Close happens *before* the comment, deliberately: a workflow with no available done-transition would otherwise collect an identical "verified as fixed" comment on every nightly scan forever, since nothing records that we already said it.
 
+### Finding lifecycle and remediation SLAs
+
+`src/lib/findingLifecycle.ts` keeps `finding_lifecycle` (`043_finding_lifecycle_sla.sql`): one row per (owner, target host, checkId) with first seen, last seen and resolved. `executeScan()` syncs it after every completed scan (Phase 1.75, never throws, no-op before 043). Identity is checkId, same as `findingsDiff.ts`.
+
+**A scan can only resolve what it could have detected.** On-demand scans are passive-only, so a passive scan's silence about a nuclei/sqlmap finding is not a fix. Each row records its `source`: `"base"`, the normalised `extended` key of the tool that produced it (from the checkId namespace, `"deep-tls.x"` → `deeptls`), or `"extended"` if unmatched. A scan resolves a row only if that source completed in it (`isCovered`). If you add an extended tool whose checkId namespace doesn't normalise to its `extended` key, add it to `TOOL_ALIASES`. A finding that reappears within 7 days of resolving reopens with its original `first_seen_at`, so a flapping check can't reset its clock. A site's first sync backfills first-seen from up to 45 earlier scans under the same coverage rule.
+
+`slaMonitoring.ts` is the pure maths on top (policy, due dates, due-soon/breached, time-to-fix); `slaAlerts.ts` emails the owner once per finding per stage (`sla_warned_at`, `sla_breach_notified_at`), only marking what was actually delivered. Agency plan, admins exempt (`hasSlaAccess`). Per-account targets live in `sla_policies`, written only by `PUT /api/account/sla`.
+
+Note the same passive-vs-active gap still affects `findingsDiff.ts`'s `fixed_findings`, and therefore ticket auto-close: an on-demand scan after a scheduled full scan reports the active-tool findings as fixed.
+
 ### GitHub access for customer repos
 
 `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` is the one function every customer-repo-touching module calls (`generate-fix-pr.ts`, `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `connect-repo.ts`) — never read `process.env.GITHUB_PAT` directly in a new one. It tries a GitHub App installation token first (per-repo, expires in an hour, resolved live via `GET /repos/{owner}/{repo}/installation` — no webhook or install-callback flow needed), falling back to the shared `GITHUB_PAT` when the App isn't configured or isn't installed on that repo. `GITHUB_PAT` is also used, unrelated to any of this, by `src/lib/onDemandScanTrigger.ts` to dispatch this repo's own `on-demand-scan.yml` — don't conflate the two concerns when reasoning about that token's scope.
@@ -198,6 +208,7 @@ New UI is composed from `src/components/ui/` — the shadcn/ui pattern, hand-wri
 | `/dashboard/scans` | `RunScanForm` + paginated scan list |
 | `/dashboard/scans/history` | Trends (per-site score/category history) |
 | `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
+| `/dashboard/sla` | remediation SLAs — open-finding deadlines, time-to-fix, targets (Agency) |
 | `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` rather than disappearing |
 | `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
 
@@ -210,6 +221,8 @@ Key tables (all in `sql/migrations/`):
 - `subscriptions` — plan, status, slack_webhook_url, ms_teams_webhook_url (`src/lib/msTeams.ts` — independent of Slack, either/both/neither), brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
 - `ticket_integrations` — one row per owner+provider: trackers (`jira`/`linear`/`servicenow`/`github`) **and** on-call rows (`pagerduty`/`opsgenie`, 028) share this table, so a ticketing read must filter on `TICKET_PROVIDERS` — use `findTicketIntegration()` (ticketLinks.ts) rather than querying it directly; no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`). `auto_close_enabled` (`016_ticket_links.sql`) opts into auto-close, default false. Because the table is unique on `(owner, provider)`, an owner can have **two** rows — every read must `.order("created_at", { ascending: false }).limit(1)` before `.maybeSingle()`, which would otherwise throw on exactly those accounts
 - `ticket_links` — finding→issue ledger for dedupe and auto-close (`016_ticket_links.sql`); owner-readable, service-role-write-only (a forgeable row could suppress ticketing for a real finding)
+- `finding_lifecycle` + `sla_policies` — per-site first-seen/resolved per checkId, and per-account SLA targets (`043_finding_lifecycle_sla.sql`); owner-readable, service-role-write-only — see "Finding lifecycle and remediation SLAs"
+- `api_keys` — hashed keys; `allowed_cidrs` (042) is the per-key IP allowlist enforced in `apiAuth.ts`
 - `scans` + `scan_results` — scan records and findings/score; RLS-protected by owner
 - `scan_jobs` — the on-demand + scheduled queue (`008_scan_jobs.sql`); `claim_scan_job()` RPC does the `SKIP LOCKED` claim
 - `repo_connections` — one GitHub repo per user, gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)

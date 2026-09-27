@@ -46,6 +46,8 @@ import { syncAssetInventory } from "./assetInventory";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
+import { syncFindingLifecycle } from "./findingLifecycle";
+import { sendSlaAlerts } from "./slaAlerts";
 import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
@@ -698,6 +700,9 @@ export async function executeScan(
   let summary: string;
   let findings: Finding[];
   let extended: Record<string, unknown> | undefined;
+  // Which findings the extended suite produced — finding lifecycle needs it
+  // so a passive scan can never mark an active-tool finding fixed.
+  const extendedCheckIds = new Set<string>();
 
   const profile: ScanProfile = options.profile ?? "safe";
 
@@ -788,6 +793,7 @@ export async function executeScan(
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
       }
       findings = [...findings, ...toolOutcome.findings];
+      for (const f of toolOutcome.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
       // summariseResults() already ran its own compliance-mapping and
       // fix-difficulty passes over the base-suite findings; extended-tool
       // findings are appended after that returns, so they need the same
@@ -822,6 +828,7 @@ export async function executeScan(
               }
             }
             findings.push(...cpResult.findings);
+            for (const f of cpResult.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).cloudPosture = { status: "error", note: "Cloud posture check failed" };
@@ -909,6 +916,21 @@ export async function executeScan(
     console.error(`[scanExecution] could not look up previous scan for diffing (scan ${scanId}):`, (err as Error).message);
     report = buildScanReport(scanRow, resultRow, null);
   }
+
+  // Phase 1.75: finding lifecycle (first seen / resolved per site) and the
+  // remediation-SLA alerts built on it. Both never throw and no-op before
+  // migration 043; kept out of Phase 2's try so a notification failure can't
+  // skip the bookkeeping.
+  const syncedHost = await syncFindingLifecycle(supabaseAdmin, {
+    ownerId,
+    scanId,
+    targetUrl,
+    scanAt: completedAt,
+    findings,
+    extendedCheckIds,
+    extended,
+  });
+  if (syncedHost) await sendSlaAlerts(supabaseAdmin, ownerId, syncedHost);
 
   // Phase 2: notifications. dispatchScanCompletedWebhooks and the Slack
   // alert both already swallow their own errors internally, but wrapping
