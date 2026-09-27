@@ -53,8 +53,50 @@ describe("getClientIp", () => {
   const req = (headers: Record<string, string | string[]>, remoteAddress?: string) =>
     ({ headers, socket: { remoteAddress } }) as unknown as NextApiRequest;
 
-  it("takes the first x-forwarded-for entry", () => {
-    expect(getClientIp(req({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" }))).toBe("203.0.113.7");
+  // The exact header shapes production delivered on 2026-09-27 (see
+  // getClientIp's comment); 13.69.116.11 is the Static Web Apps edge.
+  it("reads the client from Azure Static Web Apps' header", () => {
+    expect(getClientIp(req({ "x-forwarded-for": "192.0.2.44:6302, 13.69.116.11:30230" }))).toBe("192.0.2.44");
+  });
+
+  it("can't be forged by sending X-Forwarded-For", () => {
+    const forged = "203.0.113.9, 198.51.100.7, 192.0.2.44:6334, 13.69.116.11:1055";
+    expect(getClientIp(req({ "x-forwarded-for": forged }))).toBe("192.0.2.44");
+  });
+
+  // The port changed on every request, so keying on it gave each connection
+  // its own rate-limit bucket.
+  it("is stable across source ports", () => {
+    const a = getClientIp(req({ "x-forwarded-for": "192.0.2.44:6302, 13.69.116.11:30230" }));
+    const b = getClientIp(req({ "x-forwarded-for": "192.0.2.44:6346, 13.69.116.11:14564" }));
+    expect(a).toBe(b);
+  });
+
+  it("ignores the other client-settable headers", () => {
+    const headers = {
+      "x-forwarded-for": "192.0.2.44:6346, 13.69.116.11:14564",
+      "x-client-ip": "203.0.113.10, 13.69.116.11",
+      "x-azure-clientip": "203.0.113.11",
+      "x-real-ip": "203.0.113.12",
+    };
+    expect(getClientIp(req(headers))).toBe("192.0.2.44");
+  });
+
+  it("honours TRUSTED_PROXY_HOPS for a one-hop topology", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    try {
+      expect(getClientIp(req({ "x-forwarded-for": "203.0.113.9, 192.0.2.44" }))).toBe("192.0.2.44");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("uses the only entry when there are fewer than the hop count (no proxy)", () => {
+    expect(getClientIp(req({ "x-forwarded-for": "203.0.113.7" }))).toBe("203.0.113.7");
+  });
+
+  it("unwraps an IPv4-mapped socket address", () => {
+    expect(getClientIp(req({}, "::ffff:127.0.0.1"))).toBe("127.0.0.1");
   });
 
   it("falls back to the socket address, then 'unknown'", () => {

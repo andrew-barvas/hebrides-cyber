@@ -18,7 +18,7 @@ describe("GET /api/client-ip", () => {
     await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
     expect(res.getHeader("Cache-Control")).toBe("no-store");
-    expect((res._getJSONData() as { ip: string }).ip).toBe("203.0.113.7");
+    expect(res._getJSONData()).toEqual({ ip: "203.0.113.7" });
   });
 
   it("is rate-limited per client IP", async () => {

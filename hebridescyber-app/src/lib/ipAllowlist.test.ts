@@ -1,76 +1,105 @@
 import { describe, it, expect } from "vitest";
-import { parseCidr, isIpInCidr, isIpAllowed, validateAllowlistEntry } from "./ipAllowlist";
+import { MAX_ALLOWLIST_ENTRIES, isIpAllowed, normaliseIp, parseCidr, validateAllowlist } from "./ipAllowlist";
 
-describe("parseCidr", () => {
-  it("parses a single IP as /32", () => {
-    const result = parseCidr("10.0.0.1");
-    expect(result).not.toBeNull();
-    expect(result!.mask).toBe(0xffffffff);
+describe("normaliseIp", () => {
+  it.each([
+    ["203.0.113.7", "203.0.113.7"],
+    [" 203.0.113.7 ", "203.0.113.7"],
+    ["203.0.113.7:63546", "203.0.113.7"], // Azure's X-Forwarded-For format
+    ["::ffff:203.0.113.7", "203.0.113.7"],
+    ["2001:DB8::1", "2001:db8::1"],
+    ["[2001:db8::1]:443", "2001:db8::1"],
+    ["fe80::1%eth0", "fe80::1"],
+  ])("%s → %s", (raw, expected) => {
+    expect(normaliseIp(raw)).toBe(expected);
   });
 
-  it("parses /24", () => {
-    const result = parseCidr("192.168.1.0/24");
-    expect(result).not.toBeNull();
-    expect(result!.mask).toBe(0xffffff00);
-  });
-
-  it("rejects invalid input", () => {
-    expect(parseCidr("not-an-ip")).toBeNull();
-    expect(parseCidr("10.0.0.1/33")).toBeNull();
-    expect(parseCidr("256.0.0.1")).toBeNull();
+  it.each(["", "unknown", "example.com", "203.0.113", "999.0.0.1"])("rejects %j", (raw) => {
+    expect(normaliseIp(raw)).toBeNull();
   });
 });
 
-describe("isIpInCidr", () => {
-  it("matches exact IP", () => {
-    expect(isIpInCidr("10.0.0.1", "10.0.0.1")).toBe(true);
-    expect(isIpInCidr("10.0.0.2", "10.0.0.1")).toBe(false);
+describe("parseCidr", () => {
+  it("treats a bare address as a single host", () => {
+    expect(parseCidr("203.0.113.7")).toEqual({ address: "203.0.113.7", prefix: 32, family: "ipv4" });
+    expect(parseCidr("2001:db8::1")).toEqual({ address: "2001:db8::1", prefix: 128, family: "ipv6" });
   });
 
-  it("matches within /24 range", () => {
-    expect(isIpInCidr("192.168.1.100", "192.168.1.0/24")).toBe(true);
-    expect(isIpInCidr("192.168.2.1", "192.168.1.0/24")).toBe(false);
+  it("parses ranges in both families", () => {
+    expect(parseCidr("203.0.113.0/24")).toEqual({ address: "203.0.113.0", prefix: 24, family: "ipv4" });
+    expect(parseCidr("2001:db8::/32")).toEqual({ address: "2001:db8::", prefix: 32, family: "ipv6" });
   });
 
-  it("matches within /16 range", () => {
-    expect(isIpInCidr("10.1.255.255", "10.1.0.0/16")).toBe(true);
-    expect(isIpInCidr("10.2.0.1", "10.1.0.0/16")).toBe(false);
+  it.each(["not-an-ip", "203.0.113.0/33", "2001:db8::/129", "203.0.113.0/", "203.0.113.0/-1", "203.0.113.0/24/1", "256.0.0.1"])(
+    "rejects %j",
+    (cidr) => {
+      expect(parseCidr(cidr)).toBeNull();
+    }
+  );
+});
+
+describe("validateAllowlist", () => {
+  it("tidies, drops blanks and de-duplicates", () => {
+    expect(validateAllowlist([" 203.0.113.7/32 ", "", "203.0.113.7", "2001:DB8::/48"])).toEqual({
+      ok: true,
+      cidrs: ["203.0.113.7", "2001:db8::/48"],
+    });
   });
 
-  it("handles /0 (match all)", () => {
-    expect(isIpInCidr("8.8.8.8", "0.0.0.0/0")).toBe(true);
+  it("names the bad entry", () => {
+    const result = validateAllowlist(["203.0.113.7", "office"]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('"office"');
+  });
+
+  // An allowlist of "everything" is no allowlist — say so rather than store a
+  // setting that looks like protection.
+  it.each(["0.0.0.0/0", "::/0"])("refuses %s", (cidr) => {
+    expect(validateAllowlist([cidr]).ok).toBe(false);
+  });
+
+  it(`caps the list at ${MAX_ALLOWLIST_ENTRIES} entries`, () => {
+    const many = Array.from({ length: MAX_ALLOWLIST_ENTRIES + 1 }, (_, i) => `198.51.100.${i}`);
+    expect(validateAllowlist(many).ok).toBe(false);
+    expect(validateAllowlist(many.slice(1)).ok).toBe(true);
   });
 });
 
 describe("isIpAllowed", () => {
-  it("allows all when allowlist is empty", () => {
-    expect(isIpAllowed("1.2.3.4", [])).toBe(true);
+  it("allows everything when the allowlist is empty", () => {
+    expect(isIpAllowed("203.0.113.7", [])).toBe(true);
   });
 
-  it("allows matching IPs", () => {
-    const list = [{ cidr: "10.0.0.0/8" }, { cidr: "192.168.1.50" }];
-    expect(isIpAllowed("10.5.5.5", list)).toBe(true);
-    expect(isIpAllowed("192.168.1.50", list)).toBe(true);
+  it("matches single hosts and ranges", () => {
+    const list = ["198.51.100.0/24", "203.0.113.7"];
+    expect(isIpAllowed("198.51.100.200", list)).toBe(true);
+    expect(isIpAllowed("203.0.113.7", list)).toBe(true);
+    expect(isIpAllowed("203.0.113.8", list)).toBe(false);
+    expect(isIpAllowed("198.51.101.1", list)).toBe(false);
   });
 
-  it("blocks non-matching IPs", () => {
-    const list = [{ cidr: "10.0.0.0/8" }];
-    expect(isIpAllowed("172.16.0.1", list)).toBe(false);
-  });
-});
-
-describe("validateAllowlistEntry", () => {
-  it("validates correct CIDR", () => {
-    expect(validateAllowlistEntry("10.0.0.0/24")).toEqual({ valid: true });
+  it("matches IPv6", () => {
+    expect(isIpAllowed("2001:db8:1234::42", ["2001:db8::/32"])).toBe(true);
+    expect(isIpAllowed("2001:db9::1", ["2001:db8::/32"])).toBe(false);
   });
 
-  it("rejects empty", () => {
-    const r = validateAllowlistEntry("");
-    expect(r.valid).toBe(false);
+  it("matches an address however the proxy formatted it", () => {
+    expect(isIpAllowed("203.0.113.7:51234", ["203.0.113.0/24"])).toBe(true);
+    expect(isIpAllowed("::ffff:203.0.113.7", ["203.0.113.0/24"])).toBe(true);
   });
 
-  it("rejects garbage", () => {
-    const r = validateAllowlistEntry("hello");
-    expect(r.valid).toBe(false);
+  // This gates authentication: anything it can't read is a denial.
+  it("fails closed on an unreadable caller address", () => {
+    expect(isIpAllowed("unknown", ["203.0.113.0/24"])).toBe(false);
+    expect(isIpAllowed("", ["203.0.113.0/24"])).toBe(false);
+  });
+
+  it("ignores a corrupt stored entry rather than widening access", () => {
+    expect(isIpAllowed("203.0.113.7", ["garbage"])).toBe(false);
+    expect(isIpAllowed("203.0.113.7", ["garbage", "203.0.113.7"])).toBe(true);
+  });
+
+  it("doesn't let an IPv4 entry match an unrelated IPv6 caller", () => {
+    expect(isIpAllowed("2001:db8::1", ["203.0.113.0/24"])).toBe(false);
   });
 });
