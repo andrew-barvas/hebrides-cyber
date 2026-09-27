@@ -249,7 +249,7 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | SSO/SAML | SAML 2.0 assertion parsing, IdP metadata validation, SP metadata generation | `src/lib/ssoSaml.ts` | ✅ `ssoSaml.test.ts` (10 tests) |
 | RBAC | Role hierarchy (viewer→editor→admin→owner), permission checks, role assignment validation | `src/lib/rbac.ts` | ✅ `rbac.test.ts` (9 tests) |
 | SCIM 2.0 provisioning | User resource parsing/serialization, list responses, bearer token validation | `src/lib/scimProvisioning.ts` | ✅ `scimProvisioning.test.ts` (10 tests) |
-| IP allowlisting | CIDR parsing, IP-in-range matching, allowlist validation | `src/lib/ipAllowlist.ts` | ✅ `ipAllowlist.test.ts` (12 tests) |
+| IP allowlisting | **Live, per API key** (IPv4 + IPv6). Enforced in `apiAuth.ts`; a refused key gets the same 401 as an unknown one, and the refusal is recorded on the key. Set via `PATCH /api/keys` and the dashboard's API keys panel. Needs migration 042; until then keys stay unrestricted and saving returns 503 | `src/lib/ipAllowlist.ts`, `src/lib/apiAuth.ts`, `src/pages/api/keys.ts`, `src/components/ApiKeys.tsx` | ✅ `ipAllowlist.test.ts`, `apiAuth.test.ts`, `__tests__/api/keys.test.ts`, `ApiKeys.test.tsx` |
 
 ### Organization & Multi-tenancy
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/input";
 
 type ApiKey = {
   id: string;
@@ -9,7 +11,107 @@ type ApiKey = {
   last_used_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  /** Empty = any address. */
+  allowed_cidrs: string[];
+  last_blocked_ip: string | null;
+  last_blocked_at: string | null;
 };
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-GB");
+}
+
+function AllowlistEditor({
+  apiKey,
+  token,
+  onSaved,
+  onCancel,
+}: {
+  apiKey: ApiKey;
+  token: string;
+  onSaved: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const fieldId = useId();
+  const [draft, setDraft] = useState(apiKey.allowed_cidrs.join("\n"));
+  const [currentIp, setCurrentIp] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The address as our API sees it, which is what the allowlist is checked
+  // against — not necessarily what a third-party "what's my IP" site shows.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/client-ip")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { ip?: string } | null) => {
+        if (!cancelled && body?.ip) setCurrentIp(body.ip);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const entries = draft.split(/[\s,]+/).filter(Boolean);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/keys", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: apiKey.id, allowed_cidrs: entries }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not save the allowlist");
+      await onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 w-full space-y-2 rounded-md border border-cyberborder bg-cyberbg p-3">
+      <Label htmlFor={fieldId}>Allowed IP addresses and ranges, one per line</Label>
+      <textarea
+        id={fieldId}
+        rows={3}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={"203.0.113.7\n198.51.100.0/24\n2001:db8::/48"}
+        spellCheck={false}
+        aria-describedby={`${fieldId}-help`}
+        className="w-full rounded-md border border-cyberborder bg-cyberpanel px-3 py-2 font-mono text-xs text-cybertext placeholder-cybermuted/60 focus:border-neon transition-colors"
+      />
+      <p id={`${fieldId}-help`} className="text-xs text-cybermuted leading-relaxed">
+        Leave empty to allow any address. From anywhere else this key gets a 401, exactly like an invalid key, so a
+        leaked key can&apos;t confirm it&apos;s real. Signing in to the dashboard isn&apos;t affected.
+      </p>
+      {error && (
+        <p className="text-xs text-danger" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save allowlist"}
+        </Button>
+        {currentIp && !entries.includes(currentIp) && (
+          <Button size="sm" variant="secondary" onClick={() => setDraft(entries.concat(currentIp).join("\n"))}>
+            Add my current IP ({currentIp})
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function ApiKeys({ token }: { token: string }) {
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -21,6 +123,7 @@ export default function ApiKeys({ token }: { token: string }) {
   // it again, so it's shown once and lost on navigation. That's the point.
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -154,17 +257,45 @@ export default function ApiKeys({ token }: { token: string }) {
                 <p className="text-sm font-medium text-cybertext/80">{k.name}</p>
                 <p className="font-mono text-xs text-cybertext/40 break-all">
                   {k.key_prefix}…
-                  {k.last_used_at
-                    ? ` · last used ${new Date(k.last_used_at).toLocaleDateString("en-GB")}`
-                    : " · never used"}
+                  {k.last_used_at ? ` · last used ${formatDate(k.last_used_at)}` : " · never used"}
                 </p>
+                <p className="mt-0.5 text-xs text-cybermuted break-all">
+                  {k.allowed_cidrs.length === 0
+                    ? "Usable from any IP address"
+                    : `Only from ${k.allowed_cidrs.slice(0, 3).join(", ")}${k.allowed_cidrs.length > 3 ? ` +${k.allowed_cidrs.length - 3} more` : ""}`}
+                </p>
+                {k.last_blocked_at && k.last_blocked_ip && (
+                  <p className="mt-0.5 text-xs text-warning break-all">
+                    Refused a request from {k.last_blocked_ip} on {formatDate(k.last_blocked_at)} (not on the allowlist)
+                  </p>
+                )}
               </div>
-              <button
-                onClick={() => revoke(k.id)}
-                className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
-              >
-                Revoke
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setEditingId(editingId === k.id ? null : k.id)}
+                  aria-expanded={editingId === k.id}
+                  className="text-xs text-cybertext/40 hover:text-neon transition-colors"
+                >
+                  IP allowlist
+                </button>
+                <button
+                  onClick={() => revoke(k.id)}
+                  className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                >
+                  Revoke
+                </button>
+              </div>
+              {editingId === k.id && (
+                <AllowlistEditor
+                  apiKey={k}
+                  token={token}
+                  onCancel={() => setEditingId(null)}
+                  onSaved={async () => {
+                    setEditingId(null);
+                    await load();
+                  }}
+                />
+              )}
             </li>
           ))}
         </ul>
