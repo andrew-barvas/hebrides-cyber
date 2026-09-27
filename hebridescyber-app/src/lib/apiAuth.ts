@@ -6,8 +6,16 @@
 //
 // Both resolve to the same { ownerId } so route handlers never branch on how
 // the caller authenticated.
+//
+// An API key with an IP allowlist only authenticates from those addresses.
+// From anywhere else it gets null — the same 401 as an unknown key — so a
+// leaked key doesn't confirm to whoever holds it that it's real. The refusal
+// is recorded on the key (last_blocked_ip/at) for its owner to see instead.
+// Session JWTs are never IP-restricted: the allowlist is a property of a key.
 import type { NextApiRequest } from "next";
-import { looksLikeApiKey, resolveApiKey } from "./apiKeys";
+import { looksLikeApiKey, recordBlockedApiKeyUse, resolveApiKey } from "./apiKeys";
+import { isIpAllowed } from "./ipAllowlist";
+import { getClientIp } from "./rateLimit";
 import { getSupabaseAdmin, supabaseAdmin } from "./supabaseAdmin";
 
 export { supabaseAdmin };
@@ -30,7 +38,15 @@ export async function authenticateApiRequest(req: NextApiRequest): Promise<ApiCa
   try {
     if (looksLikeApiKey(token)) {
       const resolved = await resolveApiKey(getSupabaseAdmin(), token);
-      return resolved ? { ownerId: resolved.ownerId, via: "key" } : null;
+      if (!resolved) return null;
+      if (resolved.allowedCidrs.length > 0) {
+        const ip = getClientIp(req);
+        if (!isIpAllowed(ip, resolved.allowedCidrs)) {
+          await recordBlockedApiKeyUse(getSupabaseAdmin(), resolved.keyId, ip);
+          return null;
+        }
+      }
+      return { ownerId: resolved.ownerId, via: "key" };
     }
 
     const { data, error } = await getSupabaseAdmin().auth.getUser(token);

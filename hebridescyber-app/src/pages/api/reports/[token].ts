@@ -46,10 +46,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // simultaneous view landing on the same pre-increment count is an
   // acceptable miss for a "how many times has this been opened" counter, not
   // something worth a database function/transaction to make exact.
-  void supabaseAdmin
+  // .then(), not `void`: a PostgREST builder only sends its request from
+  // then(), so `void builder` never ran and view_count never moved.
+  supabaseAdmin
     .from("report_shares")
     .update({ view_count: share.view_count + 1 })
-    .eq("id", share.id);
+    .eq("id", share.id)
+    .then(undefined, () => {});
 
   // No authenticated actor for a public link — actorId stays null. Logged
   // per-view rather than folded into view_count's aggregate counter because

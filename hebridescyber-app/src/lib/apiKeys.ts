@@ -38,10 +38,17 @@ export function looksLikeApiKey(token: string): boolean {
   return token.startsWith(LIVE_PREFIX);
 }
 
-export type ApiKeyOwner = { ownerId: string; keyId: string };
+export type ApiKeyOwner = {
+  ownerId: string;
+  keyId: string;
+  /** Empty = any address. See src/lib/ipAllowlist.ts. */
+  allowedCidrs: string[];
+};
 
 /**
  * Resolves an API key to its owner, or null if the key is unknown or revoked.
+ * The IP allowlist is returned, not checked — that needs the request, so
+ * apiAuth.ts enforces it.
  *
  * Takes the Supabase client as an argument rather than constructing one so
  * this stays unit-testable and callers control which credentials are used —
@@ -54,9 +61,13 @@ export async function resolveApiKey(
 ): Promise<ApiKeyOwner | null> {
   const hash = hashApiKey(plaintext);
 
+  // "*" rather than a column list: allowed_cidrs arrives with migration 042,
+  // and naming it before that's applied would fail every key lookup — taking
+  // the whole API down. Absent, it reads as "no allowlist", which is exactly
+  // what an unmigrated database means.
   const { data } = await supabaseAdmin
     .from("api_keys")
-    .select("id, owner, key_hash, revoked_at")
+    .select("*")
     .eq("key_hash", hash)
     .maybeSingle();
 
@@ -70,11 +81,34 @@ export async function resolveApiKey(
   const b = Buffer.from(data.key_hash);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 
-  // Telemetry, not correctness — never block the request on this write.
-  void supabaseAdmin
+  // Telemetry, not correctness — started but not awaited, so it never adds
+  // latency or turns into an error. It must be .then()'d: a PostgREST builder
+  // only sends its request from then(), so the `void builder` this used to be
+  // never ran, and every key showed "never used".
+  supabaseAdmin
     .from("api_keys")
     .update({ last_used_at: new Date().toISOString() })
-    .eq("id", data.id);
+    .eq("id", data.id)
+    .then(undefined, () => {});
 
-  return { ownerId: data.owner, keyId: data.id };
+  return {
+    ownerId: data.owner,
+    keyId: data.id,
+    allowedCidrs: Array.isArray(data.allowed_cidrs) ? (data.allowed_cidrs as string[]) : [],
+  };
+}
+
+/** Best-effort record of a request the key's IP allowlist refused, so the
+ *  dashboard can show why a CI job started getting 401s. Awaited by the
+ *  caller (the request is being refused, so latency doesn't matter) but
+ *  never throws. */
+export async function recordBlockedApiKeyUse(supabaseAdmin: SupabaseClient, keyId: string, ip: string): Promise<void> {
+  try {
+    await supabaseAdmin
+      .from("api_keys")
+      .update({ last_blocked_ip: ip.slice(0, 64), last_blocked_at: new Date().toISOString() })
+      .eq("id", keyId);
+  } catch {
+    // Telemetry only.
+  }
 }

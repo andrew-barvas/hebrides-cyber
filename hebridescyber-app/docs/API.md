@@ -18,6 +18,26 @@ Keys can't create or revoke other keys. That's deliberate: a leaked CI secret
 should not be able to mint permanent replacements that survive revoking the
 original. Key management requires a logged-in session.
 
+### IP allowlists
+
+Each key can be restricted to a list of addresses and CIDR ranges, IPv4 or
+IPv6, up to 20 entries: **Dashboard → Integrations → API keys → IP
+allowlist**. An empty list, the default, means any address.
+
+From an address that isn't on the list, the key gets the same `401` as an
+invalid key. That's deliberate: someone holding a leaked key learns nothing
+about whether it's real. The dashboard shows the address and date of the
+most recent refused request on each key instead, so you can tell when your
+CI has moved to a new egress address.
+
+The address checked is the one our edge sees, which is what the "Add my
+current IP" button fills in (`GET /api/client-ip` returns it as
+`{ "ip": "…" }` if you want to check from a runner). The API is only reachable
+over IPv4 today, so an IPv6 entry is accepted but won't match anything yet.
+GitHub-hosted runners don't have stable IPs, so an allowlisted key suits
+self-hosted runners or a fixed-egress proxy. The allowlist applies only to
+API keys; signing in to the dashboard is never IP-restricted.
+
 ## Scanning requires a verified domain
 
 The API only scans domains already verified for your account. There's no
@@ -483,7 +503,7 @@ security_scan:
 | Status | Meaning |
 |--------|---------|
 | `400` | Missing/invalid `target_url`, or it failed the SSRF check |
-| `401` | Missing, malformed, revoked, or unknown API key |
+| `401` | Missing, malformed, revoked, or unknown API key, or a key used from an address outside its IP allowlist |
 | `402` | Free-tier scan limit used up — `{ "code": "free_tier_exhausted" }`. Subscribe to a plan to run more; admin accounts are exempt |
 | `403` | Domain not verified for this account, or scan belongs to someone else |
 | `404` | Scan not found |
