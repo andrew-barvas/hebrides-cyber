@@ -126,6 +126,31 @@ finding types that don't get a CVE lookup at all (only outdated JS libraries
 are checked today — see `src/lib/scanners/osv.ts` for why that's scoped
 narrower than every finding type).
 
+Findings with CVEs can also carry `threat_intel`, which says whether anyone
+is actually exploiting the CVE:
+
+```json
+"threat_intel": {
+  "known_exploited": true,
+  "kev_cve_ids": ["CVE-2021-44228"],
+  "ransomware": true,
+  "epss": 0.975,
+  "epss_percentile": 0.9999
+}
+```
+
+- `known_exploited`: at least one of the finding's CVEs is in
+  [CISA's Known Exploited Vulnerabilities catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
+  listed in `kev_cve_ids`. `ransomware` is present when CISA records
+  ransomware use.
+- `epss` / `epss_percentile`: the highest [FIRST EPSS](https://www.first.org/epss/)
+  probability of exploitation activity in the next 30 days, across the
+  finding's CVEs, with its percentile.
+- `threat_intel` is omitted when it wasn't looked up (no CVE, or both
+  sources unreachable). Treat a missing field as unknown, not as "not
+  exploited". `severity` never changes because of it; the dashboard uses it
+  to order findings within a severity.
+
 ### `GET /api/v1/scans/{id}/export`
 
 Flat, tabular export of one scan's findings — for a spreadsheet or your own
@@ -136,10 +161,14 @@ report shape with New/Fixed diffing.
 |-------------|---------|-------|
 | `format` | `csv` | `csv` or `json` |
 
-CSV columns: `severity, title, detail, check_id, cve_ids, compliance_refs` —
-the last two are `;`-joined lists within a single cell. JSON returns
-`{ scan_id, target_url, findings }` with each finding's full shape (severity,
-title, detail, remediation, check_id, cve_ids, compliance_refs).
+CSV columns: `severity, title, detail, check_id, cve_ids, cvss_score,
+cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
+`compliance_refs` are `;`-joined lists within a single cell.
+`known_exploited`/`epss` are blank when threat intel wasn't looked up,
+which is different from `false` (see `threat_intel` above). JSON returns
+`{ scan_id, target_url, findings }` with each finding's full stored shape
+(`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
+as stored).
 
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely

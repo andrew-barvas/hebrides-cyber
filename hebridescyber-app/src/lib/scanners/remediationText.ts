@@ -2219,3 +2219,50 @@ Use safe formats like JSON with schema validation.`,
 
   return byClass[vulnClass] ?? base;
 }
+
+// ---- Dangling DNS / subdomain takeover (takeover.ts) ------------------------
+
+export function danglingCnameRemediation(host: string, cname: string, provider: string): string {
+  return `\`${host}\` still points at \`${cname}\` on ${provider}, but that resource no
+longer exists. Whoever next creates a ${provider} resource with that name
+controls what \`${host}\` serves — a convincing phishing page on your own
+domain, or scripts that can read cookies scoped to your parent domain.
+
+Fix it today, in whichever order is quicker:
+
+1. **Remove the record** if nothing should live at \`${host}\` any more:
+   delete its CNAME at your DNS provider.
+2. **Or reclaim the resource**: recreate the ${provider} resource with the
+   name \`${cname.split(".")[0]}\` in your own account, so the record points at
+   something you control.
+
+Then make it a habit: when you delete a cloud app, bucket or site, delete its
+DNS record in the same change. The next scan will confirm the fix.`;
+}
+
+// ---- Domain registration (domainRegistration.ts) ----------------------------
+
+export const DOMAIN_EXPIRING = `Renew the domain now, and turn on auto-renew with your registrar.
+
+When a domain lapses, the website **and all email on it** stop working, and
+after the registrar's grace period anyone can buy it — including someone who
+wants to receive your customers' email or impersonate you.
+
+- Log in to your registrar (named in the finding), renew for at least a year,
+  and enable **auto-renew**.
+- Check the payment card on file hasn't expired — that's the usual reason
+  auto-renew silently fails.
+- Make sure the registrar's reminder emails go to a mailbox someone reads,
+  not to a former employee.`;
+
+export const DOMAIN_TRANSFER_LOCK = `Turn on your registrar's **transfer lock** (sometimes called "registrar
+lock" or "domain lock").
+
+With the lock on, the registry refuses any request to move the domain to
+another registrar until you switch it off yourself. Without it, a single
+compromised registrar login or a social-engineered support request is enough
+to take the domain — and your website and email with it.
+
+It's a free setting in every major registrar's dashboard, usually under the
+domain's security or transfer options. Leave it on except when you are
+deliberately moving registrar.`;

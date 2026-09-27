@@ -11,7 +11,7 @@ import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
 
 function findingsToCsv(findings: Finding[]): string {
-  const header = ["severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "compliance_refs"];
+  const header = ["severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs"];
   const rows = findings.map((f) => [
     f.severity,
     f.title,
@@ -20,6 +20,9 @@ function findingsToCsv(findings: Finding[]): string {
     (f.cveIds ?? []).join("; "),
     f.cvssScore != null ? String(f.cvssScore) : "",
     f.cvssVector ?? "",
+    // Blank = not looked up, which is different from "false".
+    f.threatIntel ? String(f.threatIntel.knownExploited) : "",
+    f.threatIntel?.epss != null ? String(f.threatIntel.epss) : "",
     (f.complianceRefs ?? []).map((r) => `${r.framework}: ${r.control}`).join("; "),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");

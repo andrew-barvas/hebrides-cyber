@@ -15,7 +15,7 @@ is checked against that file, not against marketing copy.
 
 ## 1. Method, as-of date, refresh procedure
 
-**As of: 2026-08-23.** Competitor cells below carry their own verified-on
+**As of: 2026-08-23, refreshed 2026-09-27 (§12).** Competitor cells below carry their own verified-on
 date; a cell without one has not been independently checked and should be
 treated as unverified until it is.
 
@@ -83,7 +83,7 @@ what a UK SME actually compares against, whether or not they think of it as
 
 | Substitute | Why it wins the deal instead |
 |---|---|
-| **NCSC Web Check + Early Warning** | Free, UK government, credible. For a UK SME, the single most under-rated competitor — "the government already checks this" is a real objection. |
+| **NCSC Early Warning** (Web Check and Mail Check **retired 31 March 2026**) | Early Warning is still free for UK organisations with a static IP or domain: daily threat alerts and weekly vulnerability/open-port alerts. Web Check and Mail Check, which covered website and email configuration, were retired, and NCSC now tells organisations to use commercial EASM products ([NCSC, retiring Mail Check and Web Check](https://www.ncsc.gov.uk/blog-post/retiring-mail-check-web-check), verified 2026-09-27). "The government already checks this" is no longer true for web and email configuration. See §12. |
 | **Free point tools** (SSL Labs, Mozilla Observatory, securityheaders.com, OWASP ZAP, Nuclei) | The direct "why would I pay for this" objection — someone technical enough to ask can assemble a rough equivalent for free. |
 | **Snyk / Dependabot / GitHub Advanced Security** | Dependency-side only, but owns the developer's attention and budget line before Hebrides Cyber gets a look. |
 | **Cloudflare** (already installed) | Does WAF + basic hygiene; *feels* like coverage even where it isn't equivalent. |
@@ -256,6 +256,18 @@ Not restated here — see that file for the itemised list, and
 
 ## 8. Enterprise features closed (Sprint 9-13 update)
 
+> **Correction (2026-09-27).** Much of this section describes library
+> modules, not shipped features. A check of importers found that
+> `ssoSaml`, `rbac`, `scimProvisioning`, `orgModel`, `mspPortal`,
+> `customScanPolicies`, `riskScoring`, `cicdSdk`, `graphqlApi`,
+> `easmDiscovery` and `proofOfExploit` have **no importers outside their
+> own tests**. No page, API route or scan step uses them. Do not cite them
+> in sales material or score them in §4 until they're wired in.
+> `ipAllowlist` (per-API-key, 2026-09-27), `complianceReport` (export
+> endpoint + button), `slaMonitoring` (`/dashboard/sla`),
+> `siemIntegration`, `scanWindows` and `scheduledReports` are live. See
+> §12 for the full list.
+
 **As of 2026-09-14**, all 20 enterprise competitor gaps identified in the
 original competitive audit have been implemented. This is a significant
 shift — when §4 was written (2026-08-23), most of these were aspirational.
@@ -398,7 +410,7 @@ Competitor pricing verified 2026-09-15:
 
 | Competitor | Lowest paid tier | Verified |
 |---|---|---|
-| **Intruder.io** | $299/mo (Essential) | 2026-09-15 |
+| **Intruder.io** | $299/mo (Essential) — *superseded, see §12* | 2026-09-15 |
 | **Probely** | EUR 98/mo (Pro) | 2026-09-15 |
 | **Astra Security** | $69/mo (Scanner) | 2026-09-15 |
 | **Beagle Security** | $49/mo (Startup) | 2026-09-15 |
@@ -480,6 +492,147 @@ segment. Campaign reportedly still active.
 **New marketing assets**: `/ai-threats` landing page, AI-threat-angle cold
 outreach template, LinkedIn content series — all leveraging the documented
 campaign as compelling, specific, timely sales material for SME buyers.
+
+---
+
+## 12. Refresh — 2026-09-27
+
+Every competitor figure below was read from the vendor's own pricing page
+on 2026-09-27. Prices are as displayed, before tax.
+
+### What changed in the market since 2026-09-15
+
+- **NCSC retired Web Check and Mail Check on 31 March 2026** and now
+  recommends commercial External Attack Surface Management (EASM) products,
+  publishing an [EASM buyer's guide](https://www.ncsc.gov.uk/guidance/external-attack-surface-management-buyers-guide)
+  for choosing one ([announcement](https://www.ncsc.gov.uk/blog-post/retiring-mail-check-web-check)).
+  This is the most important change for this product. The UK SMEs that
+  relied on a free government website and email check now have to buy
+  one, and NCSC has written the checklist they'll use. Early Warning
+  continues.
+- **Intruder** no longer publishes prices. It now has a free tier (weekly
+  external scans, 5 web apps, 1 cloud account, 3 users) and sales-led
+  Cloud/Pro/Enterprise plans with an AI analyst ("GregAI") and AI
+  investigation credits. AI pentesting is sold separately from $3,500 per
+  test ([pricing](https://www.intruder.io/pricing)).
+- **Beagle Security** raised its entry tier from $49 to **$99/mo**
+  (Essential: 2 tests/month, authenticated testing, LLM-based reports;
+  Advanced $299/mo adds API/GraphQL, compliance reports, Slack/Teams,
+  branded reports). Its free tier includes SSL and **domain expiry**
+  tracking ([pricing](https://beaglesecurity.com/pricing)).
+- **Probely is now Snyk API & Web.** Snyk acquired Probely and sells its
+  DAST inside Snyk's developer-seat pricing
+  ([Snyk announcement](https://snyk.io/news/snyk-acquires-developer-first-dast-provider-probely/)).
+  The "EUR 98/mo" row in §10 no longer describes a product you can buy.
+- **Astra** now sells an autonomous "Pentest Auto" at $199/mo per target
+  alongside its scanner ($69/mo Lite, one target, three scans a month)
+  ([pricing](https://www.getastra.com/pricing)).
+- **HostedScan** is unchanged at $39/mo for 5 targets, built on open-source
+  scanners (Nmap, SSLyze, ZAP, OpenVAS, Nuclei). Authenticated scans start
+  at $109/mo and white-label at $189/mo ([pricing](https://hostedscan.com/pricing)).
+- **Pentest-Tools.com**: from $95/mo (NetSec, billed yearly), $140
+  (WebNetSec, full DAST + authenticated) and $190 (Pentest Suite)
+  ([pricing](https://pentest-tools.com/pricing)).
+- **Detectify**: €0 Starter platform fee, then €2,500 / €5,000 / €15,000
+  a year plus per-asset charges for surface monitoring, application and
+  API scanning ([pricing](https://detectify.com/pricing)).
+
+### Verified snapshot
+
+| | Entry paid price | Free tier | Authenticated web scanning | Attack-surface discovery | Cloud posture | White-label |
+|---|---|---|---|---|---|---|
+| **Hebrides Cyber** | £20/mo (Basic) | 1 scan | Header/cookie recheck behind a credential only (not a crawl) | CT-log subdomains, dangling-DNS check; no continuous inventory yet | AWS/Azure/GCP storage (Agency) | Agency £75/mo |
+| Intruder | not published | yes (5 web apps, weekly) | Cloud plan and up | Enterprise ("shadow IT discovery") | 1 account free, 3 on Cloud | not listed |
+| HostedScan | $39/mo | not listed | $109/mo | "attack surface mapping" on Basic | integrations (AWS, Azure) | $189/mo |
+| Beagle Security | $99/mo | 1 lite test/month | yes, $99/mo | "application discovery" | no | $49/report add-on |
+| Astra | $69/mo (1 target) | no | yes, all tiers | not listed | from $99/mo | not listed |
+| Pentest-Tools.com | $95/mo (yearly) | up to 5 assets | $140/mo | recon tools, $95/mo | $95/mo | not listed |
+| Detectify | €2,500/yr + per asset | Starter platform, assets paid | yes | core product (surface monitoring) | no | €5,000/yr |
+
+Hebrides Cyber remains the cheapest paid entry point by a wide margin. The
+real depth gap versus every paid competitor is **authenticated crawling
+and scanning** (D2); see §9 for why it's deliberately out of scope for now.
+
+### The NCSC EASM checklist, mapped to what actually ships
+
+Categories from NCSC's buyer's guide. "Live" means a page, route or scan
+step uses it today, not that a library exists.
+
+| NCSC category | Status | Where |
+|---|---|---|
+| Asset discovery (domains, subdomains, IPs) | Partial | CT-log subdomains (`recon.ts`), Shodan InternetDB. `easmDiscovery.ts` exists but isn't wired into any pipeline |
+| Technology identification | Live | `fingerprint.ts` (40+ technologies) |
+| Service identification | Live | `ports.ts`, Shodan; `nmap` in the scheduled suite |
+| DNS configuration | Live | `dns.ts` |
+| Web presence (screenshots, page parsing) | Partial | `playwright.ts` page health; no screenshots |
+| TLS certificate monitoring | Live | `tls.ts`, `deepTls.ts` |
+| Supplier / external dependencies | Partial | SRI on cross-origin scripts; no third-party script inventory yet |
+| Email security (SPF, DMARC, MTA-STS) | Live | `dns.ts` (SPF, DKIM, DMARC, MTA-STS, TLS-RPT). No DMARC aggregate-report processing, which Mail Check did |
+| DNS security / domain takeover | **Live, new** | `takeover.ts` (2026-09-27) |
+| Exposed services | Live | `ports.ts`, `exposure.ts`, `directoryListing.ts` |
+| Vulnerability assessment | Live | passive suite on every scan; active suite on scheduled scans |
+| Threat-intelligence correlation / likelihood ranking | **Live, new** | `threatIntel.ts`: CISA KEV + FIRST EPSS (2026-09-27) |
+| Workflow (comments, status tracking) | Partial | ticketing with dedupe/auto-close; no in-app accept-risk or false-positive state |
+| Historical trending and comparison | Live | New/Fixed diffing, score trends, SLA time-to-fix |
+| Reports and raw exports | Live | PDF, CSV/JSON, per-framework compliance export |
+| SIEM / ticketing integrations | Live | SIEM forwarding; Jira, Linear, ServiceNow, GitHub Issues |
+| Cloud / asset-database connectors | Partial | cloud storage posture (AWS/Azure/GCP) |
+| Configurable risk prioritisation | Partial | per-account SLA targets; `riskScoring.ts` not wired |
+| Hierarchical access control | Partial | team members; `rbac.ts` not wired |
+
+### Built in this refresh
+
+- **CISA KEV + FIRST EPSS on every CVE-backed finding** (`threatIntel.ts`).
+  Findings get an "Actively exploited" badge, ransomware use and an EPSS
+  likelihood, and are sorted first within their severity. The same data
+  appears as `threat_intel` in the API and as CSV columns. Severity is
+  never changed. This answers NCSC's "how are findings ranked by
+  likelihood?" with the two public standards rather than a proprietary
+  score.
+- **Dangling DNS / subdomain takeover detection** (`takeover.ts`). It
+  covers the site and every CT-log subdomain across 15 provider patterns,
+  and reports only when the provider proves the resource is gone. It runs
+  on every scan, including the free one. In most competitors this sits
+  inside a paid EASM tier.
+- **Domain registration expiry and transfer lock** (`domainRegistration.ts`,
+  RDAP). This matches the one free-tier feature Beagle had that we didn't,
+  and covers the outage that takes down both website and email.
+- Earlier the same week: remediation SLAs, the per-framework compliance
+  export, per-API-key IP allowlists, and ServiceNow + GitHub Issues
+  ticketing.
+
+### Next candidates, in value order
+
+1. **Position as the NCSC Web Check / Mail Check replacement** (marketing,
+   not code). A landing page that maps the retired checks and the EASM
+   checklist to our coverage, honestly including the "Partial" rows above.
+   Of everything here, this is the most time-sensitive.
+2. **Third-party script inventory and change alerts.** List every external
+   script source per page and alert when a new one appears. This covers
+   NCSC's "external dependencies" and PCI DSS v4.0.1 requirements 6.4.3
+   (script inventory and authorisation on payment pages) and 11.6.1
+   (change and tamper detection). Most SME scanners have nothing here. It
+   needs a decision on how a "new since last scan" finding resolves, so
+   it doesn't read as "fixed" a scan later.
+3. **Wire `easmDiscovery.ts` into the scheduled pipeline**, so discovery
+   is continuous rather than per scan. It then feeds `takeover.ts` and
+   the asset inventory.
+4. **Finding workflow state**: accept-risk, false-positive and snooze,
+   each with a reason and expiry. Intruder, HostedScan and NCSC's
+   checklist all expect it. Accepted findings would pause SLA clocks.
+5. **Lookalike-domain monitoring.** Generate typo and homoglyph
+   permutations of the domain and flag registered ones, especially those
+   with MX records (phishing-capable). It's passive DNS only.
+6. **DMARC aggregate-report processing**, the part of Mail Check that
+   `dns.ts` doesn't replace. It's the heaviest item on this list: it
+   needs an inbound report mailbox and parsing.
+7. Fix the passive-scan-after-full-scan diff so active-tool findings aren't
+   reported "fixed" (spawned as its own task). It affects ticket
+   auto-close, not just SLA.
+
+The Sprint 17 section's claims about a specific 2026 attack campaign were
+not re-verified in this refresh. Cite the primary sources directly before
+reusing them in marketing.
 
 ---
 

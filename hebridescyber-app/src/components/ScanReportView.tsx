@@ -33,6 +33,14 @@ export type ViewFinding = {
   estimatedFixMinutes?: number;
   cvssScore?: number;
   cvssVector?: string;
+  /** CISA KEV + FIRST EPSS, for CVE-backed findings — see scanners/threatIntel.ts. */
+  threatIntel?: {
+    knownExploited: boolean;
+    kevCveIds?: string[];
+    ransomware?: boolean;
+    epss?: number;
+    epssPercentile?: number;
+  };
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -44,8 +52,22 @@ const FIX_DIFFICULTY_META: Record<FixDifficulty, { label: string; time: string; 
   hard: { label: "Hard", time: "~2 days", text: "text-red-400", bg: "bg-red-400/10", border: "border-red-400/30" },
 };
 
-export function sortFindingsBySeverity<T extends { severity: Severity }>(list: T[]): T[] {
-  return [...list].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+/** Within a severity: known-exploited first, then by EPSS likelihood. A
+ *  library flaw in CISA's KEV catalog is a more urgent fix than an equally
+ *  severe one nobody is using — the order is the prioritisation. */
+function exploitRank(f: { threatIntel?: ViewFinding["threatIntel"] }): number {
+  return (f.threatIntel?.knownExploited ? 2 : 0) + (f.threatIntel?.epss ?? 0);
+}
+
+export function sortFindingsBySeverity<T extends { severity: Severity; threatIntel?: ViewFinding["threatIntel"] }>(list: T[]): T[] {
+  return [...list].sort(
+    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) || exploitRank(b) - exploitRank(a)
+  );
+}
+
+export function formatEpss(epss: number): string {
+  const pct = epss * 100;
+  return pct >= 10 ? `${Math.round(pct)}%` : pct >= 1 ? `${pct.toFixed(1)}%` : "<1%";
 }
 
 export type FindingsFilter = "all" | "new" | "fixed";
@@ -513,6 +535,22 @@ export function FindingCard({
             title={finding.cvssVector ?? `CVSS ${finding.cvssScore}`}
           >
             CVSS {finding.cvssScore.toFixed(1)}
+          </span>
+        )}
+        {finding.threatIntel?.knownExploited && (
+          <span
+            className="rounded-full border border-red-400/40 bg-red-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400"
+            title={`Listed in CISA's Known Exploited Vulnerabilities catalog: ${(finding.threatIntel.kevCveIds ?? []).join(", ")}${finding.threatIntel.ransomware ? " — known to be used in ransomware campaigns" : ""}`}
+          >
+            Actively exploited{finding.threatIntel.ransomware ? " · ransomware" : ""}
+          </span>
+        )}
+        {finding.threatIntel?.epss !== undefined && (
+          <span
+            className="rounded-full border border-cyberborder px-1.5 py-0.5 text-[10px] font-semibold text-cybertext/70"
+            title={`FIRST EPSS: ${formatEpss(finding.threatIntel.epss)} probability of exploitation activity in the next 30 days${finding.threatIntel.epssPercentile !== undefined ? ` (higher than ${Math.floor(finding.threatIntel.epssPercentile * 100)}% of scored CVEs)` : ""}`}
+          >
+            EPSS {formatEpss(finding.threatIntel.epss)}
           </span>
         )}
         {finding.status === "new" && (

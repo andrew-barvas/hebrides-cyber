@@ -34,6 +34,15 @@ export type ScanReport = {
     cve_ids?: string[];
     fix_difficulty?: string;
     estimated_fix_minutes?: number;
+    // CISA KEV + FIRST EPSS for CVE-backed findings (scanners/threatIntel.ts).
+    // Omitted when not looked up — absence is "unknown", not "not exploited".
+    threat_intel?: {
+      known_exploited: boolean;
+      kev_cve_ids?: string[];
+      ransomware?: boolean;
+      epss?: number;
+      epss_percentile?: number;
+    };
   }>;
   fixed_findings?: Array<{ check_id: string | null; severity: string; title: string }>;
   /**
@@ -137,6 +146,15 @@ export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFi
       cve_ids: f.cveIds,
       fix_difficulty: f.fixDifficulty,
       estimated_fix_minutes: f.estimatedFixMinutes,
+      threat_intel: f.threatIntel
+        ? {
+            known_exploited: f.threatIntel.knownExploited,
+            kev_cve_ids: f.threatIntel.kevCveIds,
+            ransomware: f.threatIntel.ransomware,
+            epss: f.threatIntel.epss,
+            epss_percentile: f.threatIntel.epssPercentile,
+          }
+        : undefined,
     })),
     fixed_findings: diff
       ? diff.fixed.map((f) => ({ check_id: f.checkId ?? null, severity: f.severity, title: f.title }))

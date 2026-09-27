@@ -97,6 +97,15 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "dns.dmarc-none": [CIS_9, ISO_A13],
   "dns.caa-missing": [OWASP_A05, CIS_4, ISO_A13],
   "dns.dnssec-missing": [CIS_4, ISO_A12, NIS2_ART21],
+
+  // Dangling DNS: an unmanaged asset still published under the domain.
+  "takeover.dangling-cname": [CE_SECURE_CONFIG, OWASP_A05, CIS_12, ISO_A8, NIS2_ART21],
+  // Domain registration: the asset everything else depends on. Expiry has no
+  // clean control fit beyond asset management; the transfer lock is access
+  // control over that asset.
+  "domain.expired": [ISO_A8, NIS2_ART21],
+  "domain.expiring": [ISO_A8, NIS2_ART21],
+  "domain.transfer-lock-missing": [ISO_A9, CIS_12],
   "dns.mta-sts-missing": [CIS_9, ISO_A13],
   "dns.mta-sts-issues": [CIS_9, ISO_A13],
   "dns.tls-rpt-missing": [CIS_9, ISO_A13],
