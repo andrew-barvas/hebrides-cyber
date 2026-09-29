@@ -82,6 +82,39 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
 
   // --- Step 1: create a new scan, return a proof token -----------------
   if (!scanId) {
+    if (!targetUrl) return res.status(400).json({ error: "targetUrl is required to create a scan" });
+
+    // Dedupe BEFORE the rate limit and SSRF/free-tier checks: if this owner
+    // already has a scan for this exact target in flight, return that one
+    // instead of stacking a duplicate — and don't charge a repeated click
+    // against the rate budget. Without this, clicking "Run scan" more than
+    // once (or a queue that looked stuck and got clicked repeatedly, then
+    // drained all at once) piled up dozens of identical scans. Scoped to the
+    // last 30 minutes so a genuinely stuck/abandoned scan never blocks a
+    // fresh one, and only to states that are actually progressing.
+    const inflightSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: inflight } = await supabaseAdmin
+      .from("scans")
+      .select("id, proof_token, status")
+      .eq("owner", caller.ownerId)
+      .eq("target_url", targetUrl)
+      .in("status", ["pending", "queued", "running"])
+      .gt("created_at", inflightSince)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (inflight) {
+      return res.status(200).json({
+        scanId: inflight.id,
+        // "pending" still needs verifying/enqueuing on the next step-2 poll;
+        // queued/running just resume polling.
+        status: inflight.status === "pending" ? "awaiting_verification" : inflight.status,
+        proofToken: inflight.proof_token,
+        deduped: true,
+        message: "A scan for this URL is already in progress — reusing it instead of starting another.",
+      });
+    }
+
     // Rate-limited here, not for the whole handler — step 2 below is
     // polled by the dashboard every 4s for up to ~3 minutes while a scan
     // runs (see startScan() in src/app/dashboard/page.tsx), which alone
@@ -96,8 +129,6 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
       res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
       return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
     }
-
-    if (!targetUrl) return res.status(400).json({ error: "targetUrl is required to create a scan" });
 
     if (await isFreeTierExhausted(supabaseAdmin, caller.ownerId)) {
       return res.status(402).json({ error: FREE_TIER_EXHAUSTED_MESSAGE, code: "free_tier_exhausted" });

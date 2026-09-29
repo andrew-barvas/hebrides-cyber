@@ -33,6 +33,8 @@ function makeBuilder(table: string) {
     insert: () => builder,
     update: () => builder,
     eq: () => builder,
+    in: () => builder,
+    gt: () => builder,
     order: () => builder,
     limit: () => builder,
     single: next,
@@ -136,14 +138,16 @@ describe("POST /api/run-scan", () => {
     });
 
     it("returns 500 when the insert fails", async () => {
-      queues.scans = [{ data: null, error: { message: "db down" } }];
+      // First scans query is the dedupe lookup (no in-flight scan), then the insert.
+      queues.scans = [{ data: null, error: null }, { data: null, error: { message: "db down" } }];
       const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
       await handler(req, res);
       expect(res._getStatusCode()).toBe(500);
     });
 
     it("creates the scan and returns a proof token on success", async () => {
-      queues.scans = [{ data: { id: "new-scan-id" }, error: null }];
+      // Dedupe lookup finds nothing, then the insert returns the new row.
+      queues.scans = [{ data: null, error: null }, { data: { id: "new-scan-id" }, error: null }];
       const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
 
       await handler(req, res);
@@ -153,6 +157,32 @@ describe("POST /api/run-scan", () => {
       expect(body.scanId).toBe("new-scan-id");
       expect(body.status).toBe("awaiting_verification");
       expect(body.proofToken).toMatch(/^[0-9a-f]{32}$/);
+    });
+
+    // Regression: with the pipeline briefly down, repeated "Run scan" clicks
+    // on the same URL each created a fresh scan, piling up dozens that all
+    // executed at once when the queue drained.
+    it("reuses an in-flight scan for the same target instead of creating a duplicate", async () => {
+      queues.scans = [{ data: { id: "existing-scan", proof_token: "abc123", status: "running" }, error: null }];
+      const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      const body = res._getJSONData() as { scanId: string; status: string; deduped: boolean; proofToken: string };
+      expect(body).toMatchObject({ scanId: "existing-scan", status: "running", deduped: true, proofToken: "abc123" });
+      // It must not have gone on to rate-limit, check free tier, or insert.
+      expect(checkRateLimitMock).not.toHaveBeenCalled();
+      expect(isFreeTierExhaustedMock).not.toHaveBeenCalled();
+    });
+
+    it("re-offers verification for an in-flight scan still pending", async () => {
+      queues.scans = [{ data: { id: "pending-scan", proof_token: "def456", status: "pending" }, error: null }];
+      const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
+
+      await handler(req, res);
+
+      expect((res._getJSONData() as { status: string }).status).toBe("awaiting_verification");
     });
   });
 

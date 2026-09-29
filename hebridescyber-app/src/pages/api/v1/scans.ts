@@ -111,6 +111,30 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
     });
   }
 
+  // Dedupe: return an in-flight scan for the same target rather than stacking
+  // a duplicate — a CI job that retries POST /api/v1/scans, or a loop, should
+  // not create a pile of identical scans. Matches run-scan.ts's guard.
+  const inflightSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: inflight } = await supabaseAdmin
+    .from("scans")
+    .select("id, status")
+    .eq("owner", ownerId)
+    .eq("target_url", targetUrl)
+    .in("status", ["queued", "running"])
+    .gt("created_at", inflightSince)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (inflight) {
+    return res.status(202).json({
+      scan_id: inflight.id,
+      target_url: targetUrl,
+      status: inflight.status,
+      deduped: true,
+      message: "A scan for this URL is already in progress — returning it. Poll GET /api/v1/scans/{id} or register a webhook for scan.completed.",
+    });
+  }
+
   const { data: scan, error: createErr } = await supabaseAdmin
     .from("scans")
     .insert({ owner: ownerId, target_url: targetUrl, status: "queued", owner_verified: true })
