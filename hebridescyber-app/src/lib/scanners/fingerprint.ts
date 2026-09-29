@@ -63,7 +63,12 @@ const PATTERNS: Pattern[] = [
   { name: "Next.js", category: "Framework", headers: { "x-nextjs-cache": /.+/, "x-powered-by": /Next\.js/i } },
   { name: "Nuxt.js", category: "Framework", headers: { "x-powered-by": /Nuxt/i } },
   { name: "Ruby on Rails", category: "Framework", headers: { "x-powered-by": /Phusion Passenger/i } },
-  { name: "Django", category: "Framework", headers: { "x-frame-options": /SAMEORIGIN/i, "x-content-type-options": /nosniff/i, server: /Django|Gunicorn|uWSGI/i } },
+  // Header rules match on ANY one header, so this used to include
+  // X-Frame-Options: SAMEORIGIN and X-Content-Type-Options: nosniff — generic
+  // security headers every well-configured site sends, which labelled all of
+  // them "Django" (including our own Next.js site). The CSRF form field name
+  // is Django's own.
+  { name: "Django", category: "Framework", headers: { server: /Django|Gunicorn|uWSGI/i }, html: /name=["']csrfmiddlewaretoken["']/i },
   { name: "Laravel", category: "Framework", html: /laravel_session|_token.*csrf/i },
 
   // ---- CMS -----------------------------------------------------------------

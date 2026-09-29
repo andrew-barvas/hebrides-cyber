@@ -72,6 +72,54 @@ describe("checkDns", () => {
     expect(result.mxCount).toBe(0);
   });
 
+  // Regression: scanning https://www.hebridescyber.co.uk reported "No SPF
+  // record" and "No DMARC record" because both were looked up on the www
+  // host (a CNAME to Azure, no TXT at all). The records live on the
+  // registered domain, and that's where they must be read.
+  describe("scanning a www host", () => {
+    it("reads SPF, DMARC and MX from the registered domain, not the www host", async () => {
+      routeResolveTxt({
+        "example.co.uk": [["v=spf1 include:spf.protection.outlook.com -all"]],
+        "_dmarc.example.co.uk": [["v=DMARC1; p=quarantine; rua=mailto:d@example.co.uk"]],
+      });
+      resolveMxMock.mockImplementation(async (name: string) =>
+        name === "example.co.uk" ? [{ exchange: "example-co-uk.mail.protection.outlook.com", priority: 0 }] : []
+      );
+
+      const result = await checkDns("https://www.example.co.uk/");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.spf.present).toBe(true);
+      expect(result.dmarc.present).toBe(true);
+      expect(result.mxCount).toBe(1);
+      expect(resolveTxtMock).not.toHaveBeenCalledWith("www.example.co.uk");
+      expect(resolveTxtMock).not.toHaveBeenCalledWith("_dmarc.www.example.co.uk");
+    });
+
+    it("checks IPv6 on the web host itself", async () => {
+      await checkDns("https://www.example.co.uk/");
+      expect(resolve6Mock).toHaveBeenCalledWith("www.example.co.uk");
+    });
+
+    it("climbs to the registered domain for CAA, as CAs do, when the host has none", async () => {
+      resolveCaaMock.mockImplementation(async (name: string) => {
+        if (name === "example.co.uk") return [{ critical: 0, issue: "letsencrypt.org" }];
+        throw Object.assign(new Error("ENODATA"), { code: "ENODATA" });
+      });
+      const result = await checkDns("https://www.example.co.uk/");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.caa.present).toBe(true);
+    });
+
+    it("prefers the host's own CAA set over its parent's", async () => {
+      resolveCaaMock.mockImplementation(async (name: string) =>
+        name === "www.example.co.uk" ? [{ critical: 0, issue: "digicert.com" }] : [{ critical: 0, issue: "letsencrypt.org" }]
+      );
+      await checkDns("https://www.example.co.uk/");
+      expect(resolveCaaMock).toHaveBeenCalledTimes(1);
+      expect(resolveCaaMock).toHaveBeenCalledWith("www.example.co.uk");
+    });
+  });
+
   describe("SPF", () => {
     it("flags a missing SPF record", async () => {
       routeResolveTxt({ "example.com": [] });

@@ -49,3 +49,24 @@ describe("checkFingerprint — Azure App Service", () => {
     if (result.status === "checked") expect(result.technologies.map((t) => t.name)).not.toContain("Azure App Service");
   });
 });
+
+describe("checkFingerprint — Django", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const names = async (body: string, headers: Record<string, string>) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { headers })));
+    const result = await checkFingerprint("https://example.com");
+    return result.status === "checked" ? result.technologies.map((t) => t.name) : [];
+  };
+
+  // Regression: our own Next.js site was reported as "Django" because the
+  // rule matched on X-Frame-Options / X-Content-Type-Options, which every
+  // well-configured site sends.
+  it("does not call a site Django just for sending standard security headers", async () => {
+    expect(await names("<html></html>", { "x-frame-options": "SAMEORIGIN", "x-content-type-options": "nosniff" })).not.toContain("Django");
+  });
+
+  it("still detects Django from its CSRF form field", async () => {
+    expect(await names('<form><input type="hidden" name="csrfmiddlewaretoken" value="x"></form>', {})).toContain("Django");
+  });
+});
