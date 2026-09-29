@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
-import ScanList, { type Scan } from "./ScanList";
+import ScanList, { isNeverStarted, type Scan } from "./ScanList";
 
 function scan(overrides: Partial<Scan> = {}): Scan {
   return {
@@ -37,6 +37,29 @@ describe("ScanList", () => {
 
     rerender(<ScanList scans={[scan({ status: "running" })]} />);
     expect(screen.queryByText(/View report/i)).not.toBeInTheDocument();
+  });
+
+  // A scan that never passed the ownership check stays "pending" forever;
+  // showing that as "pending" read as "still working on it".
+  it("labels a long-pending scan as not started and points to domain verification", () => {
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    render(<ScanList scans={[scan({ status: "pending", score: null, created_at: old })]} />);
+    expect(screen.getByText("not started")).toHaveAttribute("title", expect.stringContaining("Nothing was scanned"));
+    expect(screen.queryByText("pending")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Verify domain →" })).toHaveAttribute("href", "/dashboard/assets#domain-verification");
+  });
+
+  it("still shows a just-created scan as pending", () => {
+    render(<ScanList scans={[scan({ status: "pending", score: null, created_at: new Date().toISOString() })]} />);
+    expect(screen.getByText("pending")).toBeInTheDocument();
+    expect(screen.queryByText("not started")).not.toBeInTheDocument();
+  });
+
+  it("isNeverStarted only applies to pending scans past the threshold", () => {
+    const now = Date.parse("2026-09-29T12:00:00Z");
+    expect(isNeverStarted({ status: "pending", created_at: "2026-09-29T11:44:00Z" }, now)).toBe(true);
+    expect(isNeverStarted({ status: "pending", created_at: "2026-09-29T11:50:00Z" }, now)).toBe(false);
+    expect(isNeverStarted({ status: "queued", created_at: "2026-09-20T00:00:00Z" }, now)).toBe(false);
   });
 
   it("shows who a shared scan belongs to", () => {

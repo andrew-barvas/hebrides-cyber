@@ -19,7 +19,11 @@ class ScanRequestError extends Error {
   }
 }
 
-export default function RunScanForm({ onScanSettled }: { onScanSettled: () => void | Promise<void> }) {
+// onScanUpdate refreshes the caller's scan list. It's called as soon as the
+// scan row exists (so it appears in "Recent scans" without a manual refresh),
+// on every poll (so its status badge goes pending → queued → running → done
+// live), and once more when it settles.
+export default function RunScanForm({ onScanUpdate }: { onScanUpdate: () => void | Promise<void> }) {
   const [targetUrl, setTargetUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -47,6 +51,11 @@ export default function RunScanForm({ onScanSettled }: { onScanSettled: () => vo
       const createBody = await createRes.json();
       if (!createRes.ok) throw new ScanRequestError(createBody.error ?? `run-scan create failed (${createRes.status})`, createBody.code);
 
+      // The scans row now exists (status "pending"). Surface it in the list
+      // immediately — waiting until the poll loop ends is what made a new
+      // scan look like it hadn't registered until a manual refresh.
+      await onScanUpdate();
+
       // Step 2 queues the scan rather than running it inline — see
       // src/pages/api/run-scan.ts and .github/workflows/on-demand-scan.yml
       // for why. "queued"/"running" responses mean poll again; only the
@@ -71,12 +80,20 @@ export default function RunScanForm({ onScanSettled }: { onScanSettled: () => vo
       }
 
       let runBody = await pollRunScan(true);
+      // Only the enqueue response carries this; later polls omit it. Capture
+      // it so the honest "under a minute" vs "next scheduled run" wording
+      // stays put while the scan is queued.
+      const queuedMessage: string | undefined = runBody.message;
       let polls = 0;
       while ((runBody.status === "queued" || runBody.status === "running") && polls < MAX_POLLS) {
         const progress = runBody.progress as { phase?: string; checks_completed?: string[]; checks_total?: number; current_check?: string; elapsed_ms?: number } | null;
         let phase: string;
         if (runBody.status === "queued") {
-          phase = "Scan queued — waiting for a runner to pick it up…";
+          // The captured message reflects whether a runner was actually
+          // dispatched ("usually under a minute") or the on-demand trigger
+          // was unavailable and it'll wait for the scheduled sweep — honest
+          // either way, rather than always promising a minute.
+          phase = queuedMessage ?? "Scan queued — waiting for a runner to pick it up…";
         } else if (progress?.current_check) {
           const pct = progress.checks_total ? Math.round(((progress.checks_completed?.length ?? 0) / progress.checks_total) * 100) : 0;
           const elapsed = progress.elapsed_ms ? `${Math.round(progress.elapsed_ms / 1000)}s` : "";
@@ -89,6 +106,9 @@ export default function RunScanForm({ onScanSettled }: { onScanSettled: () => vo
           phase = "Scanning — running deep checks, almost done…";
         }
         setScanMessage(phase);
+        // Keep the list's status badge in step with the poll (queued →
+        // running → completed) instead of only updating when it all settles.
+        await onScanUpdate();
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
         runBody = await pollRunScan(false);
         polls++;
@@ -97,8 +117,8 @@ export default function RunScanForm({ onScanSettled }: { onScanSettled: () => vo
       if (runBody.status === "queued" || runBody.status === "running") {
         setScanMessage(
           runBody.status === "queued"
-            ? "Scan is queued and will be picked up shortly. Check back in a few minutes — the page will update automatically."
-            : "Scan is still running — this can take a few minutes for larger sites. Check back shortly."
+            ? `${queuedMessage ?? "Scan is queued."} It appears in Recent scans below and updates automatically — no need to refresh.`
+            : "Scan is still running — this can take a few minutes for larger sites. It updates below automatically."
         );
       } else if (runBody.status === "failed" || runBody.ok === false) {
         throw new ScanRequestError(runBody.error ?? "Scan failed — try again.");
@@ -106,7 +126,7 @@ export default function RunScanForm({ onScanSettled }: { onScanSettled: () => vo
         setScanMessage(`Scan complete — score ${runBody.score}/100.`);
         setTargetUrl("");
       }
-      await onScanSettled();
+      await onScanUpdate();
     } catch (err) {
       setError({ message: (err as Error).message, code: err instanceof ScanRequestError ? err.code : undefined });
     } finally {
