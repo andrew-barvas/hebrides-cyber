@@ -5,6 +5,8 @@
 // indicators. These are lightweight HTTP-based checks that complement
 // the heavier active scanning tools.
 
+import { postShowsCredentialHandling } from "../../lib/scanners/businessLogic";
+
 export type SessionFinding = {
   type: "no-rate-limit" | "session-fixation" | "idor-indicator" | "session-no-rotation";
   detail: string;
@@ -32,6 +34,7 @@ async function checkRateLimiting(targetUrl: string): Promise<SessionFinding[]> {
       if (firstRes.status === 404 || firstRes.status === 405) continue;
 
       let blocked = false;
+      let handlesCredentials = false;
       for (let i = 0; i < RATE_LIMIT_BURST_COUNT; i++) {
         const res = await fetch(url, {
           method: "POST",
@@ -43,7 +46,19 @@ async function checkRateLimiting(targetUrl: string): Promise<SessionFinding[]> {
           blocked = true;
           break;
         }
+        if (postShowsCredentialHandling(res.status)) handlesCredentials = true;
+        else if (i === 0) break; // first answer shows no login handling — not a login endpoint
       }
+
+      // Same evidence rule as businessLogic.ts's checkRateLimiting: only a
+      // path whose POSTs show credential handling (400/401/403/422/3xx) can be
+      // judged. A client-rendered login page (Next.js, most SPAs) answers any
+      // POST with itself — 200 — while real authentication goes to a separate
+      // API (Supabase Auth, Auth0) this probe never touches. That page has
+      // nothing to rate-limit; reporting it was a false positive (seen on our
+      // own site), and it also marked Cyber Essentials "User access control"
+      // as partial. Try the next candidate path instead.
+      if (!blocked && !handlesCredentials) continue;
 
       if (!blocked) {
         findings.push({

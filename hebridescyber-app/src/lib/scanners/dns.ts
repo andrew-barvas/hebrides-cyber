@@ -5,6 +5,7 @@
 // MTA-STS policy-file fetch is the one exception, a plain HTTPS GET.
 import { resolveTxt, resolveCaa, resolve6, resolveMx, resolve } from "node:dns/promises";
 import type { CaaRecord } from "node:dns";
+import { registrableDomain } from "./registrableDomain";
 
 export type DnsResult =
   | {
@@ -361,15 +362,36 @@ async function checkTlsRpt(domain: string): Promise<TlsRptAnalysis> {
 
 // ---- Main ------------------------------------------------------------------
 
+/**
+ * CAA as a certificate authority sees it for `hostname`: CAs walk up the
+ * tree from the certificate's name (RFC 8659 §3), so the host's own CAA set
+ * wins, else its registered domain's. The walk stops there — the parent of
+ * a registered domain (e.g. co.uk) is never the customer's to set.
+ */
+async function resolveCaaForHost(hostname: string, domain: string): Promise<CaaRecord[]> {
+  const own = await resolveCaa(hostname).catch(() => [] as CaaRecord[]);
+  if (own.length > 0 || hostname === domain) return own;
+  return resolveCaa(domain);
+}
+
 export async function checkDns(targetUrl: string): Promise<DnsResult> {
-  const domain = new URL(targetUrl).hostname;
+  const hostname = new URL(targetUrl).hostname;
+  // Email authentication (SPF, DMARC, DKIM, MX → MTA-STS/TLS-RPT) and the
+  // zone's DNSSEC status belong to the registered domain, not to whichever
+  // host serves the website. Scanning https://www.example.co.uk used to look
+  // them all up on www.example.co.uk — normally a CNAME to a hosting
+  // provider, with no TXT records at all — and reported "No SPF record" and
+  // "No DMARC record" for domains that had both (found on our own site:
+  // SPF, DMARC and Microsoft 365 DKIM all present on the apex). IPv6 stays on
+  // the web host, since that's about the website being reachable.
+  const domain = registrableDomain(hostname) ?? hostname;
 
   try {
     const [txtRecords, dmarcRecords, caaRecords, ipv6Records, mxRecords, dnssec, dkimResult] = await Promise.allSettled([
       resolveTxt(domain),
       resolveTxt(`_dmarc.${domain}`),
-      resolveCaa(domain),
-      resolve6(domain),
+      resolveCaaForHost(hostname, domain),
+      resolve6(hostname),
       resolveMx(domain),
       checkDnssec(domain),
       checkDkim(domain),
