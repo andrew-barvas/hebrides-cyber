@@ -122,7 +122,7 @@ export default function ScansPage() {
         description="Run an on-demand scan, and review or clean up every scan on your account."
       />
 
-      <RunScanForm onScanSettled={reload} />
+      <RunScanForm onScanUpdate={reload} />
 
       {error && <Alert variant="danger" title="Couldn't load your scans">{error}</Alert>}
 

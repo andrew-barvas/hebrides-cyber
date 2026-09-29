@@ -91,7 +91,7 @@ export default function ScanList({ scans, onDelete }: Props) {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={scan.status} />
+                  <StatusBadge status={scan.status} neverStarted={isNeverStarted(scan)} />
                 </td>
                 <td className="px-4 py-3 text-xs text-cybertext/40 whitespace-nowrap">
                   {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
@@ -109,6 +109,13 @@ export default function ScanList({ scans, onDelete }: Props) {
                         className="text-xs font-medium text-neon hover:underline whitespace-nowrap"
                       >
                         View report →
+                      </Link>
+                    ) : isNeverStarted(scan) ? (
+                      <Link
+                        href="/dashboard/assets#domain-verification"
+                        className="text-xs font-medium text-cybermuted hover:text-neon whitespace-nowrap"
+                      >
+                        Verify domain →
                       </Link>
                     ) : (
                       <span className="text-xs text-cybertext/20">—</span>
@@ -166,7 +173,27 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
-function StatusBadge({ status }: { status: Scan["status"] }) {
+/** A scan sits in "pending" only between creating it and passing the
+ *  ownership check that queues it — normally seconds. One still pending
+ *  after this long never passed that check (almost always: the domain isn't
+ *  verified on this account) and will never start on its own. */
+export const NEVER_STARTED_AFTER_MS = 15 * 60 * 1000;
+
+export function isNeverStarted(scan: Pick<Scan, "status" | "created_at">, now: number = Date.now()): boolean {
+  return scan.status === "pending" && now - new Date(scan.created_at).getTime() > NEVER_STARTED_AFTER_MS;
+}
+
+function StatusBadge({ status, neverStarted = false }: { status: Scan["status"]; neverStarted?: boolean }) {
+  if (neverStarted) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-dashed border-cyberborder px-2 py-0.5 text-xs font-medium text-cybermuted"
+        title="This scan was created but never queued — usually because the domain isn't verified on this account. Nothing was scanned. Verify the domain under Assets and run it again, or delete this row."
+      >
+        not started
+      </span>
+    );
+  }
   const colours: Record<Scan["status"], string> = {
     pending:   "bg-cybertext/10 text-cybertext/60",
     queued:    "bg-blue-400/10 text-blue-400",
