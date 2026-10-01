@@ -1,0 +1,82 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+#
+# Request sources (superglobals, php://input, Laravel's Request) are repeated
+# in each rule because the engine's YAML loader does not resolve anchors.
+rules:
+  - id: php-open-redirect
+    message: >-
+      A redirect target is taken straight from the incoming HTTP request
+      (header("Location: ..."), wp_redirect, Laravel redirect()). An attacker can
+      send people a link on your domain that bounces them to a phishing site. Only
+      redirect to relative paths you have checked, or use wp_safe_redirect /
+      an allow-list of hosts.
+    severity: WARNING
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+      confidence: MEDIUM
+      severity: medium
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: urlencode(...)
+          - pattern: rawurlencode(...)
+          - pattern: intval(...)
+          - pattern: wp_validate_redirect(...)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: in_array($X, ...)
+              - patterns:
+                  - pattern: $FN(..., $X, ...)
+                  - metavariable-regex:
+                      metavariable: $FN
+                      regex: (?i)^.*(safe|valid|allow|whitelist|trusted).*$
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern: header("$LOC" . $URL, ...)
+          - metavariable-regex:
+              metavariable: $LOC
+              regex: (?i)^\s*location\s*:\s*$
+          - focus-metavariable: $URL
+      - patterns:
+          - pattern-either:
+              - pattern: wp_redirect($URL, ...)
+              - pattern: redirect($URL, ...)
+              - pattern: redirect()->to($URL, ...)
+              - pattern: redirect()->away($URL, ...)
+              - pattern: Redirect::to($URL, ...)
+              - pattern: Redirect::away($URL, ...)
+              - pattern: new RedirectResponse($URL, ...)
+          - focus-metavariable: $URL
