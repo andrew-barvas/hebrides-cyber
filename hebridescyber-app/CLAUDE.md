@@ -85,7 +85,8 @@ dependent, or tested, see `docs/FUNCTIONALITY-MATRIX.md` rather than this
 section, which covers what each check does, not how it's gated.
 
 **Base passive suite** — always runs, on every scan regardless of plan or repo connection. Wired into `runAllChecks()`/`summariseResults()` in `src/lib/scanners/index.ts`:
-- `tls.ts` — certificate grade and expiry
+- `tls.ts` — certificate grade and expiry, and why a browser would refuse the certificate (expired, self-signed, wrong hostname, incomplete chain, untrusted). It handshakes with `rejectUnauthorized: false` and reads Node's `authorizationError`: with the default, every broken certificate failed the handshake and became a generic error, never a finding. `readCertificate()` is the shared reader
+- `subdomainCerts.ts` — certificate expiry on up to 20 of recon.ts's CT-log subdomains (most recently certified first), one finding per certificate. If the CT lookup failed (`recon.ctLookupFailed`), this and `takeover.ts` report `error`, never an empty "checked" — crt.sh is often down, and an empty list would mark every subdomain finding fixed
 - `headers.ts` — security header presence, CSP grading, cookie flags, CORS, info disclosure
 - `dns.ts` — SPF, DMARC, DKIM (best-effort selector guessing), MTA-STS (DNS record + live policy-file fetch), TLS-RPT, CAA, DNSSEC. MTA-STS/TLS-RPT only get evaluated when the domain has MX records — silent otherwise, not a false "missing"
 - `exposure.ts` — sensitive paths (.env, .git, phpinfo, etc.), security.txt presence

@@ -134,6 +134,75 @@ visitors with a full-page browser warning.
 
 Set a calendar reminder 14 days before expiry as a backstop.`;
 
+export const CERT_EXPIRED = `Renew the certificate now — until you do, visitors see a browser warning
+instead of your site.
+
+- **Let's Encrypt / certbot:** run \`sudo certbot renew\`, then reload the web
+  server (\`sudo systemctl reload nginx\` or \`apache2\`). If renewal fails, the
+  error usually names the cause — most often a DNS change or a firewall
+  blocking port 80 for the validation request.
+- **Managed hosts and CDNs:** look for a failed-renewal warning in the
+  dashboard; re-validating the domain normally triggers a new certificate.
+
+Then find out why automatic renewal stopped, or this will happen again in
+90 days, and set a calendar reminder 14 days before the next expiry.`;
+
+export const SUBDOMAIN_CERT_EXPIRED = `First decide whether each listed hostname is still needed.
+
+- **No longer used:** delete its DNS record (an A or CNAME at your DNS
+  provider). That removes the warning and a forgotten system someone could
+  probe or take over.
+- **Still used:** renew the certificate on whatever serves that hostname —
+  \`sudo certbot renew\` on your own server, or re-validate the domain at the
+  hosting provider or CDN it points to. Then find out why automatic renewal
+  stopped.
+
+A wildcard certificate (\`*.example.com\`) covers every listed host at once,
+so one renewal fixes them all.`;
+
+export const SUBDOMAIN_CERT_EXPIRING = `Make sure the certificate renews before it expires.
+
+- **Your own server:** confirm automatic renewal works with
+  \`sudo certbot renew --dry-run\`.
+- **Hosting provider or CDN:** check its dashboard for a renewal warning;
+  renewal usually fails because the hostname's DNS no longer points there.
+- **Not used any more:** delete the hostname's DNS record instead of renewing.`;
+
+export const CERT_NAME_MISMATCH = `Serve a certificate that includes this exact hostname.
+
+1. Check which names the current certificate covers (shown in the finding).
+   A common cause is a certificate for \`example.com\` served on
+   \`www.example.com\`, or the reverse.
+2. Reissue it with every hostname you serve, e.g. with certbot:
+
+\`\`\`bash
+sudo certbot --nginx -d example.com -d www.example.com
+\`\`\`
+
+3. If the hostname points at a hosting provider or CDN, add it as a custom
+   domain there so the provider issues a certificate for it. If you no longer
+   use the hostname, delete its DNS record instead.`;
+
+export const CERT_CHAIN_INCOMPLETE = `Configure the server to send the intermediate certificate along with your own.
+
+- **nginx:** \`ssl_certificate\` must point at the *full chain* file
+  (certbot's \`fullchain.pem\`, not \`cert.pem\`).
+- **Apache 2.4.8+:** \`SSLCertificateFile\` should be the full chain file.
+- **Other servers / control panels:** paste the CA bundle ("intermediate" or
+  "chain" certificate) your certificate provider supplied.
+
+Reload the server, then confirm with
+\`openssl s_client -connect example.com:443 -servername example.com\` — the
+output should show at least two certificates.`;
+
+export const CERT_UNTRUSTED = `Replace the certificate with one issued by a publicly trusted certificate authority.
+
+Certificates from a private or internal CA are fine for internal systems, but
+browsers don't trust them on a public site. Let's Encrypt is free and
+automated; most hosts and CDNs also issue trusted certificates automatically
+once the domain is added. If the certificate was revoked, find out why
+(often a key compromise) before reissuing it with a new key.`;
+
 export const SELF_SIGNED = `Replace the self-signed certificate with one from a trusted CA. Every visitor
 currently sees a full-page security warning.
 

@@ -12,12 +12,15 @@ vi.mock("node:tls", () => {
   return { ...exports, default: exports };
 });
 
-import { checkTls } from "./tls";
+import { checkTls, classifyTrustError, readCertificate } from "./tls";
 
 type MockSocketOptions = {
   cert?: Record<string, unknown>;
   protocol?: string | null;
   cipher?: { name: string } | null;
+  /** What Node puts in socket.authorizationError for a certificate it
+   *  wouldn't trust (the handshake still completes: rejectUnauthorized is off). */
+  authorizationError?: string;
 };
 
 // A fake TLSSocket: a plain EventEmitter with just the methods checkTls()
@@ -31,6 +34,7 @@ function mockConnectSucceeds(opts: MockSocketOptions) {
     socket.getPeerCertificate = () => opts.cert ?? {};
     socket.getProtocol = () => opts.protocol ?? "TLSv1.3";
     socket.getCipher = () => opts.cipher ?? { name: "TLS_AES_256_GCM_SHA384" };
+    socket.authorizationError = opts.authorizationError ? Object.assign(new Error(opts.authorizationError), { code: opts.authorizationError }) : null;
     socket.end = vi.fn();
     socket.destroy = vi.fn();
     queueMicrotask(() => onSecureConnect.call(socket));
@@ -104,11 +108,38 @@ describe("checkTls", () => {
     expect(result.weakCipher).toBe(true);
   });
 
-  it("detects a self-signed certificate when subject equals issuer", async () => {
+  // Regression: with Node's default rejectUnauthorized, every one of these
+  // failed the handshake and came back as a generic "TLS connection error",
+  // so none ever became a finding (verified against badssl.com).
+  it.each([
+    ["CERT_HAS_EXPIRED", "expired"],
+    ["DEPTH_ZERO_SELF_SIGNED_CERT", "self-signed"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "hostname-mismatch"],
+    ["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "incomplete-chain"],
+    ["SELF_SIGNED_CERT_IN_CHAIN", "untrusted"],
+  ])("reads the certificate Node rejects with %s and reports it as %s", async (code, problem) => {
+    mockConnectSucceeds({ cert: VALID_CERT, authorizationError: code });
+    const result = await checkTls("https://example.com");
+    if (result.status !== "checked" || !("trustProblem" in result)) throw new Error("expected full checked result");
+    expect(result.trustProblem).toBe(problem);
+    expect(result.trustErrorCode).toBe(code);
+    expect(result.selfSigned).toBe(problem === "self-signed");
+  });
+
+  it("connects without rejecting, so a bad certificate can be read", async () => {
+    mockConnectSucceeds({ cert: VALID_CERT });
+    await checkTls("https://example.com");
+    expect(connectMock.mock.calls[0][0]).toMatchObject({ host: "example.com", servername: "example.com", rejectUnauthorized: false });
+  });
+
+  // Regression: a subject-equals-issuer guess called any certificate with two
+  // unreadable names self-signed.
+  it("trusts Node's verdict over matching names", async () => {
     mockConnectSucceeds({ cert: { ...VALID_CERT, subject: { CN: "self.example.com" }, issuer: { CN: "self.example.com" } } });
     const result = await checkTls("https://example.com");
     if (result.status !== "checked" || !("selfSigned" in result)) throw new Error("expected full checked result");
-    expect(result.selfSigned).toBe(true);
+    expect(result.selfSigned).toBe(false);
+    expect(result.trustProblem).toBeNull();
   });
 
   it("extracts subjectAltNames from the raw subjectaltname string", async () => {
@@ -168,5 +199,40 @@ describe("checkTls", () => {
     const result = await checkTls("https://example.com");
     expect(result.status).toBe("error");
     if (result.status === "error") expect(result.note).toContain("ECONNREFUSED");
+  });
+});
+
+describe("classifyTrustError", () => {
+  it("maps no error to no problem, and anything unrecognised to untrusted", () => {
+    expect(classifyTrustError(null)).toBeNull();
+    expect(classifyTrustError("CERT_REVOKED")).toBe("untrusted");
+  });
+});
+
+describe("readCertificate", () => {
+  beforeEach(() => connectMock.mockReset());
+
+  it("returns the certificate a host serves, with its expiry and fingerprint", async () => {
+    mockConnectSucceeds({
+      cert: { ...VALID_CERT, fingerprint256: "AB:CD", subjectaltname: "DNS:api.example.com" },
+      authorizationError: "CERT_HAS_EXPIRED",
+    });
+    const cert = await readCertificate("api.example.com");
+    expect(cert).toMatchObject({
+      host: "api.example.com",
+      subject: "example.com",
+      subjectAltNames: ["api.example.com"],
+      issuer: "Trusted CA",
+      fingerprint: "AB:CD",
+      trustProblem: "expired",
+    });
+    expect(cert?.daysUntilExpiry).toBe(60);
+  });
+
+  it("is null when no handshake completes — no evidence either way", async () => {
+    mockConnectEmits("error", new Error("ECONNREFUSED"));
+    expect(await readCertificate("old.example.com")).toBeNull();
+    mockConnectEmits("timeout");
+    expect(await readCertificate("slow.example.com")).toBeNull();
   });
 });

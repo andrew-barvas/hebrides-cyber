@@ -86,6 +86,8 @@ describe("coverage and source", () => {
       hibp: { status: "not_configured", note: "no key" },
       domainRegistration: { status: "error" },
       endOfLife: { status: "error", note: "endoflife.date lookup failed for: php" },
+      takeover: { status: "error", note: "crt.sh failed" },
+      subdomainCerts: { status: "error", note: "crt.sh failed" },
       headers: { status: "checked" },
       webapp: { status: "checked" },
     });
@@ -94,6 +96,8 @@ describe("coverage and source", () => {
     expect(isCovered("base", coverage, "hibp.breach:Adobe")).toBe(false);
     expect(isCovered("base", coverage, "domain.expiring")).toBe(false);
     expect(isCovered("base", coverage, "eol.unsupported:php")).toBe(false);
+    expect(isCovered("base", coverage, "takeover.dangling-cname:old.example.com")).toBe(false);
+    expect(isCovered("base", coverage, "subdomain-certs.expired:*.example.com")).toBe(false);
     expect(isCovered("base", coverage, "headers.csp-absent")).toBe(true);
     expect(isCovered("base", coverage, "webapp.missing-sri:script:https://cdn.x/a.js")).toBe(true);
     // Results stored before this was tracked: every base check counts as run.
