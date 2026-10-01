@@ -732,7 +732,9 @@ export default function ScanDetailPage() {
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
             <p className="font-mono text-xs text-cybertext/40 uppercase tracking-wide mb-3">// embed your score badge</p>
             <code className="block break-all rounded border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
-              {`<img src="https://hebridescyber.co.uk/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}
+              {/* The www host: the bare domain only forwards its homepage, so
+                  an embedded badge pointing there was a broken image. */}
+              {`<img src="${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk"}/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}
             </code>
           </div>
 
