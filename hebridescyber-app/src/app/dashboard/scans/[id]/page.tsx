@@ -14,6 +14,8 @@ import CeReadinessPanel from "@/components/CeReadinessPanel";
 import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
 import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
+import { checkBreakdown } from "@/lib/checkBreakdown";
+import type { DnsResult, ExposureResult, HeadersResult, TlsResult } from "@/lib/scanners";
 
 type Finding = ViewFinding;
 
@@ -179,10 +181,13 @@ type ScanResult = {
   results: {
     target_url?: string;
     checked_at?: string;
-    tls?: { grade?: string; daysUntilExpiry?: number | null; issues?: string[]; valid?: boolean };
-    headers?: { missing?: string[]; issues?: string[]; present?: Record<string, string> };
-    dns?: { spf?: boolean; dmarc?: boolean; issues?: string[] };
-    exposure?: { exposedPaths?: string[]; issues?: string[] };
+    // The scanner's real result types (see src/lib/checkBreakdown.ts for the
+    // hand-written guess these replaced, which made every breakdown row
+    // green). Optional because a stored scan can predate a module.
+    tls?: TlsResult;
+    headers?: HeadersResult;
+    dns?: DnsResult;
+    exposure?: ExposureResult;
     findings?: Finding[];
   };
   summary: string | null;
@@ -639,46 +644,9 @@ export default function ScanDetailPage() {
           <div>
             <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// check breakdown</h2>
             <div className="grid gap-2 sm:grid-cols-2">
-              {tls && (
-                <CheckRow
-                  label="TLS / HTTPS"
-                  pass={tls.valid !== false && (tls.daysUntilExpiry ?? 999) > 0}
-                  detail={[
-                    tls.grade ? `Grade ${tls.grade}` : null,
-                    tls.daysUntilExpiry != null ? `${tls.daysUntilExpiry} days until expiry` : null,
-                    tls.issues?.length ? tls.issues.join(", ") : "No issues",
-                  ].filter(Boolean).join(" · ")}
-                />
-              )}
-              {headers && (
-                <CheckRow
-                  label="Security headers"
-                  pass={(headers.missing?.length ?? 0) === 0}
-                  detail={
-                    (headers.missing?.length ?? 0) === 0
-                      ? "All required headers present"
-                      : `Missing: ${headers.missing?.join(", ")}`
-                  }
-                />
-              )}
-              {dns && (
-                <CheckRow
-                  label="Email authentication"
-                  pass={dns.spf && dns.dmarc}
-                  detail={`SPF ${dns.spf ? "✓" : "missing"} · DMARC ${dns.dmarc ? "✓" : "missing"}`}
-                />
-              )}
-              {exposure && (
-                <CheckRow
-                  label="Exposed sensitive paths"
-                  pass={(exposure.exposedPaths?.length ?? 0) === 0}
-                  detail={
-                    (exposure.exposedPaths?.length ?? 0) === 0
-                      ? "No sensitive files exposed"
-                      : `Exposed: ${exposure.exposedPaths?.join(", ")}`
-                  }
-                />
-              )}
+              {checkBreakdown({ tls, headers, dns, exposure }).map((row) => (
+                <CheckRow key={row.label} label={row.label} pass={row.pass} detail={row.detail} />
+              ))}
             </div>
           </div>
 
