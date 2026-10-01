@@ -115,6 +115,73 @@ export async function sendSlackAlert(
   }
 }
 
+// ---- Emerging-threat alert (src/lib/emergingThreatAlerts.ts) ---------------
+
+/** One newly exploited CVE matched against one site. Shared with msTeams.ts. */
+export type ThreatAlertItem = {
+  host: string;
+  cveId: string;
+  vulnerabilityName: string | null;
+  product: string;
+  detectedVersion: string | null;
+  tier: "affected" | "possibly_affected";
+  reportUrl: string;
+};
+
+/** Items shown per message; the rest are counted, and all are in the email. */
+export const THREAT_ALERT_ITEM_CAP = 10;
+
+/** Slack mrkdwn treats &, < and > as control characters. CISA's text is external. */
+function slackEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function threatItemSummary(item: ThreatAlertItem): string {
+  const seen = item.detectedVersion ? `${item.product} ${item.detectedVersion}` : `${item.product} (version not visible)`;
+  return item.tier === "affected" ? `${seen} is in the affected range` : `${seen} may be affected, check your version`;
+}
+
+/**
+ * Unlike sendSlackAlert, throws on a non-2xx response: the caller only marks
+ * an alert delivered after a send that actually succeeded.
+ */
+export async function sendSlackThreatAlert(webhookUrl: string, items: ThreatAlertItem[], dashboardUrl: string): Promise<void> {
+  if (!isValidSlackWebhookUrl(webhookUrl)) {
+    throw new Error("Refusing to send Slack alert: URL is not a hooks.slack.com webhook");
+  }
+  if (items.length === 0) return;
+
+  const shown = items.slice(0, THREAT_ALERT_ITEM_CAP);
+  const lines = shown.map((item) => {
+    const name = item.vulnerabilityName ? ` (${slackEscape(item.vulnerabilityName)})` : "";
+    return `• \`${slackEscape(item.host)}\`: *${item.cveId}*${name}. ${slackEscape(threatItemSummary(item))}. <${item.reportUrl}|Latest report>`;
+  });
+  if (items.length > shown.length) lines.push(`…and ${items.length - shown.length} more. See the email for the full list.`);
+  const heading =
+    items.length === 1
+      ? "🚨 *Hebrides Cyber: a newly exploited vulnerability matches your site*"
+      : `🚨 *Hebrides Cyber: ${items.length} newly exploited vulnerabilities match your sites*`;
+  const intro = "CISA has added these to its Known Exploited Vulnerabilities catalog: attackers are using them now.";
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `${heading}\n${intro}\n${lines.join("\n")}`,
+      blocks: [
+        { type: "section", text: { type: "mrkdwn", text: `${heading}\n${intro}` } },
+        { type: "section", text: { type: "mrkdwn", text: lines.join("\n") } },
+        {
+          type: "actions",
+          elements: [{ type: "button", text: { type: "plain_text", text: "Open dashboard" }, url: `${dashboardUrl}/dashboard`, style: "danger" }],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Slack responded ${res.status}`);
+}
+
 // Admin global Slack alert (for internal monitoring — not customer-facing).
 export async function sendAdminSlackAlert(text: string): Promise<void> {
   const url = process.env.SLACK_WEBHOOK_URL;

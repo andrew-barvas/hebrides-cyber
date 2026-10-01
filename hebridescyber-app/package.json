@@ -23,7 +23,8 @@
     "retention:cleanup": "tsx src/scripts/cleanup-retention.ts",
     "account:erase": "tsx src/scripts/erase-user-data.ts",
     "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",
-    "reports:send": "tsx src/scripts/send-scheduled-reports.ts"
+    "reports:send": "tsx src/scripts/send-scheduled-reports.ts",
+    "threats:check": "tsx src/scripts/check-emerging-threats.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",

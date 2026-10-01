@@ -37,6 +37,7 @@
 //   - AngularJS: webapp.ts already reports every 1.x version.
 import type { FingerprintResult } from "./fingerprint";
 import type { WebAppResult } from "./webapp";
+import { collectTechInventory, type TechObservation } from "./techInventory";
 
 const ENDOFLIFE_TIMEOUT_MS = 8_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -229,31 +230,15 @@ export type EndOfLifeResult =
   | { status: "error"; note: string };
 
 /**
- * Versioned technologies worth checking. webapp.ts's versions win over
- * fingerprint.ts's where both exist (Drupal's CHANGELOG and Joomla's
- * manifest are more precise than a generator tag; CDN paths carry versions
- * a filename lacks). Client libraries webapp.ts already reported as
- * vulnerable are skipped, so a library gets one finding, not two.
+ * Versioned technologies worth checking, from the shared inventory
+ * (techInventory.ts — which also decides that webapp.ts's more precise
+ * versions win over fingerprint.ts's). Client libraries webapp.ts already
+ * reported as vulnerable are skipped, so a library gets one finding, not two.
  */
 export function collectEolCandidates(fingerprint: FingerprintResult, webapp: WebAppResult | null): EolCandidate[] {
-  const byTech = new Map<string, EolCandidate>();
-  if (fingerprint.status === "checked") {
-    for (const t of fingerprint.technologies) {
-      if (t.version && TECH_EOL_PRODUCTS[t.name]) byTech.set(t.name, { tech: t.name, version: t.version, packagedBy: t.packagedBy ?? null });
-    }
-  }
-
-  const alreadyReported = new Set<string>();
-  if (webapp?.status === "checked") {
-    if (webapp.drupal?.version) byTech.set("Drupal", { tech: "Drupal", version: webapp.drupal.version });
-    if (webapp.joomla?.version) byTech.set("Joomla", { tech: "Joomla", version: webapp.joomla.version });
-    for (const lib of webapp.jsLibraries) {
-      if (lib.isVulnerable) alreadyReported.add(lib.name);
-      else if (lib.version !== "unknown" && TECH_EOL_PRODUCTS[lib.name]) byTech.set(lib.name, { tech: lib.name, version: lib.version });
-    }
-  }
-
-  return [...byTech.values()].filter((c) => !alreadyReported.has(c.tech));
+  return collectTechInventory(fingerprint, webapp)
+    .filter((o): o is TechObservation & { version: string } => Boolean(o.version) && Boolean(TECH_EOL_PRODUCTS[o.tech]) && !o.reportedVulnerable)
+    .map((o) => (o.source === "fingerprint" ? { tech: o.tech, version: o.version, packagedBy: o.packagedBy } : { tech: o.tech, version: o.version }));
 }
 
 export async function checkEndOfLife(

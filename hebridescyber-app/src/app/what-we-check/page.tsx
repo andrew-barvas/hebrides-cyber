@@ -369,6 +369,20 @@ export default function WhatWeCheckPage() {
             />
             <CategoryCard
               category={{
+                id: "emerging-threats",
+                icon: "🚨",
+                name: "Emerging-threat alerts",
+                desc: "When CISA adds a vulnerability to its Known Exploited Vulnerabilities catalog, we check it against the software and versions your latest scan of each site found, every 6 hours, and alert you without waiting for your next scan. Paid plans: email, plus Slack or Teams on Pro and Agency.",
+                checks: [
+                  "Affected versions from NVD's records, and from the GitHub advisory for JavaScript libraries",
+                  "\"Affected\" only when the version we saw is inside the vulnerable range",
+                  "\"Check your version\" when we saw the product but not its exact version, or it came from a Linux distribution that may have patched it",
+                  "Never alerted on a product name alone, and a lookup that fails is retried rather than treated as safe",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
                 id: "remediation",
                 icon: "🛠️",
                 name: "Copy-pasteable remediation",

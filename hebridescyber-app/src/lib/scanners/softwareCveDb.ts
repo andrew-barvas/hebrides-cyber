@@ -205,11 +205,37 @@ export type SoftwareCveDbResult =
   | { status: "not_applicable"; note: string }
   | { status: "error"; note: string };
 
-const NVD_CPE_BY_NAME: Record<string, { vendor: string; product: string }> = {
-  PHP: { vendor: "php", product: "php" },
+/**
+ * fingerprint.ts / webapp.ts technology name → its NVD CPE vendor:product.
+ * Used here for PHP and Apache, and by src/lib/emergingThreats.ts to read
+ * which of our detected technologies a newly exploited CVE's NVD
+ * configurations cover.
+ *
+ * Every entry was checked against a real NVD CVE record's configurations
+ * (services.nvd.nist.gov/rest/json/cves/2.0?cveId=…) before being added — the
+ * CVE named beside each one. Products are written exactly as they appear in
+ * the CPE string, CPE escaping included (Joomla's is "joomla\!"). A wrong
+ * entry would silently match nothing, so don't add one from memory.
+ */
+export const NVD_CPE_BY_NAME: Record<string, { vendor: string; product: string }> = {
+  PHP: { vendor: "php", product: "php" }, // CVE-2024-4577
   // "http_server" is Apache httpd's real NIST CPE dictionary product name —
   // not "apache" or "httpd".
-  Apache: { vendor: "apache", product: "http_server" },
+  Apache: { vendor: "apache", product: "http_server" }, // CVE-2021-41773, CVE-2021-42013
+  // NVD moved nginx to F5's vendor name; even CVE-2013-2028 now reads f5:nginx.
+  Nginx: { vendor: "f5", product: "nginx" }, // CVE-2021-23017, CVE-2022-41741
+  IIS: { vendor: "microsoft", product: "internet_information_services" }, // CVE-2017-7269
+  WordPress: { vendor: "wordpress", product: "wordpress" }, // CVE-2022-21661
+  Drupal: { vendor: "drupal", product: "drupal" }, // CVE-2018-7600
+  Joomla: { vendor: "joomla", product: "joomla\\!" }, // CVE-2023-23752
+  jQuery: { vendor: "jquery", product: "jquery" }, // CVE-2020-11023
+  Bootstrap: { vendor: "getbootstrap", product: "bootstrap" }, // CVE-2019-8331
+  // AngularJS (1.x) is "angularjs:angularjs", not "angular.js".
+  AngularJS: { vendor: "angularjs", product: "angularjs" }, // CVE-2022-25844
+  Angular: { vendor: "angular", product: "angular" }, // CVE-2021-4231
+  Lodash: { vendor: "lodash", product: "lodash" }, // CVE-2021-23337
+  "Moment.js": { vendor: "momentjs", product: "moment" }, // CVE-2022-24785
+  "Underscore.js": { vendor: "underscorejs", product: "underscore" }, // CVE-2021-23358
 };
 
 /**

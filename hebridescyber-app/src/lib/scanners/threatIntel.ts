@@ -25,13 +25,36 @@ const EPSS_BATCH = 50;
 /** The feed changes at most daily; one worker run never needs it twice. */
 const KEV_CACHE_MS = 6 * 60 * 60 * 1000;
 
-type KevEntry = { cveID: string; knownRansomwareCampaignUse?: string };
-export type KevIndex = Map<string, { ransomware: boolean }>;
+type KevEntry = {
+  cveID: string;
+  knownRansomwareCampaignUse?: string;
+  vendorProject?: string;
+  product?: string;
+  vulnerabilityName?: string;
+  dateAdded?: string;
+};
+/**
+ * `ransomware` is all the finding pass needs. The descriptive fields are kept
+ * for src/lib/emergingThreats.ts, which alerts on catalog additions by date —
+ * absent when the feed omits them, never filled with a placeholder.
+ */
+export type KevRecord = {
+  ransomware: boolean;
+  vendorProject?: string;
+  product?: string;
+  vulnerabilityName?: string;
+  /** YYYY-MM-DD, the day CISA added the CVE to the catalog. */
+  dateAdded?: string;
+};
+export type KevIndex = Map<string, KevRecord>;
 export type EpssIndex = Map<string, { epss: number; percentile: number }>;
 
 let kevCache: { at: number; index: KevIndex } | null = null;
 
 const CVE_RE = /^CVE-\d{4}-\d{4,}$/i;
+const KEV_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const text = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
 export function parseKev(body: unknown): KevIndex {
   const index: KevIndex = new Map();
@@ -39,7 +62,14 @@ export function parseKev(body: unknown): KevIndex {
   if (!Array.isArray(list)) return index;
   for (const entry of list) {
     if (typeof entry?.cveID !== "string" || !CVE_RE.test(entry.cveID)) continue;
-    index.set(entry.cveID.toUpperCase(), { ransomware: entry.knownRansomwareCampaignUse === "Known" });
+    const dateAdded = text(entry.dateAdded);
+    index.set(entry.cveID.toUpperCase(), {
+      ransomware: entry.knownRansomwareCampaignUse === "Known",
+      vendorProject: text(entry.vendorProject),
+      product: text(entry.product),
+      vulnerabilityName: text(entry.vulnerabilityName),
+      dateAdded: dateAdded && KEV_DATE_RE.test(dateAdded) ? dateAdded : undefined,
+    });
   }
   return index;
 }
@@ -57,7 +87,12 @@ export function parseEpss(body: unknown): EpssIndex {
   return index;
 }
 
-async function loadKev(now: number): Promise<KevIndex | null> {
+/**
+ * The whole KEV catalog, cached for KEV_CACHE_MS per process. Null when the
+ * feed couldn't be read or parsed — callers must treat that as "unknown",
+ * never as "nothing is exploited".
+ */
+export async function loadKev(now: number = Date.now()): Promise<KevIndex | null> {
   if (kevCache && now - kevCache.at < KEV_CACHE_MS) return kevCache.index;
   try {
     const res = await fetch(KEV_FEED_URL, { signal: AbortSignal.timeout(KEV_TIMEOUT_MS) });

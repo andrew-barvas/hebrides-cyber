@@ -40,6 +40,19 @@ describe("parsers", () => {
     expect(parseKev({ unexpected: true }).size).toBe(0);
   });
 
+  it("keeps the descriptive fields emerging-threat alerts need, and drops malformed dates", () => {
+    const kev = parseKev({
+      vulnerabilities: [
+        { cveID: "cve-2024-4577", vendorProject: "PHP Group", product: "PHP", vulnerabilityName: "PHP-CGI OS Command Injection", dateAdded: "2024-06-12" },
+        { cveID: "CVE-2024-0001", dateAdded: "June 2024", product: "  " },
+      ],
+    });
+    expect(kev.get("CVE-2024-4577")).toEqual({
+      ransomware: false, vendorProject: "PHP Group", product: "PHP", vulnerabilityName: "PHP-CGI OS Command Injection", dateAdded: "2024-06-12",
+    });
+    expect(kev.get("CVE-2024-0001")).toEqual({ ransomware: false });
+  });
+
   it("indexes EPSS rows, parsing its string numbers", () => {
     expect(parseEpss(EPSS_BODY).get("CVE-2020-11023")).toEqual({ epss: 0.45, percentile: 0.97 });
     expect(parseEpss(null).size).toBe(0);

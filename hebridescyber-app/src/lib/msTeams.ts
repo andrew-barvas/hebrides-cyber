@@ -11,7 +11,7 @@
 // webhook URL into a channel — accepts, and it degrades gracefully (renders
 // as a plain card) even in newer Workflow-based webhook endpoints. If Teams
 // ever fully retires MessageCard rendering, this is the one thing to revisit.
-import type { SlackAlertPayload } from "./slack";
+import { THREAT_ALERT_ITEM_CAP, threatItemSummary, type SlackAlertPayload, type ThreatAlertItem } from "./slack";
 import { isValidTeamsWebhookUrl } from "./webhookUrlValidation";
 
 function severityColor(score: number): string {
@@ -92,4 +92,53 @@ export async function sendTeamsAlert(webhookUrl: string, payload: SlackAlertPayl
   if (!res.ok) {
     console.error(`[ms-teams] alert failed: ${res.status} ${await res.text()}`);
   }
+}
+
+/**
+ * Emerging-threat alert (src/lib/emergingThreatAlerts.ts), parity with
+ * slack.ts's sendSlackThreatAlert. Throws on a non-2xx response so the caller
+ * only marks an alert delivered after a send that actually succeeded.
+ * markdown is off: the vulnerability names are CISA's text, not ours.
+ */
+export async function sendTeamsThreatAlert(webhookUrl: string, items: ThreatAlertItem[], dashboardUrl: string): Promise<void> {
+  if (!isValidTeamsWebhookUrl(webhookUrl)) {
+    throw new Error("Refusing to send Teams alert: URL is not a recognised Teams webhook host");
+  }
+  if (items.length === 0) return;
+
+  const shown = items.slice(0, THREAT_ALERT_ITEM_CAP);
+  const title =
+    items.length === 1
+      ? "Hebrides Cyber: a newly exploited vulnerability matches your site"
+      : `Hebrides Cyber: ${items.length} newly exploited vulnerabilities match your sites`;
+  const facts = shown.map((item) => ({
+    name: `${item.cveId} on ${item.host}`,
+    value: `${item.vulnerabilityName ? `${item.vulnerabilityName}. ` : ""}${threatItemSummary(item)}.`,
+  }));
+  if (items.length > shown.length) facts.push({ name: "More", value: `${items.length - shown.length} more in the email` });
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      "@type": "MessageCard",
+      "@context": "http://schema.org/extensions",
+      themeColor: "D93F0B",
+      summary: title,
+      sections: [
+        {
+          activityTitle: title,
+          activitySubtitle: "CISA has added these to its Known Exploited Vulnerabilities catalog: attackers are using them now.",
+          facts,
+          markdown: false,
+        },
+      ],
+      potentialAction: [
+        { "@type": "OpenUri", name: "Open dashboard", targets: [{ os: "default", uri: `${dashboardUrl}/dashboard` }] },
+        ...(items.length === 1 ? [{ "@type": "OpenUri", name: "Latest report", targets: [{ os: "default", uri: items[0].reportUrl }] }] : []),
+      ],
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Teams responded ${res.status}`);
 }
