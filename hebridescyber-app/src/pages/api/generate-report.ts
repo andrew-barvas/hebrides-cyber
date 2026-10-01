@@ -41,6 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .from("scan_results")
     .select("*, scans(owner, target_url, created_at)")
     .eq("scan_id", scanId)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error || !scanResult) return res.status(404).json({ error: error?.message ?? "Scan result not found" });

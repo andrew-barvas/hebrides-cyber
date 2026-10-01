@@ -9,6 +9,8 @@ function makeQueryBuilder(result: unknown) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    order: () => builder,
+    limit: () => builder,
     maybeSingle: () => Promise.resolve(result),
   };
   return builder;

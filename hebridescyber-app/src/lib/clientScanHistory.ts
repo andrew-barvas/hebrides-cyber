@@ -261,7 +261,7 @@ export async function listCompletedScansForTarget(targetUrl: string): Promise<Sc
 
 /** Findings for one specific scan, by id — Diff View fetches both sides of a comparison this way. */
 export async function findFindingsForScan(scanId: string): Promise<Finding[] | null> {
-  const { data } = await supabase.from("scan_results").select("results").eq("scan_id", scanId).maybeSingle();
+  const { data } = await supabase.from("scan_results").select("results").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   return (data?.results as { findings?: Finding[] } | undefined)?.findings ?? null;
 }
 

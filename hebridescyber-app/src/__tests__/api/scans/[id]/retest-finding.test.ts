@@ -18,6 +18,8 @@ function makeBuilder(table: string) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    order: () => builder,
+    limit: () => builder,
     update: () => builder,
     maybeSingle: next,
     single: next,

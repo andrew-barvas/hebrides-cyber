@@ -61,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // never the caller's, and recorded against the owner in ticket_links.
   const actingOwnerId = scan.owner;
 
-  const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).maybeSingle();
+  const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!result) return res.status(404).json({ error: "No results for this scan yet" });
 
   const stored = result.results as ScanResults & { findings?: Finding[] };

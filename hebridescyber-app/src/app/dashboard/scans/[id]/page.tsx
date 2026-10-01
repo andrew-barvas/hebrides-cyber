@@ -406,6 +406,8 @@ export default function ScanDetailPage() {
         .from("scan_results")
         .select("id, scan_id, results, summary, score, created_at")
         .eq("scan_id", params.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (fetchError) setError(fetchError.message);
       setResult(data as ScanResult | null);
