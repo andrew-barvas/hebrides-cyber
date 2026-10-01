@@ -141,21 +141,26 @@ class DepGraph {
       reachUnknown = this.reach(byKind("unknown"));
       reachDev = this.reach(byKind("dev"));
 
-      // Shortest path from any root (runtime roots first, for a stable
-      // "introduced via" that names the production route when there is one).
-      const queue: string[] = [];
-      for (const key of [...byKind("prod"), ...byKind("unknown"), ...byKind("dev")]) {
-        if (!parent.has(key)) {
-          parent.set(key, null);
-          queue.push(key);
+      // Shortest path from the runtime roots first, then unknown, then dev:
+      // "introduced via" names the production route whenever there is one,
+      // even if a dev-only route is shorter.
+      for (const kind of ["prod", "unknown", "dev"] as const) {
+        const queue: string[] = [];
+        for (const key of byKind(kind)) {
+          if (!parent.has(key)) {
+            parent.set(key, null);
+            queue.push(key);
+          } else if (parent.get(key) !== null) {
+            parent.set(key, null); // a root is its own route in
+          }
         }
-      }
-      while (queue.length) {
-        const key = queue.shift()!;
-        for (const child of [...(this.edges.get(key) ?? [])].sort()) {
-          if (!parent.has(child) && this.nodes.has(child)) {
-            parent.set(child, key);
-            queue.push(child);
+        while (queue.length) {
+          const key = queue.shift()!;
+          for (const child of [...(this.edges.get(key) ?? [])].sort()) {
+            if (!parent.has(child) && this.nodes.has(child)) {
+              parent.set(child, key);
+              queue.push(child);
+            }
           }
         }
       }
