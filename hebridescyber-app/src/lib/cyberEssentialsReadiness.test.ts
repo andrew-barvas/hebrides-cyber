@@ -146,3 +146,24 @@ describe("assessCeReadiness", () => {
     expect(report.overall_status).toBe("not-ready");
   });
 });
+
+// Regression: three of this control's ids matched nothing any check produces.
+describe("Security update management — real check ids", () => {
+  const control = (findings: Finding[]) => assessCeReadiness(findings).controls.find((c) => c.control === "Security update management")!;
+
+  it.each([
+    ["eol.unsupported:php", "end-of-life software"],
+    ["docker-base-image.outdated-base:node", "Docker base image"],
+    ["trivy-image.vulnerable-package:openssl:CVE-2024-0001", "container image"],
+    ["fingerprint.risky-library:PHP", "outdated server or CMS"],
+  ])("counts %s against the control", (checkId, gap) => {
+    const c = control([finding({ checkId, severity: "high" })]);
+    expect(c.status).toBe("fail");
+    expect(c.gaps.some((g) => g.includes(gap))).toBe(true);
+    expect(c.evidence).not.toContain("Software components are up to date with no known vulnerabilities");
+  });
+
+  it("does not count an approaching end-of-life date as a gap", () => {
+    expect(control([finding({ checkId: "eol.approaching:php", severity: "info" })]).status).toBe("pass");
+  });
+});

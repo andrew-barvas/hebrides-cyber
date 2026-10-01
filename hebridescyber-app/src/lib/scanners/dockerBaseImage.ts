@@ -71,10 +71,13 @@
 import type { Finding } from "./index";
 import { resolveGithubAuth } from "../githubApp";
 import { dockerBaseImageOutdatedRemediation, DOCKER_BASE_IMAGE_UNPINNED } from "./remediationText";
+import { fetchEolProduct, isPastEol, matchEolEntry } from "./endOfLife";
+
+// Shared with the web-technology EOL check; re-exported for existing callers.
+export { isPastEol, matchEolEntry };
 
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 10_000;
-const ENDOFLIFE_TIMEOUT_MS = 8_000;
 
 // A Dockerfile with many build stages must not produce a finding per stage.
 // Same capping rationale as dependencyManifest.ts's MAX_FINDINGS.
@@ -283,8 +286,6 @@ export function officialFamilyName(repoPath: string): string | null {
 
 // ---- endoflife.date lookup ---------------------------------------------------
 
-type EolEntry = { cycle: string; eol: string | boolean; codename?: string };
-
 // Verified live against https://endoflife.date/api/<value>.json before being
 // added — see the module header. Keys are the bare Docker Hub official image
 // name; values are the endoflife.date product slug (occasionally different,
@@ -308,68 +309,6 @@ const FAMILY_TO_PRODUCT: Record<string, string> = {
   redis: "redis",
   nginx: "nginx",
 };
-
-// Best-effort, in-process only cache — mirrors osv.ts's cache and its
-// rationale: cheap win within one warm serverless instance, not worth
-// building real infrastructure for.
-const eolCache = new Map<string, EolEntry[] | null>();
-
-async function fetchEolProduct(product: string): Promise<EolEntry[] | null> {
-  const cached = eolCache.get(product);
-  if (cached !== undefined) return cached;
-
-  try {
-    const res = await fetch(`https://endoflife.date/api/${encodeURIComponent(product)}.json`, {
-      signal: AbortSignal.timeout(ENDOFLIFE_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      eolCache.set(product, null);
-      return null;
-    }
-    const body = (await res.json()) as unknown;
-    const entries = Array.isArray(body) ? (body as EolEntry[]) : null;
-    eolCache.set(product, entries);
-    return entries;
-  } catch {
-    eolCache.set(product, null);
-    return null;
-  }
-}
-
-function extractMajorMinor(tag: string): string | null {
-  const match = tag.match(/^(\d+\.\d+)/);
-  return match ? match[1] : null;
-}
-
-function extractMajorOnly(tag: string): string | null {
-  const match = tag.match(/^(\d+)/);
-  return match ? match[1] : null;
-}
-
-/**
- * Matches a Dockerfile tag against a product's endoflife.date cycles. Tries
- * numeric cycles first (covers node/python/go/ruby/php/alpine/ubuntu/
- * postgres/mysql/mongodb/redis/nginx, all of which use "major" or
- * "major.minor" cycle strings), then falls back to a codename match — Debian
- * tags are commonly a codename ("bullseye", "bookworm") rather than a
- * number, and endoflife.date's Debian entries carry that codename.
- */
-export function matchEolEntry(entries: EolEntry[], tag: string): EolEntry | null {
-  const tagLower = tag.toLowerCase();
-  for (const candidate of [extractMajorMinor(tagLower), extractMajorOnly(tagLower)]) {
-    if (!candidate) continue;
-    const hit = entries.find((e) => e.cycle === candidate);
-    if (hit) return hit;
-  }
-  return entries.find((e) => e.codename && tagLower.includes(String(e.codename).toLowerCase())) ?? null;
-}
-
-export function isPastEol(entry: EolEntry, now: Date): boolean {
-  if (typeof entry.eol === "boolean") return entry.eol === true;
-  const eolDate = new Date(entry.eol);
-  if (Number.isNaN(eolDate.getTime())) return false;
-  return eolDate.getTime() <= now.getTime();
-}
 
 // ---- Findings ----------------------------------------------------------------
 

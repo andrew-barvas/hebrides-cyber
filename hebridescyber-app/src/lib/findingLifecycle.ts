@@ -76,7 +76,7 @@ export function scanCoverage(
 // checkId namespaces that don't normalise to their tool's key in `extended`.
 const TOOL_ALIASES: Record<string, string> = { apispec: "apispecinjection" };
 // …and the same for base checks and their key in ScanResults.
-const BASE_ALIASES: Record<string, string> = { wpvdb: "wpvulndb", domain: "domainregistration" };
+const BASE_ALIASES: Record<string, string> = { wpvdb: "wpvulndb", domain: "domainregistration", eol: "endoflife" };
 
 function baseCheckKey(checkId: string): string {
   const prefix = normaliseToolKey(checkId.split(/[.:]/)[0]);

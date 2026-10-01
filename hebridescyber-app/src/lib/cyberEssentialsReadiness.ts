@@ -181,16 +181,19 @@ const CE_CONTROL_CHECKERS: Array<{
   },
   {
     control: "Security update management",
+    // Prefixes of real checkIds. Three entries here used to name ids no
+    // check produces ("dockerBaseImage.eol", "trivyImage.cve", and two
+    // webapp CMS ids), so end-of-life base images and container CVEs never
+    // counted against this control.
     relevantCheckIds: [
       "webapp.vulnerable-js-lib",
-      "webapp.outdated-cms",
-      "webapp.wordpress-outdated",
-      "dependency-manifest.npm",
-      "dependency-manifest.pip",
-      "dependency-manifest.composer",
-      "dockerBaseImage.eol",
+      "fingerprint.risky-library",
+      "softwareCveDb.",
+      "dependency-manifest.",
+      "docker-base-image.outdated-base",
       "wpvdb.plugin-vulnerability",
-      "trivyImage.cve",
+      "trivy-image.vulnerable-package",
+      "eol.unsupported",
     ],
     assessEvidence(findings) {
       const evidence: string[] = [];
@@ -199,8 +202,15 @@ const CE_CONTROL_CHECKERS: Array<{
       const vulnLibs = findings.filter((f) => f.checkId?.startsWith("webapp.vulnerable-js-lib"));
       const depFindings = findings.filter((f) => f.checkId?.startsWith("dependency-manifest."));
       const wpPlugins = findings.filter((f) => f.checkId?.startsWith("wpvdb.plugin-vulnerability"));
-      const eolImages = findings.filter((f) => f.checkId?.startsWith("dockerBaseImage.eol"));
-      const trivyCves = findings.filter((f) => f.checkId?.startsWith("trivyImage.cve"));
+      const eolImages = findings.filter((f) => f.checkId?.startsWith("docker-base-image.outdated-base"));
+      const trivyCves = findings.filter((f) => f.checkId?.startsWith("trivy-image.vulnerable-package"));
+      const eolSoftware = findings.filter((f) => f.checkId?.startsWith("eol.unsupported"));
+      const outdatedSoftware = findings.filter((f) => f.checkId?.startsWith("fingerprint.risky-library") || f.checkId?.startsWith("softwareCveDb."));
+
+      if (eolSoftware.length > 0) {
+        gaps.push(`${eolSoftware.length} piece${eolSoftware.length === 1 ? "" : "s"} of end-of-life software in use — Cyber Essentials requires unsupported software to be removed or upgraded`);
+      }
+      if (outdatedSoftware.length > 0) gaps.push(`${outdatedSoftware.length} outdated server or CMS component${outdatedSoftware.length === 1 ? "" : "s"} with known vulnerabilities`);
 
       if (vulnLibs.length > 0) gaps.push(`${vulnLibs.length} client-side JavaScript librar${vulnLibs.length === 1 ? "y" : "ies"} with known vulnerabilities`);
       else evidence.push("No vulnerable JavaScript libraries detected on the frontend");
@@ -210,7 +220,8 @@ const CE_CONTROL_CHECKERS: Array<{
       if (eolImages.length > 0) gaps.push("Docker base image has reached end-of-life — no longer receiving security updates");
       if (trivyCves.length > 0) gaps.push(`${trivyCves.length} CVE(s) in container image packages`);
 
-      if (vulnLibs.length === 0 && depFindings.length === 0 && wpPlugins.length === 0) {
+      // Only claimed when nothing in this control found a problem.
+      if (gaps.length === 0) {
         evidence.push("Software components are up to date with no known vulnerabilities");
       }
 

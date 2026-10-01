@@ -21,6 +21,7 @@ import { checkBusinessLogic, type BusinessLogicResult } from "./businessLogic";
 import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
 import { checkTakeover, type TakeoverResult } from "./takeover";
 import { checkDomainRegistration, type DomainRegistrationResult } from "./domainRegistration";
+import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -32,6 +33,7 @@ export type {
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
+  EndOfLifeResult,
 };
 
 export type ScanResults = {
@@ -58,6 +60,7 @@ export type ScanResults = {
   // Optional because scans stored before these checks existed lack them.
   takeover?: TakeoverResult;
   domainRegistration?: DomainRegistrationResult;
+  endOfLife?: EndOfLifeResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -240,6 +243,11 @@ export async function runAllChecks(
   const zap = unwrap(settled2[2], { status: "error", note: "ZAP check crashed" } as unknown as ZapResult);
   const apiSpec = unwrap(settled2[3], { status: "not_configured", findings: [], endpointsTested: 0, specSource: "none" } as ApiSpecResult);
 
+  // Needs fingerprint and webapp versions; runs alongside the enrichment below.
+  const endOfLifePending = checkEndOfLife(fingerprint, webapp).catch(
+    (err: Error): EndOfLifeResult => ({ status: "error", note: err.message })
+  );
+
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
   const wpVulnDb = await checkWpVulnDb(
@@ -258,6 +266,8 @@ export async function runAllChecks(
     targetUrl,
     recon.status === "checked" ? recon.subdomains.map((s) => s.name) : []
   ).catch((err: Error): TakeoverResult => ({ status: "error", note: err.message }));
+
+  const endOfLife = await endOfLifePending;
 
   return {
     target_url: targetUrl,
@@ -282,6 +292,7 @@ export async function runAllChecks(
     apiSpec,
     takeover,
     domainRegistration,
+    endOfLife,
     zap,
   };
 }
@@ -434,7 +445,12 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- Fingerprint ----------------------------------------------------------
   if (results.fingerprint.status === "checked") {
+    // End-of-life detection answers the same question from live, dated data
+    // (this table is a hand-kept major-version cut-off). Where it reached a
+    // verdict for a technology, its finding stands in for this one.
+    const eolEvaluated = new Set(results.endOfLife?.status === "checked" ? results.endOfLife.evaluated : []);
     for (const risky of results.fingerprint.riskySoftware) {
+      if (eolEvaluated.has(risky.name)) continue;
       // Keyed by name only, not name+version: an upgrade should read as
       // "fixed", not as an unrelated old finding plus a brand-new one.
       findings.push({ checkId: `fingerprint.risky-library:${risky.name}`, severity: "high", title: `Outdated library: ${risky.name} ${risky.version}`, detail: risky.reason, remediation: FIX.OUTDATED_LIBRARY });
@@ -866,6 +882,36 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   }
 
   // --- Dangling DNS / subdomain takeover ------------------------------------
+  // --- End-of-life software -------------------------------------------------
+  // Keyed by product, not version: an upgrade to a supported release should
+  // read as "fixed", not as a new finding. Approaching and unsupported are
+  // separate ids so crossing the date reads as a change.
+  if (results.endOfLife?.status === "checked") {
+    for (const item of results.endOfLife.items) {
+      const vendorNote = item.packagedBy
+        ? ` The version was reported alongside "${item.packagedBy}", so this is probably a distribution package: distributions keep backporting security fixes into the versions they ship after upstream stops. Check that your ${item.packagedBy} release still receives updates for it.`
+        : "";
+      if (item.state === "unsupported") {
+        const when = item.eolDate ? `on ${item.eolDate}${item.daysOverdue !== null ? ` (${item.daysOverdue} day${item.daysOverdue === 1 ? "" : "s"} ago)` : ""}` : "";
+        findings.push({
+          checkId: `eol.unsupported:${item.product}`,
+          severity: eolSeverity(item.kind, item.daysOverdue, item.packagedBy),
+          title: `End-of-life software: ${item.label} ${item.version}`,
+          detail: `${item.label} ${item.cycle} reached end of life${when ? ` ${when}` : ""}, according to endoflife.date. Its maintainers no longer publish security fixes for it, so vulnerabilities found from now on stay unfixed.${vendorNote}`,
+          remediation: FIX.endOfLifeRemediation(item.label, item.cycle, item.eolDate, item.product, item.packagedBy),
+        });
+      } else {
+        findings.push({
+          checkId: `eol.approaching:${item.product}`,
+          severity: "info",
+          title: `${item.label} ${item.cycle} reaches end of life on ${item.eolDate}`,
+          detail: `${item.label} ${item.version} is on the ${item.cycle} release line, which stops receiving security fixes in ${item.daysLeft} day${item.daysLeft === 1 ? "" : "s"}, according to endoflife.date. Plan the upgrade now rather than after the date.`,
+          remediation: FIX.endOfLifeRemediation(item.label, item.cycle, item.eolDate, item.product, null),
+        });
+      }
+    }
+  }
+
   if (results.takeover?.status === "checked") {
     for (const record of results.takeover.dangling) {
       findings.push({

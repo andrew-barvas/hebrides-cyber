@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkFingerprint, getCmsType, type DetectedTech } from "./fingerprint";
+import { checkFingerprint, distroFromHeader, getCmsType, type DetectedTech } from "./fingerprint";
 
 function tech(name: string): DetectedTech {
   return { name, category: "CMS", version: null, confidence: "high", source: "html" };
@@ -68,5 +68,31 @@ describe("checkFingerprint — Django", () => {
 
   it("still detects Django from its CSRF form field", async () => {
     expect(await names('<form><input type="hidden" name="csrfmiddlewaretoken" value="x"></form>', {})).toContain("Django");
+  });
+});
+
+describe("distroFromHeader", () => {
+  it.each([
+    ["Apache/2.4.41 (Ubuntu)", "Ubuntu"],
+    ["PHP/7.4.3-4ubuntu2.19", "Ubuntu"],
+    ["Apache/2.4.62 (Debian)", "Debian"],
+    ["Apache/2.4.37 (Red Hat Enterprise Linux)", "Red Hat"],
+    ["Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips", "CentOS"],
+    ["nginx/1.18.0", null],
+    ["Apache", null],
+  ])("%s → %s", (header, distro) => {
+    expect(distroFromHeader(header)).toBe(distro);
+  });
+});
+
+describe("checkFingerprint — packaged versions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("records the distribution named in the version header", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html></html>", { headers: { server: "Apache/2.4.41 (Ubuntu)", "x-powered-by": "PHP/8.1.2" } })));
+    const result = await checkFingerprint("https://example.com");
+    if (result.status !== "checked") throw new Error("not checked");
+    expect(result.technologies.find((t) => t.name === "Apache")).toMatchObject({ version: "2.4.41", packagedBy: "Ubuntu" });
+    expect(result.technologies.find((t) => t.name === "PHP")).not.toHaveProperty("packagedBy");
   });
 });

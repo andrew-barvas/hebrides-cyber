@@ -1497,6 +1497,33 @@ FROM ${repoPath}:<current-supported-tag>
 }
 
 /**
+ * End-of-life software the site itself reveals (endOfLife.ts). Built from the
+ * real cycle and date looked up, never a guessed "latest version".
+ */
+export function endOfLifeRemediation(label: string, cycle: string, eolDate: string | null, endoflifeProduct: string, packagedBy: string | null): string {
+  const since = eolDate ? ` (end of life ${eolDate})` : "";
+  const vendor = packagedBy
+    ? `
+
+**If ${label} came from ${packagedBy}'s own packages**, upstream end of life may
+not apply: check your ${packagedBy} release's support status. If the release
+itself is still supported and you install its updates, record that as your
+evidence for Cyber Essentials; if the release is past its own support, upgrade
+the operating system release.`
+    : "";
+  return `Move off ${label} ${cycle}${since} to a release line that still receives security fixes.
+
+1. See which ${label} release lines are supported, and until when:
+   https://endoflife.date/${endoflifeProduct} — pick one with plenty of support left.
+2. Upgrade in a test environment first. A new major release can remove
+   features or change defaults, so check the upgrade notes and run your tests.
+3. Deploy, then re-scan to confirm this finding clears.
+4. Put the next end-of-life date in your calendar so the following upgrade is
+   planned, not forced. Cyber Essentials requires unsupported software to be
+   removed or upgraded.${vendor}`;
+}
+
+/**
  * Function, not a constant, same reasoning as dockerBaseImageOutdatedRemediation:
  * names the actual package, versions, and image Trivy scanned. Deliberately
  * not folded into dependencyVulnerableRemediation's ecosystem-command shape

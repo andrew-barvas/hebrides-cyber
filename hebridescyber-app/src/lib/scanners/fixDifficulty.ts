@@ -101,6 +101,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dependency-manifest.additional-vulnerable": "easy",
   "docker-base-image.unpinned-tag": "trivial",
   "docker-base-image.outdated-base": "moderate",
+  "eol.unsupported": "moderate", // a major-version upgrade, usually
+  "eol.approaching": "moderate",
   "trivy-image.vulnerable-package": "moderate",
   "trivy-config.misconfiguration": "moderate",
 
