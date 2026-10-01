@@ -115,6 +115,21 @@ jobs:
             sudo chmod +x /usr/local/bin/commix
           fi
 
+      - name: Verify xsser CLI flags (E-18)
+        # xsser.ts was written without a real binary to test against (its
+        # CONFIDENCE NOTE). This checks, on the real installed binary, that
+        # the two flags it passes exist — a mismatch is a visible warning in
+        # the run, not a silent "no XSS found" forever. Never fails the job.
+        run: |
+          if command -v xsser >/dev/null 2>&1; then
+            help="$(xsser --help 2>&1 || true)"
+            for flag in --url --auto; do
+              if printf '%s' "$help" | grep -q -- "$flag"; then echo "xsser supports $flag"; else echo "::warning::xsser --help does not list $flag — update src/worker/tools/xsser.ts (E-18)"; fi
+            done
+          else
+            echo "::warning::xsser not installed — xsser.ts reports not_configured"
+          fi
+
       - name: Install nuclei
         env:
           NUCLEI_VERSION: v3.3.9
@@ -126,6 +141,25 @@ jobs:
           rm /tmp/nuclei.zip
           sudo chmod +x /usr/local/bin/nuclei
           nuclei -update-templates -silent || true
+
+      - name: Install subfinder
+        # src/lib/scanners/subdomains.ts shells out to `subfinder`, but this
+        # workflow never installed it — so the subdomain-discovery step of
+        # every scheduled scan has always returned status "not_configured"
+        # (found in the 2026-09-30 delivery audit). Same ProjectDiscovery
+        # release-zip pattern as nuclei above; a failed install degrades only
+        # this check.
+        env:
+          SUBFINDER_VERSION: v2.16.0
+        run: |
+          curl -fsSL \
+            "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" \
+            -o /tmp/subfinder.zip \
+            && sudo unzip -o /tmp/subfinder.zip subfinder -d /usr/local/bin \
+            && sudo chmod +x /usr/local/bin/subfinder \
+            && subfinder -version \
+            || echo "subfinder install failed — subdomains.ts will report status: not_configured"
+          rm -f /tmp/subfinder.zip
 
       - name: Install gitleaks and testssl.sh
         # secretScan.ts (Gitleaks) and deepTls.ts (testssl.sh) have always

@@ -23,6 +23,57 @@ this file will drift the same way `ROADMAP.md`'s own status columns do.
 
 ---
 
+## Delivery audit — 2026-09-30 (supersedes the status cells below)
+
+Every non-✅ row in the sprint tables below was re-checked against the
+repo, CI and production rather than trusted. The per-sprint tables are kept
+as history. **This table is the current status.** A status changes only
+with the evidence named.
+
+| ID / item | Status in sprint tables | Verified status | Evidence |
+|---|---|---|---|
+| **E-07** Stripe Price IDs | ⛔ | ⛔ **still blocking all paid signups** | Production `GET /api/health` → `"stripe":{"ok":false}` (2026-10-01) |
+| **E-49** migrations 019–026 | ⛔ | ✅ applied | `deploy.yml`'s "verify schema objects" step checks their columns and passes on every deploy. 040–043 also applied (owner, 2026-09-29) |
+| E-50 / E-51 email + notification rules | ⬜ | ✅ | `src/lib/scanCompletionEmail.ts`, `src/lib/notificationRules.ts` |
+| E-52 / E-53 sparklines, CSV/JSON export | ⬜ | ✅ | `FleetOverview.tsx` sparkline, `pages/api/v1/scans/[id]/export.ts` |
+| E-54 PagerDuty / Opsgenie | ⬜ | ✅ | `src/lib/oncallAlerts.ts`, `oncallIntegrations.ts` (+ tests) |
+| E-55 CVSS | ⬜ | ✅ | `src/lib/scanners/cvssEnrich.ts`. KEV/EPSS added 2026-09-27 (E-58) |
+| E-30 per-finding retest | ⬜ | ✅ | `pages/api/scans/[id]/retest-finding.ts` (+ tests) |
+| E-32 / E-33 cloud posture, API spec | ⬜ | ✅ | `scanners/cloudPosture.ts` (AWS/Azure/GCP), `scanners/apiSpec.ts` |
+| E-21 httpOnly cookie auth | ⬜ | ✅ | `@supabase/ssr` + `middleware.ts`. e2e asserts server-side redirects (LIVE-5) |
+| E-56 auto-migration in CI | ⬜ | ⚠️ code done, **inactive** | `deploy.yml` psql step gated on a `DATABASE_URL` secret that doesn't exist. **Before** adding it, the step needs a migrations ledger: today it would re-run every migration on every deploy |
+| E-57 post-deploy health check | ⬜ | ⚠️ code done, **inactive** | Step gated on a `SITE_URL` secret that doesn't exist |
+| E-03 Sentry | 🔄 | ⛔ code done, no DSN | `src/sentry.*.config.ts` wired. No `SENTRY_DSN` anywhere |
+| Branch protection | ⛔ manual | ⛔ **needs GitHub Pro** | GitHub API returns 403 "Upgrade to GitHub Pro or make this repository public". Deploys are still gated: `deploy.yml` runs lint/tsc/unit/e2e first |
+| Staging Supabase + PR previews | ⬜ | ⬜ | No `STAGING_SUPABASE_*` secrets |
+| E-13 backup restore drill (LIVE-4) | ⬜ | ⬜ never exercised | `docs/BACKUP-RESTORE.md` documents it but no restore has been run |
+| E-18 xsser real-binary check | 🔄 | 🔄 smoke step added | `scheduled-scans.yml` "Verify xsser CLI flags (E-18)" warns if `--url`/`--auto` are missing. Closes on the first green scheduled run |
+| E-02 plan-enforcement audit | 🔄 | 🔄 | Advertised gaps fixed. Remaining capabilities documented as intentionally open (FUNCTIONALITY-MATRIX) |
+| E-26 Container Apps terraform | ⬜ | ⬜ not applied | `azure/terraform/main.tf` has TODOs before any `terraform apply` |
+| POC-1…4 with a real demo account | ⬜ manual | ⬜ | Owner action |
+| Sprint 14: grant + launch-campaign docs | ⬜ | ✅ drafted | `marketing/12-hie-grant-application.md`, `marketing/15-launch-campaign.md` |
+| Sprint 14/16: coverage toward 50/40 | ⬜ | 🔄 48.5 / 42.6 | `vitest.config.mts` floor 48/42/47/49 (2026-10-01) |
+| Company registration, social, VAT, insurance, ToS review | ⛔ owner | ⛔ owner | Not code |
+
+**Found by the audit, not in any sprint table:**
+- `subdomains.ts` (Subfinder) never ran: `scheduled-scans.yml` never installed the binary. Fixed 2026-10-01.
+- Eleven "enterprise" library modules have **no importers**, so no product surface:
+  - ssoSaml, rbac, scimProvisioning, orgModel, mspPortal, customScanPolicies
+  - riskScoring, cicdSdk, graphqlApi, easmDiscovery, proofOfExploit
+
+  Sprints 9–13 recorded these as delivered. They are libraries, not features.
+- 22 scanner/tool modules have no tests (tracked in ENHANCEMENTS E-67).
+- Dead GitHub secrets: `DIGEST_SERVICE_TOKEN` and `NEWSLETTER_SERVICE_TOKEN` gate routes deleted in E-11. Safe to remove.
+
+**How to re-run this audit** (owner checklist, per sprint row):
+1. The `E-nn` entry in ENHANCEMENTS.md is marked done *and* the code it names exists.
+2. The module has importers: a page, route or scan step uses it, not just its test.
+3. `grep -rn "TODO\|FIXME\|MOCK\|STUB"` over the touched files is empty or tracked.
+4. `npm run lint` shows 0 errors, `npx tsc --noEmit` is clean, and `npm run test:unit:coverage` and `npm test` are green.
+5. Any secret or owner action it depends on actually exists (`gh secret list`, production `/api/health`).
+
+---
+
 ## Sprint 1 — Revenue integrity, plan enforcement, signup attention
 
 **Theme**: nothing in Sprint 2/3 matters commercially if paid signup is
