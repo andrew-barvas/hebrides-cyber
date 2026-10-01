@@ -38,6 +38,10 @@ describe("tlsRow", () => {
     [{ selfSigned: true }, "self-signed certificate"],
     [{ daysUntilExpiry: 10 }, "certificate expiring soon"],
     [{ hsts: { present: false, adequate: false, maxAge: null } }, "no HSTS"],
+    [{ trustProblem: "hostname-mismatch" }, "certificate doesn't cover this hostname"],
+    [{ trustProblem: "incomplete-chain" }, "incomplete certificate chain"],
+    [{ trustProblem: "untrusted" }, "untrusted certificate"],
+    [{ trustProblem: "expired" }, "certificate expired"],
   ])("fails %o", (overrides, expected) => {
     const row = tlsRow(tls(overrides))!;
     expect(row.pass).toBe(false);

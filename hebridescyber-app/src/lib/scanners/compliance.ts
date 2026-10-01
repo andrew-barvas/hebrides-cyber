@@ -78,6 +78,13 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
   "tls.cert-expiring": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
   "tls.self-signed": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  "tls.cert-expired": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  "tls.cert-name-mismatch": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  "tls.cert-chain-incomplete": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  "tls.cert-untrusted": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  // Expired certificates on other hostnames: same controls as the main site.
+  "subdomain-certs.expired": [CE_SECURE_CONFIG, OWASP_A02, PCI_REQ4, ISO_A13],
+  "subdomain-certs.expiring": [OWASP_A02, ISO_A13],
   "tls.hsts-missing": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "tls.hsts-short": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
 

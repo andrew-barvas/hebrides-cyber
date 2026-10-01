@@ -3,9 +3,11 @@ import { checkRecon } from "./recon";
 
 afterEach(() => vi.unstubAllGlobals());
 
-type Routes = { dns?: unknown; shodan?: { status: number; body?: unknown }; crt?: { status: number; body?: unknown } };
+type Reply = { status: number; body?: unknown };
+type Routes = { dns?: unknown; shodan?: Reply; crt?: Reply | Reply[] };
 
 function serve(routes: Routes) {
+  let crtCalls = 0;
   const fetchMock = vi.fn(async (url: string) => {
     if (url.startsWith("https://cloudflare-dns.com/")) return new Response(JSON.stringify(routes.dns ?? { Answer: [] }));
     if (url.startsWith("https://internetdb.shodan.io/")) {
@@ -13,7 +15,9 @@ function serve(routes: Routes) {
       return new Response(JSON.stringify(r.body ?? {}), { status: r.status });
     }
     if (url.startsWith("https://crt.sh/")) {
-      const r = routes.crt ?? { status: 200, body: [] };
+      // An array is a sequence of replies, one per request.
+      const replies = Array.isArray(routes.crt) ? routes.crt : [routes.crt ?? { status: 200, body: [] }];
+      const r = replies[Math.min(crtCalls++, replies.length - 1)];
       return new Response(JSON.stringify(r.body ?? []), { status: r.status });
     }
     throw new Error(`unexpected ${url}`);
@@ -78,9 +82,46 @@ describe("checkRecon", () => {
     expect(crtUrl).toBe("https://crt.sh/?q=%25.example.co.uk&output=json");
   });
 
-  it("returns an empty list when crt.sh is down, never a failed scan", async () => {
-    serve({ dns: A, crt: { status: 503 } });
-    expect(await checkRecon("https://example.com")).toMatchObject({ status: "checked", subdomains: [] });
+  // Regression: an outage used to read as "no subdomains", which let
+  // takeover and subdomain-cert findings be marked fixed.
+  it("says the lookup failed when crt.sh is down, without failing the scan", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = serve({ dns: A, crt: { status: 503 } });
+      const pending = checkRecon("https://example.com");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await pending).toMatchObject({ status: "checked", subdomains: [], ctLookupFailed: true });
+      expect(fetchMock.mock.calls.filter(([u]) => String(u).startsWith("https://crt.sh/"))).toHaveLength(2); // one retry
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers from a momentary crt.sh error with one retry", async () => {
+    vi.useFakeTimers();
+    try {
+      serve({ crt: [{ status: 502 }, { status: 200, body: [{ name_value: "shop.example.com" }] }] });
+      const pending = checkRecon("https://example.com");
+      await vi.advanceTimersByTimeAsync(2_000);
+      const result = await pending;
+      expect(result).toMatchObject({ status: "checked", subdomains: [{ name: "shop.example.com" }] });
+      expect(result).not.toHaveProperty("ctLookupFailed");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the most recently certified hosts when capping, listed alphabetically", async () => {
+    const body = Array.from({ length: 60 }, (_, i) => ({ name_value: `h${String(i).padStart(2, "0")}.example.com`, not_before: `2026-01-01T00:00:${String(i).padStart(2, "0")}` }));
+    body.push({ name_value: "h00.example.com", not_before: "2026-09-01T00:00:00" }); // h00 renewed recently
+    serve({ crt: { status: 200, body } });
+    const result = await checkRecon("https://example.com");
+    if (result.status !== "checked") throw new Error("expected checked");
+    const names = result.subdomains.map((s) => s.name);
+    expect(names).toContain("h00.example.com");
+    expect(names).not.toContain("h01.example.com"); // among the oldest
+    expect(names).toEqual([...names].sort());
+    expect(result.subdomains.find((s) => s.name === "h00.example.com")?.notBefore).toBe("2026-09-01T00:00:00");
   });
 
   it("caps the list at 50", async () => {

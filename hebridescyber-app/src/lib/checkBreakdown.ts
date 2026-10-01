@@ -29,7 +29,11 @@ export function tlsRow(tls: TlsResult | undefined): BreakdownRow | null {
   if (tls.weakProtocol) issues.push(`weak protocol (${tls.protocol})`);
   if (tls.selfSigned) issues.push("self-signed certificate");
   const days = tls.daysUntilExpiry;
-  if (days != null && days < 0) issues.push("certificate expired");
+  const trust = tls.trustProblem ?? null;
+  if (trust === "hostname-mismatch") issues.push("certificate doesn't cover this hostname");
+  if (trust === "incomplete-chain") issues.push("incomplete certificate chain");
+  if (trust === "untrusted") issues.push("untrusted certificate");
+  if (trust === "expired" || (days != null && days < 0)) issues.push("certificate expired");
   else if (days != null && days < CERT_WARN_DAYS) issues.push("certificate expiring soon");
   if (!tls.hsts.present) issues.push("no HSTS");
 

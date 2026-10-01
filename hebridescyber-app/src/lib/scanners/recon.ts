@@ -8,6 +8,10 @@ export type ReconResult =
       ip: string | null;
       shodan: ShodanData | null;
       subdomains: SubdomainEntry[];
+      /** crt.sh couldn't be read, so `subdomains` being empty means "unknown",
+       *  not "none". Checks that work from the list must not treat it as
+       *  complete. Optional: older stored results lack it. */
+      ctLookupFailed?: boolean;
     }
   | { status: "error"; note: string };
 
@@ -77,15 +81,23 @@ async function queryShodan(ip: string): Promise<ShodanData | null> {
 
 // ── crt.sh subdomain enumeration ─────────────────────────────────────────────
 
-async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
+/** crt.sh often answers 502/503 for a moment; one quick retry fixes most. */
+const CRTSH_RETRY_DELAY_MS = 1_500;
+
+async function fetchCrtSh(url: string): Promise<Response> {
+  const attempt = () => fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: "application/json" } });
+  const res = await attempt();
+  if (res.status < 500) return res;
+  await new Promise((r) => setTimeout(r, CRTSH_RETRY_DELAY_MS));
+  return attempt();
+}
+
+async function queryCrtSh(domain: string): Promise<SubdomainEntry[] | null> {
   try {
     // "%" is crt.sh's wildcard and must be percent-encoded itself.
     const url = `https://crt.sh/?q=${encodeURIComponent(`%.${domain}`)}&output=json`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(12_000),
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return [];
+    const res = await fetchCrtSh(url);
+    if (!res.ok) return null;
 
     const body = (await res.json()) as Array<{
       name_value: string;
@@ -93,8 +105,7 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
       not_before?: string;
     }>;
 
-    const seen = new Set<string>();
-    const entries: SubdomainEntry[] = [];
+    const byName = new Map<string, SubdomainEntry>();
 
     for (const cert of body) {
       // name_value may contain multiple newline-separated names (SANs)
@@ -105,20 +116,23 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
         // *after* stripping "*." — a "*.example.com" certificate used to list
         // the apex itself as one of its own subdomains.
         const display = name.startsWith("*.") ? name.slice(2) : name;
-        if (display === domain || seen.has(display)) continue;
-        seen.add(display);
-        entries.push({
-          name: display,
-          issuer: cert.issuer_name ?? "",
-          notBefore: cert.not_before ?? "",
-        });
+        if (display === domain) continue;
+        // Keep each name's most recent certificate: a host still being
+        // issued certificates is most likely still in use.
+        const existing = byName.get(display);
+        if (existing && (existing.notBefore >= (cert.not_before ?? ""))) continue;
+        byName.set(display, { name: display, issuer: cert.issuer_name ?? "", notBefore: cert.not_before ?? "" });
       }
     }
 
-    // Sort by name, limit to 50 most interesting
-    return entries.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50);
+    // The 50 most recently certified (the ones likeliest to be live), listed
+    // alphabetically.
+    return [...byName.values()]
+      .sort((a, b) => b.notBefore.localeCompare(a.notBefore))
+      .slice(0, 50)
+      .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -139,7 +153,9 @@ export async function checkRecon(targetUrl: string): Promise<ReconResult> {
 
     const shodan = ip ? await queryShodan(ip) : null;
 
-    return { status: "checked", ip, shodan, subdomains };
+    return subdomains
+      ? { status: "checked", ip, shodan, subdomains }
+      : { status: "checked", ip, shodan, subdomains: [], ctLookupFailed: true };
   } catch (err) {
     return { status: "error", note: `Recon check failed: ${(err as Error).message}` };
   }

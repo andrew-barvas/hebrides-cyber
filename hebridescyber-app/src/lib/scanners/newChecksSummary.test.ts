@@ -162,3 +162,71 @@ describe("end-of-life findings", () => {
     );
   });
 });
+
+describe("certificate trust findings", () => {
+  const tls = (overrides: Record<string, unknown>) =>
+    ({
+      status: "checked",
+      isHttps: true,
+      protocol: "TLSv1.3",
+      cipher: "TLS_AES_256_GCM_SHA384",
+      cipherBits: null,
+      certificateExpiresAt: "Dec  1 00:00:00 2026 GMT",
+      certificateIssuedAt: "Sep  1 00:00:00 2026 GMT",
+      daysUntilExpiry: 60,
+      daysOld: 30,
+      subject: "example.com",
+      issuer: "Let's Encrypt",
+      subjectAltNames: ["example.com"],
+      selfSigned: false,
+      weakProtocol: false,
+      weakCipher: false,
+      hsts: { present: true, maxAge: 31536000, includeSubDomains: true, preload: false, adequate: true },
+      trustProblem: null,
+      trustErrorCode: null,
+      ...overrides,
+    }) as unknown as ScanResults["tls"];
+
+  it.each([
+    [{ trustProblem: "expired", daysUntilExpiry: -3 }, "tls.cert-expired", "critical"],
+    [{ trustProblem: "hostname-mismatch", subjectAltNames: ["other.com"] }, "tls.cert-name-mismatch", "critical"],
+    [{ trustProblem: "incomplete-chain" }, "tls.cert-chain-incomplete", "medium"],
+    [{ trustProblem: "untrusted", trustErrorCode: "SELF_SIGNED_CERT_IN_CHAIN" }, "tls.cert-untrusted", "high"],
+    [{ trustProblem: "self-signed", selfSigned: true }, "tls.self-signed", "high"],
+  ])("reports %o as %s", (overrides, checkId, severity) => {
+    const tlsFindings = summariseResults(results({ tls: tls(overrides) })).findings.filter((f) => f.checkId?.startsWith("tls."));
+    expect(tlsFindings).toEqual([expect.objectContaining({ checkId, severity })]);
+    expect(getComplianceRefs(checkId).length).toBeGreaterThan(0);
+  });
+
+  it("calls an expired certificate expired, not 'expiring soon'", () => {
+    const found = ids(results({ tls: tls({ daysUntilExpiry: -1 }) }));
+    expect(found).toContain("tls.cert-expired");
+    expect(found).not.toContain("tls.cert-expiring");
+  });
+
+  it("still reads results stored before trust problems were recorded", () => {
+    expect(ids(results({ tls: tls({ trustProblem: undefined, trustErrorCode: undefined, daysUntilExpiry: 10 }) }))).toContain("tls.cert-expiring");
+  });
+});
+
+describe("subdomain certificate findings", () => {
+  const issue = { certName: "*.example.com", hosts: ["a.example.com", "b.example.com"], validTo: "Sep 20 00:00:00 2026 GMT", issuer: "Let's Encrypt" };
+
+  it("reports an expired certificate once, keyed by its name, naming every host", () => {
+    const [f] = summariseResults(
+      results({ subdomainCerts: { status: "checked", hostsChecked: 5, hostsAnswering: 4, issues: [{ ...issue, state: "expired", daysUntilExpiry: -11 }] } })
+    ).findings;
+    expect(f).toMatchObject({ checkId: "subdomain-certs.expired:*.example.com", severity: "medium", title: "Expired certificate on subdomains: a.example.com (+1)" });
+    expect(f.detail).toContain("a.example.com, b.example.com");
+    expect(f.detail).toContain("11 days ago");
+  });
+
+  it("raises an expiring certificate to medium in its last week", () => {
+    const sev = (days: number) =>
+      summariseResults(results({ subdomainCerts: { status: "checked", hostsChecked: 1, hostsAnswering: 1, issues: [{ ...issue, state: "expiring", daysUntilExpiry: days }] } }))
+        .findings[0].severity;
+    expect(sev(5)).toBe("medium");
+    expect(sev(15)).toBe("low");
+  });
+});

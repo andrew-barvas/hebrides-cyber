@@ -29,8 +29,10 @@ const categories: CheckCategory[] = [
     checks: [
       "HTTPS enforced (not just available)",
       "Weak protocol detection (TLS 1.0/1.1 still enabled)",
-      "Certificate expiry — flagged inside 21 days",
-      "Self-signed certificate detection",
+      "Certificate expiry — flagged inside 21 days, and expired certificates",
+      "Certificates browsers refuse: self-signed, issued for a different hostname, or from an untrusted authority",
+      "Incomplete certificate chains — the site works in Chrome but fails in Firefox, mobile apps and API clients",
+      "Certificates on your other subdomains (found in Certificate Transparency logs) checked for expiry — up to 20 hosts, most recently used first",
       "HSTS presence and max-age adequacy (≥180 days)",
     ],
   },

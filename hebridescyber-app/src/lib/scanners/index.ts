@@ -22,6 +22,7 @@ import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
 import { checkTakeover, type TakeoverResult } from "./takeover";
 import { checkDomainRegistration, type DomainRegistrationResult } from "./domainRegistration";
 import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
+import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -33,7 +34,7 @@ export type {
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
-  EndOfLifeResult,
+  EndOfLifeResult, SubdomainCertsResult,
 };
 
 export type ScanResults = {
@@ -61,6 +62,7 @@ export type ScanResults = {
   takeover?: TakeoverResult;
   domainRegistration?: DomainRegistrationResult;
   endOfLife?: EndOfLifeResult;
+  subdomainCerts?: SubdomainCertsResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -261,11 +263,27 @@ export async function runAllChecks(
     fingerprint.status === "checked" ? fingerprint.riskySoftware : []
   );
 
-  // Needs recon's Certificate Transparency subdomains as its candidate list.
-  const takeover = await checkTakeover(
-    targetUrl,
-    recon.status === "checked" ? recon.subdomains.map((s) => s.name) : []
-  ).catch((err: Error): TakeoverResult => ({ status: "error", note: err.message }));
+  // Both need recon's Certificate Transparency subdomains as their candidate
+  // list, and are independent of each other.
+  //
+  // If the CT lookup failed, the list is unknown rather than empty: both
+  // report an error instead of "checked", or a crt.sh outage (common) would
+  // mark every open subdomain finding fixed and close its tickets.
+  const ctSubdomains = recon.status === "checked" ? recon.subdomains : [];
+  const ctUnavailable = recon.status !== "checked" || recon.ctLookupFailed === true;
+  const ctNote = "Certificate Transparency lookup (crt.sh) failed, so this domain's subdomains couldn't be listed this scan.";
+  const [takeover, subdomainCerts] = ctUnavailable
+    ? [{ status: "error", note: ctNote } as TakeoverResult, { status: "error", note: ctNote } as SubdomainCertsResult]
+    : await Promise.all([
+        checkTakeover(targetUrl, ctSubdomains.map((s) => s.name)).catch(
+          (err: Error): TakeoverResult => ({ status: "error", note: err.message })
+        ),
+        checkSubdomainCerts(
+          targetUrl,
+          ctSubdomains,
+          tls.status === "checked" && "certFingerprint" in tls ? tls.certFingerprint : null
+        ).catch((err: Error): SubdomainCertsResult => ({ status: "error", note: err.message })),
+      ]);
 
   const endOfLife = await endOfLifePending;
 
@@ -293,6 +311,7 @@ export async function runAllChecks(
     takeover,
     domainRegistration,
     endOfLife,
+    subdomainCerts,
     zap,
   };
 }
@@ -310,11 +329,27 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (results.tls.weakProtocol) {
       findings.push({ checkId: "tls.weak-protocol", severity: "high", title: `Weak TLS protocol (${results.tls.protocol})`, detail: "Disable TLS 1.0/1.1 on the server — require TLS 1.2+.", remediation: FIX.WEAK_TLS });
     }
-    if ((results.tls.daysUntilExpiry ?? 999) < 21) {
+    // Browsers refuse the certificate outright for these (until 2026-10 the
+    // scan couldn't read such a certificate at all — see tls.ts).
+    const trust = results.tls.trustProblem ?? null;
+    const days = results.tls.daysUntilExpiry;
+    if (trust === "expired" || (days !== null && days < 0)) {
+      findings.push({ checkId: "tls.cert-expired", severity: "critical", title: "TLS certificate has expired", detail: `The certificate expired ${results.tls.certificateExpiresAt}. Every visitor gets a full-page browser warning instead of your site, and most will leave.`, remediation: FIX.CERT_EXPIRED });
+    } else if ((days ?? 999) < 21) {
       findings.push({ checkId: "tls.cert-expiring", severity: "high", title: "TLS certificate expiring soon", detail: `Certificate expires ${results.tls.certificateExpiresAt} — renew before it lapses.`, remediation: FIX.CERT_EXPIRING });
     }
     if (results.tls.selfSigned) {
       findings.push({ checkId: "tls.self-signed", severity: "high", title: "Self-signed TLS certificate", detail: "Browsers will show a scary warning. Obtain a certificate from a trusted CA (e.g. Let's Encrypt).", remediation: FIX.SELF_SIGNED });
+    }
+    if (trust === "hostname-mismatch") {
+      const names = results.tls.subjectAltNames.slice(0, 5).join(", ") || results.tls.subject;
+      findings.push({ checkId: "tls.cert-name-mismatch", severity: "critical", title: "TLS certificate doesn't cover this hostname", detail: `The certificate is issued for ${names}, not for the address scanned. Browsers block the page with a full-page warning.`, remediation: FIX.CERT_NAME_MISMATCH });
+    }
+    if (trust === "incomplete-chain") {
+      findings.push({ checkId: "tls.cert-chain-incomplete", severity: "medium", title: "TLS certificate chain is incomplete", detail: "The server sends its certificate without the intermediate certificate that links it to a trusted root. Chrome and Edge fetch the missing piece themselves, so the site looks fine there — but Firefox, curl, many mobile apps and API clients reject the connection.", remediation: FIX.CERT_CHAIN_INCOMPLETE });
+    }
+    if (trust === "untrusted") {
+      findings.push({ checkId: "tls.cert-untrusted", severity: "high", title: "TLS certificate isn't trusted", detail: `Browsers don't trust this certificate (${results.tls.trustErrorCode ?? "verification failed"}), usually because it was issued by a private or unknown certificate authority, or has been revoked. Visitors get a full-page warning.`, remediation: FIX.CERT_UNTRUSTED });
     }
     if (!results.tls.hsts.present) {
       findings.push({ checkId: "tls.hsts-missing", severity: "medium", title: "HSTS header missing", detail: "Without Strict-Transport-Security, browsers may connect over HTTP first. Add: max-age=31536000; includeSubDomains", remediation: FIX.HSTS_MISSING });
@@ -882,6 +917,35 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   }
 
   // --- Dangling DNS / subdomain takeover ------------------------------------
+  // --- Certificates on other hostnames --------------------------------------
+  // One finding per certificate (a wildcard on ten hosts is one renewal),
+  // keyed by its name, which survives renewal. Lower than the main site's
+  // tls.cert-*: CT logs include hosts nobody uses any more.
+  if (results.subdomainCerts?.status === "checked") {
+    for (const issue of results.subdomainCerts.issues) {
+      const shown = issue.hosts.slice(0, 10).join(", ") + (issue.hosts.length > 10 ? `, and ${issue.hosts.length - 10} more` : "");
+      const plural = issue.hosts.length === 1 ? "" : "s";
+      if (issue.state === "expired") {
+        const ago = -issue.daysUntilExpiry;
+        findings.push({
+          checkId: `subdomain-certs.expired:${issue.certName}`,
+          severity: "medium",
+          title: `Expired certificate on subdomain${plural}: ${issue.hosts[0]}${issue.hosts.length > 1 ? ` (+${issue.hosts.length - 1})` : ""}`,
+          detail: `The certificate for ${issue.certName} (issued by ${issue.issuer}) expired ${issue.validTo}, ${ago} day${ago === 1 ? "" : "s"} ago. It is still served on ${shown}, so anyone visiting gets a full-page browser warning. If a hostname is no longer used, delete its DNS record rather than renewing — a forgotten host is an easy way in.`,
+          remediation: FIX.SUBDOMAIN_CERT_EXPIRED,
+        });
+      } else {
+        findings.push({
+          checkId: `subdomain-certs.expiring:${issue.certName}`,
+          severity: issue.daysUntilExpiry <= 7 ? "medium" : "low",
+          title: `Certificate expiring in ${issue.daysUntilExpiry} day${issue.daysUntilExpiry === 1 ? "" : "s"} on subdomain${plural}: ${issue.hosts[0]}${issue.hosts.length > 1 ? ` (+${issue.hosts.length - 1})` : ""}`,
+          detail: `The certificate for ${issue.certName} (issued by ${issue.issuer}) expires ${issue.validTo}. It is served on ${shown}. If it isn't renewed in time, those addresses show a browser warning instead of your content.`,
+          remediation: FIX.SUBDOMAIN_CERT_EXPIRING,
+        });
+      }
+    }
+  }
+
   // --- End-of-life software -------------------------------------------------
   // Keyed by product, not version: an upgrade to a supported release should
   // read as "fixed", not as a new finding. Approaching and unsupported are

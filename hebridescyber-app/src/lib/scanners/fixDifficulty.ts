@@ -18,6 +18,12 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "tls.hsts-short": "trivial",
   "tls.cert-expiring": "trivial",
   "tls.self-signed": "moderate", // needs a real CA-issued certificate, not just a config flag
+  "tls.cert-expired": "easy",
+  "tls.cert-name-mismatch": "easy",
+  "tls.cert-chain-incomplete": "trivial", // point the server at the full-chain file
+  "tls.cert-untrusted": "moderate",
+  "subdomain-certs.expired": "easy", // renew, or delete an unused DNS record
+  "subdomain-certs.expiring": "trivial",
   "tls.weak-protocol": "moderate",
   "tls.no-https": "moderate",
 
