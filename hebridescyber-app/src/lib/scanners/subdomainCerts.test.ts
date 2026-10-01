@@ -20,7 +20,9 @@ const cert = (host: string, overrides: Partial<CertificateRead> = {}): Certifica
   ...overrides,
 });
 
-beforeEach(() => readMock.mockReset());
+beforeEach(() => {
+  readMock.mockReset();
+});
 
 describe("pickHosts", () => {
   it("keeps hosts on the site's registered domain, minus the site itself and wildcards", () => {
