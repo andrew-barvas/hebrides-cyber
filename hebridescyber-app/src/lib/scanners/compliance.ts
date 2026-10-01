@@ -23,6 +23,8 @@
 // "webapp.vulnerable-js-lib" / "dependency-manifest.npm". A checkId with no
 // ":" is its own base.
 
+import { SAST_RULE_CATEGORIES, type SastCategory } from "./sastCatalog";
+
 export type ComplianceFramework =
   | "cyber-essentials"
   | "owasp-top-10"
@@ -72,7 +74,28 @@ const NIS2_ART21: ComplianceRef = { framework: "nis2", control: "Article 21 – 
 
 const DORA_ART9: ComplianceRef = { framework: "dora", control: "Article 9 – ICT Risk Protection and Prevention" };
 
+// Static code analysis (src/worker/tools/sast.ts): one entry per rule
+// ("sast.<rule-id>"), derived from the rule's weakness category so a new rule
+// can't silently go uncategorised. Mapped per CWE: injection CWEs (89, 78,
+// 94/95, 98) are A03; CWE-502 is A08; CWE-601 is A01 (as business-logic's
+// open redirect); CWE-295 is A07 by the official CWE mapping and A02 by
+// A02's own text ("is the received server certificate ... validated?");
+// CWE-347 is A02; debug code (CWE-489) is A05.
+const SAST_INJECTION_REFS: ComplianceRef[] = [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9];
+const SAST_CATEGORY_REFS: Record<SastCategory, ComplianceRef[]> = {
+  "sql-injection": SAST_INJECTION_REFS,
+  "code-injection": SAST_INJECTION_REFS,
+  "command-injection": SAST_INJECTION_REFS,
+  "file-inclusion": SAST_INJECTION_REFS,
+  deserialization: [OWASP_A08, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "open-redirect": [CE_SECURE_CONFIG, OWASP_A01, CIS_16, PCI_REQ6, ISO_A12],
+  "tls-verification": [OWASP_A02, OWASP_A07, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ4, ISO_A13, NIS2_ART21],
+  "debug-mode": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, CIS_16, PCI_REQ6, ISO_A12],
+  "jwt-verification": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+};
+
 const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
+  ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_REFS[category]])),
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],

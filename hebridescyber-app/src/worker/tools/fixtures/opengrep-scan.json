@@ -1,0 +1,778 @@
+{
+  "version": "1.30.0",
+  "results": [
+    {
+      "check_id": "py-open-redirect",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/app/views.py",
+      "start": {
+        "line": 9,
+        "col": 21,
+        "offset": 132
+      },
+      "end": {
+        "line": 9,
+        "col": 45,
+        "offset": 156
+      },
+      "extra": {
+        "metavars": {
+          "$1": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 8,
+              "offset": 7
+            },
+            "abstract_content": "request"
+          },
+          "$REQ": {
+            "start": {
+              "line": 9,
+              "col": 21,
+              "offset": 132
+            },
+            "end": {
+              "line": 9,
+              "col": 28,
+              "offset": 139
+            },
+            "abstract_content": "request"
+          },
+          "$URL": {
+            "start": {
+              "line": 9,
+              "col": 21,
+              "offset": 132
+            },
+            "end": {
+              "line": 9,
+              "col": 45,
+              "offset": 156
+            },
+            "abstract_content": "request.args.get(\"next\")"
+          }
+        },
+        "message": "A redirect target is taken straight from the incoming HTTP request. An attacker can send people a link on your domain that bounces them to a phishing site. Check the target first (Django: url_has_allowed_host_and_scheme) or only redirect to named routes.",
+        "metadata": {
+          "cwe": [
+            "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+          ],
+          "confidence": "MEDIUM",
+          "severity": "medium",
+          "category": "security"
+        },
+        "severity": "WARNING",
+        "fingerprint": "89c109b5a0408c0450288bbc527bd3b68309bd685cd31f592caeffd4e897730c2fe9e9cfea2c8cd52d4761ae4696dd807dc48a0ef8c654e49fddbc747433127a_0",
+        "lines": "    return redirect(request.args.get(\"next\"))",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/app/views.py",
+                "start": {
+                  "line": 9,
+                  "col": 21,
+                  "offset": 132
+                },
+                "end": {
+                  "line": 9,
+                  "col": 33,
+                  "offset": 144
+                }
+              },
+              "request.args"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/app/views.py",
+                "start": {
+                  "line": 9,
+                  "col": 21,
+                  "offset": 132
+                },
+                "end": {
+                  "line": 9,
+                  "col": 45,
+                  "offset": 156
+                }
+              },
+              "request.args.get(\"next\")"
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "py-tls-verification-disabled",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/app/views.py",
+      "start": {
+        "line": 13,
+        "col": 12,
+        "offset": 192
+      },
+      "end": {
+        "line": 13,
+        "col": 69,
+        "offset": 249
+      },
+      "extra": {
+        "metavars": {
+          "$1": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 4,
+              "offset": 3
+            },
+            "abstract_content": "get"
+          },
+          "$SESSION": {
+            "start": {
+              "line": 13,
+              "col": 12,
+              "offset": 192
+            },
+            "end": {
+              "line": 13,
+              "col": 20,
+              "offset": 200
+            },
+            "abstract_content": "requests"
+          },
+          "$FN": {
+            "start": {
+              "line": 13,
+              "col": 21,
+              "offset": 201
+            },
+            "end": {
+              "line": 13,
+              "col": 24,
+              "offset": 204
+            },
+            "abstract_content": "get"
+          }
+        },
+        "message": "An HTTPS request is made with certificate verification switched off (verify=False / ssl=False / cert_reqs=CERT_NONE). The connection is still encrypted, but to whoever answers — anyone on the network path can impersonate the server and read or change the traffic. Remove the option; for a private CA, pass verify=\"/path/to/ca.pem\".",
+        "metadata": {
+          "cwe": [
+            "CWE-295: Improper Certificate Validation"
+          ],
+          "confidence": "HIGH",
+          "severity": "medium",
+          "category": "security"
+        },
+        "severity": "WARNING",
+        "fingerprint": "76638e90439f4c823d17fbf6c2a649a95919100f2945b5754aafa501e45c84ef4c80005e2406ad1b885a99581cc53e56964966c52a505f9c1ab179773778b20d_0",
+        "lines": "    return requests.get(\"https://partner.example/api\", verify=False).json()",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "php-unserialize-untrusted",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+      "start": {
+        "line": 2,
+        "col": 21,
+        "offset": 26
+      },
+      "end": {
+        "line": 2,
+        "col": 52,
+        "offset": 57
+      },
+      "extra": {
+        "metavars": {
+          "$DATA": {
+            "start": {
+              "line": 2,
+              "col": 21,
+              "offset": 26
+            },
+            "end": {
+              "line": 2,
+              "col": 52,
+              "offset": 57
+            },
+            "abstract_content": "base64_decode($_COOKIE['cart'])"
+          }
+        },
+        "message": "Data from the incoming HTTP request is passed to unserialize(). A crafted payload can instantiate any class your application loads and trigger its magic methods (__wakeup, __destruct), which commonly leads to code execution or file deletion. Use json_decode for request data, or pass ['allowed_classes' => false].",
+        "metadata": {
+          "cwe": [
+            "CWE-502: Deserialization of Untrusted Data"
+          ],
+          "confidence": "HIGH",
+          "severity": "high",
+          "category": "security"
+        },
+        "severity": "ERROR",
+        "fingerprint": "f0e23e2db3b4f193d4b450bf2daea3b1d0dca76072ff1d54da360d7f93fd00ca7a4a9da61c1341f3824f0b3f37aa240beb13b83493dde680695b7ccfdeeebb42_0",
+        "lines": "$cart = unserialize(base64_decode($_COOKIE['cart']));",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+                "start": {
+                  "line": 2,
+                  "col": 35,
+                  "offset": 40
+                },
+                "end": {
+                  "line": 2,
+                  "col": 43,
+                  "offset": 48
+                }
+              },
+              "$_COOKIE"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+                "start": {
+                  "line": 2,
+                  "col": 21,
+                  "offset": 26
+                },
+                "end": {
+                  "line": 2,
+                  "col": 52,
+                  "offset": 57
+                }
+              },
+              "base64_decode($_COOKIE['cart'])"
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "php-file-inclusion",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+      "start": {
+        "line": 3,
+        "col": 9,
+        "offset": 68
+      },
+      "end": {
+        "line": 3,
+        "col": 42,
+        "offset": 101
+      },
+      "extra": {
+        "metavars": {
+          "$PATH": {
+            "start": {
+              "line": 3,
+              "col": 9,
+              "offset": 68
+            },
+            "end": {
+              "line": 3,
+              "col": 42,
+              "offset": 101
+            },
+            "abstract_content": "\"pages/\".$_GET['page'].\".php\""
+          }
+        },
+        "message": "A file path taken from the incoming HTTP request is passed to include / require. An attacker can make the page load and run a different file — local files such as logs or uploads, or, where allow_url_include is on, a remote script. Map the request value to a fixed list of allowed templates instead.",
+        "metadata": {
+          "cwe": [
+            "CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion')"
+          ],
+          "confidence": "HIGH",
+          "severity": "high",
+          "category": "security"
+        },
+        "severity": "ERROR",
+        "fingerprint": "92c925234ca1cdc721219a1160368ba195dc32153b5df8efdfe9437866e3ae1ae404e64c8914d8399299ad8ad0f8bf2def60152bcd5475d72e8f7bb1be120b2d_0",
+        "lines": "include \"pages/\" . $_GET['page'] . \".php\";",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+                "start": {
+                  "line": 3,
+                  "col": 20,
+                  "offset": 79
+                },
+                "end": {
+                  "line": 3,
+                  "col": 25,
+                  "offset": 84
+                }
+              },
+              "$_GET"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+                "start": {
+                  "line": 3,
+                  "col": 9,
+                  "offset": 68
+                },
+                "end": {
+                  "line": 3,
+                  "col": 42,
+                  "offset": 101
+                }
+              },
+              "\"pages/\" . $_GET['page'] . \".php\""
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "js-sql-injection",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+      "start": {
+        "line": 8,
+        "col": 31,
+        "offset": 220
+      },
+      "end": {
+        "line": 8,
+        "col": 80,
+        "offset": 269
+      },
+      "extra": {
+        "metavars": {
+          "$2": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 3,
+              "offset": 2
+            },
+            "abstract_content": "db"
+          },
+          "$DB": {
+            "start": {
+              "line": 8,
+              "col": 22,
+              "offset": 211
+            },
+            "end": {
+              "line": 8,
+              "col": 24,
+              "offset": 213
+            },
+            "abstract_content": "db",
+            "propagated_value": {
+              "svalue_start": {
+                "line": 3,
+                "col": 12,
+                "offset": 90
+              },
+              "svalue_end": {
+                "line": 3,
+                "col": 28,
+                "offset": 106
+              },
+              "svalue_abstract_content": "require(\"../db\")"
+            }
+          },
+          "$SQL": {
+            "start": {
+              "line": 8,
+              "col": 31,
+              "offset": 220
+            },
+            "end": {
+              "line": 8,
+              "col": 80,
+              "offset": 269
+            },
+            "abstract_content": "\"SELECT * FROM users WHERE id = \"+req.params.id"
+          },
+          "$REQ": {
+            "start": {
+              "line": 8,
+              "col": 67,
+              "offset": 256
+            },
+            "end": {
+              "line": 8,
+              "col": 70,
+              "offset": 259
+            },
+            "abstract_content": "req"
+          }
+        },
+        "message": "Data from the incoming HTTP request is built into a SQL query string and passed to the database driver. An attacker can change the meaning of the query (read, modify or delete data). Pass request values as bound parameters (placeholders such as ? or $1) instead of concatenating them into the SQL text.",
+        "metadata": {
+          "cwe": [
+            "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+          ],
+          "confidence": "HIGH",
+          "severity": "high",
+          "category": "security"
+        },
+        "severity": "ERROR",
+        "fingerprint": "8dd3cacbb0867fa40047e45a0433dcecc7addf2b1848b08470e4e998a162765d1cdb370ebf7040f959704f423feb90ac521f06ca31da0ae9a710ebe5c413977a_1",
+        "lines": "  const rows = await db.query(\"SELECT * FROM users WHERE id = \" + req.params.id);",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 8,
+                  "col": 67,
+                  "offset": 256
+                },
+                "end": {
+                  "line": 8,
+                  "col": 77,
+                  "offset": 266
+                }
+              },
+              "req.params"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 8,
+                  "col": 31,
+                  "offset": 220
+                },
+                "end": {
+                  "line": 8,
+                  "col": 80,
+                  "offset": 269
+                }
+              },
+              "\"SELECT * FROM users WHERE id = \" + req.params.id"
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "js-sql-injection",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+      "start": {
+        "line": 8,
+        "col": 31,
+        "offset": 220
+      },
+      "end": {
+        "line": 8,
+        "col": 80,
+        "offset": 269
+      },
+      "extra": {
+        "metavars": {
+          "$2": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 3,
+              "offset": 2
+            },
+            "abstract_content": "db"
+          },
+          "$1": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 4,
+              "offset": 3
+            },
+            "abstract_content": "req"
+          },
+          "$DB": {
+            "start": {
+              "line": 8,
+              "col": 22,
+              "offset": 211
+            },
+            "end": {
+              "line": 8,
+              "col": 24,
+              "offset": 213
+            },
+            "abstract_content": "db",
+            "propagated_value": {
+              "svalue_start": {
+                "line": 3,
+                "col": 12,
+                "offset": 90
+              },
+              "svalue_end": {
+                "line": 3,
+                "col": 28,
+                "offset": 106
+              },
+              "svalue_abstract_content": "require(\"../db\")"
+            }
+          },
+          "$SQL": {
+            "start": {
+              "line": 8,
+              "col": 31,
+              "offset": 220
+            },
+            "end": {
+              "line": 8,
+              "col": 80,
+              "offset": 269
+            },
+            "abstract_content": "\"SELECT * FROM users WHERE id = \"+req.params.id"
+          },
+          "$REQ": {
+            "start": {
+              "line": 8,
+              "col": 67,
+              "offset": 256
+            },
+            "end": {
+              "line": 8,
+              "col": 70,
+              "offset": 259
+            },
+            "abstract_content": "req"
+          }
+        },
+        "message": "Data from the incoming HTTP request is built into a SQL query string and passed to the database driver. An attacker can change the meaning of the query (read, modify or delete data). Pass request values as bound parameters (placeholders such as ? or con) instead of concatenating them into the SQL text.",
+        "metadata": {
+          "cwe": [
+            "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+          ],
+          "confidence": "HIGH",
+          "severity": "high",
+          "category": "security"
+        },
+        "severity": "ERROR",
+        "fingerprint": "8dd3cacbb0867fa40047e45a0433dcecc7addf2b1848b08470e4e998a162765d1cdb370ebf7040f959704f423feb90ac521f06ca31da0ae9a710ebe5c413977a_0",
+        "lines": "  const rows = await db.query(\"SELECT * FROM users WHERE id = \" + req.params.id);",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 8,
+                  "col": 67,
+                  "offset": 256
+                },
+                "end": {
+                  "line": 8,
+                  "col": 77,
+                  "offset": 266
+                }
+              },
+              "req.params"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 8,
+                  "col": 31,
+                  "offset": 220
+                },
+                "end": {
+                  "line": 8,
+                  "col": 80,
+                  "offset": 269
+                }
+              },
+              "\"SELECT * FROM users WHERE id = \" + req.params.id"
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    },
+    {
+      "check_id": "js-command-injection",
+      "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+      "start": {
+        "line": 13,
+        "col": 8,
+        "offset": 345
+      },
+      "end": {
+        "line": 13,
+        "col": 36,
+        "offset": 373
+      },
+      "extra": {
+        "metavars": {
+          "$1": {
+            "start": {
+              "line": 1,
+              "col": 1,
+              "offset": 0
+            },
+            "end": {
+              "line": 1,
+              "col": 4,
+              "offset": 3
+            },
+            "abstract_content": "req"
+          },
+          "$CMD": {
+            "start": {
+              "line": 13,
+              "col": 8,
+              "offset": 345
+            },
+            "end": {
+              "line": 13,
+              "col": 36,
+              "offset": 373
+            },
+            "abstract_content": "\"ping -c 1 \"+req.body.host"
+          },
+          "$REQ": {
+            "start": {
+              "line": 13,
+              "col": 23,
+              "offset": 360
+            },
+            "end": {
+              "line": 13,
+              "col": 26,
+              "offset": 363
+            },
+            "abstract_content": "req"
+          }
+        },
+        "message": "Data from the incoming HTTP request is passed to child_process exec/execSync, which runs the string through a shell. Shell metacharacters in the request (; | && $()) let an attacker run any command on the server. Use execFile/spawn with an argument array and no shell, and validate the input against an allow-list.",
+        "metadata": {
+          "cwe": [
+            "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+          ],
+          "confidence": "HIGH",
+          "severity": "critical",
+          "category": "security"
+        },
+        "severity": "ERROR",
+        "fingerprint": "26edd32606c9b48b48424e99260edc31e50798bdff4f8ab9a1845d2715c1d595596204fe8be60d23cb86b0ed35099e4c414872ac684d40bded4ce5651518d102_0",
+        "lines": "  exec(\"ping -c 1 \" + req.body.host, (err, stdout) => res.send(stdout));",
+        "is_ignored": false,
+        "validation_state": "NO_VALIDATOR",
+        "dataflow_trace": {
+          "taint_source": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 13,
+                  "col": 23,
+                  "offset": 360
+                },
+                "end": {
+                  "line": 13,
+                  "col": 31,
+                  "offset": 368
+                }
+              },
+              "req.body"
+            ]
+          ],
+          "intermediate_vars": [],
+          "taint_sink": [
+            "CliLoc",
+            [
+              {
+                "path": "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js",
+                "start": {
+                  "line": 13,
+                  "col": 8,
+                  "offset": 345
+                },
+                "end": {
+                  "line": 13,
+                  "col": 36,
+                  "offset": 373
+                }
+              },
+              "\"ping -c 1 \" + req.body.host"
+            ]
+          ]
+        },
+        "engine_kind": "OSS"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "/tmp/hebridescyber-sast-Xq81zP/repo/app/views.py",
+      "/tmp/hebridescyber-sast-Xq81zP/repo/public/cart.php",
+      "/tmp/hebridescyber-sast-Xq81zP/repo/src/routes/users.js"
+    ]
+  },
+  "interfile_languages_used": [],
+  "skipped_rules": []
+}

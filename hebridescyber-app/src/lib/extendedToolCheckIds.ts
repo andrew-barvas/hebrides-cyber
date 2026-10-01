@@ -28,6 +28,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "docker-base-image",
   "trivy-image",
   "trivy-config",
+  "sast",
   "auth-check",
   "whatwaf",
   "wpscan",
