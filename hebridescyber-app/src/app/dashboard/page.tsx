@@ -16,6 +16,8 @@ import PlanUpsell from "@/components/PlanUpsell";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
+import EmergingThreatsPanel from "@/components/EmergingThreatsPanel";
+import { useSessionToken } from "@/lib/useSessionToken";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
@@ -137,6 +139,7 @@ function CheckoutBanner() {
 export default function DashboardPage() {
   const { plan, planStatus, slackWebhookUrl, teamsWebhookUrl } = useAppSession();
   const billing = useBillingPortal();
+  const sessionToken = useSessionToken();
 
   const [loaded, setLoaded] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -228,6 +231,8 @@ export default function DashboardPage() {
       />
 
       <FleetOverview />
+
+      <EmergingThreatsPanel token={sessionToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
 
       {!loaded ? (
         <OverviewSkeleton />

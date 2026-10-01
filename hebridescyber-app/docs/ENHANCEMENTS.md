@@ -1614,3 +1614,25 @@ and show which senders pass or fail for the domain. This is the part of
 NCSC Mail Check that `dns.ts` doesn't replace.
 **Impact/effort**: medium / high (needs inbound mail infrastructure).
 **Category**: code + infrastructure. **Source**: competitive refresh 2026-09-27.
+
+## E-68 — Emerging-threat alerts (newly exploited CVEs vs. each site's latest scan)
+
+**Status: done (2026-10-01).** Every 6 hours (`emerging-threats.yml` →
+`src/scripts/check-emerging-threats.ts`), CVEs CISA added to its KEV catalog
+in the last 3 days are matched against the technology and version each paid
+customer's latest scan per site saw (last 30 days), using NVD CPE
+configurations and OSV.dev npm ranges. `affected` needs a detected version
+inside a vulnerable range; product-seen-but-version-unknown, partial
+versions, distro packages and platform-conditional ranges are
+`possibly_affected` with softer wording; name-only matches never alert.
+Ledger `emerging_threat_alerts` (migration 045) stops repeats; email for
+every paid plan, Slack/Teams for Pro/Agency; dashboard panel and
+`GET /api/emerging-threats`.
+**Why**: Intruder sells this as "emerging threat scans". A newly exploited
+CVE otherwise waits for the next scheduled scan (up to a week on Basic) and
+even then only surfaces if a check covers it.
+**Follow-ups**: WordPress plugins (needs a per-plugin CPE map or WPScan);
+re-alerting when a `possibly_affected` match later becomes `affected`.
+**Category**: code. **Source**: competitive (Intruder), 2026-10-01.
+(E-67 is left for the untested-modules item `docs/SPRINT-PLAN.md` already
+refers to.)

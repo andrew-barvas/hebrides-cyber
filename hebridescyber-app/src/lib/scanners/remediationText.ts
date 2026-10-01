@@ -2336,6 +2336,56 @@ Then make it a habit: when you delete a cloud app, bucket or site, delete its
 DNS record in the same change. The next scan will confirm the fix.`;
 }
 
+// ---- Emerging-threat alerts (src/lib/emergingThreatAlerts.ts) ----------------
+
+/**
+ * What to do about a newly exploited CVE that matched a site's latest scan.
+ * Plain-text steps rather than one Markdown block: the same list is rendered
+ * as an email <ol> and as Slack/Teams lines. `reason` is the evidence tier's
+ * reason (emergingThreats.ts's MatchReason) — the steps differ because "you
+ * run an affected version" and "we can't see your version" need different
+ * first moves.
+ */
+export function emergingThreatSteps(
+  product: string,
+  reason: "version_in_range" | "version_unknown" | "partial_version" | "distro_packaged" | "platform_specific",
+  packagedBy: string | null = null
+): string[] {
+  const urgent = "Attackers are already exploiting this, so treat it as today's job, not this month's.";
+  switch (reason) {
+    case "version_in_range":
+      return [
+        `Upgrade ${product} to a release that fixes this vulnerability. The vendor advisory linked below names the fixed versions.`,
+        "If you can't upgrade today, apply the vendor's workaround or take the affected feature offline until you can.",
+        "Check your logs for signs of exploitation since the date CISA listed it.",
+        "Run a new scan afterwards to confirm the version we see has changed.",
+      ];
+    case "distro_packaged": {
+      const distro = packagedBy ?? "your Linux distribution";
+      return [
+        `Check ${distro}'s security advisory for this CVE. Distributions fix vulnerabilities by patching the version they ship, so the fixed package can keep the same version number.`,
+        `Install ${distro}'s pending security updates for ${product} and restart the service.`,
+        "If no fixed package exists yet, apply the vendor's workaround or limit access to the affected service.",
+        urgent,
+      ];
+    }
+    case "platform_specific":
+      return [
+        `Check whether your setup matches the conditions in the advisory linked below, such as the operating system ${product} runs on or a particular module.`,
+        `If it does, upgrade ${product} to a fixed release straight away.`,
+        "If you're not sure, upgrade anyway: the fix is normally a routine update.",
+        urgent,
+      ];
+    case "partial_version":
+    case "version_unknown":
+      return [
+        `Find out exactly which ${product} version the site runs, from your hosting control panel, the admin dashboard or the server's package list.`,
+        "Compare it with the affected versions in the advisory linked below.",
+        `If it's affected, upgrade ${product} to a fixed release. ${urgent}`,
+      ];
+  }
+}
+
 // ---- Domain registration (domainRegistration.ts) ----------------------------
 
 export const DOMAIN_EXPIRING = `Renew the domain now, and turn on auto-renew with your registrar.
