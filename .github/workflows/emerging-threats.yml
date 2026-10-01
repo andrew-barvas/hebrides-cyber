@@ -1,0 +1,58 @@
+name: Emerging Threat Alerts
+
+# Checks CVEs newly added to CISA's Known Exploited Vulnerabilities catalog
+# (last 3 days) against each paying customer's latest scan per site, records
+# matches in emerging_threat_alerts (sql/migrations/045) and alerts the owner
+# by email (every paid plan) and Slack/Teams (Pro/Agency). Runs
+# src/scripts/check-emerging-threats.ts directly against Supabase, same
+# pattern as scheduled-reports.yml / monthly-digest.yml.
+#
+# A failed KEV/NVD/OSV lookup or send fails the run (exit 1) — it is never
+# treated as "not affected". Before migration 045 the run is a quiet no-op.
+# Run manually with dry_run to see matches without writing or sending.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   RESEND_API_KEY                           - email delivery
+#   NVD_API_KEY                              - optional; raises NVD's rate limit
+#   NEXT_PUBLIC_SITE_URL                     - optional, for report links
+
+on:
+  schedule:
+    # Every 6 hours at :40, clear of the hourly scheduled-reports run.
+    - cron: "40 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print matches only — write and send nothing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: emerging-threats
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Check emerging threats
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: npm run threats:check -- $DRY_RUN

@@ -19,6 +19,7 @@ npm run queue:enqueue-scheduled-scans  # Manually run the scheduled-scan enqueue
 npm run queue:run-worker               # Manually claim + run one batch of queued scan_jobs locally
 npm run newsletter:daily               # Run the daily blog generation script directly (no HTTP hop)
 npm run newsletter:weekly              # Run the weekly newsletter generation script directly
+npm run threats:check -- --dry-run     # Emerging-threat alerts: print KEV matches without writing/sending
 ```
 
 ## Environment
@@ -152,6 +153,12 @@ Four distinct, non-overlapping "help me fix this" features — don't conflate th
 
 Note the same passive-vs-active gap still affects `findingsDiff.ts`'s `fixed_findings`, and therefore ticket auto-close: an on-demand scan after a scheduled full scan reports the active-tool findings as fixed.
 
+### Emerging-threat alerts
+
+`.github/workflows/emerging-threats.yml` (every 6 hours) runs `npm run threats:check` (`src/scripts/check-emerging-threats.ts`, `--dry-run` writes and sends nothing). It takes CVEs CISA added to KEV in the last 3 days (`threatIntel.ts`'s cached `loadKev`), reads their affected versions from NVD's CVE API configurations and, for npm libraries, OSV.dev's GHSA ranges (OSV wins for npm-mapped libraries whenever it has npm data — NVD misfiles some, e.g. Angular CVEs under AngularJS), and compares them with each paid owner's (and admin's) latest completed scan per host from the last 30 days. Matching is pure (`src/lib/emergingThreats.ts`); I/O, the ledger and sending are in `emergingThreatAlerts.ts`. What a scan saw comes from `scanners/techInventory.ts`'s `collectTechInventory`, shared with `endOfLife.ts`; technology → CPE is `softwareCveDb.ts`'s `NVD_CPE_BY_NAME` (add entries only after checking a real NVD record).
+
+Evidence tiers: `affected` = detected version inside a range; `possibly_affected` = product seen but version unknown or partial, distro-packaged (`packagedBy`), or in range only under an NVD AND-configuration we can't see (e.g. PHP-on-Windows). Never a name-only match. A failed KEV/NVD/OSV lookup is an error (KEV → exit 1; NVD/OSV → that CVE skipped, exit 1), never "not affected"; a CVE NVD hasn't analysed yet is "pending". Ledger: `emerging_threat_alerts` (`045_emerging_threat_alerts.sql`, unique owner+host+CVE, owner-read, service-role write). Only rows matched in the current run are sent, `notified_at` is stamped after at least one channel delivered, and a stamped row is never re-sent. Email for every paid plan; Slack/Teams (`sendSlackThreatAlert`/`sendTeamsThreatAlert`, which throw on failure) for Pro/Agency, admins exempt. Read by `GET /api/emerging-threats` and `EmergingThreatsPanel` on `/dashboard`; both no-op before 045.
+
 ### GitHub access for customer repos
 
 `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` is the one function every customer-repo-touching module calls (`generate-fix-pr.ts`, `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `connect-repo.ts`) — never read `process.env.GITHUB_PAT` directly in a new one. It tries a GitHub App installation token first (per-repo, expires in an hour, resolved live via `GET /repos/{owner}/{repo}/installation` — no webhook or install-callback flow needed), falling back to the shared `GITHUB_PAT` when the App isn't configured or isn't installed on that repo. `GITHUB_PAT` is also used, unrelated to any of this, by `src/lib/onDemandScanTrigger.ts` to dispatch this repo's own `on-demand-scan.yml` — don't conflate the two concerns when reasoning about that token's scope.
@@ -227,6 +234,7 @@ Key tables (all in `sql/migrations/`):
 - `subscriptions` — plan, status, slack_webhook_url, ms_teams_webhook_url (`src/lib/msTeams.ts` — independent of Slack, either/both/neither), brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
 - `ticket_integrations` — one row per owner+provider: trackers (`jira`/`linear`/`servicenow`/`github`) **and** on-call rows (`pagerduty`/`opsgenie`, 028) share this table, so a ticketing read must filter on `TICKET_PROVIDERS` — use `findTicketIntegration()` (ticketLinks.ts) rather than querying it directly; no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`). `auto_close_enabled` (`016_ticket_links.sql`) opts into auto-close, default false. Because the table is unique on `(owner, provider)`, an owner can have **two** rows — every read must `.order("created_at", { ascending: false }).limit(1)` before `.maybeSingle()`, which would otherwise throw on exactly those accounts
 - `ticket_links` — finding→issue ledger for dedupe and auto-close (`016_ticket_links.sql`); owner-readable, service-role-write-only (a forgeable row could suppress ticketing for a real finding)
+- `emerging_threat_alerts` — newly-exploited-CVE matches per (owner, host, CVE) and when each was notified (`045_emerging_threat_alerts.sql`); owner-readable, service-role-write-only — see "Emerging-threat alerts"
 - `finding_lifecycle` + `sla_policies` — per-site first-seen/resolved per checkId, and per-account SLA targets (`043_finding_lifecycle_sla.sql`); owner-readable, service-role-write-only — see "Finding lifecycle and remediation SLAs"
 - `api_keys` — hashed keys; `allowed_cidrs` (042) is the per-key IP allowlist enforced in `apiAuth.ts`
 - `scans` + `scan_results` — scan records and findings/score; RLS-protected by owner
