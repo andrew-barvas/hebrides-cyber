@@ -111,6 +111,7 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 | `src/worker/tools/arjun.ts` | Hidden parameter discovery | `arjun` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/sessionCheck.ts` | Session management analysis | none (HTTP-based) | n/a | ⚠️ path-gated | no |
 | `src/lib/scanners/trivyScan.ts` | Base-image CVEs + IaC misconfig | connected repo + `trivy` binary | `not_configured`/`not_applicable` | 🔒 requires repo connection | yes (parsers) |
+| `src/worker/tools/sast.ts` | Static code analysis (Opengrep engine, own rule pack in `sast-rules/`, JS/TS + Python + PHP) | connected repo + `opengrep` binary + `sast-rules/` | `not_configured`/`not_applicable` | 🔒 requires repo connection (full + osint profiles) | yes (parser on captured output, all status paths; rule tests in `sast-rules.yml`) |
 
 `DANGEROUS_TOOL_PORTS` in `scanExecution.ts` escalates nmap hits on
 2375/2376/6379/9200/27017/2379 to critical unconditionally.
