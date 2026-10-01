@@ -6,15 +6,35 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, checkRateLimitMock, resolveGithubAuthMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, checkRateLimitMock, resolveGithubAuthMock, connectedReposMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   checkRateLimitMock: vi.fn(),
   resolveGithubAuthMock: vi.fn(),
+  // The repos the caller has connected, as repo_connections rows.
+  connectedReposMock: { rows: [] as Array<{ owner: string; github_repo: string }> },
 }));
 
 vi.mock("@/lib/apiAuth", () => ({
   authenticateApiRequest: authenticateApiRequestMock,
-  supabaseAdmin: { from: () => ({}) },
+  supabaseAdmin: {
+    from: (table: string) => {
+      const filters: Record<string, unknown> = {};
+      const builder = {
+        select: () => builder,
+        eq: (col: string, val: unknown) => {
+          filters[col] = val;
+          return builder;
+        },
+        limit: () => builder,
+        maybeSingle: async () => {
+          if (table !== "repo_connections") return { data: null, error: null };
+          const row = connectedReposMock.rows.find((r) => r.owner === filters.owner && r.github_repo === filters.github_repo);
+          return { data: row ?? null, error: null };
+        },
+      };
+      return builder;
+    },
+  },
 }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
 vi.mock("@/lib/githubApp", () => ({ resolveGithubAuth: resolveGithubAuthMock }));
@@ -30,6 +50,7 @@ describe("POST /api/generate-fix-pr", () => {
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     resolveGithubAuthMock.mockReset().mockResolvedValue({ token: null });
+    connectedReposMock.rows = [{ owner: "owner-1", github_repo: "owner/repo" }];
   });
 
   it("returns 405 for non-POST", async () => {
@@ -59,6 +80,29 @@ describe("POST /api/generate-fix-pr", () => {
     expect(res._getStatusCode()).toBe(429);
     expect(res._getHeaders()["retry-after"]).toBe("12");
     expect(resolveGithubAuthMock).not.toHaveBeenCalled();
+  });
+
+  // Regression: the repo in the body was never checked against the caller's
+  // connections, so the shared GITHUB_PAT could be pointed at any repo.
+  it("returns 403 for a repo the caller hasn't connected, before resolving any GitHub token", async () => {
+    const { req, res } = mockReqRes({ scanId: "scan-1", githubRepo: "someone-else/their-repo" });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(403);
+    expect(resolveGithubAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("does not accept another owner's connection to the same repo", async () => {
+    connectedReposMock.rows = [{ owner: "owner-2", github_repo: "owner/repo" }];
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(403);
+  });
+
+  it("proceeds for a connected repo", async () => {
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+    expect(resolveGithubAuthMock).toHaveBeenCalledWith("owner/repo");
+    expect(res._getStatusCode()).toBe(501); // no token configured in this test
   });
 
   it("returns 400 when githubRepo doesn't look like owner/repo", async () => {

@@ -54,6 +54,26 @@ jobs:
         working-directory: hebridescyber-app
         run: npm ci
 
+      # The base suite's playwright.ts launches Chromium, but npm ci doesn't
+      # download browsers, so before this step every scan's page-load check
+      # errored on these runners. Browsers are cached per lockfile; the
+      # system libraries (install-deps) still install on a cache hit. A
+      # failure here only warns: the check then reports an error, as before.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('hebridescyber-app/package-lock.json') }}
+      - name: Install Playwright Chromium
+        working-directory: hebridescyber-app
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium || echo "::warning::Playwright system deps failed to install"
+          else
+            npx playwright install --with-deps chromium || echo "::warning::Playwright Chromium failed to install"
+          fi
+
       - name: Work the scan job queue
         working-directory: hebridescyber-app
         env:

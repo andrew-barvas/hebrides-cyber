@@ -752,10 +752,16 @@ export async function executeScan(
     // on-demand scan), rather than doing them unconditionally and letting
     // per-tool gating alone decide nothing runs.
     if (profile !== "safe") {
+      // An owner can connect several repos (unique on owner + repo), and a
+      // bare .maybeSingle() errors on more than one row — which used to turn
+      // every repo-backed check off for anyone who connected a second repo.
+      // Most recently connected wins until targets map to repos (backlog).
       const { data: repoConnection } = await supabaseAdmin
         .from("repo_connections")
         .select("github_repo")
         .eq("owner", ownerId)
+        .order("connected_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       // target_auth_credentials is keyed by monitored_target_id, not

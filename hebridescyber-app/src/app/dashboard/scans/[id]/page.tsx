@@ -311,10 +311,13 @@ function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; to
       <button
         onClick={generate}
         disabled={!token || state === "loading"}
+        title={`Opens a pull request on ${githubRepo}`}
         className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-40"
       >
         {state === "loading" ? "Creating PR…" : "Generate fix PR"}
       </button>
+      {/* Owners can connect several repos; the most recently connected is used. */}
+      <span className="font-mono text-xs text-cybertext/50">{githubRepo}</span>
       {state === "error" && errorMsg && (
         <span className="text-xs text-red-400">{errorMsg}</span>
       )}
@@ -472,6 +475,10 @@ export default function ScanDetailPage() {
     supabase
       .from("repo_connections")
       .select("github_repo")
+      // Same repo the scan used (scanExecution.ts): newest connection wins.
+      // A bare .maybeSingle() failed outright with two connected repos.
+      .order("connected_at", { ascending: false })
+      .limit(1)
       .maybeSingle()
       .then(
         ({ data }) => setConnectedRepo((data as { github_repo: string } | null)?.github_repo ?? null),

@@ -63,6 +63,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!parsed) return;
   const { scanId, githubRepo, baseBranch } = parsed;
 
+  // The repo must be one the caller connected. Without this, the shared
+  // GITHUB_PAT fallback in resolveGithubAuth would let any signed-in user
+  // open branches and PRs on any repository that token can reach.
+  const { data: connection, error: connectionError } = await supabaseAdmin
+    .from("repo_connections")
+    .select("github_repo")
+    .eq("owner", caller.ownerId)
+    .eq("github_repo", githubRepo)
+    .limit(1)
+    .maybeSingle();
+  if (connectionError) return res.status(500).json({ error: "Could not verify the repository connection" });
+  if (!connection) return res.status(403).json({ error: "That repository isn't connected to your account" });
+
   const { token } = await resolveGithubAuth(githubRepo);
   if (!token) {
     return res.status(501).json({ error: "No GitHub access configured for this deployment (neither a GitHub App installation nor GITHUB_PAT) — see .env.example." });
