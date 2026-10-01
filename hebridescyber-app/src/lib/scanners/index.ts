@@ -23,6 +23,7 @@ import { checkTakeover, type TakeoverResult } from "./takeover";
 import { checkDomainRegistration, type DomainRegistrationResult } from "./domainRegistration";
 import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
+import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -34,7 +35,7 @@ export type {
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
-  EndOfLifeResult, SubdomainCertsResult,
+  EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult,
 };
 
 export type ScanResults = {
@@ -63,6 +64,7 @@ export type ScanResults = {
   domainRegistration?: DomainRegistrationResult;
   endOfLife?: EndOfLifeResult;
   subdomainCerts?: SubdomainCertsResult;
+  scriptInventory?: ScriptInventoryResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -250,6 +252,12 @@ export async function runAllChecks(
     (err: Error): EndOfLifeResult => ({ status: "error", note: err.message })
   );
 
+  // Needs the headless browser's runtime script capture; falls back to the
+  // raw HTML alone ("partial") when Playwright failed.
+  const scriptInventoryPending = checkScriptInventory(targetUrl, playwright).catch(
+    (err: Error): ScriptInventoryResult => ({ status: "error", note: err.message })
+  );
+
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
   const wpVulnDb = await checkWpVulnDb(
@@ -286,6 +294,7 @@ export async function runAllChecks(
       ]);
 
   const endOfLife = await endOfLifePending;
+  const scriptInventory = await scriptInventoryPending;
 
   return {
     target_url: targetUrl,
@@ -312,6 +321,7 @@ export async function runAllChecks(
     domainRegistration,
     endOfLife,
     subdomainCerts,
+    scriptInventory,
     zap,
   };
 }
@@ -1016,6 +1026,31 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         title: `No registrar transfer lock on ${reg.domain}`,
         detail: `The registry record has no "transfer prohibited" status (statuses: ${reg.statuses.join(", ") || "none"}).${by}`,
         remediation: FIX.DOMAIN_TRANSFER_LOCK,
+      });
+    }
+  }
+
+  // --- Third-party script inventory (PCI DSS 6.4.3 / 11.6.1) ----------------
+  // One finding per third-party origin, open for as long as the page loads
+  // from it: it closes when the customer authorises the origin (accepts the
+  // finding with a justification) or the page stops loading it. Medium on a
+  // page with payment signals, where 6.4.3 applies directly. A "partial"
+  // inventory (no headless browser) still evidences every origin it lists.
+  const inventory = results.scriptInventory;
+  if (inventory?.status === "checked" || inventory?.status === "partial") {
+    const { detected, signals } = inventory.paymentPage;
+    const context = detected
+      ? `This page looks like a payment page (${signals.join("; ")}), so PCI DSS v4.0.1 applies to every script on it: requirement 6.4.3 needs each one inventoried, authorised and backed by a written business or technical justification, and 11.6.1 needs unauthorised changes to them detected.`
+      : "This page shows no payment signals (card fields, a checkout form or a payment provider's script), so for PCI DSS this is good practice here rather than a requirement. If your checkout loads the same scripts (through a site-wide tag manager, for example), requirements 6.4.3 (inventory, authorisation and justification for every payment-page script) and 11.6.1 (detecting unauthorised changes) apply there.";
+    for (const entry of inventory.origins) {
+      const shown = entry.origin.replace(/^https:\/\//, "");
+      const more = entry.scriptCount > entry.sampleUrls.length ? ` (and ${entry.scriptCount - entry.sampleUrls.length} more)` : "";
+      findings.push({
+        checkId: `script-inventory.unreviewed:${entry.origin}`,
+        severity: detected ? "medium" : "low",
+        title: `Unreviewed third-party script source: ${shown}`,
+        detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${context} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
+        remediation: FIX.scriptInventoryRemediation(entry.origin, detected),
       });
     }
   }
