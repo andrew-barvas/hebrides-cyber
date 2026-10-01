@@ -34,7 +34,9 @@ const probes = () =>
     .map((args, i) => ({ opts: args[0] as { host?: string; port?: number } | undefined, socket: createConnectionMock.mock.results[i].value }))
     .filter((c) => typeof c.opts?.port === "number" && typeof c.opts?.host === "string");
 
-beforeEach(() => createConnectionMock.mockReset());
+beforeEach(() => {
+  createConnectionMock.mockReset();
+});
 
 describe("checkOpenPorts", () => {
   it("reports open ports and separates the risky ones", async () => {

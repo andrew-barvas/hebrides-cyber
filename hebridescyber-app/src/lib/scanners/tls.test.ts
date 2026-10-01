@@ -210,7 +210,9 @@ describe("classifyTrustError", () => {
 });
 
 describe("readCertificate", () => {
-  beforeEach(() => connectMock.mockReset());
+  beforeEach(() => {
+    connectMock.mockReset();
+  });
 
   it("returns the certificate a host serves, with its expiry and fingerprint", async () => {
     mockConnectSucceeds({
