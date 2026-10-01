@@ -853,6 +853,15 @@ export async function executeScan(
     summary = await generateAiSummary(results, findings);
     score = scoreFromFindings(findings);
 
+    // One result per scan: a re-run (admin retry, stale-job recovery, or a
+    // job that was somehow enqueued twice) replaces the previous result
+    // rather than appending a second row. Two rows for one scan broke every
+    // reader that asks for "the result" (.maybeSingle → "JSON object
+    // requested, multiple (or no) rows returned"). Delete-then-insert works
+    // whether or not migration 044's unique index on scan_id is applied.
+    const { error: clearError } = await supabaseAdmin.from("scan_results").delete().eq("scan_id", scanId);
+    if (clearError) throw new Error(clearError.message);
+
     const { error: resultsError } = await supabaseAdmin.from("scan_results").insert({
       scan_id: scanId,
       results: extended ? { ...results, extended, findings } : { ...results, findings },

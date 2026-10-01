@@ -20,7 +20,7 @@ export default function ScanDiffPage() {
   useEffect(() => {
     if (!params?.id) return;
     (async () => {
-      const { data } = await supabase.from("scan_results").select("results").eq("scan_id", params.id).maybeSingle();
+      const { data } = await supabase.from("scan_results").select("results").eq("scan_id", params.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
       const url = (data?.results as { target_url?: string } | undefined)?.target_url;
       if (!url) {
         setLoading(false);

@@ -311,7 +311,7 @@ describe("POST /api/run-scan", () => {
     it("returns 500 and marks the scan failed when queuing the scan job fails", async () => {
       queues.scans = [
         { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "pending" }, error: null },
-        {}, // status -> running update
+        { data: [{ id: "scan-1" }], error: null }, // pending -> queued claim, won
         {}, // status -> failed update after the job insert fails
       ];
       queues.scan_jobs = [{ error: { message: "queue insert failed" } }];
@@ -326,7 +326,7 @@ describe("POST /api/run-scan", () => {
     it("verifies, marks running, queues the job, and dispatches the workflow on the happy path", async () => {
       queues.scans = [
         { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "pending" }, error: null },
-        {}, // status -> running update
+        { data: [{ id: "scan-1" }], error: null }, // pending -> queued claim, won
       ];
       queues.scan_jobs = [{ error: null }];
       const { req, res } = mockReqRes({ scanId: "scan-1" });
@@ -336,6 +336,26 @@ describe("POST /api/run-scan", () => {
       expect(res._getStatusCode()).toBe(202);
       expect(res._getJSONData()).toMatchObject({ ok: true, scanId: "scan-1", status: "queued" });
       expect(triggerOnDemandWorkflowMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: two step-2 calls racing on the same pending scan both
+    // enqueued a job, so the scan ran twice and left two scan_results rows —
+    // the report then failed with "JSON object requested, multiple (or no)
+    // rows returned". The loser of the conditional claim must not enqueue.
+    it("does not enqueue a second job when another request already claimed the pending scan", async () => {
+      queues.scans = [
+        { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "pending" }, error: null },
+        { data: [], error: null }, // claim lost: the row is no longer pending
+      ];
+      queues.scan_jobs = [{ error: null }];
+      const { req, res } = mockReqRes({ scanId: "scan-1" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(202);
+      expect(res._getJSONData()).toMatchObject({ ok: true, scanId: "scan-1", status: "queued" });
+      expect(queues.scan_jobs).toHaveLength(1); // the job insert was never consumed
+      expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();
     });
   });
 

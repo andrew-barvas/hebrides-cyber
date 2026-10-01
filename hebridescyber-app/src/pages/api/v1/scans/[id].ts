@@ -30,6 +30,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .from("scan_results")
     .select("results, summary, score, created_at")
     .eq("scan_id", scanId)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (!result) return res.status(200).json(pendingScanReport(scan));

@@ -182,6 +182,8 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
       .from("scan_results")
       .select("score, summary")
       .eq("scan_id", scanId)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     return res.status(200).json({
       ok: true,
@@ -241,7 +243,22 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     return res.status(400).json({ error: `SSRF check failed: ${(err as Error).message}` });
   }
 
-  await supabaseAdmin.from("scans").update({ status: "queued", owner_verified: true }).eq("id", scanId);
+  // Claim the pending → queued transition atomically: only the request whose
+  // conditional update actually changes the row goes on to enqueue. Two
+  // step-2 calls racing on the same pending scan (a double click, or a second
+  // click that the in-flight dedupe above handed the same scan) used to both
+  // insert a scan_jobs row, so the scan ran twice and left two scan_results
+  // rows — which broke every "the result for this scan" read with
+  // "JSON object requested, multiple (or no) rows returned".
+  const { data: claimed } = await supabaseAdmin
+    .from("scans")
+    .update({ status: "queued", owner_verified: true })
+    .eq("id", scanId)
+    .eq("status", "pending")
+    .select("id");
+  if (!claimed?.length) {
+    return res.status(202).json({ ok: true, scanId, status: "queued" });
+  }
 
   // Enqueue rather than call executeScan() directly — see
   // .github/workflows/on-demand-scan.yml's header comment for why running

@@ -184,6 +184,21 @@ async function runOne(
   //     this worker reuses it and stays on the "safe" profile, matching what
   //     /what-we-check tells customers an on-demand scan does.
   let scanId = job.scan_id;
+
+  // Idempotency guard: a second job for a scan that has already completed
+  // (an older double-enqueue, or a stale-job reset racing a run that did
+  // finish) must not run it again — that's how one scan ended up with two
+  // scan_results rows. An admin retry is unaffected: it sets the scan back
+  // to "queued" before re-enqueuing.
+  if (scanId) {
+    const { data: existing } = await supabaseAdmin.from("scans").select("status").eq("id", scanId).maybeSingle();
+    if (existing?.status === "completed") {
+      await supabaseAdmin.from("scan_jobs").update({ status: "completed" }).eq("id", job.id);
+      console.log(`[job ${job.id}] skipped — scan ${scanId} already completed`);
+      return true;
+    }
+  }
+
   const scanConfig = await resolveScanConfig(supabaseAdmin, job);
 
   if (!scanId) {

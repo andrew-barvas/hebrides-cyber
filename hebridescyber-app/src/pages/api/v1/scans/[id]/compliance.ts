@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!scan) return res.status(404).json({ error: "Scan not found" });
   if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "Forbidden" });
 
-  const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).maybeSingle();
+  const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!result) return res.status(404).json({ error: "No results for this scan yet" });
 
   const findings = withComplianceRefs(((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[]);

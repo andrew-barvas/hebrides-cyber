@@ -62,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // including supabaseAdmin's lazy client failing to construct — must fall
     // through to the "no data" badge below, never a broken-image 500.
     try {
-      const { data } = await supabaseAdmin.from("scan_results").select("score").eq("scan_id", scanId).maybeSingle();
+      const { data } = await supabaseAdmin.from("scan_results").select("score").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
       score = data?.score ?? null;
     } catch {
       score = null;

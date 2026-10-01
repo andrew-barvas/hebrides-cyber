@@ -105,6 +105,8 @@ export async function gatherReportData(
       .from("scan_results")
       .select("results")
       .eq("scan_id", latestScan.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     const findings = (results?.results as { findings?: Array<{ severity: string }> })?.findings ?? [];
