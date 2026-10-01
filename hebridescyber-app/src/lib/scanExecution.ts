@@ -321,10 +321,11 @@ async function runExtendedTools(
     for (const f of extended.nuclei.findings) {
       findings.push({
         checkId: `nuclei.finding:${f.templateId || f.title}`,
-        severity: (f.severity as Finding["severity"]) || "info",
+        severity: f.severity,
         title: `[Nuclei] ${f.title}`,
         detail: f.detail,
         remediation: nucleiRemediation(f.templateId),
+        cveIds: f.cveIds,
       });
     }
   }
@@ -700,6 +701,9 @@ export async function executeScan(
   let summary: string;
   let findings: Finding[];
   let extended: Record<string, unknown> | undefined;
+  // The base checks' own results, so finding lifecycle can tell which of
+  // them actually ran (an errored check's silence is not a fix).
+  let baseResults: Record<string, unknown> | undefined;
   // Which findings the extended suite produced — finding lifecycle needs it
   // so a passive scan can never mark an active-tool finding fixed.
   const extendedCheckIds = new Set<string>();
@@ -731,6 +735,7 @@ export async function executeScan(
 
   try {
     const results = await runAllChecks(targetUrl, supabaseAdmin, ownerId);
+    baseResults = results;
     ({ findings } = summariseResults(results));
 
     await updateScanProgress(supabaseAdmin, scanId, {
@@ -941,6 +946,7 @@ export async function executeScan(
     findings,
     extendedCheckIds,
     extended,
+    baseResults,
   });
   if (syncedHost) await sendSlaAlerts(supabaseAdmin, ownerId, syncedHost);
 
