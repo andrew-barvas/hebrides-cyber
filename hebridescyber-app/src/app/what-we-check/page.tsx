@@ -183,8 +183,21 @@ const categories: CheckCategory[] = [
       "Dangerous HTTP methods enabled (PUT, DELETE, TRACE)",
       "Error pages that leak stack traces or framework internals",
       "CORS reflected-Origin misconfiguration (with or without credentials allowed)",
-      "JavaScript library versions (jQuery, Moment.js, Lodash, Bootstrap, AngularJS…) matched against live CVE data from OSV.dev",
+      "JavaScript library versions (jQuery, Moment.js, Lodash, Bootstrap, AngularJS…) matched against live CVE data from OSV.dev, including versions read from cdnjs, jsDelivr and unpkg URLs",
       "Cross-origin scripts and stylesheets loaded without a Subresource Integrity hash",
+    ],
+  },
+  {
+    id: "end-of-life",
+    icon: "⏳",
+    name: "End-of-Life Software",
+    badge: "Runs on every scan",
+    desc: "Software whose maintainers have stopped publishing security fixes, so anything found in it from now on stays unfixed. Cyber Essentials requires it to be upgraded or removed. Dates come from endoflife.date.",
+    checks: [
+      "PHP, nginx and Apache versions your server reveals, checked against each release line's end-of-life date",
+      "Drupal and Joomla core versions, and Angular, jQuery and Bootstrap on your pages",
+      "A heads-up 90 days before a release line you run reaches end of life",
+      "Versions installed from Ubuntu, Debian or Red Hat packages flagged for you to confirm with your vendor rather than reported as unpatched, since distributions keep backporting fixes",
     ],
   },
   {

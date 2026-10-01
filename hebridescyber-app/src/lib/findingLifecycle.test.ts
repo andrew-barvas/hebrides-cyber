@@ -85,6 +85,7 @@ describe("coverage and source", () => {
       wpVulnDb: { status: "error", note: "429" },
       hibp: { status: "not_configured", note: "no key" },
       domainRegistration: { status: "error" },
+      endOfLife: { status: "error", note: "endoflife.date lookup failed for: php" },
       headers: { status: "checked" },
       webapp: { status: "checked" },
     });
@@ -92,6 +93,7 @@ describe("coverage and source", () => {
     expect(isCovered("base", coverage, "wpvdb.plugin-vulnerability:elementor:123")).toBe(false);
     expect(isCovered("base", coverage, "hibp.breach:Adobe")).toBe(false);
     expect(isCovered("base", coverage, "domain.expiring")).toBe(false);
+    expect(isCovered("base", coverage, "eol.unsupported:php")).toBe(false);
     expect(isCovered("base", coverage, "headers.csp-absent")).toBe(true);
     expect(isCovered("base", coverage, "webapp.missing-sri:script:https://cdn.x/a.js")).toBe(true);
     // Results stored before this was tracked: every base check counts as run.

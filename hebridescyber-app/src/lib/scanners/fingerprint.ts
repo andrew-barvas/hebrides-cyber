@@ -13,7 +13,30 @@ export type DetectedTech = {
   version: string | null;
   confidence: "high" | "medium" | "low";
   source: "header" | "html" | "both";
+  /**
+   * Linux distribution named in the same header as the version
+   * ("Apache/2.4.41 (Ubuntu)", "PHP/7.4.3-4ubuntu2.19"). Distributions
+   * backport security fixes, so endOfLife.ts treats upstream EOL for these
+   * as "check with your vendor", not "unpatched".
+   */
+  packagedBy?: string;
 };
+
+const DISTRO_MARKERS: Array<[RegExp, string]> = [
+  [/ubuntu/i, "Ubuntu"],
+  [/debian|[+~]deb\d+u\d+/i, "Debian"],
+  [/red ?hat|\brhel\b|\.el\d+/i, "Red Hat"],
+  [/centos/i, "CentOS"],
+  [/almalinux/i, "AlmaLinux"],
+  [/rocky/i, "Rocky Linux"],
+  [/fedora/i, "Fedora"],
+  [/amzn|amazon linux/i, "Amazon Linux"],
+  [/suse/i, "SUSE"],
+];
+
+export function distroFromHeader(value: string): string | null {
+  return DISTRO_MARKERS.find(([re]) => re.test(value))?.[1] ?? null;
+}
 
 export type RiskyTech = {
   name: string;
@@ -163,6 +186,7 @@ export async function checkFingerprint(targetUrl: string): Promise<FingerprintRe
 
     for (const pattern of PATTERNS) {
       let version: string | null = null;
+      let packagedBy: string | null = null;
       let matchedHeader = false;
       let matchedHtml = false;
 
@@ -173,7 +197,10 @@ export async function checkFingerprint(targetUrl: string): Promise<FingerprintRe
             matchedHeader = true;
             if (pattern.versionGroup) {
               const m = val.match(regex);
-              if (m?.[pattern.versionGroup]) version = m[pattern.versionGroup];
+              if (m?.[pattern.versionGroup]) {
+                version = m[pattern.versionGroup];
+                packagedBy = distroFromHeader(val);
+              }
             }
             break;
           }
@@ -202,7 +229,7 @@ export async function checkFingerprint(targetUrl: string): Promise<FingerprintRe
 
       const source = matchedHeader && matchedHtml ? "both" : matchedHeader ? "header" : "html";
       const confidence = source === "both" ? "high" : matchedHeader ? "high" : "medium";
-      detected.push({ name: pattern.name, category: pattern.category, version, confidence, source });
+      detected.push({ name: pattern.name, category: pattern.category, version, confidence, source, ...(packagedBy ? { packagedBy } : {}) });
     }
 
     const riskySoftware: RiskyTech[] = [];

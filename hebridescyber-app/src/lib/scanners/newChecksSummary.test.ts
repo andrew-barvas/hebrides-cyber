@@ -108,3 +108,57 @@ describe("domain registration findings", () => {
     expect(ids(results({ domainRegistration: registration({ daysUntilExpiry: null, expiresAt: null }) }))).toEqual(["meta.no-issues"]);
   });
 });
+
+describe("end-of-life findings", () => {
+  const item = {
+    tech: "PHP",
+    label: "PHP",
+    product: "php",
+    kind: "platform" as const,
+    version: "7.4.33",
+    packagedBy: null,
+    state: "unsupported" as const,
+    cycle: "7.4",
+    eolDate: "2022-11-28",
+    daysOverdue: 1417,
+  };
+  const fingerprint = {
+    status: "checked",
+    technologies: [],
+    riskySoftware: [{ name: "PHP", version: "7.4.33", reason: "PHP < 8.0 is end-of-life with no security patches" }],
+  } as ScanResults["fingerprint"];
+
+  it("reports unsupported software against Cyber Essentials patching, keyed by product", () => {
+    const [f] = summariseResults(results({ endOfLife: { status: "checked", items: [item], evaluated: ["PHP"] } })).findings;
+    expect(f).toMatchObject({ checkId: "eol.unsupported:php", severity: "high", title: "End-of-life software: PHP 7.4.33" });
+    expect(f.detail).toContain("reached end of life on 2022-11-28 (1417 days ago)");
+    expect(f.remediation).toContain("https://endoflife.date/php");
+    expect(getComplianceRefs("eol.unsupported:php").map((r) => r.control)).toContain("Security update management");
+  });
+
+  it("downgrades and explains a distribution package", () => {
+    const [f] = summariseResults(results({ endOfLife: { status: "checked", items: [{ ...item, packagedBy: "Ubuntu" }], evaluated: ["PHP"] } })).findings;
+    expect(f.severity).toBe("low");
+    expect(f.detail).toContain("probably a distribution package");
+    expect(f.remediation).toContain("Ubuntu");
+  });
+
+  it("gives an informational heads-up before the date, with no compliance gap", () => {
+    const approaching = { ...item, version: "8.2.20", state: "approaching" as const, cycle: "8.2", eolDate: "2026-12-31", daysLeft: 77 };
+    const [f] = summariseResults(results({ endOfLife: { status: "checked", items: [approaching], evaluated: ["PHP"] } })).findings;
+    expect(f).toMatchObject({ checkId: "eol.approaching:php", severity: "info", title: "PHP 8.2 reaches end of life on 2026-12-31" });
+    expect(getComplianceRefs("eol.approaching:php")).toEqual([]);
+  });
+
+  it("replaces the hand-kept outdated-library finding once EOL data reached a verdict", () => {
+    const withEol = ids(results({ fingerprint, endOfLife: { status: "checked", items: [item], evaluated: ["PHP"] } }));
+    expect(withEol).toContain("eol.unsupported:php");
+    expect(withEol).not.toContain("fingerprint.risky-library:PHP");
+  });
+
+  it("keeps the outdated-library finding when the EOL lookup failed", () => {
+    expect(ids(results({ fingerprint, endOfLife: { status: "error", note: "endoflife.date lookup failed for: php" } }))).toContain(
+      "fingerprint.risky-library:PHP"
+    );
+  });
+});

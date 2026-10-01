@@ -171,6 +171,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "dependency-manifest.additional-vulnerable": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+  // Unsupported software on the site itself (endOfLife.ts). Not
+  // eol.approaching: software still inside its support window isn't a gap.
+  "eol.unsupported": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   // Same family as dependency-manifest.*/docker-base-image.outdated-base —
   // a real, installed-package CVE inside the base image.
   "trivy-image.vulnerable-package": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
