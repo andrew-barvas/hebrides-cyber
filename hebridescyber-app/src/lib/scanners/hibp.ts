@@ -41,6 +41,8 @@
 // ./index.ts and ./safeBrowsing.ts: missing HIBP_API_KEY never throws and
 // never blocks the rest of the scan.
 
+import { registrableDomain } from "./registrableDomain";
+
 const HIBP_API_BASE = "https://haveibeenpwned.com/api/v3";
 
 // Every outbound request in this codebase carries AbortSignal.timeout() so a
@@ -175,7 +177,10 @@ export async function checkHibp(targetUrl: string): Promise<HibpResult> {
 
   let domain: string;
   try {
-    domain = new URL(targetUrl).hostname.replace(/^www\./, "");
+    // Mailboxes live at the registered domain, which is also what HIBP
+    // verifies: shop.example.co.uk is searched as example.co.uk.
+    const hostname = new URL(targetUrl).hostname;
+    domain = registrableDomain(hostname) ?? hostname.replace(/^www\./, "");
   } catch {
     return { status: "error", note: `Invalid target URL: ${targetUrl}` };
   }

@@ -71,10 +71,12 @@ function buildTagArgument(detectedTechnologies: string[]): string {
 }
 
 export type NucleiFinding = {
-  severity: string;
+  severity: "critical" | "high" | "medium" | "low" | "info";
   title: string;
   detail: string;
   templateId: string;
+  /** From the template's own classification — feeds KEV/EPSS enrichment. */
+  cveIds?: string[];
 };
 
 export type NucleiResult =
@@ -88,10 +90,62 @@ type NucleiJsonEntry = {
     name?: string;
     severity?: string;
     description?: string;
+    classification?: { "cve-id"?: string[] | string | null };
   };
   "matched-at"?: string;
   description?: string;
 };
+
+const SEVERITIES = new Set(["critical", "high", "medium", "low", "info"]);
+
+/**
+ * nuclei's -json-export writes ONE JSON array (every result, marshalled on
+ * exit); -jsonl output is one object per line. This used to split the array
+ * file on newlines, so every real result collapsed into a single "Unknown
+ * finding" at info severity. Accepts both shapes.
+ */
+export function parseNucleiOutput(raw: string, targetUrl: string): NucleiFinding[] {
+  const text = raw.trim();
+  if (!text) return [];
+
+  let entries: unknown[] = [];
+  if (text.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (Array.isArray(parsed)) entries = parsed;
+    } catch {
+      return [];
+    }
+  } else {
+    for (const line of text.split("\n")) {
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // skip malformed lines
+      }
+    }
+  }
+
+  const findings: NucleiFinding[] = [];
+  for (const item of entries) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as NucleiJsonEntry;
+    const severity = (entry.info?.severity ?? "").toLowerCase();
+    const cve = entry.info?.classification?.["cve-id"];
+    const cveIds = [
+      ...new Set((Array.isArray(cve) ? cve : cve ? [cve] : []).map((c) => c.toUpperCase()).filter((c) => /^CVE-\d{4}-\d+$/.test(c))),
+    ];
+    findings.push({
+      // nuclei also emits "unknown"; it must never escape as a severity.
+      severity: SEVERITIES.has(severity) ? (severity as NucleiFinding["severity"]) : "info",
+      title: entry.info?.name ?? entry["template-id"] ?? "Unknown finding",
+      detail: entry.description ?? entry.info?.description ?? `Matched at: ${entry["matched-at"] ?? targetUrl}`,
+      templateId: entry["template-id"] ?? "",
+      ...(cveIds.length > 0 ? { cveIds } : {}),
+    });
+  }
+  return findings;
+}
 
 export async function runNuclei(targetUrl: string, detectedTechnologies: string[] = []): Promise<NucleiResult> {
   const tmpFile = `/tmp/nuclei-${randomUUID()}.json`;
@@ -105,7 +159,10 @@ export async function runNuclei(targetUrl: string, detectedTechnologies: string[
         "-tags", tags,
         "-json-export", tmpFile,
         "-silent",
-        "-timeout", "120",
+        // Per-request timeout in seconds, not the scan's. It used to be 120,
+        // so one unresponsive request could outlast the process timeout
+        // below, which kills nuclei before it has written any results.
+        "-timeout", "10",
       ],
       { timeout: NUCLEI_TIMEOUT_MS }
     );
@@ -118,27 +175,7 @@ export async function runNuclei(targetUrl: string, detectedTechnologies: string[
       return { status: "completed", findings: [] };
     }
 
-    const findings: NucleiFinding[] = [];
-    const lines = raw.trim().split("\n").filter(Boolean);
-
-    for (const line of lines) {
-      try {
-        const entry: NucleiJsonEntry = JSON.parse(line);
-        findings.push({
-          severity: entry.info?.severity ?? "info",
-          title: entry.info?.name ?? entry["template-id"] ?? "Unknown finding",
-          detail:
-            entry.description ??
-            entry.info?.description ??
-            `Matched at: ${entry["matched-at"] ?? targetUrl}`,
-          templateId: entry["template-id"] ?? "",
-        });
-      } catch {
-        // skip malformed lines
-      }
-    }
-
-    return { status: "completed", findings };
+    return { status: "completed", findings: parseNucleiOutput(raw, targetUrl) };
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === "ENOENT") {

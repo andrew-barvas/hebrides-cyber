@@ -163,6 +163,28 @@ function compareConcreteVersions(a: [number, number, number], b: [number, number
 }
 
 /**
+ * The fixed version(s) of whichever range actually contains `current` —
+ * OSV lists one range per release branch (e.g. introduced 0 → fixed 3.10.2,
+ * introduced 4.0.0 → fixed 4.17.21), and only the branch you're on says what
+ * to upgrade *to*. An `introduced` of "0" means "from the beginning".
+ */
+function fixedInCurrentBranch(ranges: OsvRange[], current: [number, number, number]): string[] {
+  const out: string[] = [];
+  for (const range of ranges) {
+    let introduced: [number, number, number] | null = [0, 0, 0];
+    for (const event of range.events ?? []) {
+      if (event.introduced !== undefined) introduced = event.introduced === "0" ? [0, 0, 0] : parseConcreteVersion(event.introduced);
+      if (event.fixed === undefined) continue;
+      const fixed = parseConcreteVersion(event.fixed);
+      if (fixed && introduced && compareConcreteVersions(current, introduced) >= 0 && compareConcreteVersions(current, fixed) < 0) {
+        out.push(event.fixed);
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Looks up CVE ids plus a fixed-version target for a package/version, in the
  * same "npm" (or any OSV ecosystem) shape as lookupCveIds. Never throws — a
  * failed or empty lookup returns { cveIds: [], fixedVersion: null }, which
@@ -202,6 +224,12 @@ export async function lookupOsvFixInfo(ecosystem: string, packageName: string, v
     // package for us to claim a single safe target version — if any one of
     // them doesn't, we cannot say the package is fully fixed at any version,
     // so the whole lookup reports fixedVersion: null.
+    const current = parseConcreteVersion(version);
+    const toParsed = (fs: string[]) =>
+      fs
+        .map((f) => ({ raw: f, parsed: parseConcreteVersion(f) }))
+        .filter((f): f is { raw: string; parsed: [number, number, number] } => f.parsed !== null);
+
     let maxFixed: [number, number, number] | null = null;
     let maxFixedStr: string | null = null;
     for (const v of vulns) {
@@ -210,14 +238,11 @@ export async function lookupOsvFixInfo(ecosystem: string, packageName: string, v
         .flatMap((a) => a.ranges ?? [])
         .filter((r) => r.type === "SEMVER");
 
-      const fixedVersionsForThisVuln = matchingRanges
-        .flatMap((r) => r.events ?? [])
-        .map((e) => e.fixed)
-        .filter((f): f is string => typeof f === "string")
-        .map((f) => ({ raw: f, parsed: parseConcreteVersion(f) }))
-        .filter((f): f is { raw: string; parsed: [number, number, number] } => f.parsed !== null);
+      const allFixed = toParsed(
+        matchingRanges.flatMap((r) => r.events ?? []).map((e) => e.fixed).filter((f): f is string => typeof f === "string")
+      );
 
-      if (fixedVersionsForThisVuln.length === 0) {
+      if (allFixed.length === 0) {
         // This vuln has no matching range with a concrete fixed version —
         // either still unpatched, or only a last_affected event. Bail out
         // entirely: we cannot promise a single version fixes everything.
@@ -225,11 +250,19 @@ export async function lookupOsvFixInfo(ecosystem: string, packageName: string, v
         return { cveIds, osvIds, fixedVersion: null };
       }
 
-      for (const f of fixedVersionsForThisVuln) {
-        if (maxFixed === null || compareConcreteVersions(f.parsed, maxFixed) > 0) {
-          maxFixed = f.parsed;
-          maxFixedStr = f.raw;
-        }
+      // Prefer the fix on the branch the package is actually on — the lowest
+      // version that resolves this vuln. Taking the highest fix across every
+      // branch (what this used to do) turned a 3.10.0 → 3.10.2 patch into a
+      // breaking 3.x → 4.x upgrade PR. When the current version can't be
+      // placed in a range, keep the old conservative choice (highest fix).
+      const inBranch = current ? toParsed(fixedInCurrentBranch(matchingRanges, current)) : [];
+      const pick = inBranch.length > 0
+        ? inBranch.reduce((lo, f) => (compareConcreteVersions(f.parsed, lo.parsed) < 0 ? f : lo))
+        : allFixed.reduce((hi, f) => (compareConcreteVersions(f.parsed, hi.parsed) > 0 ? f : hi));
+
+      if (maxFixed === null || compareConcreteVersions(pick.parsed, maxFixed) > 0) {
+        maxFixed = pick.parsed;
+        maxFixedStr = pick.raw;
       }
     }
 

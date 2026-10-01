@@ -5,8 +5,13 @@
 // Functions, local dev without Docker). SSRF validation is done upstream by
 // run-scan before the job is enqueued — the worker trusts targetUrl.
 //
-// Runs a SYN scan with OS/service detection on the top 1000 ports, then
-// augments with targeted checks on known dangerous ports.
+// Runs service/version detection (-sV) on a fixed list of known-dangerous
+// ports — databases, Docker, Elasticsearch, etcd, Consul, remote shells.
+// Broad open-port discovery is ports.ts's job (Shodan InternetDB, passive).
+// This used to also pass --top-ports 1000, but with -p present nmap takes
+// the top ports *from within* the -p list, so it never added anything; the
+// header claimed a top-1000 scan that wasn't happening. It is also a TCP
+// connect scan, not SYN: the runner doesn't run nmap as root.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -30,6 +35,40 @@ export type NmapResult =
 
 const DANGEROUS_PORTS = [21, 22, 23, 25, 3306, 5432, 6379, 27017, 9200, 2375, 2376, 8500, 2379];
 
+function xmlAttr(tag: string, name: string): string | null {
+  const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
+  if (!m) return null;
+  return m[1].replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+/**
+ * Open ports from nmap's -oX output, one <port> element at a time. The old
+ * single regex ran across element boundaries: a port whose <service> had no
+ * version attribute borrowed the *next* port's service and version, and
+ * that next port vanished from the results.
+ */
+export function parseNmapXml(xml: string): NmapPort[] {
+  const ports: NmapPort[] = [];
+  for (const block of xml.matchAll(/<port\b([^>]*)>([\s\S]*?)<\/port>/g)) {
+    const [, attrs, body] = block;
+    const state = xmlAttr(body.match(/<state\b[^>]*>/)?.[0] ?? "", "state");
+    if (state !== "open") continue;
+    const port = Number(xmlAttr(attrs, "portid"));
+    if (!Number.isInteger(port)) continue;
+    const service = body.match(/<service\b[^>]*>/)?.[0] ?? "";
+    // nmap splits "OpenSSH 8.9p1" into product="OpenSSH" version="8.9p1".
+    const version = [xmlAttr(service, "product"), xmlAttr(service, "version")].filter(Boolean).join(" ");
+    ports.push({
+      port,
+      protocol: xmlAttr(attrs, "protocol") ?? "tcp",
+      state,
+      service: xmlAttr(service, "name") || "unknown",
+      version: version || null,
+    });
+  }
+  return ports;
+}
+
 export async function runNmap(targetUrl: string): Promise<NmapResult> {
   let hostname: string;
   try {
@@ -44,7 +83,6 @@ export async function runNmap(targetUrl: string): Promise<NmapResult> {
       [
         "-sV",                // service/version detection
         "--open",             // only open ports
-        "--top-ports", "1000",
         "-p", DANGEROUS_PORTS.join(","),
         "-oX", "-",           // XML output to stdout
         hostname,
@@ -52,23 +90,9 @@ export async function runNmap(targetUrl: string): Promise<NmapResult> {
       { timeout: NMAP_TIMEOUT_MS }
     );
 
-    const ports: NmapPort[] = [];
-    // Regex uses s flag (dotall) — TypeScript targets es2018+ so this is safe in Node 18+.
-    const portPattern = new RegExp('<port protocol="(\\w+)" portid="(\\d+)">.*?<state state="(\\w+)".*?<service name="([^"]*)"(?:[^/]*)version="([^"]*)".*?<\\/port>', "gs");
+    const ports = parseNmapXml(stdout);
 
-    let match: RegExpExecArray | null;
-    while ((match = portPattern.exec(stdout)) !== null) {
-      if (match[3] === "open") {
-        ports.push({
-          protocol: match[1],
-          port: parseInt(match[2], 10),
-          state: match[3],
-          service: match[4] ?? "unknown",
-          version: match[5] ? match[5] : null,
-        });
-      }
-    }
-
+    // Only present if OS detection (-O, root only) ever runs; null today.
     const osMatch = /<osclass[^>]+osfamily="([^"]+)"/.exec(stdout);
     const osGuess = osMatch ? osMatch[1] : null;
 

@@ -161,7 +161,11 @@ async function checkHttpMethods(targetUrl: string): Promise<HttpMethodsData> {
       method: "OPTIONS",
       signal: AbortSignal.timeout(6_000),
     });
-    const allow = res.headers.get("allow") ?? res.headers.get("Access-Control-Allow-Methods");
+    // Allow only. Access-Control-Allow-Methods is a CORS preflight answer —
+    // which methods a cross-origin caller may *ask* to use — and frameworks
+    // send a permissive default list on every OPTIONS. It is not evidence the
+    // server accepts PUT/DELETE, so it must not produce this finding.
+    const allow = res.headers.get("allow");
     if (!allow) return { allowHeader: null, dangerousMethods: [] };
 
     const methods = allow.toUpperCase().split(/[\s,]+/).map((m) => m.trim());
@@ -179,10 +183,13 @@ const DISCLOSURE_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /File ".*", line \d+, in /,                label: "Python stack trace" },
   { re: /\.(rb|py|php|java|cs):\d+:/,              label: "Source file path in error" },
   { re: /Exception in thread|java\.lang\./,        label: "Java exception" },
-  { re: /System\.NullReferenceException|ASP\.NET/, label: "ASP.NET exception" },
+  // These match the framework's own error page, not a page that merely names
+  // the framework: "Whoops!" is common 404 copy, and an agency's 404 page can
+  // list "ASP.NET" or "Laravel" among its services.
+  { re: /System\.NullReferenceException|ASP\.NET Version:|Server Error in '\/' Application/, label: "ASP.NET exception" },
   { re: /Fatal error.*PHP|Warning.*PHP\//,         label: "PHP error" },
-  { re: /ActiveRecord|ActionController/,           label: "Rails internals" },
-  { re: /Whoops!|Illuminate\\|Laravel/,            label: "Laravel debug page" },
+  { re: /ActiveRecord::|ActionController::/,       label: "Rails internals" },
+  { re: /Whoops! There was an error|Illuminate\\[A-Z]|vendor\/laravel\/framework/, label: "Laravel debug page" },
   { re: /Django.*Debug|Traceback \(most recent/,   label: "Django debug traceback" },
   { re: /powered by.*express/i,                    label: "Express version disclosure" },
   { re: /nginx\/\d+\.\d+/,                         label: "Nginx version in error page" },
@@ -427,10 +434,17 @@ async function checkCorsReflected(targetUrl: string): Promise<CorsReflectedData>
 
 type LibPattern = {
   name: string;
+  // The library's own filename, sometimes carrying a version ("jquery-3.4.1.min.js").
   re: RegExp;
-  versionGroup: number;
-  // Versions below this major.minor are considered vulnerable
-  vulnerableBelow: { major: number; minor?: number };
+  // Its package directory on the public CDNs, where the version lives in the
+  // path, not the filename ("cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js").
+  // That is how most sites load these libraries, and `re` alone saw only an
+  // unversioned "jquery.min.js" there — or, for jQuery, nothing at all.
+  cdnPackages: string[];
+  // First release with the fix, compared to the patch level. A major.minor
+  // threshold passed Lodash 4.17.15 and Moment 2.29.1 as current, though both
+  // are inside the very CVE ranges `reason` names.
+  vulnerableBelow: string;
   reason: string;
 };
 
@@ -438,58 +452,74 @@ const LIB_PATTERNS: LibPattern[] = [
   {
     name: "jQuery",
     re: /jquery[-.](\d+\.\d+(?:\.\d+)?)(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 3, minor: 5 },
+    cdnPackages: ["jquery"],
+    vulnerableBelow: "3.5.0",
     reason: "jQuery < 3.5 has XSS vulnerabilities via jQuery.htmlPrefilter (CVE-2020-11022/23)",
   },
   {
     name: "Moment.js",
     re: /moment(?:-(\d+\.\d+(?:\.\d+)?))?(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 2, minor: 29 },
+    cdnPackages: ["moment.js", "moment"],
+    vulnerableBelow: "2.29.4",
     reason: "Moment.js < 2.29.4 has a ReDoS vulnerability (CVE-2022-24785)",
   },
   {
     name: "Lodash",
     re: /lodash(?:-(\d+\.\d+(?:\.\d+)?))?(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 4, minor: 17 },
+    cdnPackages: ["lodash.js", "lodash"],
+    vulnerableBelow: "4.17.21",
     reason: "Lodash < 4.17.21 has prototype pollution vulnerabilities (CVE-2021-23337)",
   },
   {
     name: "Underscore.js",
     re: /underscore(?:-(\d+\.\d+(?:\.\d+)?))?(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 1, minor: 13 },
+    cdnPackages: ["underscore.js", "underscore"],
+    vulnerableBelow: "1.13.0",
     reason: "Underscore.js < 1.13 has template injection vulnerability",
   },
   {
     name: "Bootstrap",
     re: /bootstrap(?:-(\d+\.\d+(?:\.\d+)?))?(?:\.min)?\.(?:js|css)/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 4, minor: 3 },
+    cdnPackages: ["twitter-bootstrap", "bootstrap"],
+    vulnerableBelow: "4.3.1",
     reason: "Bootstrap < 4.3.1 has XSS vulnerability in data-template attribute (CVE-2019-8331)",
   },
   {
+    // npm "angular" is AngularJS; Angular 2+ is published as @angular/*, which
+    // the CDN pattern can't match.
     name: "AngularJS",
     re: /angular(?:js)?[-.](\d+\.\d+(?:\.\d+)?)(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 1, minor: 8 },
+    cdnPackages: ["angular.js", "angular"],
+    vulnerableBelow: "2.0.0",
     reason: "AngularJS 1.x (all versions) is end-of-life since 2022 with no security patches",
   },
   {
     name: "Prototype.js",
     re: /prototype(?:-(\d+\.\d+(?:\.\d+)?))?(?:\.min)?\.js/i,
-    versionGroup: 1,
-    vulnerableBelow: { major: 2 },
+    cdnPackages: ["prototype"],
+    vulnerableBelow: "2.0.0",
     reason: "Prototype.js is abandoned — no security patches since 2010",
   },
 ];
 
-function isVulnerable(version: string, limit: { major: number; minor?: number }): boolean {
-  const [maj, min] = version.split(".").map(Number);
-  if (maj < limit.major) return true;
-  if (maj === limit.major && limit.minor !== undefined && !isNaN(min) && min < limit.minor) return true;
+const CDN_PACKAGE_RE = /(?:cdnjs\.cloudflare\.com\/ajax\/libs\/|cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)([\w.-]+)[@/](\d+\.\d+(?:\.\d+)?)\//gi;
+
+function cdnVersion(html: string, packages: string[]): string | null {
+  for (const m of html.matchAll(CDN_PACKAGE_RE)) {
+    if (packages.includes(m[1].toLowerCase())) return m[2];
+  }
+  return null;
+}
+
+export function isVersionBelow(version: string, fixedIn: string): boolean {
+  const a = version.split(".").map(Number);
+  const b = fixedIn.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return false;
+    if (x !== y) return x < y;
+  }
   return false;
 }
 
@@ -503,11 +533,12 @@ async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> 
     const seen = new Set<string>();
 
     for (const pattern of LIB_PATTERNS) {
-      const m = html.match(pattern.re);
-      if (!m || seen.has(pattern.name)) continue;
+      const fromCdn = cdnVersion(html, pattern.cdnPackages);
+      const m = fromCdn ? null : html.match(pattern.re);
+      if ((!fromCdn && !m) || seen.has(pattern.name)) continue;
       seen.add(pattern.name);
 
-      const version = m[pattern.versionGroup] ?? null;
+      const version = fromCdn ?? m?.[1] ?? null;
       if (!version) {
         // Library detected but version unknown — report as info only
         findings.push({
@@ -519,7 +550,7 @@ async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> 
         continue;
       }
 
-      const vuln = isVulnerable(version, pattern.vulnerableBelow);
+      const vuln = isVersionBelow(version, pattern.vulnerableBelow);
       findings.push({
         name: pattern.name,
         version,

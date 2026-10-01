@@ -1,5 +1,6 @@
 // Passive reconnaissance: Shodan InternetDB (free, no key) + crt.sh subdomain
 // enumeration via Certificate Transparency logs. No credentials required.
+import { registrableDomain } from "./registrableDomain";
 
 export type ReconResult =
   | {
@@ -78,7 +79,8 @@ async function queryShodan(ip: string): Promise<ShodanData | null> {
 
 async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
   try {
-    const url = `https://crt.sh/?q=%.${domain}&output=json`;
+    // "%" is crt.sh's wildcard and must be percent-encoded itself.
+    const url = `https://crt.sh/?q=${encodeURIComponent(`%.${domain}`)}&output=json`;
     const res = await fetch(url, {
       signal: AbortSignal.timeout(12_000),
       headers: { Accept: "application/json" },
@@ -98,10 +100,12 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
       // name_value may contain multiple newline-separated names (SANs)
       const names = cert.name_value.split(/\n/).map((n) => n.trim().toLowerCase());
       for (const name of names) {
-        if (!name || name === domain || seen.has(name)) continue;
-        // Skip wildcard entries from the deduped list (keep one per base)
+        if (!name) continue;
+        // A wildcard covers its base; list the base once. Compare the domain
+        // *after* stripping "*." — a "*.example.com" certificate used to list
+        // the apex itself as one of its own subdomains.
         const display = name.startsWith("*.") ? name.slice(2) : name;
-        if (seen.has(display)) continue;
+        if (display === domain || seen.has(display)) continue;
         seen.add(display);
         entries.push({
           name: display,
@@ -123,7 +127,10 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[]> {
 export async function checkRecon(targetUrl: string): Promise<ReconResult> {
   try {
     const hostname = new URL(targetUrl).hostname;
-    const domain = hostname.replace(/^www\./, "");
+    // Enumerate the whole registered domain: scanning shop.example.co.uk
+    // used to search only *.shop.example.co.uk and miss every sibling host —
+    // the candidates takeover.ts checks for dangling DNS.
+    const domain = registrableDomain(hostname) ?? hostname.replace(/^www\./, "");
 
     const [ip, subdomains] = await Promise.all([
       resolveIp(hostname),

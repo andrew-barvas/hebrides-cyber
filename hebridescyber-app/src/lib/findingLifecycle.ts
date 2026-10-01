@@ -33,25 +33,55 @@ export type ScanCoverage = {
   extendedRan: boolean;
   /** Normalised keys of the extended tools that completed. */
   completedTools: Set<string>;
+  /** Normalised keys of base checks that errored or had no credential this
+   *  scan. The base suite always runs, but a TLS timeout or a rate-limited
+   *  WPScan lookup saw nothing, and must not resolve what it saw last time. */
+  failedBaseChecks: Set<string>;
 };
 
 export function normaliseToolKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** From a scan's `extended` results object (absent for passive scans). */
-export function scanCoverage(extended: Record<string, unknown> | null | undefined): ScanCoverage {
+// A base check in either state looked at nothing. "not_applicable" is
+// different: the check ran and found its subject absent (no WordPress
+// plugins detected), which can genuinely be a fix.
+const BASE_NOT_RUN = new Set(["error", "not_configured"]);
+
+/**
+ * From a scan's `extended` results object (absent for passive scans) and its
+ * base results (the stored results object, or ScanResults; absent on rows
+ * written before this was tracked, which then behave as before: every base
+ * check counted as run).
+ */
+export function scanCoverage(
+  extended: Record<string, unknown> | null | undefined,
+  base?: Record<string, unknown> | null
+): ScanCoverage {
   const completedTools = new Set<string>();
   for (const [key, value] of Object.entries(extended ?? {})) {
     const status = (value as { status?: unknown } | null)?.status;
     // "checked" is cloud posture's word for it.
     if (status === "completed" || status === "checked") completedTools.add(normaliseToolKey(key));
   }
-  return { extendedRan: completedTools.size > 0, completedTools };
+  const failedBaseChecks = new Set<string>();
+  for (const [key, value] of Object.entries(base ?? {})) {
+    if (key === "extended" || !value || typeof value !== "object") continue;
+    const status = (value as { status?: unknown }).status;
+    if (typeof status === "string" && BASE_NOT_RUN.has(status)) failedBaseChecks.add(normaliseToolKey(key));
+  }
+  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks };
 }
 
 // checkId namespaces that don't normalise to their tool's key in `extended`.
 const TOOL_ALIASES: Record<string, string> = { apispec: "apispecinjection" };
+// …and the same for base checks and their key in ScanResults.
+const BASE_ALIASES: Record<string, string> = { wpvdb: "wpvulndb", domain: "domainregistration" };
+
+function baseCheckKey(checkId: string): string {
+  const prefix = normaliseToolKey(checkId.split(/[.:]/)[0]);
+  return BASE_ALIASES[prefix] ?? prefix;
+}
 
 /**
  * "base", the normalised key of the extended tool that produced the finding
@@ -65,9 +95,9 @@ export function findingSource(checkId: string, fromExtended: boolean, extendedTo
   return extendedToolKeys.some((k) => normaliseToolKey(k) === key) ? key : "extended";
 }
 
-/** Could a scan with this coverage have detected a finding from `source`? */
-export function isCovered(source: string, coverage: ScanCoverage): boolean {
-  if (source === "base") return true;
+/** Could a scan with this coverage have detected `checkId`, a finding from `source`? */
+export function isCovered(source: string, coverage: ScanCoverage, checkId?: string): boolean {
+  if (source === "base") return !checkId || !coverage.failedBaseChecks.has(baseCheckKey(checkId));
   if (source === "extended") return coverage.extendedRan;
   return coverage.completedTools.has(source);
 }
@@ -115,7 +145,7 @@ export function backfillFirstSeen(current: CurrentFinding[], history: Historical
     let earliest = scanAt;
     for (const scan of history) {
       if (scan.checkIds.has(f.checkId)) earliest = scan.createdAt;
-      else if (isCovered(f.source, scan.coverage)) break;
+      else if (isCovered(f.source, scan.coverage, f.checkId)) break;
     }
     firstSeen.set(f.checkId, earliest);
   }
@@ -178,7 +208,7 @@ export function planLifecycleSync(input: {
 
   for (const prior of existing) {
     if (prior.resolved_at || currentIds.has(prior.check_id)) continue;
-    if (isCovered(prior.source, coverage)) out.push({ ...prior, resolved_at: scanAt });
+    if (isCovered(prior.source, coverage, prior.check_id)) out.push({ ...prior, resolved_at: scanAt });
   }
 
   return out;
@@ -224,7 +254,7 @@ async function loadHistory(
     history.push({
       createdAt: scan.created_at,
       checkIds: new Set((results.findings ?? []).map((f) => f.checkId).filter((id): id is string => Boolean(id))),
-      coverage: scanCoverage(results.extended),
+      coverage: scanCoverage(results.extended, results),
     });
   }
   return history;
@@ -246,6 +276,7 @@ export async function syncFindingLifecycle(
     findings: Finding[];
     extendedCheckIds: Set<string>;
     extended: Record<string, unknown> | undefined;
+    baseResults?: Record<string, unknown>;
   }
 ): Promise<string | null> {
   try {
@@ -285,7 +316,7 @@ export async function syncFindingLifecycle(
       scanAt: input.scanAt,
       existing: rows,
       current,
-      coverage: scanCoverage(input.extended),
+      coverage: scanCoverage(input.extended, input.baseResults),
       backfill,
     });
 

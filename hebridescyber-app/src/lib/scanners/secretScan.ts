@@ -191,7 +191,12 @@ export function looksLikeSamplePath(file: string): boolean {
     if (SAMPLE_DIRS.has(segment)) return true;
   }
   if (PROSE_EXTENSIONS.some((ext) => basename.endsWith(ext))) return true;
-  return SAMPLE_NAME_MARKERS.some((marker) => basename.includes(marker));
+  // Markers must start a word ("test_config", "config.test.ts", "fake-keys"),
+  // not merely appear inside one: as plain substrings "latest", "attestation"
+  // and "contest" all contain "test" and "inspect" contains "spec", so a real
+  // key in config.latest.json was downgraded from critical to medium — the
+  // dangerous direction for this module to be wrong in.
+  return SAMPLE_NAME_MARKERS.some((marker) => new RegExp(`(^|[^a-z])${marker}`).test(basename));
 }
 
 // Rules whose pattern is structurally unambiguous — an AKIA-prefixed 20-char

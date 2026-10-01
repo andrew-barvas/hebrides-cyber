@@ -74,6 +74,37 @@ describe("coverage and source", () => {
     expect(isCovered("extended", FULL)).toBe(true);
     expect(isCovered("extended", PASSIVE)).toBe(false);
   });
+
+  // Regression: base findings were "covered" even when their check errored,
+  // so a TLS timeout or a rate-limited WPScan lookup marked them fixed.
+  it("does not let a base check that errored or had no key vouch for its findings", () => {
+    const coverage = scanCoverage(undefined, {
+      target_url: "https://shop.example",
+      findings: [],
+      tls: { status: "error", note: "timeout" },
+      wpVulnDb: { status: "error", note: "429" },
+      hibp: { status: "not_configured", note: "no key" },
+      domainRegistration: { status: "error" },
+      headers: { status: "checked" },
+      webapp: { status: "checked" },
+    });
+    expect(isCovered("base", coverage, "tls.expiring")).toBe(false);
+    expect(isCovered("base", coverage, "wpvdb.plugin-vulnerability:elementor:123")).toBe(false);
+    expect(isCovered("base", coverage, "hibp.breach:Adobe")).toBe(false);
+    expect(isCovered("base", coverage, "domain.expiring")).toBe(false);
+    expect(isCovered("base", coverage, "headers.csp-absent")).toBe(true);
+    expect(isCovered("base", coverage, "webapp.missing-sri:script:https://cdn.x/a.js")).toBe(true);
+    // Results stored before this was tracked: every base check counts as run.
+    expect(isCovered("base", PASSIVE, "tls.expiring")).toBe(true);
+  });
+
+  it("keeps an open finding open when its check errored this scan", () => {
+    const coverage = scanCoverage(undefined, { tls: { status: "error" } });
+    expect(plan([existing({ check_id: "tls.expiring" })], [], coverage)).toEqual([]);
+    expect(plan([existing({ check_id: "headers.csp-absent" })], [], coverage)).toEqual([
+      expect.objectContaining({ check_id: "headers.csp-absent", resolved_at: SCAN_AT }),
+    ]);
+  });
 });
 
 describe("planLifecycleSync", () => {

@@ -145,8 +145,21 @@ export async function checkWpVulnDb(plugins: DetectedPlugin[]): Promise<WpVulnDb
   }
 
   try {
-    const results = await mapWithConcurrency(plugins, QUERY_CONCURRENCY, async (plugin) => {
-      const raw = await fetchPluginVulnerabilities(plugin.slug, token);
+    const lookups = await mapWithConcurrency(plugins, QUERY_CONCURRENCY, async (plugin) => ({
+      plugin,
+      raw: await fetchPluginVulnerabilities(plugin.slug, token),
+    }));
+
+    // A failed lookup (rate limit — the free tier allows 25 a day — a revoked
+    // token, an outage) is not "no vulnerabilities". Reporting it as checked
+    // would let this scan mark last scan's plugin findings fixed and close
+    // their tickets, so any failure makes the whole check an error.
+    const failed = lookups.filter((l) => l.raw === null).map((l) => l.plugin.slug);
+    if (failed.length > 0) {
+      return { status: "error", note: `WPScan lookup failed for ${failed.length} of ${plugins.length} plugin(s): ${failed.join(", ")}` };
+    }
+
+    const results = lookups.map(({ plugin, raw }) => {
       const vulnerabilities: WpVulnDbVulnerability[] = (raw ?? [])
         .filter((v) => vulnerabilityAppliesToVersion(v, plugin.version))
         .map((v) => ({
