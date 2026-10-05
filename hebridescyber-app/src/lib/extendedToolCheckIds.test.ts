@@ -21,3 +21,10 @@ describe("isExtendedToolFinding", () => {
     expect(isExtendedToolFinding("")).toBe(false);
   });
 });
+
+describe("signed-in crawl findings", () => {
+  it("are extended-only (an on-demand scan can't re-verify them), unlike the anonymous crawl", () => {
+    expect(isExtendedToolFinding("crawl.auth.mixed-content:/app")).toBe(true);
+    expect(isExtendedToolFinding("crawl.mixed-content:/")).toBe(false);
+  });
+});

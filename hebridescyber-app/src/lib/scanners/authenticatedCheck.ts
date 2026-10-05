@@ -25,6 +25,8 @@
 // result, never an error finding. Never throws, matching every other
 // scanner module's contract.
 import { buildHeaderAnalysis, type HeaderAnalysisBundle } from "./headers";
+import { buildAuthenticatedCrawlFindings, checkAuthenticatedCrawl } from "./authenticatedCrawl";
+import type { CrawlResult } from "./crawler";
 import type { Finding } from "./index";
 import * as FIX from "./remediationText";
 
@@ -33,7 +35,7 @@ export type AuthCredential =
   | { type: "basic"; username: string; password: string };
 
 export type AuthenticatedCheckResult =
-  | ({ status: "checked" } & HeaderAnalysisBundle)
+  | ({ status: "checked"; /** Signed-in crawl of the site; its own status says whether it ran. */ crawl?: CrawlResult } & HeaderAnalysisBundle)
   | { status: "not_applicable"; note: string }
   | { status: "error"; note: string };
 
@@ -55,7 +57,10 @@ export async function checkAuthenticated(targetUrl: string, credential: AuthCred
       redirect: "follow",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    return { status: "checked", ...buildHeaderAnalysis(res) };
+    const analysis = buildHeaderAnalysis(res);
+    // The crawl never throws (checkCrawl contract); its own status carries a failure.
+    const crawl = await checkAuthenticatedCrawl(targetUrl, credential);
+    return { status: "checked", ...analysis, crawl };
   } catch (err) {
     return { status: "error", note: `Authenticated header check failed: ${(err as Error).message}` };
   }
@@ -126,6 +131,8 @@ export function buildAuthenticatedFindings(result: AuthenticatedCheckResult): Fi
       remediation: FIX.CORS_WILDCARD,
     });
   }
+
+  findings.push(...buildAuthenticatedCrawlFindings(result.crawl));
 
   return findings;
 }

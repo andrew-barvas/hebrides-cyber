@@ -232,7 +232,9 @@ const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {
 /** The part of a checkId before its first ":" — see module header. */
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
-  return idx === -1 ? checkId : checkId.slice(0, idx);
+  const base = idx === -1 ? checkId : checkId.slice(0, idx);
+  // crawl.auth.* is the signed-in crawl's copy of crawl.*: same fix, same mapping.
+  return base.replace(/^crawl\.auth\./, "crawl.");
 }
 
 /** Returns undefined (not a guess) when the checkId is unmapped — see module header. */

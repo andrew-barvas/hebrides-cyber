@@ -66,7 +66,10 @@ export function scanCoverage(
   for (const [key, value] of Object.entries(extended ?? {})) {
     const status = (value as { status?: unknown } | null)?.status;
     // "checked" is cloud posture's word for it.
-    if (status === "completed" || status === "checked") completedTools.add(normaliseToolKey(key));
+    // The signed-in crawl rides on authCheck: if it didn't finish (credential
+    // rejected, budget hit), its silence about crawl.auth.* findings isn't a fix.
+    const crawlStatus = normaliseToolKey(key) === "authcheck" ? (value as { crawl?: { status?: unknown } } | null)?.crawl?.status : undefined;
+    if ((status === "completed" || status === "checked") && (crawlStatus === undefined || crawlStatus === "checked")) completedTools.add(normaliseToolKey(key));
   }
   const failedBaseChecks = new Set<string>();
   for (const [key, value] of Object.entries(base ?? {})) {
@@ -94,7 +97,8 @@ function baseCheckKey(checkId: string): string {
  */
 export function findingSource(checkId: string, fromExtended: boolean, extendedToolKeys: string[]): string {
   if (!fromExtended) return "base";
-  const prefix = normaliseToolKey(checkId.split(".")[0]);
+  // crawl.auth.* is produced by the authCheck tool, not the anonymous crawl.
+  const prefix = normaliseToolKey(checkId.startsWith("crawl.auth.") ? "auth-check" : checkId.split(".")[0]);
   const key = TOOL_ALIASES[prefix] ?? prefix;
   return extendedToolKeys.some((k) => normaliseToolKey(k) === key) ? key : "extended";
 }

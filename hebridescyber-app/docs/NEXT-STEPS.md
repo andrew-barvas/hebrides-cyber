@@ -21,6 +21,8 @@ Database migrations: files exist through **047**; the next free number is **048*
 | SAST with Opengrep + our own 34-rule pack (E-69) | PR #3 — `src/worker/tools/sast.ts`, `sast-rules/`, `repoClone.ts`, `sast-rules.yml` |
 | Third-party script inventory, PCI 6.4.3/11.6.1 (E-62) | PR #4 — `scriptInventory.ts`; `info` on ordinary pages, `low` on payment pages (owner decision) |
 | Finding triage: accept/authorise, false positive, snooze (E-64) | PR #5 — `finding_triage` (046), `/api/findings/triage`, report UI; only false positives leave the score |
+| Signed-in crawl, slice 1 (E-70 follow-up) | `authenticatedCrawl.ts`, `crawl.auth.*` findings, design + safety rules in `docs/AUTHENTICATED-CRAWL.md`; uses the saved cookie/Basic credential |
+| commix parser from a real run | `commixOutput.ts`, `fixtures/commix/`; unfinished/unreachable runs are `error`, nothing to test is `not_applicable` |
 | Site crawler with page-level checks on every page (E-70) | `crawler.ts`, `crawlFindings.ts`, `crawl` in `ScanResults`; script inventory merges inner-page origins |
 | Pull-request dependency checks (E-71) | `POST /api/v1/dependency-diff`, `dependencyDiff.ts`, Action `mode: dependencies` |
 | End-of-life detection; certificate checks (incl. subdomains); TLS now reads broken certs | `endOfLife.ts`, `subdomainCerts.ts`, `tls.ts` |
@@ -64,7 +66,7 @@ branches / functions / lines). Lint: 0 errors (31 known warnings).
 
 ### ~~1. E-70 — Site crawler~~ — shipped (see "Where things stand")
 
-Kept for reference; not yet covered by the crawler: authenticated crawling, JS-rendered link discovery (a SPA's client-side routes), per-page SRI/cookies for pages behind forms.
+Kept for reference; not yet covered by the crawler: login recording for the signed-in crawl (slice 1 uses a saved cookie/Basic credential, see docs/AUTHENTICATED-CRAWL.md), JS-rendered link discovery (a SPA's client-side routes), per-page SRI/cookies for pages behind forms.
 
 **Why:** most checks look only at the homepage. Headers, error disclosure,
 SRI, script inventory, cookies and mixed content never see `/login`,

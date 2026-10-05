@@ -114,6 +114,10 @@ const BINARY_EXT_RE = /\.(?:pdf|zip|gz|tgz|tar|rar|7z|jpe?g|png|gif|svg|webp|ico
 // delete data or empty a cart on a badly-built site, so they are never followed.
 const ACTION_URL_RE = /(?:log-?out|sign-?out|log-?off|delete|remove|destroy|unsubscribe|revoke|deactivate|cancel|add[-_]?to[-_]?(?:cart|basket)|empty[-_]?cart|clear[-_]?cart|reset[-_]?password)/i;
 
+// Extra links never followed while signed in: a GET to these can spend money,
+// change account state or hand out secrets on a badly-built app.
+const AUTH_ACTION_URL_RE = /(?:billing|payment|checkout|purchase|subscribe|upgrade|invite|transfer|api[-_]?keys?|tokens?|secrets?|export|download|impersonate|close[-_]?account|disconnect|confirm|approve|reject)/i;
+
 const hostKey = (host: string) => host.toLowerCase().replace(/^www\./, "");
 
 /** Same site: same host (www and apex are one) and port; http or https. */
@@ -166,9 +170,10 @@ export function urlShape(url: URL): string {
 }
 
 /** Why a URL must not be fetched, or null. */
-export function skipReason(url: URL): string | null {
+export function skipReason(url: URL, authenticated = false): string | null {
   if (BINARY_EXT_RE.test(url.pathname)) return "not a page";
   if (ACTION_URL_RE.test(url.pathname) || ACTION_URL_RE.test(url.search)) return "action link";
+  if (authenticated && (AUTH_ACTION_URL_RE.test(url.pathname) || AUTH_ACTION_URL_RE.test(url.search))) return "action link";
   const segments = url.pathname.split("/").filter(Boolean);
   if (segments.length > 6) return "too deep";
   // /a/b/a/b/a/b — a relative-link loop.
@@ -384,7 +389,7 @@ type Fetched =
   /** Redirected to a page the crawl already has. */
   | { kind: "duplicate" };
 
-async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<string>): Promise<Fetched> {
+async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<string>, extraHeaders: Record<string, string> = {}): Promise<Fetched> {
   let url = first;
   for (let hop = 0; hop <= CRAWL_LIMITS.maxRedirects; hop++) {
     let res: Response;
@@ -392,7 +397,9 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
       res = await fetch(url.href, {
         redirect: "manual",
         signal: AbortSignal.timeout(CRAWL_LIMITS.requestTimeoutMs),
-        headers: { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "user-agent": CRAWLER_USER_AGENT },
+        // Only same-site URLs are ever fetched (redirects off-site are recorded, not followed),
+        // so a credential in extraHeaders never leaves the target.
+        headers: { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "user-agent": CRAWLER_USER_AGENT, ...extraHeaders },
       });
     } catch {
       return { kind: "failed" };
@@ -494,6 +501,12 @@ export type CrawlOptions = {
   maxDepth?: number;
   concurrency?: number;
   budgetMs?: number;
+  /**
+   * Credential headers (Cookie / Authorization) sent with every page request to
+   * the target. Switches on the stricter signed-in link rules (AUTH_ACTION_URL_RE).
+   * robots.txt and sitemaps are always fetched anonymously.
+   */
+  credentialHeaders?: Record<string, string>;
 };
 
 export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}): Promise<CrawlResult> {
@@ -508,6 +521,8 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
   const startUrl: URL = parsedStart;
 
   const notes: string[] = [];
+  const credentialHeaders = options.credentialHeaders ?? {};
+  const authenticated = Object.keys(credentialHeaders).length > 0;
 
   // robots.txt first: it decides whether we may go beyond the start page.
   let rules: RobotsRules = { allows: () => true, sitemaps: [] };
@@ -527,7 +542,7 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
   const enqueue = (candidate: URL | null, depth: number): void => {
     if (!candidate || depth > maxDepth || !isSameSite(candidate, startUrl)) return;
     const key = urlKey(candidate);
-    if (seenKeys.has(key) || skipReason(candidate) || !rules.allows(candidate.pathname + candidate.search)) return;
+    if (seenKeys.has(key) || skipReason(candidate, authenticated) || !rules.allows(candidate.pathname + candidate.search)) return;
     const shape = urlShape(candidate);
     if ((shapeCounts.get(shape) ?? 0) >= CRAWL_LIMITS.maxPerShape) return;
     seenKeys.add(key);
@@ -536,7 +551,7 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
   };
 
   // Start page: if it can't be read as the site's page, nothing else is trustworthy.
-  const first = await fetchPage(startUrl, startUrl, 0, seenKeys);
+  const first = await fetchPage(startUrl, startUrl, 0, seenKeys, credentialHeaders);
   if (first.kind !== "page") return { status: "error", note: "The start page couldn't be fetched, so the site wasn't crawled." };
   if (first.page.status >= 400) {
     return { status: "error", note: `The start page returned HTTP ${first.page.status} (a firewall may be blocking the scanner), so the site wasn't crawled.` };
@@ -575,7 +590,7 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
       attempted++;
       inFlight++;
       try {
-        const fetched = await fetchPage(startUrl, item.url, item.depth, seenKeys);
+        const fetched = await fetchPage(startUrl, item.url, item.depth, seenKeys, credentialHeaders);
         if (fetched.kind === "duplicate") {
           attempted--;
           continue;

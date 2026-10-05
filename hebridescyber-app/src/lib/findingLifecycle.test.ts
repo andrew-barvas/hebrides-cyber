@@ -271,3 +271,18 @@ describe("syncFindingLifecycle", () => {
     expect(from).not.toHaveBeenCalledWith("scans");
   });
 });
+
+describe("signed-in crawl coverage", () => {
+  it("attributes crawl.auth.* findings to authCheck", () => {
+    expect(findingSource("crawl.auth.mixed-content:/app", true, ["authCheck", "nuclei"])).toBe("authcheck");
+    expect(findingSource("crawl.mixed-content:/", false, ["authCheck"])).toBe("base");
+  });
+
+  it("counts authCheck as covered only when its crawl finished", () => {
+    const covered = (crawl?: { status: string }) => scanCoverage({ authCheck: { status: "checked", ...(crawl ? { crawl } : {}) } }).completedTools.has("authcheck");
+    expect(covered()).toBe(true);
+    expect(covered({ status: "checked" })).toBe(true);
+    expect(covered({ status: "error" })).toBe(false);
+    expect(covered({ status: "partial" })).toBe(false);
+  });
+});
