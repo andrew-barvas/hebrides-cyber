@@ -35,3 +35,33 @@ describe("buildScanReport triage", () => {
     for (const f of report.findings) expect("triage" in f).toBe(false);
   });
 });
+
+describe("buildScanReport fixed findings", () => {
+  const previous: Finding[] = [
+    { severity: "critical", title: "SQLi", detail: "d", checkId: "sqlmap.sqli:id" },
+    { severity: "medium", title: "No HSTS", detail: "d", checkId: "headers.hsts" },
+  ];
+
+  it("a passive scan does not report an active-tool finding as fixed (nor fire ticket auto-close for it)", () => {
+    const report = buildScanReport(scan, { ...result, results: { findings: [], headers: { status: "checked" } } }, previous);
+    expect(report.fixed_findings!.map((f) => f.check_id)).toEqual(["headers.hsts"]);
+    expect(report.fixed_finding_count).toBe(1);
+  });
+
+  it("a scan whose active tool completed does report it fixed", () => {
+    const report = buildScanReport(scan, { ...result, results: { findings: [], extended: { sqlmap: { status: "completed" } } } }, previous);
+    expect(report.fixed_findings!.map((f) => f.check_id)).toEqual(["sqlmap.sqli:id", "headers.hsts"]);
+  });
+});
+
+describe("buildScanReport proof of exploit", () => {
+  it("reports proof_of_exploit only on confirmed findings", () => {
+    const proven: Finding = { severity: "high", title: "p", detail: "d", checkId: "headers.cors-reflected", metadata: { proofOfExploit: { confirmed: true, evidence: "e", validatedAt: "2026-10-05T00:00:00Z" } } };
+    const plain: Finding = { severity: "low", title: "q", detail: "d", checkId: "dns.x" };
+    const unvalidated: Finding = { severity: "low", title: "r", detail: "d", checkId: "dns.y", metadata: { proofOfExploit: { confirmed: true, evidence: "e2" } } };
+    const report = buildScanReport(scan, { ...result, results: { findings: [proven, plain, unvalidated] } }, null);
+    expect(report.findings[0].proof_of_exploit).toEqual({ confirmed: true, evidence: "e", validated_at: "2026-10-05T00:00:00Z" });
+    expect(report.findings[1].proof_of_exploit).toBeUndefined();
+    expect(report.findings[2].proof_of_exploit?.validated_at).toBeNull();
+  });
+});

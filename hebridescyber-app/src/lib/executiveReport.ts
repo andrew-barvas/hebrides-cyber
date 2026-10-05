@@ -19,6 +19,7 @@ import type { Finding } from "./scanners";
 import { COMPLIANCE_REPORT_DISCLAIMER, generateComplianceReport, withComplianceRefs } from "./complianceReport";
 import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
+import { confirmedProof } from "./proofEvidence";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
 
@@ -86,12 +87,13 @@ export function ratingFor(score: number | null): { label: string; colour: string
 
 const severityRank = (s: Finding["severity"]) => SEVERITY_ORDER.indexOf(s);
 
-/** Most urgent first: severity, then known-exploited, then likelihood of exploitation, then easiest fix. */
+/** Most urgent first: severity, then confirmed-exploitable, then known-exploited, then likelihood of exploitation, then easiest fix. */
 export function prioritise(findings: Finding[]): Finding[] {
   const effort = ["trivial", "easy", "moderate", "hard"];
   return [...findings].sort(
     (a, b) =>
       severityRank(a.severity) - severityRank(b.severity) ||
+      Number(Boolean(confirmedProof(b))) - Number(Boolean(confirmedProof(a))) ||
       Number(b.threatIntel?.knownExploited ?? false) - Number(a.threatIntel?.knownExploited ?? false) ||
       (b.threatIntel?.epss ?? 0) - (a.threatIntel?.epss ?? 0) ||
       (a.fixDifficulty ? effort.indexOf(a.fixDifficulty) : 9) - (b.fixDifficulty ? effort.indexOf(b.fixDifficulty) : 9)
@@ -148,7 +150,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
           (f, i) => `<div class="priority">
             <div class="pn">${i + 1}</div>
             <div class="pb">
-              <div>${badge(f.severity)} <b>${e(f.title)}</b>${f.threatIntel?.knownExploited ? ' <span class="kev">actively exploited</span>' : ""}</div>
+              <div>${badge(f.severity)} <b>${e(f.title)}</b>${confirmedProof(f) ? ' <span class="kev">confirmed exploitable</span>' : ""}${f.threatIntel?.knownExploited ? ' <span class="kev">actively exploited</span>' : ""}</div>
               <p>${e(plainText(f.detail, DETAIL_CHARS))}</p>
               ${f.remediation ? `<p class="fix"><b>How to fix:</b> ${e(plainText(f.remediation, FIX_CHARS))} <i>(effort: ${effort(f)})</i></p>` : ""}
             </div>
