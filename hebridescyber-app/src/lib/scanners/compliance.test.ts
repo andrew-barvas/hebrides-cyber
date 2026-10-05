@@ -22,9 +22,8 @@ describe("getComplianceRefs", () => {
     expect(withKey).toEqual(withoutKey);
   });
 
-  it("gives the two new extended-tool checks (xsser, commix) the same OWASP A03 mapping as sqlmap", () => {
+  it("gives the commix check the same OWASP A03 mapping as sqlmap", () => {
     const sqlmapRefs = getComplianceRefs("sqlmap.sqli");
-    expect(getComplianceRefs("xsser.xss")).toEqual(sqlmapRefs);
     expect(getComplianceRefs("commix.command-injection")).toEqual(sqlmapRefs);
   });
 
@@ -91,7 +90,7 @@ describe("ALL_CONTROLS_BY_FRAMEWORK", () => {
   });
 
   it("is derived from COMPLIANCE_MAP, not a hand-maintained duplicate that could omit a control", () => {
-    // A03:2021 is cited by sqlmap.sqli/xsser.xss/commix.command-injection —
+    // A03:2021 is cited by sqlmap.sqli/commix.command-injection —
     // confirms the derivation actually walks every entry, not just the
     // first one found per framework.
     expect(ALL_CONTROLS_BY_FRAMEWORK["owasp-top-10"].has("A03:2021 – Injection")).toBe(true);

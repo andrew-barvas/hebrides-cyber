@@ -204,8 +204,8 @@ describe("consolidateFindings", () => {
       expect(findings).toHaveLength(2);
     });
 
-    it("tools with no table entries (sqlmap, xsser)", () => {
-      const { findings } = consolidateFindings([f("sqlmap.sqli:id"), f("xsser.xss:https://x/"), zap("SQL Injection")]);
+    it("tools with no table entries (sqlmap, commix)", () => {
+      const { findings } = consolidateFindings([f("sqlmap.sqli:id"), f("commix.command-injection:id"), zap("SQL Injection")]);
       expect(findings).toHaveLength(3);
     });
 

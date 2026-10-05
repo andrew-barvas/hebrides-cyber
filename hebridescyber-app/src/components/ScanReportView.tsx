@@ -401,7 +401,7 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
  * THIS finding specifically came back fixed, without making the customer
  * navigate away and compare two full reports themselves.
  *
- * Not rendered at all for an extended-tool finding (nuclei/sqlmap/xsser/
+ * Not rendered at all for an extended-tool finding (nuclei/sqlmap/
  * commix/etc. — see src/lib/extendedToolCheckIds.ts) — the on-demand path
  * never runs those tools, so "retesting" one of their findings this way
  * would silently claim "fixed" without ever re-checking it. The parent

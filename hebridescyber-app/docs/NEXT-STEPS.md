@@ -101,16 +101,22 @@ inner pages; our own site still scores the same or better; docs updated.
 
 Not yet covered: lockfile-less PRs (manifest-only changes), a GitHub App for fork PRs' comments, and pinning a PR's finding to the exact changed line.
 
-### ~~3. E-72 — Fix sqlmap result reading~~ — sqlmap shipped; xsser outstanding
+### ~~3. E-72 — Fix sqlmap result reading~~ — shipped; xsser retired; commix parser outstanding
 
 `sqlmap.ts` now reads sqlmap's real output (`sqlmapOutput.ts`, tested against
 captured output in `src/worker/tools/fixtures/sqlmap/`): an unreachable target
 or unfinished run is `error`, nothing to test is `not_applicable`, never clean.
-`.github/workflows/tool-integration.yml` runs the real sqlmap against
-`tests/fixtures/test-app` and uploads xsser's raw output as an artifact.
-**Next session:** download that artifact, write `xsserOutput.ts` + fixtures from
-the real text, and apply the same evidence rules to `xsser.ts` (and `commix.ts`,
-also unverified).
+`tool-integration.yml` runs the real sqlmap against `tests/fixtures/test-app`
+(passed on a GitHub runner) and captures commix output into the job log.
+**xsser was retired**: the CI capture showed it is not installable on the runner
+image (no apt package on Ubuntu 24.04; the pip build of 1.9 crashes at import
+because it only runs from inside its source checkout), so it had only ever
+returned `not_configured`. ZAP covers XSS; reflected-XSS confirmation is planned
+for `proofOfExploit.ts`.
+**Next:** write `commixOutput.ts` + fixtures from the captured commix v4.2 run
+(negative case: `[warning] GET parameter 'q' does not seem to be injectable`,
+`[critical] All tested parameters do not appear to be injectable…`; needs
+`--batch`), with the same evidence rules as `sqlmap.ts`.
 
 ### 4. E-73 — Scanner accuracy benchmark suite
 

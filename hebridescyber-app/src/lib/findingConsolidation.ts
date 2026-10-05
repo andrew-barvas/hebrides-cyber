@@ -113,7 +113,6 @@ const EXTENDED_NAMESPACES: Record<string, { tool: string; rank: number }> = {
   zap: { tool: "ZAP", rank: 20 },
   nuclei: { tool: "nuclei", rank: 30 },
   sqlmap: { tool: "sqlmap", rank: 40 },
-  xsser: { tool: "XSSer", rank: 40 },
   commix: { tool: "commix", rank: 40 },
   cairn: { tool: "Cairn", rank: 40 },
   strix: { tool: "Strix", rank: 40 },

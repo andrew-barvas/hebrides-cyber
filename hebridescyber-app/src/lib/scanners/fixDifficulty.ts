@@ -123,7 +123,6 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": "hard",
-  "xsser.xss": "hard",
   "commix.command-injection": "hard",
   "nmap.dangerous-port": "easy",
   "secretScan.exposed-secret": "moderate", // rotate the credential + purge from git history

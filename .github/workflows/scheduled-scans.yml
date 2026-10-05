@@ -118,36 +118,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends nmap python3 python3-pip
           pip3 install --break-system-packages sqlmap
 
-      - name: Install xsser and commix
-        # Packaging for these two is less consistent than nmap/sqlmap/nuclei
-        # above (see the CONFIDENCE NOTE in src/worker/tools/xsser.ts and
-        # commix.ts) — xsser is a Debian/Ubuntu apt package, commix has no
-        # official PyPI release and is normally run from a git checkout.
-        # Both failure modes are handled: a missing binary makes
-        # runXsser()/runCommix() return status "not_configured" rather than
-        # throwing, so a failed install here degrades this one check, not
-        # the whole job.
+      - name: Install commix
+        # commix has no official PyPI release and is normally run from a git
+        # checkout (see the CONFIDENCE NOTE in src/worker/tools/commix.ts). A
+        # failed clone is handled: a missing binary makes runCommix() return
+        # status "not_configured" rather than throwing, so it degrades this one
+        # check, not the whole job. (xsser was retired: it is not installable
+        # on the runner image and ZAP already covers XSS.)
         run: |
-          sudo apt-get install -y --no-install-recommends xsser || echo "xsser apt install failed — xsser.ts will report status: not_configured"
           sudo git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix || echo "commix clone failed — commix.ts will report status: not_configured"
           if [ -f /opt/commix/commix.py ]; then
             sudo ln -sf /opt/commix/commix.py /usr/local/bin/commix
             sudo chmod +x /usr/local/bin/commix
-          fi
-
-      - name: Verify xsser CLI flags (E-18)
-        # xsser.ts was written without a real binary to test against (its
-        # CONFIDENCE NOTE). This checks, on the real installed binary, that
-        # the two flags it passes exist — a mismatch is a visible warning in
-        # the run, not a silent "no XSS found" forever. Never fails the job.
-        run: |
-          if command -v xsser >/dev/null 2>&1; then
-            help="$(xsser --help 2>&1 || true)"
-            for flag in --url --auto; do
-              if printf '%s' "$help" | grep -q -- "$flag"; then echo "xsser supports $flag"; else echo "::warning::xsser --help does not list $flag — update src/worker/tools/xsser.ts (E-18)"; fi
-            done
-          else
-            echo "::warning::xsser not installed — xsser.ts reports not_configured"
           fi
 
       - name: Install nuclei
