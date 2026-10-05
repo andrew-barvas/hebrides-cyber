@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
+import { urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
 import { buildCrawlFindings } from "./crawlFindings";
 import { buildScriptInventory, crawledPagesForInventory } from "./scriptInventory";
 import { scanCoverage, isCovered } from "../findingLifecycle";
@@ -12,7 +12,7 @@ const SECURE = {
   "referrer-policy": "no-referrer",
 };
 
-type Route = { status?: number; type?: string; body?: string; headers?: Record<string, string> };
+type Route = { status?: number; type?: string; body?: string; headers?: Record<string, string>; fail?: boolean; textFails?: boolean; noType?: boolean };
 
 /** Stubs fetch with a fixture site; records every request. */
 function stubSite(routes: Record<string, Route>) {
@@ -23,9 +23,11 @@ function stubSite(routes: Record<string, Route>) {
       const url = new URL(String(input));
       requests.push({ url: url.href, method: init?.method ?? "GET" });
       const route = routes[url.origin + url.pathname + url.search] ?? routes[url.pathname + url.search] ?? routes[url.pathname];
+      if (route?.fail) throw new Error("network down");
+      if (route?.textFails) return { status: 200, headers: new Headers({ "content-type": "text/html" }), body: null, text: async () => { throw new Error("reset"); } } as unknown as Response;
       if (!route) return new Response("not found", { status: 404, headers: { "content-type": "text/html" } });
       const type = route.type ?? (url.pathname.endsWith(".xml") || url.pathname === "/robots.txt" ? "text/plain" : "text/html");
-      return new Response(route.body ?? "", { status: route.status ?? 200, headers: { "content-type": type, ...(route.headers ?? {}) } });
+      return new Response(route.noType ? null : (route.body ?? ""), { status: route.status ?? 200, headers: { ...(route.noType ? {} : { "content-type": type }), ...(route.headers ?? {}) } });
     })
   );
   return requests;
@@ -284,5 +286,230 @@ describe("lifecycle and script inventory", () => {
     expect(inv.origins.map((o) => o.origin)).toEqual(["https://ads.test"]);
     expect(inv.origins[0].paymentPages).toEqual(["/checkout"]);
     expect(inv.paymentPage.detected).toBe(false);
+  });
+});
+
+const page = (url: string, depth: number, checks?: import("./crawler").PageChecks, status = 200) => ({ url, status, contentType: "text/html", title: null, depth, ...(checks ? { checks } : {}) });
+const emptyChecks = (over: Partial<import("./crawler").PageChecks> = {}): import("./crawler").PageChecks => ({
+  missingHeaders: [], cookies: [], mixedContent: [], insecureForms: [], errorDisclosure: [], unprotectedResources: [], scripts: [], paymentSignals: [], formCount: 0, ...over,
+});
+const crawlOf = (pages: ReturnType<typeof page>[]) => ({ status: "checked" as const, startUrl: "https://x.test/", truncated: false, pages });
+
+describe("URL edge cases", () => {
+  it("rejects unparseable URLs and detects relative-link loops", () => {
+    expect(normaliseUrl("http://[", "https://x.test/")).toBeNull();
+    expect(skipReason(new URL("https://x.test/a/b/a/b/a/b"))).toBe("loop");
+  });
+});
+
+describe("analysePage edge cases", () => {
+  const res = new Response("", { headers: { "content-type": "text/html" } });
+  const run = (url: string, html: string) => analysePage({ url: new URL(url), status: 200, res, html });
+
+  it("ignores non-stylesheet links, empty and unparseable references", () => {
+    const c = run("https://x.test/", `<link rel="icon" href="https://cdn.test/i.ico"><img alt="no source"><form></form><img src=""><img src="http://[bad"><script src="http://["></script>`);
+    expect(c.unprotectedResources).toEqual([]);
+    expect(c.mixedContent).toEqual([]);
+    expect(c.scripts).toEqual([]);
+  });
+
+  it("de-duplicates resources and scripts, and caps scripts", () => {
+    const tags = `<script src="https://cdn.test/a.js"></script><script src="https://cdn.test/a.js"></script><link rel="stylesheet" href="https://cdn.test/s.css"><link rel="stylesheet" href="https://cdn.test/s.css">`;
+    const c = run("https://x.test/", tags);
+    expect(c.unprotectedResources).toHaveLength(2);
+    expect(c.scripts).toHaveLength(1);
+    const many = Array.from({ length: 50 }, (_, i) => `<script src="https://cdn.test/${i}.js" integrity="sha384-x"></script>`).join("");
+    expect(run("https://x.test/", many).scripts).toHaveLength(40);
+  });
+
+  it("flags password fields on HTTP pages and ignores empty or invalid form actions", () => {
+    const c = run("http://x.test/", `<form action=""></form><form action="http://[bad"></form><input type="password">`);
+    expect(c.insecureForms).toEqual(["a password field is on a page served over unencrypted HTTP"]);
+    expect(c.formCount).toBe(2);
+  });
+
+  it("caps the mixed-content list", () => {
+    const imgs = Array.from({ length: 9 }, (_, i) => `<img src="http://a.test/${i}.png">`).join("");
+    expect(run("https://x.test/", imgs).mixedContent).toHaveLength(5);
+  });
+});
+
+describe("checkCrawl edge cases", () => {
+  it("rejects an invalid target", async () => {
+    expect((await checkCrawl("not a url")).status).toBe("error");
+  });
+
+  it("seeds from supplied paths, follows sitemap indexes and caps sitemap URLs", async () => {
+    const locs = Array.from({ length: 205 }, (_, i) => `<url><loc>https://x.test/s${i}</loc></url>`).join("");
+    stubSite({
+      "/robots.txt": { body: "Sitemap: https://x.test/index.xml\nSitemap: https://x.test/gone.xml" },
+      "/index.xml": { type: "application/xml", body: "<sitemapindex><sitemap><loc>https://x.test/child.xml</loc></sitemap><sitemap><loc>https://other.test/c.xml</loc></sitemap></sitemapindex>" },
+      "/child.xml": { type: "application/xml", body: `<urlset>${locs}</urlset>` },
+      "/": html("home"),
+      "/seeded": html("seeded", "Seeded"),
+    });
+    const result = await checkCrawl("https://x.test/", { seedPaths: ["/seeded", "/robots-skipped.pdf"], maxPages: 400 });
+    if (result.status === "error") throw new Error("unexpected");
+    expect(result.pages.some((p) => p.title === "Seeded")).toBe(true);
+    expect(result.pages).toHaveLength(1 + 200 + 1); // start + sitemap capped at 200 + seeded
+  });
+
+  it("records non-HTML responses without analysing them, and drops redirects to known pages", async () => {
+    stubSite({
+      "/robots.txt": { status: 404 },
+      "/": html(`<a href="/feed">f</a><a href="/b">b</a><a href="/a">a</a>`),
+      "/feed": { type: "application/json", body: "{}" },
+      "/a": { status: 301, headers: { location: "/b" } },
+      "/b": html("b", "B"),
+    });
+    const result = await checkCrawl("https://x.test/");
+    if (result.status === "error") throw new Error("unexpected");
+    const feed = result.pages.find((p) => p.url.endsWith("/feed"));
+    expect(feed?.contentType).toBe("application/json");
+    expect(feed?.checks).toBeUndefined();
+    expect(result.pages.filter((p) => p.title === "B")).toHaveLength(1);
+  });
+
+  it("copes with an invalid <base>, unreadable bodies and a redirect loop", async () => {
+    stubSite({
+      "/robots.txt": { status: 404 },
+      "/": html(`<base href="http://["><a href="/broken">x</a><a href="/loop">l</a>`),
+      "/broken": { textFails: true },
+      "/loop": { status: 302, headers: { location: "/loop2" } },
+      "/loop2": { status: 302, headers: { location: "/loop3" } },
+      "/loop3": { status: 302, headers: { location: "/loop4" } },
+      "/loop4": { status: 302, headers: { location: "/loop5" } },
+      "/loop5": { status: 302, headers: { location: "/loop" } },
+    });
+    const result = await checkCrawl("https://x.test/");
+    expect(result.status).toBe("partial"); // both followed links failed
+  });
+
+  it("is partial when many page requests fail", async () => {
+    stubSite({
+      "/robots.txt": { status: 404 },
+      "/": html(`<a href="/a">a</a><a href="/b">b</a><a href="/c">c</a>`),
+      "/a": { fail: true },
+      "/b": { fail: true },
+      "/c": html("c"),
+    });
+    const result = await checkCrawl("https://x.test/");
+    expect(result.status).toBe("partial");
+    if (result.status !== "error") expect(result.note).toContain("failed");
+  });
+
+  it("reports the final URL when the start page redirects", async () => {
+    stubSite({ "/robots.txt": { status: 404 }, "/": { status: 302, headers: { location: "/home" } }, "/home": html(`<a href="/x">x</a>`, "Home"), "/x": html("x") });
+    const result = await checkCrawl("https://x.test/");
+    if (result.status === "error") throw new Error("unexpected");
+    expect(result.startUrl).toBe("https://x.test/home");
+    expect(result.pages.map((p) => p.title)).toEqual(["Home", "Page"]);
+  });
+});
+
+describe("buildCrawlFindings edge cases", () => {
+  const start = (over = {}) => page("https://x.test/", 0, emptyChecks(over));
+
+  it("handles an empty crawl", () => {
+    expect(buildCrawlFindings({ ...crawlOf([]) })).toEqual([]);
+  });
+
+  it("lists many pages, singular wording, long paths and skips error-status pages for headers", () => {
+    const lacking = Array.from({ length: 12 }, (_, i) => page(`https://x.test/p${i}`, 1, emptyChecks({ missingHeaders: ["x-frame-options"] })));
+    const long = page(`https://x.test/${"a".repeat(200)}`, 1, emptyChecks({ missingHeaders: ["referrer-policy"] }));
+    const errored = page("https://x.test/err", 1, emptyChecks({ missingHeaders: ["x-content-type-options"] }), 500);
+    const findings = buildCrawlFindings(crawlOf([start(), ...lacking, long, errored]));
+    const xfo = findings.find((f) => f.checkId === "crawl.header-gap:x-frame-options");
+    expect(xfo?.detail).toContain("and 2 more");
+    expect(xfo?.title).toContain("12 pages");
+    const ref = findings.find((f) => f.checkId === "crawl.header-gap:referrer-policy");
+    expect(ref?.title).toContain("1 page");
+    expect(ref?.title).not.toContain("1 pages");
+    expect(ref?.detail).toContain("…");
+    expect(findings.some((f) => f.checkId === "crawl.header-gap:x-content-type-options")).toBe(false);
+  });
+
+  it("skips header gaps when the start page has no analysis, and ignores pages without checks", () => {
+    const noChecks = page("https://x.test/", 0);
+    const findings = buildCrawlFindings(crawlOf([noChecks, page("https://x.test/a", 1), page("https://x.test/b", 1, emptyChecks({ missingHeaders: ["x-frame-options"], mixedContent: [], cookies: [{ name: "c", issues: ["Missing Secure flag"] }] }))]));
+    expect(findings.map((f) => f.checkId)).toEqual(["crawl.cookie-flags:c"]);
+  });
+
+  it("ignores cookies with no issues or already seen on the start page", () => {
+    const findings = buildCrawlFindings(crawlOf([
+      start({ cookies: [{ name: "home", issues: [] }] }),
+      page("https://x.test/a", 1, emptyChecks({ cookies: [{ name: "home", issues: ["x"] }, { name: "ok", issues: [] }] })),
+    ]));
+    expect(findings).toEqual([]);
+  });
+
+  it("aggregates SRI: stylesheet-only is low, skips what the start page reports, caps the list", () => {
+    const res = (n: number, kind: "script" | "stylesheet") => ({ kind, url: `https://cdn.test/${n}` });
+    const cssOnly = buildCrawlFindings(crawlOf([start({ unprotectedResources: [res(0, "script")] }), page("https://x.test/a", 1, emptyChecks({ unprotectedResources: [res(0, "script"), res(1, "stylesheet")] }))]));
+    expect(cssOnly).toHaveLength(1);
+    expect(cssOnly[0].severity).toBe("low");
+    expect(cssOnly[0].title).toContain("1 cross-origin resource ");
+    const many = buildCrawlFindings(crawlOf([start(), page("https://x.test/a", 1, emptyChecks({ unprotectedResources: [res(1, "script"), res(2, "script"), res(3, "script"), res(4, "script"), res(5, "script")] })), ...Array.from({ length: 8 }, (_, i) => page(`https://x.test/m${i}`, 1, emptyChecks({ unprotectedResources: [res(10 + i, "script")] })))]));
+    expect(many[0].severity).toBe("medium");
+    expect(many[0].detail).toContain("and 3 more");
+  });
+
+  it("reports insecure forms and error disclosure, and ignores pages without those", () => {
+    const findings = buildCrawlFindings(crawlOf([
+      start({ insecureForms: ["a password field is on a page served over unencrypted HTTP"] }),
+      page("https://x.test/a", 1),
+      page("https://x.test/b", 1, emptyChecks({ errorDisclosure: ["PHP error"] }), 500),
+    ]));
+    expect(findings.map((f) => f.checkId)).toEqual(["crawl.insecure-form:/", "crawl.error-disclosure:/b"]);
+  });
+});
+
+describe("remaining branches", () => {
+  it("keys URLs with ports and ignores scheme and www", () => {
+    expect(urlKey(new URL("https://www.x.test:8443/a?b=1"))).toBe("x.test:8443/a?b=1");
+    expect(urlKey(new URL("http://x.test/a"))).toBe(urlKey(new URL("https://www.x.test/a")));
+  });
+
+  it("only treats a true repeat as a loop", () => {
+    expect(skipReason(new URL("https://x.test/a/b/a/b/c/d"))).toBeNull();
+    expect(skipReason(new URL("https://x.test/a/b/a/c/a/d"))).toBeNull();
+    expect(skipReason(new URL("https://x.test/a/b/c/b/a/b"))).toBeNull();
+  });
+
+  it("parses odd robots.txt layouts", () => {
+    expect(parseRobots("Sitemap:\nDisallow: /early\nUser-agent: a\nUser-agent: *\nDisallow: /x\n# note\nnonsense").allows("/x")).toBe(false);
+    expect(parseRobots("Disallow: /early").allows("/early")).toBe(true);
+    expect(parseRobots("User-agent: *\nDisallow: /a\nAllow: /a").allows("/a")).toBe(true);
+    expect(parseRobots("User-agent: *\nAllow: /a/b\nDisallow: /a").allows("/a/b")).toBe(true);
+    expect(parseRobots("User-agent: *\nAllow: /a\nDisallow: /a/b").allows("/a/b")).toBe(false);
+    expect(parseRobots("User-agent: *\nSitemap:").sitemaps).toEqual([]);
+  });
+
+  it("reads titles and unquoted hrefs", () => {
+    expect(extractTitle("<title>  </title>")).toBeNull();
+    expect(extractTitle("<p>none</p>")).toBeNull();
+    expect(extractLinks("<a href=/plain>x</a>").hrefs).toEqual(["/plain"]);
+  });
+
+  it("handles responses with no content-type, a non-HTML start page and http→https redirects", async () => {
+    stubSite({
+      "/robots.txt": { status: 404 },
+      "/": { type: "application/json", body: "{}" },
+    });
+    const json = await checkCrawl("https://x.test/");
+    if (json.status === "error") throw new Error("unexpected");
+    expect(json.pages).toHaveLength(1);
+
+    stubSite({
+      "/robots.txt": { status: 404 },
+      "/": html(`<a href="http://x.test/a">a</a><a href="/blank">b</a>`),
+      "http://x.test/a": { status: 301, headers: { location: "https://x.test/a" } },
+      "/a": html("a"),
+      "/blank": { noType: true },
+    });
+    const result = await checkCrawl("https://x.test/");
+    if (result.status === "error") throw new Error("unexpected");
+    expect(result.pages.find((p) => p.url.endsWith("/blank"))?.contentType).toBeNull();
+    expect(result.pages.filter((p) => new URL(p.url).pathname === "/a")).toHaveLength(1);
   });
 });
