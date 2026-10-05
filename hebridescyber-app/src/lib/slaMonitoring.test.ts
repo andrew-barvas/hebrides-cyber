@@ -8,6 +8,7 @@ import {
   type LifecycleRow,
   type SlaPolicy,
 } from "./slaMonitoring";
+import { buildTriageIndex } from "./findingTriage";
 
 const NOW = new Date("2026-09-27T12:00:00Z");
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -136,5 +137,47 @@ describe("selectSlaAlerts", () => {
   it("sends nothing when the account turned alerts off", () => {
     const off: SlaPolicy = { ...DEFAULT_SLA_POLICY, alertsEnabled: false };
     expect(selectSlaAlerts([row({ first_seen_at: daysAgo(45) })], off, NOW)).toEqual({ dueSoon: [], breached: [] });
+  });
+});
+
+describe("triage (findingTriage.ts)", () => {
+  const triageRow = (check_id: string, state: "accepted_risk" | "false_positive" | "snoozed", expires_at: string | null = null) => ({
+    id: `t-${check_id}`, owner: "o1", target_host: "shop.example", check_id, state, reason: "agreed",
+    expires_at, created_by: "o1", created_at: daysAgo(5), updated_at: daysAgo(5),
+  });
+  const rows = [
+    row({ id: "accepted", check_id: "a", severity: "critical", first_seen_at: daysAgo(20) }),
+    row({ id: "snoozed", check_id: "b", severity: "critical", first_seen_at: daysAgo(20) }),
+    row({ id: "expired", check_id: "c", severity: "critical", first_seen_at: daysAgo(20) }),
+    row({ id: "other-host", check_id: "a", target_host: "other.example", severity: "critical", first_seen_at: daysAgo(20) }),
+    row({ id: "open", check_id: "d", severity: "high", first_seen_at: daysAgo(1) }),
+  ];
+  const index = buildTriageIndex(
+    [triageRow("a", "accepted_risk"), triageRow("b", "snoozed", daysAgo(-3)), triageRow("c", "snoozed", daysAgo(1))],
+    NOW
+  );
+
+  it("leaves actively triaged findings out of the summary and counts them separately", () => {
+    const summary = buildSlaSummary(rows, DEFAULT_SLA_POLICY, NOW, index);
+    expect(summary.items.map((i) => i.id).sort()).toEqual(["expired", "open", "other-host"]);
+    expect(summary.triaged).toBe(2);
+    expect(summary.breached).toBe(2);
+  });
+
+  // An expired snooze is not a deadline extension: the original first-seen
+  // date still applies, so this one comes back already breached.
+  it("tracks a finding again, against its original deadline, once its triage expires", () => {
+    const item = slaItem(rows[2], DEFAULT_SLA_POLICY, NOW, index);
+    expect(item?.state).toBe("breached");
+    expect(item?.firstSeenAt).toBe(daysAgo(20));
+  });
+
+  it("raises no alerts for triaged findings", () => {
+    const alerts = selectSlaAlerts(rows, DEFAULT_SLA_POLICY, NOW, index);
+    expect(alerts.breached.map((i) => i.id).sort()).toEqual(["expired", "other-host"]);
+  });
+
+  it("behaves as before without an index", () => {
+    expect(buildSlaSummary(rows, DEFAULT_SLA_POLICY, NOW)).toMatchObject({ open: 5, triaged: 0 });
   });
 });

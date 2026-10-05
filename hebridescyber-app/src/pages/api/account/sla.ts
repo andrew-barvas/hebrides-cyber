@@ -7,11 +7,16 @@
 //
 // Before migration 043 GET reports `available: false` rather than failing,
 // so the page can say what's missing; PUT returns 503.
+//
+// Findings with an active triage (accepted risk / false positive / snooze,
+// findingTriage.ts) are out of SLA tracking and counted in summary.triaged
+// instead. Before migration 046 nothing is triaged.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/dbErrors";
+import { buildTriageIndex, loadTriageForOwner } from "@/lib/findingTriage";
 import { hasSlaAccess } from "@/lib/slaAlerts";
 import { DEFAULT_SLA_POLICY, buildSlaSummary, policyFromRow, type LifecycleRow, type SlaPolicyRow } from "@/lib/slaMonitoring";
 import { parseBody } from "@/lib/validate";
@@ -71,7 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const since = new Date(Date.now() - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const [policyResult, openResult, resolvedResult] = await Promise.all([
+  const [policyResult, openResult, resolvedResult, triage] = await Promise.all([
     supabaseAdmin
       .from("sla_policies")
       .select("critical_days, high_days, medium_days, low_days, warn_days, alerts_enabled")
@@ -79,6 +84,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .maybeSingle(),
     supabaseAdmin.from("finding_lifecycle").select(LIFECYCLE_SELECT).eq("owner", caller.ownerId).is("resolved_at", null),
     supabaseAdmin.from("finding_lifecycle").select(LIFECYCLE_SELECT).eq("owner", caller.ownerId).gte("resolved_at", since),
+    loadTriageForOwner(supabaseAdmin, caller.ownerId),
   ]);
 
   const error = policyResult.error ?? openResult.error ?? resolvedResult.error;
@@ -88,10 +94,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return res.status(500).json({ error: "Could not load SLA status" });
   }
+  // Unlike a missing table, a failed triage read can't be shown as "nothing
+  // triaged": that would report accepted findings as breaching.
+  if (triage.error) return res.status(500).json({ error: "Could not load SLA status" });
 
   const policy = policyFromRow(policyResult.data as SlaPolicyRow | null);
   const rows = [...(openResult.data ?? []), ...(resolvedResult.data ?? [])] as LifecycleRow[];
-  const summary = buildSlaSummary(rows, policy);
+  const now = new Date();
+  const summary = buildSlaSummary(rows, policy, now, buildTriageIndex(triage.rows, now));
   return res.status(200).json({
     access: true,
     available: true,

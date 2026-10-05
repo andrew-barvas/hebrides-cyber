@@ -11,6 +11,33 @@ const fs = require("node:fs");
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
+/**
+ * Has the owner triaged this finding — accepted the risk (or authorised it),
+ * marked it a false positive, or snoozed it — with that decision still in
+ * effect? The API only reports triage that's active, but the expiry is
+ * checked here too so a report fetched just before a snooze ends can't wave
+ * a finding through after it.
+ */
+function isTriaged(finding, now = Date.now()) {
+  const triage = finding && finding.triage;
+  if (!triage || typeof triage !== "object" || !triage.state) return false;
+  if (triage.expires_at === null || triage.expires_at === undefined) return true;
+  const expires = Date.parse(triage.expires_at);
+  return !Number.isNaN(expires) && expires > now;
+}
+
+/**
+ * The findings that decide pass/fail: new since the previous scan, at or
+ * above the threshold, and not triaged by the owner.
+ */
+function blockingFindings(findings, failOn, now = Date.now()) {
+  if (failOn === "none") return [];
+  const threshold = SEVERITY_RANK[failOn];
+  return (findings || []).filter(
+    (f) => f.status === "new" && (SEVERITY_RANK[f.severity] ?? 0) >= threshold && !isTriaged(f, now)
+  );
+}
+
 // GitHub's documented input->env-var conversion: upper-case, spaces become
 // underscores, hyphens are left as literal hyphens (not valid in a shell
 // variable name, but perfectly fine as a JS object key via bracket access —
@@ -163,7 +190,8 @@ async function main() {
 
   const newFindings = findings.filter((f) => f.status === "new");
   for (const f of newFindings) {
-    warning(`NEW [${f.severity}] ${f.title}`);
+    if (isTriaged(f)) notice(`NEW [${f.severity}] ${f.title} — triaged (${f.triage.state}), not counted`);
+    else warning(`NEW [${f.severity}] ${f.title}`);
   }
 
   if (failOn === "none") {
@@ -171,20 +199,25 @@ async function main() {
     return;
   }
 
-  const threshold = SEVERITY_RANK[failOn];
-  const blocking = newFindings.filter((f) => (SEVERITY_RANK[f.severity] ?? 0) >= threshold);
+  const blocking = blockingFindings(findings, failOn);
 
   if (blocking.length > 0) {
     fail(`${blocking.length} new finding(s) at or above "${failOn}" severity introduced since the last scan.`);
     return;
   }
 
-  notice(`No new findings at or above "${failOn}" severity. (${newFindings.length} new finding(s) below threshold.)`);
+  notice(`No untriaged new findings at or above "${failOn}" severity. (${newFindings.length} new finding(s) below threshold or triaged.)`);
 }
 
-main().catch((err) => {
-  if (!(err instanceof ActionFailure)) {
-    console.log(`::error::${err.stack || err.message}`);
-  }
-  process.exitCode = 1;
-});
+module.exports = { isTriaged, blockingFindings };
+
+// Run only as the action's entry point — requiring this file (the unit tests
+// do) must not start a scan.
+if (require.main === module) {
+  main().catch((err) => {
+    if (!(err instanceof ActionFailure)) {
+      console.log(`::error::${err.stack || err.message}`);
+    }
+    process.exitCode = 1;
+  });
+}

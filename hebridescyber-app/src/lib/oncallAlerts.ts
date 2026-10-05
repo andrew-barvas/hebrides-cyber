@@ -71,11 +71,12 @@ function siteUrl(): string {
 /**
  * Opens a PagerDuty incident / Opsgenie alert for every new critical finding
  * in this report, for every pagerduty/opsgenie integration this owner has
- * configured (an owner can have both — fires to both).
+ * configured (an owner can have both — fires to both). A finding the owner
+ * has triaged (accepted / false positive / snoozed) never pages anyone.
  */
 export async function triggerOncallAlerts(supabaseAdmin: SupabaseClient, ownerId: string, report: ScanReport): Promise<void> {
   try {
-    const newCriticalFindings = report.findings.filter((f) => f.status === "new" && f.severity === "critical");
+    const newCriticalFindings = report.findings.filter((f) => f.status === "new" && f.severity === "critical" && !f.triage);
     if (newCriticalFindings.length === 0) return;
 
     const integrations = await fetchOncallIntegrations(supabaseAdmin, ownerId);

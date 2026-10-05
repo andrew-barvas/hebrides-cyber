@@ -28,7 +28,8 @@ const ALERTABLE_SEVERITIES = new Set(["critical", "high"]);
  * findings (status === "new", not just any finding in the report) is
  * critical or high severity. A report full of new "info" findings, or a
  * first-ever scan (new_finding_count === null, nothing to compare against),
- * does not fire.
+ * does not fire. Nor does a new finding the owner has already triaged
+ * (accepted / false positive / snoozed) — e.g. one that flapped back.
  */
 export async function sendCriticalAlertEmail(
   supabaseAdmin: SupabaseClient,
@@ -39,7 +40,7 @@ export async function sendCriticalAlertEmail(
     if (!report.new_finding_count) return; // null (no previous scan) or 0 — nothing changed
 
     const newAlertableFindings = report.findings.filter(
-      (f) => f.status === "new" && ALERTABLE_SEVERITIES.has(f.severity)
+      (f) => f.status === "new" && ALERTABLE_SEVERITIES.has(f.severity) && !f.triage
     );
     if (newAlertableFindings.length === 0) return;
 

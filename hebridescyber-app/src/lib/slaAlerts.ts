@@ -6,10 +6,12 @@
 // Agency plan (admins exempt), matching where SLA monitoring is sold. Email
 // only for now; Slack/Teams could follow via the existing channel webhooks.
 // Never throws — same contract as every other post-scan hook in
-// scanExecution.ts.
+// scanExecution.ts. Findings with an active triage (findingTriage.ts) are
+// skipped; before migration 046 nothing counts as triaged.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeHtml, sendEmail } from "./email";
 import { isMissingSchemaError } from "./dbErrors";
+import { buildTriageIndex, loadTriageForHost } from "./findingTriage";
 import { policyFromRow, selectSlaAlerts, type LifecycleRow, type SlaItem, type SlaPolicyRow } from "./slaMonitoring";
 
 export async function hasSlaAccess(supabaseAdmin: SupabaseClient, ownerId: string): Promise<boolean> {
@@ -85,7 +87,7 @@ export async function sendSlaAlerts(supabaseAdmin: SupabaseClient, ownerId: stri
   try {
     if (!(await hasSlaAccess(supabaseAdmin, ownerId))) return;
 
-    const [{ data: policyRow, error: policyError }, { data: rows, error: rowsError }] = await Promise.all([
+    const [{ data: policyRow, error: policyError }, { data: rows, error: rowsError }, triage] = await Promise.all([
       supabaseAdmin
         .from("sla_policies")
         .select("critical_days, high_days, medium_days, low_days, warn_days, alerts_enabled")
@@ -97,6 +99,7 @@ export async function sendSlaAlerts(supabaseAdmin: SupabaseClient, ownerId: stri
         .eq("owner", ownerId)
         .eq("target_host", host)
         .is("resolved_at", null),
+      loadTriageForHost(supabaseAdmin, ownerId, host),
     ]);
     const loadError = policyError ?? rowsError;
     if (loadError) {
@@ -104,7 +107,20 @@ export async function sendSlaAlerts(supabaseAdmin: SupabaseClient, ownerId: stri
       return;
     }
 
-    const alerts = selectSlaAlerts((rows ?? []) as LifecycleRow[], policyFromRow(policyRow as SlaPolicyRow | null), now);
+    // A triage lookup that failed for another reason means we can't tell
+    // what's been accepted — alerting on it anyway would email about
+    // findings the customer deliberately set aside, so wait for next scan.
+    if (triage.error) {
+      console.error("[slaAlerts] triage load failed:", triage.error);
+      return;
+    }
+
+    const alerts = selectSlaAlerts(
+      (rows ?? []) as LifecycleRow[],
+      policyFromRow(policyRow as SlaPolicyRow | null),
+      now,
+      buildTriageIndex(triage.rows, now)
+    );
     if (alerts.dueSoon.length === 0 && alerts.breached.length === 0) return;
 
     const { data: user } = await supabaseAdmin.from("users").select("email").eq("id", ownerId).maybeSingle();
