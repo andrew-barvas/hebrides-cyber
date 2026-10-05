@@ -1,0 +1,37 @@
+{
+  "target": "seeded-legacy",
+  "description": "Legacy PHP/Apache box with seeded misconfigurations. Every seeded issue must be reported; look-alike files that are NOT served must not be.",
+  "mustFind": [
+    "tls.no-https",
+    "headers.missing-critical",
+    "headers.missing-recommended",
+    "headers.csp-absent",
+    "headers.cookie-flags:PHPSESSID",
+    "headers.cors-wildcard",
+    "headers.info-disclosure",
+    "exposure.exposed-file:/.env",
+    "exposure.exposed-file:/.git/HEAD",
+    "exposure.exposed-file:/.git/config",
+    "exposure.exposed-file:/backup.sql",
+    "exposure.exposed-file:/phpinfo.php",
+    "exposure.no-security-txt",
+    "directory-listing.open-directory:/uploads/",
+    "directory-listing.open-directory:/backups/",
+    "fingerprint.risky-library:PHP",
+    "webapp.robots-sensitive-paths",
+    "webapp.dangerous-methods",
+    "webapp.error-disclosure",
+    "business-logic.csrf-missing",
+    "business-logic.autocomplete-sensitive:pass"
+  ],
+  "mustNotFind": [
+    "exposure.exposed-file:/.htpasswd",
+    "exposure.exposed-file:/.svn/entries",
+    "exposure.exposed-file:/wp-config.php.bak",
+    "exposure.exposed-file:/server-status",
+    "exposure.exposed-file:/phpmyadmin",
+    "directory-listing.open-directory:/images/",
+    "directory-listing.open-directory:/logs/"
+  ],
+  "optional": ["fingerprint.tech-detected"]
+}

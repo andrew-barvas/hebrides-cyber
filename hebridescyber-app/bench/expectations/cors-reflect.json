@@ -1,0 +1,7 @@
+{
+  "target": "cors-reflect",
+  "description": "Reflects any Origin with credentials. Reported as reflected-with-credentials, never as the (different) wildcard finding.",
+  "mustFind": ["tls.no-https", "exposure.no-security-txt", "webapp.cors-reflected-creds"],
+  "mustNotFind": ["headers.cors-wildcard", "webapp.cors-reflected", "exposure.exposed-file:*", "directory-listing.*"],
+  "optional": ["fingerprint.tech-detected"]
+}

@@ -40,7 +40,7 @@ const capabilities: Capability[] = [
   {
     icon: "📈",
     title: "Compliance mapping & export",
-    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2 and DORA. Download any scan as a per-framework control report (Markdown, CSV or JSON) for a client's audit pack, labelled as an automated indicator rather than a certification.",
+    body: "Every finding is mapped to ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA, SOC 2 and HIPAA. Download any scan as a per-framework control report (Markdown, CSV or JSON) for a client's audit pack, labelled as an automated indicator rather than a certification.",
   },
   {
     icon: "⏱️",

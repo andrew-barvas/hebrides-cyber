@@ -27,7 +27,7 @@ Database migrations are applied through **046**; the next free number is **047**
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **65 / 59 / 67 / 67** (statements /
+Coverage floor (`vitest.config.mts`): **67 / 60 / 68 / 68** (statements /
 branches / functions / lines). Lint: 0 errors (31 known warnings).
 
 ## Rules that kept biting — follow these
@@ -101,16 +101,22 @@ inner pages; our own site still scores the same or better; docs updated.
 
 Not yet covered: lockfile-less PRs (manifest-only changes), a GitHub App for fork PRs' comments, and pinning a PR's finding to the exact changed line.
 
-### ~~3. E-72 — Fix sqlmap result reading~~ — sqlmap shipped; xsser outstanding
+### ~~3. E-72 — Fix sqlmap result reading~~ — shipped; xsser retired; commix parser outstanding
 
 `sqlmap.ts` now reads sqlmap's real output (`sqlmapOutput.ts`, tested against
 captured output in `src/worker/tools/fixtures/sqlmap/`): an unreachable target
 or unfinished run is `error`, nothing to test is `not_applicable`, never clean.
-`.github/workflows/tool-integration.yml` runs the real sqlmap against
-`tests/fixtures/test-app` and uploads xsser's raw output as an artifact.
-**Next session:** download that artifact, write `xsserOutput.ts` + fixtures from
-the real text, and apply the same evidence rules to `xsser.ts` (and `commix.ts`,
-also unverified).
+`tool-integration.yml` runs the real sqlmap against `tests/fixtures/test-app`
+(passed on a GitHub runner) and captures commix output into the job log.
+**xsser was retired**: the CI capture showed it is not installable on the runner
+image (no apt package on Ubuntu 24.04; the pip build of 1.9 crashes at import
+because it only runs from inside its source checkout), so it had only ever
+returned `not_configured`. ZAP covers XSS; reflected-XSS confirmation is planned
+for `proofOfExploit.ts`.
+**Next:** write `commixOutput.ts` + fixtures from the captured commix v4.2 run
+(negative case: `[warning] GET parameter 'q' does not seem to be injectable`,
+`[critical] All tested parameters do not appear to be injectable…`; needs
+`--batch`), with the same evidence rules as `sqlmap.ts`.
 
 ### 4. E-73 — Scanner accuracy benchmark suite
 
@@ -127,6 +133,15 @@ failing on regressions.
 **Done when:** the suite runs in CI with a baseline report, and at least
 one known false positive class (e.g. SPA catch-all) is a must-not case.
 
+**Status (E-73):** first slice built on branch `claude/e73-benchmark`: `bench/`,
+`npm run bench`, `.github/workflows/benchmark.yml`. It covers the base checks
+that run offline against 12 local fixture sites (SPA catch-all, soft-404 and
+redirect-all must-not cases included); the Juice Shop / badssl.com job is
+opt-in and informational (`bench:network`). It already surfaced two real
+defects, tracked as `knownIssues`: nginx autoindex is missed (`directoryListing.ts`
+requires "Parent Directory") and `no-rate-limit` fires on redirect-everything
+sites. Not yet covered: DNS, ports, recon and the extended tools.
+
 ### 5. E-74 — Cross-site findings view with bulk triage
 
 **Why:** everything is per scan. Agencies and anyone with several sites
@@ -138,6 +153,7 @@ groupable, with bulk actions.
 state, age/SLA; group by check (e.g. "missing HSTS on 7 sites"); bulk
 triage via the existing bulk `PUT /api/findings/triage`; CSV export.
 Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
+**Status:** page, API (`GET /api/findings`), bulk triage and CSV export are built with unit/component tests (see CLAUDE.md "Cross-site findings view"); only the authenticated e2e is outstanding, owned by the e2e branch.
 **Done when:** one page shows every open finding across sites, a bulk
 "authorise these 5 script sources" works, and it has e2e coverage.
 
@@ -145,6 +161,12 @@ Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
 
 - **Authenticated e2e tests** for the dashboard, report and triage (today's
   9 e2e tests cover public pages only).
+- **Real Postgres tests** for RLS and migrations: done as `tests/db/` + `db-tests.yml` on plain Postgres with a Supabase shim, see CLAUDE.md "Testing strategy". Remaining: extend the RLS matrix to the tables not yet covered (ticket_integrations, sla_policies, organisations/RBAC, report_shares).
+- ~~Authenticated e2e tests~~ — done: dashboard, scans/start-scan, report and
+  triage run signed-in and hermetic (`tests/e2e/*-auth.spec.ts`; how it works
+  is under "Testing strategy" in `CLAUDE.md`). Not yet covered: `/account`,
+  `/admin`, `/dashboard/assets|sla|integrations`, the report's Fix Wizard and
+  the `/diff` page.
 - **Real Postgres tests** for RLS and migrations (Supabase CLI local stack in CI).
 - **Cross-tool duplicate findings** (nuclei, ZAP and our checks reporting the same issue).
 - **Evidence on findings** — the request/response that proves each one.
@@ -154,6 +176,8 @@ Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
 - E-63 continuous EASM, E-65 lookalike domains, E-66 DMARC reports.
 - `/methodology` page; the five-part briefing document (marketing/).
 - Per-target repo mapping (today the newest connected repo is scanned).
+
+**Cross-tool duplicates (done, `claude/dedupe-findings`):** `findingConsolidation.ts` merges extended-tool duplicates into the canonical finding (`corroboratedBy`). Still open: the table covers only issues with a confident id mapping (headers/HSTS/CSP, TLS, a few exposures, CVE-bearing library findings) — extend `EQUIVALENCES` as real nuclei/ZAP output confirms more ids; sqlmap/xsser/ZAP injection findings need parameter/URL evidence in their checkIds before they can be matched; our own overlapping checks (`tls.hsts-missing` vs `headers.missing-critical`) are deliberately not merged.
 - SAST: Koa `ctx`, FastAPI typed params, more languages (E-69 follow-ups).
 - Emerging threats: WordPress plugin matching; re-alert when
   "possibly affected" becomes "affected".

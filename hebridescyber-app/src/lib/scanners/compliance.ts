@@ -3,7 +3,10 @@
 // OWASP Top 10:2021, CIS Controls v8, ISO/IEC 27001 (Annex A, 2013 domain
 // numbering — more widely recognised in SME conversations than the 2022
 // theme restructuring), PCI DSS v4.0, the EU NIS2 Directive, and the EU
-// Digital Operational Resilience Act (DORA). Additive enrichment only:
+// Digital Operational Resilience Act (DORA), plus AICPA SOC 2 (Trust Services
+// Criteria) and the HIPAA Security Rule — those two are derived from the
+// hand-curated rows by a small crosswalk (see SOC2/HIPAA below) rather than
+// mapped check by check. Additive enrichment only:
 // applied as a final pass over an already-built Finding[] in
 // summariseResults(), keyed by checkId, so no individual finding-push call
 // site needs to know this module exists.
@@ -32,7 +35,9 @@ export type ComplianceFramework =
   | "iso-27001"
   | "pci-dss"
   | "nis2"
-  | "dora";
+  | "dora"
+  | "soc2"
+  | "hipaa";
 
 export type ComplianceRef = {
   framework: ComplianceFramework;
@@ -77,6 +82,53 @@ const NIS2_ART21: ComplianceRef = { framework: "nis2", control: "Article 21 – 
 
 const DORA_ART9: ComplianceRef = { framework: "dora", control: "Article 9 – ICT Risk Protection and Prevention" };
 
+// SOC 2 Trust Services Criteria (Security category, "common criteria") and the
+// HIPAA Security Rule (45 CFR 164) technical/administrative safeguards.
+const SOC2_CC6_1: ComplianceRef = { framework: "soc2", control: "CC6.1 – Logical Access Security" };
+const SOC2_CC6_6: ComplianceRef = { framework: "soc2", control: "CC6.6 – Boundary Protection" };
+const SOC2_CC6_7: ComplianceRef = { framework: "soc2", control: "CC6.7 – Protection of Data in Transmission" };
+const SOC2_CC6_8: ComplianceRef = { framework: "soc2", control: "CC6.8 – Prevention of Malicious Software" };
+const SOC2_CC7_1: ComplianceRef = { framework: "soc2", control: "CC7.1 – Detection of Vulnerabilities and Configuration Changes" };
+
+const HIPAA_ACCESS: ComplianceRef = { framework: "hipaa", control: "§164.312(a)(1) – Access Control" };
+const HIPAA_INTEGRITY: ComplianceRef = { framework: "hipaa", control: "§164.312(c)(1) – Integrity" };
+const HIPAA_AUTH: ComplianceRef = { framework: "hipaa", control: "§164.312(d) – Person or Entity Authentication" };
+const HIPAA_TRANSMISSION: ComplianceRef = { framework: "hipaa", control: "§164.312(e)(1) – Transmission Security" };
+const HIPAA_EVALUATION: ComplianceRef = { framework: "hipaa", control: "§164.308(a)(8) – Evaluation (Periodic Technical Review)" };
+const HIPAA_MALWARE: ComplianceRef = { framework: "hipaa", control: "§164.308(a)(5)(ii)(B) – Protection from Malicious Software" };
+
+// Crosswalk: a check that a curated row already ties to one of the controls on
+// the left (the same underlying objective) also evidences the SOC 2 / HIPAA
+// controls on the right. Deliberately coarse, and listed here so a reviewer
+// can disagree with one line instead of 150 rows. Anything the curated table
+// leaves unmapped stays unmapped here too.
+const CROSSWALK: Array<{ from: ComplianceRef[]; to: ComplianceRef[] }> = [
+  // Protecting data in transit / cryptography (not ISO A.13 alone: it also covers email authentication such as SPF, which is not transmission security).
+  { from: [OWASP_A02, CIS_3, PCI_REQ4], to: [SOC2_CC6_7, HIPAA_TRANSMISSION] },
+  // Who may reach what.
+  { from: [OWASP_A01, CE_ACCESS, ISO_A9], to: [SOC2_CC6_1, HIPAA_ACCESS] },
+  // Proving who the caller is.
+  { from: [OWASP_A07, PCI_REQ8], to: [SOC2_CC6_1, HIPAA_AUTH] },
+  // Configuration and vulnerability management (the scan itself is the periodic technical evaluation).
+  { from: [OWASP_A03, OWASP_A05, OWASP_A06, CE_SECURE_CONFIG, CE_PATCHING, CIS_4, CIS_7, CIS_16, PCI_REQ6, ISO_A12], to: [SOC2_CC7_1, HIPAA_EVALUATION] },
+  // Integrity of code and data.
+  { from: [OWASP_A08, PCI_6_4_3, PCI_11_6_1], to: [SOC2_CC7_1, HIPAA_INTEGRITY] },
+  // Network boundary.
+  { from: [CE_FIREWALLS, CIS_12], to: [SOC2_CC6_6] },
+  // Malware.
+  { from: [CE_MALWARE], to: [SOC2_CC6_8, HIPAA_MALWARE] },
+];
+
+/** The curated refs plus whatever the crosswalk adds, de-duplicated and in a stable order. */
+function withCrosswalk(refs: ComplianceRef[]): ComplianceRef[] {
+  const out = [...refs];
+  for (const { from, to } of CROSSWALK) {
+    if (!refs.some((r) => from.includes(r))) continue;
+    for (const add of to) if (!out.includes(add)) out.push(add);
+  }
+  return out;
+}
+
 // Static code analysis (src/worker/tools/sast.ts): one entry per rule
 // ("sast.<rule-id>"), derived from the rule's weakness category so a new rule
 // can't silently go uncategorised. Mapped per CWE: injection CWEs (89, 78,
@@ -97,7 +149,7 @@ const SAST_CATEGORY_REFS: Record<SastCategory, ComplianceRef[]> = {
   "jwt-verification": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
 };
 
-const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
+const CURATED_MAP: Record<string, ComplianceRef[]> = {
   ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_REFS[category]])),
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
@@ -121,6 +173,10 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "headers.csp-weak": [OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
   "headers.cors-wildcard": [OWASP_A05, OWASP_A01, CIS_4, PCI_REQ6, ISO_A9],
   "headers.info-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
+
+  // --- Supabase backend exposure ---
+  "backend-exposure.service-key": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, CIS_4, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "backend-exposure.open-table": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
 
   // --- Site crawl (E-70): the same controls as the home-page checks they extend ---
   "crawl.header-gap": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
@@ -206,7 +262,6 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
 
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
-  "xsser.xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "commix.command-injection": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "nmap.dangerous-port": [CE_FIREWALLS, OWASP_A05, CIS_12, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "secretScan.exposed-secret": [OWASP_A02, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ8, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
@@ -306,6 +361,10 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "business-logic.no-rate-limit": [CE_ACCESS, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9],
 };
 
+const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = Object.fromEntries(
+  Object.entries(CURATED_MAP).map(([checkId, refs]) => [checkId, withCrosswalk(refs)])
+);
+
 /** The part of a checkId before its first ":" — see module header. */
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
@@ -326,6 +385,8 @@ export const COMPLIANCE_FRAMEWORK_LABELS: Record<ComplianceFramework, string> = 
   "pci-dss": "PCI DSS",
   "nis2": "NIS2",
   "dora": "DORA",
+  "soc2": "SOC 2",
+  "hipaa": "HIPAA",
 };
 
 /**

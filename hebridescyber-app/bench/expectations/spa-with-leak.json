@@ -1,0 +1,22 @@
+{
+  "target": "spa-with-leak",
+  "description": "Recall guard: a SPA catch-all that also genuinely serves /.env and /backup.sql. Hardening against catch-alls must not hide real leaks.",
+  "mustFind": [
+    "tls.no-https",
+    "headers.missing-critical",
+    "headers.missing-recommended",
+    "headers.csp-absent",
+    "exposure.no-security-txt",
+    "exposure.exposed-file:/.env",
+    "exposure.exposed-file:/backup.sql"
+  ],
+  "mustNotFind": [
+    "exposure.exposed-file:/.git/HEAD",
+    "exposure.exposed-file:/.env.local",
+    "exposure.exposed-file:/dump.sql",
+    "exposure.exposed-file:/backup.zip",
+    "exposure.exposed-file:/phpinfo.php",
+    "directory-listing.*"
+  ],
+  "optional": ["fingerprint.tech-detected"]
+}

@@ -1,6 +1,6 @@
 // commix integration — dedicated OS command injection confirmation.
 //
-// Same precedent as sqlmap.ts and xsser.ts: a dedicated, specialised tool
+// Same precedent as sqlmap.ts: a dedicated, specialised tool
 // confirms exploitability of a specific vulnerability class far more
 // reliably than a generic DAST active-scan rule. commix (COMMand
 // Injection eXploiter) is explicitly modelled on sqlmap's own design and

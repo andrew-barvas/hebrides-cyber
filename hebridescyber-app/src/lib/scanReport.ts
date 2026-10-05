@@ -37,6 +37,9 @@ export type ScanReport = {
     // only today. [] means "checked, none known"; omitted entirely from a
     // finding type that was never checked (see Finding.cveIds in scanners).
     cve_ids?: string[];
+    // Other tools that reported this same issue, folded into this finding by
+    // findingConsolidation.ts. Omitted when none did.
+    corroborated_by?: Array<{ tool: string; check_id: string; title: string }>;
     fix_difficulty?: string;
     estimated_fix_minutes?: number;
     // CISA KEV + FIRST EPSS for CVE-backed findings (scanners/threatIntel.ts).
@@ -167,6 +170,9 @@ export function buildScanReport(
       remediation: f.remediation ?? null,
       status: f.checkId ? statusByCheckId.get(f.checkId) ?? null : null,
       cve_ids: f.cveIds,
+      corroborated_by: f.corroboratedBy?.length
+        ? f.corroboratedBy.map((c) => ({ tool: c.tool, check_id: c.checkId, title: c.title }))
+        : undefined,
       fix_difficulty: f.fixDifficulty,
       estimated_fix_minutes: f.estimatedFixMinutes,
       threat_intel: f.threatIntel

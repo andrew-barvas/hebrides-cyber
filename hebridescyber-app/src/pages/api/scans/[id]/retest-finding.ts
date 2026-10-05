@@ -12,7 +12,7 @@
 // unit). The frontend surfaces it as "did THIS finding get fixed?" without
 // implying anything narrower actually ran.
 //
-// Extended-tool findings (nuclei/zap/sqlmap/xsser/commix/nmap/subdomains/
+// Extended-tool findings (nuclei/zap/sqlmap/commix/nmap/subdomains/
 // deep-tls/secretScan/dependency-manifest/docker-base-image/trivy-image/
 // trivy-config/auth-check) are rejected outright — this route always
 // pre-sets scan_id on the scan_jobs row it creates, and

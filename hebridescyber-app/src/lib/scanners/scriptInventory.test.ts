@@ -400,11 +400,15 @@ describe("script inventory findings", () => {
 
   it("maps to PCI DSS 6.4.3 and 11.6.1, OWASP A08 and CIS 16, rated trivial to fix", () => {
     const [f] = summariseResults(results({ scriptInventory: marketing })).findings;
+    // The curated mapping, then what the SOC 2 / HIPAA crosswalk derives from it.
     expect(f.complianceRefs?.map((r) => r.control)).toEqual([
       "Requirement 6.4.3 – Payment Page Scripts Are Inventoried, Authorised and Integrity-Assured",
       "Requirement 11.6.1 – Unauthorised Changes to Payment Pages Are Detected",
       "A08:2021 – Software and Data Integrity Failures",
       "CIS Control 16 – Application Software Security",
+      "CC7.1 – Detection of Vulnerabilities and Configuration Changes",
+      "§164.308(a)(8) – Evaluation (Periodic Technical Review)",
+      "§164.312(c)(1) – Integrity",
     ]);
     expect(f.fixDifficulty).toBe("trivial");
     expect(f.estimatedFixMinutes).toBe(15);

@@ -1,0 +1,125 @@
+name: Scanner accuracy benchmark
+
+# E-73. Measures precision/recall per base-scanner module against a corpus of
+# local fixture sites with seeded misconfigurations and known false-positive
+# traps (SPA catch-all, soft-404, ...), and fails when either number drops
+# below the committed baseline (hebridescyber-app/bench/baseline.json) or a
+# must-find / must-not-find expectation is violated.
+#
+# The blocking job is hermetic: fixtures are served from 127.0.0.1, nothing
+# touches the internet. The optional "network" job (manual dispatch only) runs
+# the scanner against badssl.com and an OWASP Juice Shop container for a
+# real-world sanity read; it is informational and can never fail the workflow.
+
+on:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+  pull_request:
+    paths:
+      - "hebridescyber-app/src/lib/scanners/**"
+      - "hebridescyber-app/bench/**"
+      - ".github/workflows/benchmark.yml"
+  push:
+    branches: [master]
+    paths:
+      - "hebridescyber-app/src/lib/scanners/**"
+      - "hebridescyber-app/bench/**"
+      - ".github/workflows/benchmark.yml"
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Also run the network-dependent badssl.com / Juice Shop job (non-blocking)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local:
+    name: Local fixtures (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+
+      - name: Benchmark unit tests
+        working-directory: hebridescyber-app
+        run: npm run bench:test
+
+      - name: Run benchmark
+        working-directory: hebridescyber-app
+        run: npm run bench | tee bench-output.txt
+
+      - name: Add table to job summary
+        if: always()
+        working-directory: hebridescyber-app
+        run: |
+          if [ -f bench-output.txt ]; then
+            { echo '### Scanner accuracy'; echo '```'; cat bench-output.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            hebridescyber-app/bench/reports/latest.json
+            hebridescyber-app/bench-output.txt
+          if-no-files-found: ignore
+
+  network:
+    name: badssl.com + Juice Shop (network-dependent, non-blocking)
+    if: github.event_name == 'workflow_dispatch' && inputs.network
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    services:
+      juiceshop:
+        image: bkimminich/juice-shop:latest
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+
+      - name: Wait for Juice Shop
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3000 >/dev/null && exit 0
+            sleep 2
+          done
+          echo "Juice Shop did not start" >&2
+          exit 1
+
+      - name: Scan real-world targets (informational)
+        working-directory: hebridescyber-app
+        run: |
+          npm run bench:network -- \
+            http://localhost:3000 \
+            https://expired.badssl.com \
+            https://self-signed.badssl.com \
+            https://wrong.host.badssl.com \
+            https://untrusted-root.badssl.com \
+            https://incomplete-chain.badssl.com | tee network-output.txt
+          { echo '### Network targets (informational)'; echo '```'; cat network-output.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

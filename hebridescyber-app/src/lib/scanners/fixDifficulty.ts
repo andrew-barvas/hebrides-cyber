@@ -49,6 +49,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.missing-recommended": "easy",
   "headers.cors-wildcard": "easy",
   "headers.info-disclosure": "trivial",
+  "backend-exposure.service-key": "easy", // rotate the key and move it server-side
+  "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
   "crawl.header-gap": "easy",
   "crawl.cookie-flags": "easy",
   "crawl.mixed-content": "easy",
@@ -121,7 +123,6 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": "hard",
-  "xsser.xss": "hard",
   "commix.command-injection": "hard",
   "nmap.dangerous-port": "easy",
   "secretScan.exposed-secret": "moderate", // rotate the credential + purge from git history

@@ -1050,31 +1050,6 @@ export function sqlmapRemediation(dbms: string | null, context: SqlmapContext = 
   return SQLMAP_SQLI_BASE + (match ? snippets[match] : "") + specific;
 }
 
-export const XSSER_XSS_BASE = `XSSer confirmed this parameter reflects attacker-controlled markup or
-script back into the page unescaped — an attacker can run arbitrary
-JavaScript in another user's browser session (steal cookies/session tokens,
-act as that user, deface the page). Treat this as urgent.
-
-**The fix is always the same: never trust user input to become HTML/JS.**
-
-- Escape output for the context it lands in — HTML-entity-encode for HTML
-  body content, JS-string-encode for inline scripts, attribute-encode for
-  HTML attributes. Use your framework's built-in escaping (React/Vue/Angular
-  all escape by default) rather than hand-rolled string building.
-- Never use \`dangerouslySetInnerHTML\`, \`v-html\`, \`innerHTML\`, or
-  equivalents on anything derived from user input without passing it through
-  a sanitiser (e.g. DOMPurify) first.
-- Add a Content-Security-Policy that restricts \`script-src\` — even a
-  successful reflection is far less exploitable without inline-script
-  execution allowed.
-- Set cookies \`HttpOnly\` so a successful XSS still can't read the session
-  cookie directly.`;
-
-/** Same as XSSER_XSS_BASE — XSS remediation doesn't vary by target the way sqlmap's DBMS-specific syntax does, so this is a plain export with no per-target variant function. */
-export function xsserRemediation(): string {
-  return XSSER_XSS_BASE;
-}
-
 export const COMMIX_COMMAND_INJECTION_BASE = `commix confirmed this parameter reaches a shell command on the server —
 an attacker can run arbitrary operating-system commands with the
 application's own privileges. This is typically a direct path to full
@@ -1098,7 +1073,7 @@ server compromise. Treat this as critical.
   a successful injection here does less damage even before the code fix
   ships.`;
 
-/** Same as COMMIX_COMMAND_INJECTION_BASE — no per-target variant, matching xsserRemediation()'s reasoning. */
+/** Same as COMMIX_COMMAND_INJECTION_BASE — no per-target variant. */
 export function commixRemediation(): string {
   return COMMIX_COMMAND_INJECTION_BASE;
 }
@@ -2823,4 +2798,29 @@ curl -s https://cdn.example.com/lib.js | openssl dgst -sha384 -binary | openssl 
 \`\`\`
 
 \`crossorigin="anonymous"\` must accompany \`integrity\`. Scripts that change by design (tag managers, payment SDKs) can't be pinned; list them in your Content-Security-Policy instead. Resources you control are better served from your own origin, which needs no hash.`;
+}
+
+// ---- Supabase backend exposure ---------------------------------------------------
+
+export const BACKEND_SERVICE_KEY = `A Supabase \`service_role\` key is visible in your site's public code. Treat it as already stolen.
+
+1. **Rotate it now.** In the Supabase dashboard open *Project Settings → API* and generate a new JWT secret (this invalidates both keys), then update your server-side configuration. Until you do, anyone who has copied the key can read and change every table.
+2. **Keep it out of the browser.** The \`service_role\` key belongs only in server code (API routes, edge functions, CI secrets) and must never be in a variable that is bundled for the client, such as one starting with \`NEXT_PUBLIC_\`, \`VITE_\` or \`REACT_APP_\`. The browser should only ever hold the \`anon\` key.
+3. **Check for misuse.** Review the project's logs and tables for reads or writes you don't recognise, and rotate any other secrets stored in the database.`;
+
+export function backendOpenTableRemediation(table: string): string {
+  const name = /^[a-z_][a-z0-9_]*$/i.test(table) ? table : "your_table";
+  return `Turn on row level security for \`${name}\` and add policies that only allow what each user should see. Without it, the public \`anon\` key (which every visitor's browser holds) can read the table.
+
+\`\`\`sql
+alter table public.${name} enable row level security;
+
+-- Example: signed-in users can read only their own rows.
+create policy "${name}: read own rows"
+  on public.${name} for select
+  to authenticated
+  using (user_id = auth.uid());
+\`\`\`
+
+If the data is meant to be public, say so deliberately with a narrow policy (only the columns and rows that are public, ideally through a view), rather than leaving RLS off. After the change, check it as an anonymous visitor: a request with only the anon key should return no rows. Tables created through the SQL editor have RLS **off** by default, so check every table in the \`public\` schema.`;
 }

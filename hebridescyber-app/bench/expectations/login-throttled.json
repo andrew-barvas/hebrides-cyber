@@ -1,0 +1,13 @@
+{
+  "target": "login-throttled",
+  "description": "Login form with a CSRF token and 429 throttling: neither business-logic finding may appear.",
+  "mustFind": ["tls.no-https", "exposure.no-security-txt"],
+  "mustNotFind": [
+    "business-logic.csrf-missing",
+    "business-logic.no-rate-limit",
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "headers.*"
+  ],
+  "optional": ["fingerprint.tech-detected"]
+}

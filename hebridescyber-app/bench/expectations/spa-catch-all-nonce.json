@@ -1,0 +1,13 @@
+{
+  "target": "spa-catch-all-nonce",
+  "description": "False-positive class: SPA catch-all whose shell carries a per-request nonce, so bodies are never byte-identical.",
+  "mustFind": [
+    "tls.no-https",
+    "headers.missing-critical",
+    "headers.missing-recommended",
+    "headers.csp-absent",
+    "exposure.no-security-txt"
+  ],
+  "mustNotFind": ["exposure.exposed-file:*", "directory-listing.*", "webapp.*", "business-logic.*"],
+  "optional": ["fingerprint.tech-detected"]
+}

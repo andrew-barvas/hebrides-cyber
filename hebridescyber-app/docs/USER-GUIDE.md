@@ -77,8 +77,7 @@ reported as "detected" with no risk signal.
 **Extended active-tool suite** — runs only on the scheduled monitoring path
 (nightly, via GitHub Actions, where real binaries can run): nmap, nuclei
 (template set scoped to the target's actual detected technologies, not the
-entire default template library), sqlmap, XSSer (dedicated cross-site
-scripting confirmation), commix (dedicated OS command injection
+entire default template library), sqlmap, commix (dedicated OS command injection
 confirmation), Subfinder subdomain takeover detection, testssl.sh deep TLS
 analysis. A connected GitHub repository
 additionally unlocks Gitleaks secret scanning, real dependency-manifest
@@ -143,7 +142,7 @@ three," never a forced mapping.
    suite runs, same as any "Scan now" click), not something scoped to just
    that check — you may see other findings change too, and a Pro/Agency
    Slack/Teams alert can fire if they do. **Not available for findings from
-   the extended scan tools** (nuclei, ZAP, sqlmap, XSSer, commix, nmap,
+   the extended scan tools** (nuclei, ZAP, sqlmap, commix, nmap,
    subdomain discovery, deep TLS, secret scanning, dependency-manifest
    scanning, Docker base-image checks, or the authenticated-scan check) —
    those only run on the scheduled cadence, so the button doesn't appear for
@@ -419,7 +418,7 @@ the concrete needs each feature area above exists to satisfy.
 Worth stating plainly, since it shapes several design decisions above:
 
 - **No brute-forcing, no destructive payloads.** Every passive check is
-  read-only; the active-tool suite (nuclei/sqlmap/xsser/commix/nmap/ZAP)
+  read-only; the active-tool suite (nuclei/sqlmap/commix/nmap/ZAP)
   only runs against domains that have already passed real ownership
   verification.
 - **No fabricated findings.** A check that can't evidence something

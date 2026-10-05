@@ -10,6 +10,7 @@
 // match anything, which is the conservatively correct behaviour: we cannot
 // know whether an untagged old finding is "the same" as a new tagged one.
 import type { Finding } from "./scanners";
+import { findingCheckIds } from "./findingConsolidation";
 
 export type DiffStatus = "new" | "fixed" | "unchanged";
 
@@ -24,19 +25,24 @@ export type FindingsDiff = {
   unchanged: DiffedFinding[];
 };
 
+// Cross-tool consolidation (findingConsolidation.ts) folds duplicates into a
+// canonical finding and records their checkIds in `corroboratedBy`. A finding
+// therefore stands for all of those ids here: a scan from before the
+// consolidation holding the old nuclei/ZAP finding must not read as "fixed"
+// when the same issue now lives on its canonical, nor the canonical as "new".
 export function diffFindings(current: Finding[], previous: Finding[]): FindingsDiff {
   // Only real checkIds go in these lookups — a finding with no checkId is
   // simply never inserted, so it can never be "found" as a match in either
   // direction, which is what makes untagged findings always read as new/fixed
   // rather than accidentally coinciding on a synthesised fallback key.
-  const previousCheckIds = new Set(previous.filter((f) => f.checkId).map((f) => f.checkId));
-  const currentCheckIds = new Set(current.filter((f) => f.checkId).map((f) => f.checkId));
+  const previousCheckIds = new Set(previous.flatMap(findingCheckIds));
+  const currentCheckIds = new Set(current.flatMap(findingCheckIds));
 
   const added: DiffedFinding[] = [];
   const unchanged: DiffedFinding[] = [];
 
   for (const f of current) {
-    if (f.checkId && previousCheckIds.has(f.checkId)) {
+    if (findingCheckIds(f).some((id) => previousCheckIds.has(id))) {
       unchanged.push({ ...f, status: "unchanged" });
     } else {
       added.push({ ...f, status: "new" });
@@ -44,7 +50,7 @@ export function diffFindings(current: Finding[], previous: Finding[]): FindingsD
   }
 
   const fixed: DiffedFinding[] = previous
-    .filter((f) => !f.checkId || !currentCheckIds.has(f.checkId))
+    .filter((f) => !findingCheckIds(f).some((id) => currentCheckIds.has(id)))
     .map((f) => ({ ...f, status: "fixed" }));
 
   return { added, fixed, unchanged };

@@ -151,6 +151,11 @@ is actually exploiting the CVE:
   exploited". `severity` never changes because of it; the dashboard uses it
   to order findings within a severity.
 
+A finding that other tools also reported (nuclei, ZAP, testssl) carries
+`corroborated_by: [{ tool, check_id, title }]`; those duplicates are merged into
+this one finding and not listed separately. The field is omitted when nothing
+corroborated it. The CSV export has a matching `corroborated_by` column (last).
+
 Each finding also carries `triage` — your current decision about it on this
 site, or `null`:
 

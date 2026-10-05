@@ -1,0 +1,14 @@
+{
+  "target": "hardened",
+  "description": "Well-configured static site: every check below must stay silent except the plain-HTTP finding.",
+  "mustFind": ["tls.no-https"],
+  "mustNotFind": [
+    "headers.*",
+    "exposure.exposed-file:*",
+    "exposure.no-security-txt",
+    "directory-listing.*",
+    "webapp.*",
+    "business-logic.*"
+  ],
+  "optional": ["fingerprint.tech-detected"]
+}

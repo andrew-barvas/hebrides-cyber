@@ -1,0 +1,7 @@
+{
+  "target": "spa-login",
+  "description": "False-positive class: a client-rendered login that answers every POST with the same 200 page has no credentials to rate-limit.",
+  "mustFind": ["tls.no-https", "exposure.no-security-txt"],
+  "mustNotFind": ["business-logic.no-rate-limit", "exposure.exposed-file:*", "directory-listing.*", "headers.*"],
+  "optional": ["fingerprint.tech-detected"]
+}

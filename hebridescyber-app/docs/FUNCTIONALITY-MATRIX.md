@@ -94,8 +94,7 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 | `src/worker/tools/nuclei.ts` | Templates scoped to detected tech + baseline tags | `nuclei` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/zap.ts` | Full spider + active scan | `ZAP_API_URL` + `ZAP_API_KEY` (E-14 fixed: no default, returns `not_configured` if either is unset) | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/sqlmap.ts` | SQL injection confirmation | `sqlmap` binary | `not_configured` | ⚠️ path-gated | no |
-| `src/worker/tools/xsser.ts` | XSS confirmation | `xsser` binary. **Written without a verified reference run against a real binary** | `not_configured` | ⚠️ path-gated | no |
-| `src/worker/tools/commix.ts` | OS command injection confirmation | `commix` binary. **Same unverified caveat as xsser** | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/commix.ts` | OS command injection confirmation | `commix` binary. **Verified only against a captured negative run** (`tool-integration.yml`); xsser was retired (not installable on the runner image, ZAP covers XSS) | `not_configured` | ⚠️ path-gated | no |
 | `src/lib/scanners/subdomains.ts` | Subfinder passive enumeration, takeover candidates | `subfinder` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/lib/scanners/deepTls.ts` | testssl.sh: protocol/cipher/FS/named-CVE suite | `TESTSSL_PATH` or on PATH | `not_configured` | ⚠️ path-gated | no |
 | `src/lib/scanners/secretScan.ts` | Gitleaks over a connected repo | connected repo + GitHub access + `git` | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
