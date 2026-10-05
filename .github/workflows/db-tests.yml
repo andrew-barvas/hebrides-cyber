@@ -53,4 +53,19 @@ jobs:
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - run: npm ci
+
+      # The findings-view test runs the real loader through a real PostgREST
+      # (what Supabase uses), so the PostgREST query shapes it relies on are
+      # checked. Pinned release, verified by checksum.
+      - name: Install PostgREST
+        working-directory: .
+        env:
+          POSTGREST_VERSION: v12.2.3
+          POSTGREST_SHA256: 9f71269e61ac3a940281e93ff415760f5957e430e475ba4c3889f3ede7d5527c
+        run: |
+          curl -fsSL -o /tmp/postgrest.tar.xz "https://github.com/PostgREST/postgrest/releases/download/${POSTGREST_VERSION}/postgrest-${POSTGREST_VERSION}-linux-static-x64.tar.xz"
+          echo "${POSTGREST_SHA256}  /tmp/postgrest.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/postgrest && tar -xJf /tmp/postgrest.tar.xz -C /tmp/postgrest
+          echo "POSTGREST_BIN=/tmp/postgrest/postgrest" >> "$GITHUB_ENV"
+
       - run: npm run test:db

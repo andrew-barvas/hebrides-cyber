@@ -48,25 +48,49 @@ jobs:
           RUN_TOOL_INTEGRATION: "1"
         run: npx vitest run src/worker/tools/sqlmap.integration.test.ts
 
-      # xsser's output format has never been checked against the real binary
-      # (see src/worker/tools/xsser.ts). This step installs it and saves its
-      # raw output as an artifact so the parser can be fixed from real text.
-      # Informational: it never fails the job.
+      # xsser's and commix's output formats have never been checked against
+      # the real binaries (see their file headers). These steps install them,
+      # run them against the local test app, print what they emit (so it can be
+      # read straight from the job log) and save it as an artifact, so the
+      # parsers can be written from real text. Informational: never fails the job.
       - name: Capture xsser output
         continue-on-error: true
         run: |
-          mkdir -p /tmp/xsser-capture
+          mkdir -p /tmp/capture
           sudo apt-get install -y --no-install-recommends xsser || pip3 install --break-system-packages git+https://github.com/epsylon/xsser-public.git || true
           if command -v xsser >/dev/null 2>&1; then
-            xsser --help > /tmp/xsser-capture/help.txt 2>&1 || true
-            timeout 120 xsser --url "http://127.0.0.1:8099/search?q=XSS" --auto > /tmp/xsser-capture/auto.stdout.txt 2> /tmp/xsser-capture/auto.stderr.txt || true
+            xsser --help > /tmp/capture/xsser.help.txt 2>&1 || true
+            timeout 120 xsser --url "http://127.0.0.1:8099/search?q=XSS" --auto > /tmp/capture/xsser.auto.stdout.txt 2> /tmp/capture/xsser.auto.stderr.txt || true
+            timeout 120 xsser --url "http://127.0.0.1:8099/item?id=1" --auto > /tmp/capture/xsser.clean.stdout.txt 2> /tmp/capture/xsser.clean.stderr.txt || true
           else
-            echo "xsser could not be installed" > /tmp/xsser-capture/not-installed.txt
+            echo "xsser could not be installed" > /tmp/capture/xsser.not-installed.txt
           fi
+
+      - name: Capture commix output
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/capture
+          git clone --depth 1 https://github.com/commixproject/commix.git /tmp/commix || true
+          if [ -f /tmp/commix/commix.py ]; then
+            python3 /tmp/commix/commix.py --version > /tmp/capture/commix.version.txt 2>&1 || true
+            timeout 120 python3 /tmp/commix/commix.py --url="http://127.0.0.1:8099/search?q=a" --batch > /tmp/capture/commix.clean.stdout.txt 2> /tmp/capture/commix.clean.stderr.txt || true
+          else
+            echo "commix could not be cloned" > /tmp/capture/commix.not-installed.txt
+          fi
+
+      - name: Print captured output
+        if: always()
+        run: |
+          for f in /tmp/capture/*; do
+            echo "::group::$(basename "$f")"
+            head -c 20000 "$f" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'
+            echo
+            echo "::endgroup::"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tool-output
-          path: /tmp/xsser-capture/
+          path: /tmp/capture/
           if-no-files-found: ignore
