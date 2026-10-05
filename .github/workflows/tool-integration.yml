@@ -1,0 +1,72 @@
+name: Tool integration
+
+# Runs the real sqlmap (and, informationally, xsser) against a deliberately
+# vulnerable app on localhost, so the parsers in src/worker/tools are checked
+# against real output rather than assumptions (E-72). Weekly, on changes to the
+# tool wrappers, and on demand.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  pull_request:
+    paths:
+      - "hebridescyber-app/src/worker/tools/sqlmap*.ts"
+      - "hebridescyber-app/src/worker/tools/xsser*.ts"
+      - "hebridescyber-app/tests/fixtures/test-app/**"
+      - ".github/workflows/tool-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - run: npm ci
+
+      - name: Install sqlmap
+        run: pip3 install --break-system-packages sqlmap
+
+      - name: Start the local test app
+        run: |
+          nohup python3 tests/fixtures/test-app/app.py > /tmp/test-app.log 2>&1 &
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8099/ >/dev/null && break; sleep 1; done
+          curl -fs "http://127.0.0.1:8099/item?id=1"
+
+      - name: sqlmap reports the known injection (real binary)
+        env:
+          RUN_TOOL_INTEGRATION: "1"
+        run: npx vitest run src/worker/tools/sqlmap.integration.test.ts
+
+      # xsser's output format has never been checked against the real binary
+      # (see src/worker/tools/xsser.ts). This step installs it and saves its
+      # raw output as an artifact so the parser can be fixed from real text.
+      # Informational: it never fails the job.
+      - name: Capture xsser output
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/xsser-capture
+          sudo apt-get install -y --no-install-recommends xsser || pip3 install --break-system-packages git+https://github.com/epsylon/xsser-public.git || true
+          if command -v xsser >/dev/null 2>&1; then
+            xsser --help > /tmp/xsser-capture/help.txt 2>&1 || true
+            timeout 120 xsser --url "http://127.0.0.1:8099/search?q=XSS" --auto > /tmp/xsser-capture/auto.stdout.txt 2> /tmp/xsser-capture/auto.stderr.txt || true
+          else
+            echo "xsser could not be installed" > /tmp/xsser-capture/not-installed.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tool-output
+          path: /tmp/xsser-capture/
+          if-no-files-found: ignore
