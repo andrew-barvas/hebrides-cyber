@@ -250,6 +250,63 @@ with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
 
+### `POST /api/v1/dependency-diff`
+
+The vulnerable packages a pull request **introduces** — Pro and Agency plans.
+Send a lockfile's content on the PR's base and head; only packages that head
+adds (a name and version base didn't have) are checked against OSV.dev, so the
+check gates what the change brings, not the existing backlog. Stateless:
+nothing is stored and no repository access is needed.
+
+```json
+{
+  "files": [
+    {
+      "name": "web/package-lock.json",
+      "base": "<content on the base, or null if the file is new>",
+      "head": "<content on the head, or null if the PR deletes it>",
+      "base_companion": "<web/package.json on the base (optional)>",
+      "head_companion": "<web/package.json on the head (optional)>"
+    }
+  ]
+}
+```
+
+Up to 20 files; `name` is matched on its file name. Supported: `package-lock.json`,
+`npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `poetry.lock`,
+`Pipfile.lock`, `composer.lock`, `go.sum`, `gradle.lockfile`, `Gemfile.lock`,
+`Cargo.lock`, `packages.lock.json`. The optional companion manifest
+(`package.json`, `pyproject.toml`, `composer.json`, `go.mod`) lets the parser
+tell direct from transitive dependencies.
+
+```json
+{
+  "status": "completed",
+  "complete": true,
+  "notes": [],
+  "packages_added": 12,
+  "counts": { "critical": 0, "high": 1, "medium": 0, "low": 0 },
+  "vulnerabilities": [
+    {
+      "ecosystem": "npm", "name": "lodash", "version": "4.17.0",
+      "direct": true, "dev": false, "introduced_via": null,
+      "file": "web/package-lock.json",
+      "severity": "high",
+      "fixed_version": "4.17.21",
+      "advisories": [{ "id": "GHSA-35jh-r3h4-6jhm", "cve_ids": ["CVE-2021-23337"], "severity": "high", "summary": "…" }]
+    }
+  ],
+  "files": [{ "file": "web/package-lock.json", "ecosystem": "npm", "status": "ok", "packages_added": 12, "packages_removed": 3 }]
+}
+```
+
+`complete: false` means something couldn't be checked (a lockfile that won't
+parse, more than 2,000 added packages) — **don't treat it as clean**; `notes`
+and each file's `error` say why. A new lockfile (`base: null`) counts every
+package as introduced. If OSV.dev can't be reached the response is `502` with
+`"code": "lookup_failed"` rather than an empty result. `403`
+`"code": "plan_required"` on Basic.
+
 ### `GET /PUT /DELETE /api/findings/triage`
 
 Accept a risk (or authorise it), mark a false positive, or snooze a finding —

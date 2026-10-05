@@ -22,6 +22,7 @@ Database migrations are applied through **046**; the next free number is **047**
 | Third-party script inventory, PCI 6.4.3/11.6.1 (E-62) | PR #4 — `scriptInventory.ts`; `info` on ordinary pages, `low` on payment pages (owner decision) |
 | Finding triage: accept/authorise, false positive, snooze (E-64) | PR #5 — `finding_triage` (046), `/api/findings/triage`, report UI; only false positives leave the score |
 | Site crawler with page-level checks on every page (E-70) | `crawler.ts`, `crawlFindings.ts`, `crawl` in `ScanResults`; script inventory merges inner-page origins |
+| Pull-request dependency checks (E-71) | `POST /api/v1/dependency-diff`, `dependencyDiff.ts`, Action `mode: dependencies` |
 | End-of-life detection; certificate checks (incl. subdomains); TLS now reads broken certs | `endOfLife.ts`, `subdomainCerts.ts`, `tls.ts` |
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
@@ -59,7 +60,7 @@ branches / functions / lines). Lint: 0 errors (31 known warnings).
    PR bodies end with the Claude Code attribution line. Draft PR, wait for
    CI, squash-merge, watch the `Deploy` run.
 
-## The next four features, in order
+## The next three features, in order
 
 ### ~~1. E-70 — Site crawler~~ — shipped (see "Where things stand")
 
@@ -96,21 +97,9 @@ disallows, off-origin links, sitemap, traps), caps and budget, aggregation.
 **Done when:** a scan of a multi-page fixture reports issues found only on
 inner pages; our own site still scores the same or better; docs updated.
 
-### 2. E-71 — Pull-request dependency checks
+### ~~2. E-71 — Pull-request dependency checks~~ — shipped (see "Where things stand")
 
-**Why:** Snyk/Dependabot's core loop — catch a vulnerable package in the PR
-that adds it. The lockfile parsers (E-67) were built for this.
-**Design:** new `POST /api/v1/dependency-diff` (API key auth, rate limited,
-Pro/Agency) taking base and head lockfile contents, parsing with
-`parseLockfile()` / `LOCKFILES` (`dependencyLockfiles.ts`), querying OSV
-(`osv.ts` querybatch), and returning only **newly introduced** vulnerable
-packages (with fixed versions and "introduced via"). The Action
-(`action/index.js`) gains `mode: dependencies`: on `pull_request` it reads
-base/head lockfiles via `git show`, calls the endpoint, fails on
-`fail-on`, and posts or updates one PR comment with `GITHUB_TOKEN`.
-No GitHub App webhooks. Update `action/README.md` and `docs/API.md`.
-**Done when:** a scratch-repo PR adding a known-vulnerable package fails
-the check with a useful comment; removing it passes.
+Not yet covered: lockfile-less PRs (manifest-only changes), a GitHub App for fork PRs' comments, and pinning a PR's finding to the exact changed line.
 
 ### 3. E-72 — Fix sqlmap result reading; verify xsser output (E-18)
 

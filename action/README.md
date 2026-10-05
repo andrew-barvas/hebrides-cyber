@@ -43,12 +43,52 @@ Create an API key in **Account → API Keys**. The target URL must already be a
 domain verified on your account — there's no interactive verification step
 available to a CI runner.
 
+## Pull-request dependency check (Pro / Agency)
+
+`mode: dependencies` catches a vulnerable package in the pull request that
+adds it. It reads each changed lockfile on the PR's base and head, asks
+Hebrides Cyber which of the **newly added** packages have known
+vulnerabilities (OSV.dev), fails the check at `fail-on` severity, and posts —
+then keeps updating — one comment on the PR. Existing vulnerabilities in the
+base aren't reported. No GitHub App to install; the comment uses your
+workflow's own token.
+
+```yaml
+name: Dependencies
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git must see the PR's base commit
+      - uses: andrew-barvas/hebrides-cyber/action@master
+        with:
+          mode: dependencies
+          api-key: ${{ secrets.HEBRIDES_CYBER_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on: high
+```
+
+Pull requests from forks get a read-only token, so the comment can't be
+posted there; the result is still in the job summary and the check still
+gates. If a lockfile can't be read or the lookup can't cover everything, the
+check **fails** rather than passing as clean (unless `fail-on: none`).
+Supported lockfiles are listed under `POST /api/v1/dependency-diff` in
+`docs/API.md`. `target-url` isn't used in this mode.
+
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `api-key` | yes | — | Your Hebrides Cyber API key |
-| `target-url` | yes | — | URL to scan (must already be verified) |
+| `mode` | no | `scan` | `scan` or `dependencies` (see above) |
+| `target-url` | scan mode | — | URL to scan (must already be verified) |
+| `github-token` | no | — | `dependencies` mode: token for the PR comment (`secrets.GITHUB_TOKEN`) |
 | `fail-on` | no | `high` | Fail on a new finding at or above this severity: `critical`, `high`, `medium`, `low`, or `none` to never fail |
 | `api-base-url` | no | `https://hebridescyber.com` | Override for a self-hosted/staging instance |
 

@@ -11,9 +11,16 @@ inputs:
   api-key:
     description: "Hebrides Cyber API key (Authorization: Bearer). Create one in Account -> API Keys."
     required: true
+  mode:
+    description: "scan (default): scan target-url. dependencies: on a pull_request, report vulnerable packages the PR introduces (Pro/Agency; needs actions/checkout with fetch-depth: 0)."
+    required: false
+    default: "scan"
   target-url:
-    description: "URL to scan. Must already be a verified domain on your account."
-    required: true
+    description: "URL to scan (mode: scan). Must already be a verified domain on your account."
+    required: false
+  github-token:
+    description: "Token used to post/update the pull-request comment in mode: dependencies (pass secrets.GITHUB_TOKEN; the job needs pull-requests: write)."
+    required: false
   fail-on:
     description: "Fail the step if a NEW finding at or above this severity is introduced: critical | high | medium | low | none."
     required: false
@@ -32,6 +39,8 @@ outputs:
     description: "\"true\" if a previous scan of this target existed to compare against, \"false\" for a first scan."
   report-url:
     description: "Link to the full report in the Hebrides Cyber dashboard."
+  new-vulnerable-packages:
+    description: "mode: dependencies — number of known-vulnerable packages the pull request introduces."
 
 runs:
   using: "node20"
