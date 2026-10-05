@@ -18,6 +18,7 @@ describe("activeNavHref", () => {
     ["/dashboard/scans/abc-123/diff", "/dashboard/scans"],
     // Longest match wins — history is its own nav item, not "Scans".
     ["/dashboard/scans/history", "/dashboard/scans/history"],
+    ["/dashboard/findings", "/dashboard/findings"],
     ["/dashboard/assets", "/dashboard/assets"],
     ["/dashboard/integrations", "/dashboard/integrations"],
     ["/account", "/account"],
@@ -72,7 +73,7 @@ describe("AppMobileNav", () => {
     state.pathname = "/dashboard/integrations";
     render(<AppMobileNav />);
     const links = screen.getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Assets", "SLAs", "Integrations", "Account"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Findings", "Assets", "SLAs", "Integrations", "Account"]);
     expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute("aria-current", "page");
   });
 });

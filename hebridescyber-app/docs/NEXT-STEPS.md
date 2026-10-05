@@ -147,6 +147,7 @@ groupable, with bulk actions.
 state, age/SLA; group by check (e.g. "missing HSTS on 7 sites"); bulk
 triage via the existing bulk `PUT /api/findings/triage`; CSV export.
 Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
+**Status:** page, API (`GET /api/findings`), bulk triage and CSV export are built with unit/component tests (see CLAUDE.md "Cross-site findings view"); only the authenticated e2e is outstanding, owned by the e2e branch.
 **Done when:** one page shows every open finding across sites, a bulk
 "authorise these 5 script sources" works, and it has e2e coverage.
 
