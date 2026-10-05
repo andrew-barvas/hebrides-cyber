@@ -60,6 +60,8 @@ describe("COMPLIANCE_FRAMEWORK_LABELS", () => {
       "pci-dss",
       "nis2",
       "dora",
+      "soc2",
+      "hipaa",
     ]);
   });
 });
@@ -74,6 +76,8 @@ describe("ALL_CONTROLS_BY_FRAMEWORK", () => {
       "pci-dss",
       "nis2",
       "dora",
+      "soc2",
+      "hipaa",
     ]);
     for (const controls of Object.values(ALL_CONTROLS_BY_FRAMEWORK)) {
       expect(controls.size).toBeGreaterThan(0);
@@ -92,5 +96,46 @@ describe("ALL_CONTROLS_BY_FRAMEWORK", () => {
     // first one found per framework.
     expect(ALL_CONTROLS_BY_FRAMEWORK["owasp-top-10"].has("A03:2021 – Injection")).toBe(true);
     expect(ALL_CONTROLS_BY_FRAMEWORK["cyber-essentials"].has("Secure configuration")).toBe(true);
+  });
+});
+
+describe("SOC 2 / HIPAA crosswalk", () => {
+  const frameworkRefs = (checkId: string, framework: string) =>
+    getComplianceRefs(checkId).filter((r) => r.framework === framework).map((r) => r.control);
+
+  it("maps transport-security checks to data-in-transit controls", () => {
+    expect(frameworkRefs("tls.no-https", "soc2")).toContain("CC6.7 – Protection of Data in Transmission");
+    expect(frameworkRefs("tls.no-https", "hipaa")).toContain("§164.312(e)(1) – Transmission Security");
+  });
+
+  it("maps access and authentication checks separately", () => {
+    expect(frameworkRefs("business-logic.predictable-ids", "hipaa")).toContain("§164.312(a)(1) – Access Control");
+    expect(frameworkRefs("business-logic.no-rate-limit", "hipaa")).toContain("§164.312(d) – Person or Entity Authentication");
+    expect(frameworkRefs("business-logic.no-rate-limit", "soc2")).toContain("CC6.1 – Logical Access Security");
+  });
+
+  it("maps configuration and vulnerability checks to detection / periodic evaluation", () => {
+    expect(frameworkRefs("headers.missing-critical", "soc2")).toContain("CC7.1 – Detection of Vulnerabilities and Configuration Changes");
+    expect(frameworkRefs("headers.missing-critical", "hipaa")).toContain("§164.308(a)(8) – Evaluation (Periodic Technical Review)");
+  });
+
+  it("maps integrity checks (script inventory) to the HIPAA integrity standard", () => {
+    expect(frameworkRefs("script-inventory.unreviewed", "hipaa")).toContain("§164.312(c)(1) – Integrity");
+  });
+
+  it("never adds a control twice, and keeps the curated refs first and untouched", () => {
+    const refs = getComplianceRefs("headers.missing-critical");
+    expect(new Set(refs.map((r) => `${r.framework}|${r.control}`)).size).toBe(refs.length);
+    expect(refs[0]).toEqual({ framework: "cyber-essentials", control: "Secure configuration" });
+  });
+
+  it("leaves unmapped checks unmapped, and gives no HIPAA ref where nothing fits", () => {
+    expect(getComplianceRefs("some-check-nobody-has-mapped-yet")).toEqual([]);
+    expect(getComplianceRefs("dns.spf-missing").some((r) => r.framework === "hipaa")).toBe(false);
+  });
+
+  it("labels the new frameworks", () => {
+    expect(COMPLIANCE_FRAMEWORK_LABELS.soc2).toBe("SOC 2");
+    expect(COMPLIANCE_FRAMEWORK_LABELS.hipaa).toBe("HIPAA");
   });
 });

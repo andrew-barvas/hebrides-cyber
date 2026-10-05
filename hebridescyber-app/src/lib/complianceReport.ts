@@ -111,6 +111,8 @@ const REPORT_FRAMEWORKS: ComplianceFramework[] = [
   "cis-controls-v8",
   "nis2",
   "dora",
+  "soc2",
+  "hipaa",
 ];
 
 export function generateComplianceReport(targetUrl: string, findings: Finding[]): ComplianceReportBundle {
