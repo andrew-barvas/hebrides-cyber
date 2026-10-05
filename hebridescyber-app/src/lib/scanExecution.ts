@@ -48,6 +48,7 @@ import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
+import { consolidateFindings } from "./findingConsolidation";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
 import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
@@ -880,6 +881,20 @@ export async function executeScan(
       elapsed_ms: Date.now() - scanStartTime,
     });
 
+    // The owner's triage for this site, loaded before consolidation (a
+    // finding they have triaged is never folded away) and used again for
+    // scoring below. Never fails the scan: no triage means a normal score.
+    const triageLoad = await loadTriageIndexForTarget(supabaseAdmin, ownerId, targetUrl);
+    triage = triageLoad.index;
+
+    // Cross-tool duplicates (our checks, nuclei, ZAP, testssl reporting the
+    // same issue) become one canonical finding with `corroboratedBy`, before
+    // enrichment and scoring so the issue is charged once. Pure and never
+    // throws; see findingConsolidation.ts.
+    findings = consolidateFindings(findings, {
+      isTriaged: (checkId) => Boolean(triageLoad.host && triage.get(triageLoad.host, checkId)),
+    }).findings;
+
     // E-55: enrich CVE-backed findings with CVSS scores from NVD (best-effort)
     try { await enrichFindingsWithCvss(findings); } catch { /* never block scan completion */ }
     // CISA KEV + FIRST EPSS: is anyone actually exploiting these CVEs? Same
@@ -890,8 +905,6 @@ export async function executeScan(
     // towards this scan's score or its summary. They're still stored and
     // reported, flagged as triaged. Accepted and snoozed findings still count
     // — the risk exists. Never fails the scan: no triage means a normal score.
-    const triageLoad = await loadTriageIndexForTarget(supabaseAdmin, ownerId, targetUrl);
-    triage = triageLoad.index;
     const scoredFindings = triageLoad.host ? excludeFalsePositives(findings, triageLoad.host, triage) : findings;
 
     summary = await generateAiSummary(results, scoredFindings);

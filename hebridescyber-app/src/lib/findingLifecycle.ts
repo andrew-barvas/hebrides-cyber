@@ -17,6 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "./dbErrors";
 import type { Finding } from "./scanners";
+import { findingCheckIds } from "./findingConsolidation";
 
 /** A finding resolved this recently that shows up again is the same
  *  occurrence (a flapping check, a transient scanner error), not a new one:
@@ -122,6 +123,19 @@ export type LifecycleDbRow = {
 
 export type CurrentFinding = { checkId: string; severity: string; title: string; source: string };
 
+/**
+ * Cross-tool consolidation (findingConsolidation.ts) drops a duplicate
+ * extended-tool finding into a canonical one, so the duplicate's checkId no
+ * longer appears in the scan. `merged` maps each such duplicate checkId to its
+ * canonical's. Old rows are handled explicitly rather than left to look "fixed":
+ *   - an open duplicate row is resolved, because the canonical row now carries
+ *     the issue (no stale SLA item or alert). This is bookkeeping, not a fix,
+ *     and happens once per pre-existing duplicate row (none are created after);
+ *   - the canonical row inherits the earliest first-seen of the duplicates it
+ *     absorbed, so consolidation can never restart an SLA clock.
+ */
+export type MergedInto = Map<string, string>;
+
 export type HistoricalScan = { createdAt: string; checkIds: Set<string>; coverage: ScanCoverage };
 
 const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -169,22 +183,35 @@ export function planLifecycleSync(input: {
   current: CurrentFinding[];
   coverage: ScanCoverage;
   backfill?: Map<string, string>;
+  merged?: MergedInto;
 }): LifecycleDbRow[] {
-  const { owner, host, scanId, scanAt, existing, coverage, backfill } = input;
+  const { owner, host, scanId, scanAt, existing, coverage, backfill, merged } = input;
   const current = dedupeFindings(input.current);
   const existingById = new Map(existing.map((row) => [row.check_id, row]));
   const currentIds = new Set(current.map((f) => f.checkId));
   const scanTime = Date.parse(scanAt);
   const out: LifecycleDbRow[] = [];
 
+  // Earliest first-seen among the still-open rows of duplicates folded into
+  // each canonical (see MergedInto).
+  const inheritedFirstSeen = new Map<string, string>();
+  for (const [dupId, canonicalId] of merged ?? []) {
+    const dupRow = existingById.get(dupId);
+    if (!dupRow || dupRow.resolved_at) continue;
+    const known = inheritedFirstSeen.get(canonicalId);
+    if (!known || Date.parse(dupRow.first_seen_at) < Date.parse(known)) inheritedFirstSeen.set(canonicalId, dupRow.first_seen_at);
+  }
+  const earlier = (a: string, b: string | undefined) => (b && Date.parse(b) < Date.parse(a) ? b : a);
+
   for (const f of current) {
     const prior = existingById.get(f.checkId);
+    const inherited = inheritedFirstSeen.get(f.checkId);
     const seen = { severity: f.severity, title: f.title, source: f.source, last_seen_at: scanAt, last_scan_id: scanId };
 
     if (!prior) {
       out.push({
         owner, target_host: host, check_id: f.checkId, ...seen,
-        first_seen_at: backfill?.get(f.checkId) ?? scanAt,
+        first_seen_at: earlier(backfill?.get(f.checkId) ?? scanAt, inherited),
         resolved_at: null, sla_warned_at: null, sla_breach_notified_at: null,
       });
       continue;
@@ -194,7 +221,7 @@ export function planLifecycleSync(input: {
       // A severity change moves the deadline, so earlier alerts no longer
       // describe it — let the new stage alert afresh.
       const reset = prior.severity !== f.severity ? { sla_warned_at: null, sla_breach_notified_at: null } : {};
-      out.push({ ...prior, ...seen, ...reset });
+      out.push({ ...prior, ...seen, ...reset, first_seen_at: earlier(prior.first_seen_at, inherited) });
       continue;
     }
 
@@ -211,6 +238,11 @@ export function planLifecycleSync(input: {
 
   for (const prior of existing) {
     if (prior.resolved_at || currentIds.has(prior.check_id)) continue;
+    const canonicalId = merged?.get(prior.check_id);
+    if (canonicalId && currentIds.has(canonicalId)) {
+      out.push({ ...prior, resolved_at: scanAt });
+      continue;
+    }
     if (isCovered(prior.source, coverage, prior.check_id)) out.push({ ...prior, resolved_at: scanAt });
   }
 
@@ -256,7 +288,7 @@ async function loadHistory(
     if (!results) continue;
     history.push({
       createdAt: scan.created_at,
-      checkIds: new Set((results.findings ?? []).map((f) => f.checkId).filter((id): id is string => Boolean(id))),
+      checkIds: new Set((results.findings ?? []).flatMap(findingCheckIds)),
       coverage: scanCoverage(results.extended, results),
     });
   }
@@ -306,6 +338,11 @@ export async function syncFindingLifecycle(
         source: findingSource(f.checkId, input.extendedCheckIds.has(f.checkId), toolKeys),
       }));
 
+    const merged: MergedInto = new Map();
+    for (const f of input.findings) {
+      for (const c of f.corroboratedBy ?? []) if (f.checkId) merged.set(c.checkId, f.checkId);
+    }
+
     const rows = (existing ?? []) as LifecycleDbRow[];
     const backfill =
       rows.length === 0
@@ -321,6 +358,7 @@ export async function syncFindingLifecycle(
       current,
       coverage: scanCoverage(input.extended, input.baseResults),
       backfill,
+      merged,
     });
 
     for (let i = 0; i < upserts.length; i += 500) {

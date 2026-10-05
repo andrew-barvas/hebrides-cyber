@@ -18,7 +18,7 @@ import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
     "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
-    "triage_state", "triage_reason", "triage_expires_at",
+    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by",
   ];
   const rows = findings.map((f) => [
     f.severity,
@@ -35,6 +35,8 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
     f.triage?.state ?? "",
     f.triage?.reason ?? "",
     f.triage?.expiresAt ?? "",
+    // "nuclei: <title>; ZAP: <title>" — other tools that reported the same issue.
+    (f.corroboratedBy ?? []).map((c) => `${c.tool}: ${c.title}`).join("; "),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }

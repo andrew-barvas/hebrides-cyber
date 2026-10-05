@@ -163,6 +163,8 @@ Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
 - E-63 continuous EASM, E-65 lookalike domains, E-66 DMARC reports.
 - `/methodology` page; the five-part briefing document (marketing/).
 - Per-target repo mapping (today the newest connected repo is scanned).
+
+**Cross-tool duplicates (done, `claude/dedupe-findings`):** `findingConsolidation.ts` merges extended-tool duplicates into the canonical finding (`corroboratedBy`). Still open: the table covers only issues with a confident id mapping (headers/HSTS/CSP, TLS, a few exposures, CVE-bearing library findings) — extend `EQUIVALENCES` as real nuclei/ZAP output confirms more ids; sqlmap/xsser/ZAP injection findings need parameter/URL evidence in their checkIds before they can be matched; our own overlapping checks (`tls.hsts-missing` vs `headers.missing-critical`) are deliberately not merged.
 - SAST: Koa `ctx`, FastAPI typed params, more languages (E-69 follow-ups).
 - Emerging threats: WordPress plugin matching; re-alert when
   "possibly affected" becomes "affected".
