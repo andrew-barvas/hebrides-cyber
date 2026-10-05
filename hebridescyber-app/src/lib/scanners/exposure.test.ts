@@ -103,6 +103,14 @@ describe("checkExposure — security.txt", () => {
     expect(result).toMatchObject({ status: "checked", securityTxt: true });
   });
 
+  // Regression: a present security.txt was also listed as an "exposed file",
+  // with leaked-file remediation and compliance refs.
+  it("never reports security.txt as an exposed file", async () => {
+    serve({ "/.well-known/security.txt": { body: "Contact: mailto:security@example.com" } });
+    const result = await checkExposure("https://example.com");
+    expect(result.status === "checked" && result.exposed.map((f) => f.path)).toEqual([]);
+  });
+
   it("does not credit a catch-all page as a security.txt", async () => {
     serve({}, { status: 200, type: "text/html", body: SPA_SHELL });
     expect(await checkExposure("https://example.com")).toMatchObject({ securityTxt: false });

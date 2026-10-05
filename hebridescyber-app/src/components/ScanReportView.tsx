@@ -601,13 +601,15 @@ export function FindingCard({
 
       {finding.complianceRefs && finding.complianceRefs.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {finding.complianceRefs.map((ref) => (
+          {/* One badge per framework: a finding mapped to two CIS controls
+              used to show "CIS Controls v8" twice. Its controls go in the tooltip. */}
+          {groupRefsByFramework(finding.complianceRefs).map(([framework, controls]) => (
             <span
-              key={`${ref.framework}:${ref.control}`}
-              title={ref.control}
+              key={framework}
+              title={controls.join("\n")}
               className="rounded-full border border-cyberborder bg-cyberbg/60 px-1.5 py-0.5 text-[10px] text-cybertext/50 print:text-slate-500"
             >
-              {COMPLIANCE_FRAMEWORK_LABELS[ref.framework]}
+              {COMPLIANCE_FRAMEWORK_LABELS[framework]}
             </span>
           ))}
         </div>
@@ -708,6 +710,17 @@ export function TriagedFindings({
 // genuine UK small-business relevance for this product's positioning; the
 // rest follow COMPLIANCE_FRAMEWORK_LABELS' own declaration order.
 const FRAMEWORK_TAB_ORDER = Object.keys(COMPLIANCE_FRAMEWORK_LABELS) as ComplianceFramework[];
+
+/** A finding's refs grouped by framework, in first-seen order, each with its distinct controls. */
+export function groupRefsByFramework(refs: ComplianceRef[]): Array<[ComplianceFramework, string[]]> {
+  const groups = new Map<ComplianceFramework, string[]>();
+  for (const ref of refs) {
+    const controls = groups.get(ref.framework) ?? [];
+    if (!controls.includes(ref.control)) controls.push(ref.control);
+    groups.set(ref.framework, controls);
+  }
+  return [...groups.entries()];
+}
 
 // Cyber Essentials gets its own longer disclaimer (real Cyber Essentials
 // certification is a formal self-assessment, or for Plus an external

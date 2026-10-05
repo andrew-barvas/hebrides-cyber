@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { FindingCard, sortFindingsBySeverity, type ViewFinding } from "./ScanReportView";
+import { FindingCard, groupRefsByFramework, sortFindingsBySeverity, type ViewFinding } from "./ScanReportView";
 import { sriRemediation, DKIM_NOT_DETECTED, SPF_MISSING } from "@/lib/scanners/remediationText";
 
 function finding(overrides: Partial<ViewFinding> = {}): ViewFinding {
@@ -227,5 +227,22 @@ describe("FindingCard threat intel", () => {
   it("shows nothing when threat intel wasn't looked up", () => {
     render(<FindingCard finding={finding({ cveIds: ["CVE-2020-11022"] })} />);
     expect(screen.queryByText(/EPSS|Actively exploited/)).not.toBeInTheDocument();
+  });
+});
+
+// Regression: one badge per control showed "CIS Controls v8" twice on a finding.
+describe("groupRefsByFramework", () => {
+  it("groups controls under one framework, keeping order and dropping repeats", () => {
+    expect(
+      groupRefsByFramework([
+        { framework: "cis-controls-v8", control: "CIS 3" },
+        { framework: "iso-27001", control: "A.12" },
+        { framework: "cis-controls-v8", control: "CIS 16" },
+        { framework: "cis-controls-v8", control: "CIS 3" },
+      ])
+    ).toEqual([
+      ["cis-controls-v8", ["CIS 3", "CIS 16"]],
+      ["iso-27001", ["A.12"]],
+    ]);
   });
 });
