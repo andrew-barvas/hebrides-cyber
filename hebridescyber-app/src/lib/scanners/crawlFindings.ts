@@ -37,11 +37,21 @@ function listPages(pages: CrawledPage[]): string {
   return `${shown.join(", ")}${more > 0 ? ` (and ${more} more)` : ""}`;
 }
 
-export function buildCrawlFindings(crawl: CrawlResult | undefined): Finding[] {
+export type CrawlFindingOptions = {
+  /**
+   * Treat the start page like any other page. Used for the signed-in crawl,
+   * whose start page was never seen by the base suite (which is anonymous), so
+   * nothing is scored twice by checking it here.
+   */
+  includeStart?: boolean;
+};
+
+export function buildCrawlFindings(crawl: CrawlResult | undefined, options: CrawlFindingOptions = {}): Finding[] {
   if (!crawl || (crawl.status !== "checked" && crawl.status !== "partial")) return [];
   const findings: Finding[] = [];
-  const [start, ...inner] = crawl.pages;
+  const [start, ...rest] = crawl.pages;
   if (!start) return findings;
+  const inner = options.includeStart ? crawl.pages : rest;
   const analysed = inner.filter((p) => p.checks);
 
   // Headers the start page sends but inner pages don't.
@@ -62,7 +72,7 @@ export function buildCrawlFindings(crawl: CrawlResult | undefined): Finding[] {
   }
 
   // Cookies first set by an inner page (the start page's are checked by headers.*).
-  const startCookieNames = new Set((start.checks?.cookies ?? []).map((c) => c.name));
+  const startCookieNames = new Set((options.includeStart ? [] : start.checks?.cookies ?? []).map((c) => c.name));
   const cookies = new Map<string, { issues: string[]; pages: CrawledPage[] }>();
   for (const page of analysed) {
     for (const c of page.checks!.cookies) {
@@ -134,7 +144,7 @@ export function buildCrawlFindings(crawl: CrawlResult | undefined): Finding[] {
 
   // Cross-origin resources without SRI on inner pages, minus what the start
   // page already reports (webapp.missing-sri).
-  const startUnprotected = new Set((start.checks?.unprotectedResources ?? []).map((r) => r.url));
+  const startUnprotected = new Set((options.includeStart ? [] : start.checks?.unprotectedResources ?? []).map((r) => r.url));
   const sri = new Map<string, { kind: "script" | "stylesheet"; pages: CrawledPage[] }>();
   for (const page of analysed) {
     for (const r of page.checks!.unprotectedResources) {

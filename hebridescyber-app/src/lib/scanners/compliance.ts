@@ -368,7 +368,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = Object.fromEntries(
 /** The part of a checkId before its first ":" — see module header. */
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
-  return idx === -1 ? checkId : checkId.slice(0, idx);
+  const base = idx === -1 ? checkId : checkId.slice(0, idx);
+  // crawl.auth.* is the signed-in crawl's copy of crawl.*: same fix, same mapping.
+  return base.replace(/^crawl\.auth\./, "crawl.");
 }
 
 /** Returns [] (not undefined) when nothing maps — callers can treat an empty array and a missing checkId identically. */
