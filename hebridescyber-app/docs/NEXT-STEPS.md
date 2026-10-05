@@ -145,7 +145,7 @@ Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
 
 - **Authenticated e2e tests** for the dashboard, report and triage (today's
   9 e2e tests cover public pages only).
-- **Real Postgres tests** for RLS and migrations (Supabase CLI local stack in CI).
+- **Real Postgres tests** for RLS and migrations: done as `tests/db/` + `db-tests.yml` on plain Postgres with a Supabase shim, see CLAUDE.md "Testing strategy". Remaining: extend the RLS matrix to the tables not yet covered (ticket_integrations, sla_policies, organisations/RBAC, report_shares).
 - **Cross-tool duplicate findings** (nuclei, ZAP and our checks reporting the same issue).
 - **Evidence on findings** — the request/response that proves each one.
 - `findingsDiff.ts` passive-after-full gap: an on-demand scan after a
