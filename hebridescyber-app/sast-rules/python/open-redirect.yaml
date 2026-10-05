@@ -1,0 +1,67 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: py-open-redirect
+    message: >-
+      A redirect target is taken straight from the incoming HTTP request. An
+      attacker can send people a link on your domain that bounces them to a
+      phishing site. Check the target first (Django:
+      url_has_allowed_host_and_scheme) or only redirect to named routes.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+      confidence: MEDIUM
+      severity: medium
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.query_params
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: flask.url_for(...)
+          - pattern: django.urls.reverse(...)
+          - pattern: urllib.parse.quote(...)
+          - patterns:
+              - pattern: '"$PREFIX" + $X'
+              - metavariable-regex:
+                  metavariable: $PREFIX
+                  regex: ^(/[^/\\]|https?://[^/]+/)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: $FN(..., $X, ...)
+              - pattern: $FN(..., url=$X, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: (?i)^.*(safe|valid|allow|whitelist|trusted).*$
+          - focus-metavariable: $X
+      - by-side-effect: true
+        patterns:
+          - pattern: $X.startswith(...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: flask.redirect($URL, ...)
+              - pattern: django.shortcuts.redirect($URL, ...)
+              - pattern: django.http.HttpResponseRedirect($URL, ...)
+              - pattern: django.http.HttpResponsePermanentRedirect($URL, ...)
+              - pattern: starlette.responses.RedirectResponse($URL, ...)
+              - pattern: starlette.responses.RedirectResponse(url=$URL, ...)
+              - pattern: fastapi.responses.RedirectResponse($URL, ...)
+              - pattern: fastapi.responses.RedirectResponse(url=$URL, ...)
+          - focus-metavariable: $URL

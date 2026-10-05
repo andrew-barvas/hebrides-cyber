@@ -1,0 +1,99 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-code-injection
+    message: >-
+      Data from the incoming HTTP request is executed as JavaScript (eval or
+      the Function constructor). Anyone who can send that request can run
+      their own code inside your server process, with access to its secrets,
+      database and file system. Parse the input as data instead (JSON.parse,
+      a lookup table of allowed operations), never as code.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: JSON.stringify(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($CODE)
+              - pattern: new Function(..., $CODE)
+              - pattern: Function(..., $CODE)
+          - focus-metavariable: $CODE
+
+  - id: js-code-injection-vm
+    message: >-
+      Data from the incoming HTTP request is run as code through Node's vm
+      module. The vm module is not a security sandbox — code run this way can
+      escape it and take over the server process. Do not execute request
+      input; if you must evaluate user expressions, use a purpose-built
+      expression parser that cannot call functions.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: JSON.stringify(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: vm.runInNewContext($CODE, ...)
+              - pattern: vm.runInThisContext($CODE, ...)
+              - pattern: vm.runInContext($CODE, ...)
+              - pattern: vm.compileFunction($CODE, ...)
+              - pattern: new vm.Script($CODE, ...)
+              - pattern: new vm.SourceTextModule($CODE, ...)
+          - focus-metavariable: $CODE

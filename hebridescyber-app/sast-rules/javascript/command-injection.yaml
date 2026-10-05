@@ -1,0 +1,135 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-command-injection
+    message: >-
+      Data from the incoming HTTP request is passed to child_process
+      exec/execSync, which runs the string through a shell. Shell
+      metacharacters in the request (; | && $()) let an attacker run any
+      command on the server. Use execFile/spawn with an argument array and no
+      shell, and validate the input against an allow-list.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: shellescape(...)
+          - pattern: $SQ.quote(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              # Import/require aliases (const { exec } = require(...), import * as cp ...)
+              # resolve to the qualified module name.
+              - pattern: child_process.exec($CMD, ...)
+              - pattern: child_process.execSync($CMD, ...)
+              - pattern: shelljs.exec($CMD, ...)
+              - patterns:
+                  - pattern-inside: |
+                      $FN = require("$MOD").$EXP;
+                      ...
+                  - pattern: $FN($CMD, ...)
+                  - metavariable-regex:
+                      metavariable: $MOD
+                      regex: ^(node:)?child_process$
+                  - metavariable-regex:
+                      metavariable: $EXP
+                      regex: ^(exec|execSync)$
+              - patterns:
+                  - pattern-inside: |
+                      $FN = $PROMISIFY(child_process.exec);
+                      ...
+                  - pattern: $FN($CMD, ...)
+          - focus-metavariable: $CMD
+
+  - id: js-command-injection-shell-option
+    message: >-
+      Data from the incoming HTTP request is passed to child_process
+      spawn/execFile with the shell enabled (shell: true, or an explicit
+      "sh -c"). With a shell in the way, the arguments are re-parsed as a
+      command line, so request input can inject extra commands. Remove the
+      shell option and pass the arguments as an array.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: shellescape(...)
+          - pattern: $SQ.quote(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: 'child_process.$SPAWN($CMD, $ARGS, {..., shell: $SHELL, ...}, ...)'
+              - pattern: 'child_process.$SPAWN($CMD, {..., shell: $SHELL, ...}, ...)'
+          - metavariable-regex:
+              metavariable: $SPAWN
+              regex: ^(spawn|spawnSync|execFile|execFileSync)$
+          - pattern-not: 'child_process.$SPAWN($CMD, ..., {..., shell: false, ...}, ...)'
+          - pattern-not: 'child_process.$SPAWN($CMD, ..., {..., shell: undefined, ...}, ...)'
+          # A single focus-metavariable list is the union of the two.
+          - focus-metavariable:
+              - $CMD
+              - $ARGS
+      - patterns:
+          - pattern: child_process.$SPAWN("$SH", ["$FLAG", $CMD, ...], ...)
+          - metavariable-regex:
+              metavariable: $SPAWN
+              regex: ^(spawn|spawnSync|execFile|execFileSync)$
+          - metavariable-regex:
+              metavariable: $SH
+              regex: ^(/usr)?(/bin/)?(sh|bash|zsh|dash|ksh)$|^(cmd|cmd\.exe|CMD|CMD\.EXE|powershell|powershell\.exe|pwsh)$
+          - metavariable-regex:
+              metavariable: $FLAG
+              regex: ^(-c|/c|/C|-Command)$
+          - focus-metavariable: $CMD

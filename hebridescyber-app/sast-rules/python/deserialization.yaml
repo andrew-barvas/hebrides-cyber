@@ -1,0 +1,111 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: py-pickle-untrusted
+    message: >-
+      Data from the incoming HTTP request is unpickled. Unpickling runs code
+      chosen by whoever made the pickle, so this lets an attacker execute
+      commands on the server. Exchange request data as JSON (json.loads) and
+      only unpickle data you produced and stored yourself.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: pickle.loads($DATA, ...)
+              - pattern: pickle.load($DATA, ...)
+              - pattern: _pickle.loads($DATA, ...)
+              - pattern: cPickle.loads($DATA, ...)
+              - pattern: dill.loads($DATA, ...)
+              - pattern: jsonpickle.decode($DATA, ...)
+              - pattern: marshal.loads($DATA, ...)
+              - pattern: pandas.read_pickle($DATA, ...)
+          - focus-metavariable: $DATA
+
+  - id: py-yaml-unsafe-load
+    message: >-
+      Data from the incoming HTTP request is parsed with PyYAML's unsafe
+      loader (yaml.unsafe_load or Loader=yaml.Loader/UnsafeLoader). Those
+      loaders can construct arbitrary Python objects, which lets a crafted
+      document run code on the server. Use yaml.safe_load.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: yaml.unsafe_load($DATA, ...)
+              - pattern: yaml.unsafe_load_all($DATA, ...)
+              - pattern: yaml.load($DATA, Loader=$LOADER, ...)
+              - pattern: yaml.load_all($DATA, Loader=$LOADER, ...)
+              - pattern: yaml.load($DATA, $LOADER)
+          - metavariable-regex:
+              metavariable: $LOADER
+              regex: ^(yaml\.)?(Loader|UnsafeLoader|CLoader|CUnsafeLoader)$
+          - focus-metavariable: $DATA
+      - patterns:
+          - pattern-either:
+              - pattern: yaml.unsafe_load($DATA, ...)
+              - pattern: yaml.unsafe_load_all($DATA, ...)
+          - focus-metavariable: $DATA

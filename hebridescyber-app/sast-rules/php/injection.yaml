@@ -1,0 +1,466 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+#
+# Request sources (superglobals, php://input, Laravel's Request) are repeated
+# in each rule because the engine's YAML loader does not resolve anchors.
+rules:
+  - id: php-sql-injection
+    message: >-
+      Data from the incoming HTTP request ($_GET, $_POST, ...) is built into a SQL
+      string passed to mysqli_query / mysql_query / pg_query. An attacker can
+      change the meaning of the query and read or modify your database. Use a
+      prepared statement with bound parameters (mysqli_prepare + bind_param, or
+      PDO with ? placeholders).
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: intval(...)
+          - pattern: floatval(...)
+          - pattern: (int) $X
+          - pattern: (float) $X
+          - pattern: mysqli_real_escape_string(...)
+          - pattern: pg_escape_string(...)
+          - pattern: pg_escape_literal(...)
+          - pattern: esc_sql(...)
+          - pattern: addslashes(...)
+          - pattern: $DB->real_escape_string(...)
+          - pattern: $DB->quote(...)
+          - pattern: $DB->escape(...)
+          - pattern: $wpdb->prepare(...)
+          - pattern: filter_var($X, FILTER_VALIDATE_INT, ...)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: is_numeric($X)
+              - pattern: ctype_digit($X)
+              - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: mysqli_query($CONN, $SQL, ...)
+              - pattern: mysqli_multi_query($CONN, $SQL)
+              - pattern: mysqli_real_query($CONN, $SQL)
+              - pattern: mysqli_prepare($CONN, $SQL)
+              - pattern: mysql_query($SQL, ...)
+              - pattern: pg_query($CONN, $SQL)
+              - pattern: pg_send_query($CONN, $SQL)
+          - focus-metavariable: $SQL
+
+  - id: php-sql-injection-pdo
+    message: >-
+      Data from the incoming HTTP request is built into a SQL string passed to a
+      database object's query()/exec()/prepare() (PDO, mysqli, CodeIgniter and
+      similar). Preparing a statement does not help if the request value is
+      already inside the SQL text. Put ? or :name placeholders in the SQL and pass
+      the values to execute().
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: intval(...)
+          - pattern: floatval(...)
+          - pattern: (int) $X
+          - pattern: (float) $X
+          - pattern: mysqli_real_escape_string(...)
+          - pattern: pg_escape_string(...)
+          - pattern: pg_escape_literal(...)
+          - pattern: esc_sql(...)
+          - pattern: addslashes(...)
+          - pattern: $DB->real_escape_string(...)
+          - pattern: $DB->quote(...)
+          - pattern: $DB->escape(...)
+          - pattern: $wpdb->prepare(...)
+          - pattern: filter_var($X, FILTER_VALIDATE_INT, ...)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: is_numeric($X)
+              - pattern: ctype_digit($X)
+              - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB->query($SQL, ...)
+              - pattern: $DB->exec($SQL)
+              - pattern: $DB->prepare($SQL, ...)
+              - pattern: $DB->multi_query($SQL)
+              - pattern: $DB->real_query($SQL)
+          - pattern-not: $request->query(...)
+          - pattern-not: $req->query(...)
+          - focus-metavariable: $SQL
+
+  - id: php-sql-injection-framework
+    message: >-
+      Data from the incoming HTTP request reaches a framework raw-SQL method
+      (WordPress $wpdb->get_results/get_var/get_row/get_col, Laravel DB::select/
+      statement/raw or whereRaw). These run the string as SQL. Use
+      $wpdb->prepare() or the bindings argument of the Laravel method.
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: intval(...)
+          - pattern: floatval(...)
+          - pattern: (int) $X
+          - pattern: (float) $X
+          - pattern: mysqli_real_escape_string(...)
+          - pattern: pg_escape_string(...)
+          - pattern: pg_escape_literal(...)
+          - pattern: esc_sql(...)
+          - pattern: addslashes(...)
+          - pattern: $DB->real_escape_string(...)
+          - pattern: $DB->quote(...)
+          - pattern: $DB->escape(...)
+          - pattern: $wpdb->prepare(...)
+          - pattern: filter_var($X, FILTER_VALIDATE_INT, ...)
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: is_numeric($X)
+              - pattern: ctype_digit($X)
+              - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $WPDB->get_results($SQL, ...)
+              - pattern: $WPDB->get_var($SQL, ...)
+              - pattern: $WPDB->get_row($SQL, ...)
+              - pattern: $WPDB->get_col($SQL, ...)
+              - pattern: DB::select($SQL, ...)
+              - pattern: DB::statement($SQL, ...)
+              - pattern: DB::unprepared($SQL)
+              - pattern: DB::raw($SQL)
+              - pattern: $Q->whereRaw($SQL, ...)
+              - pattern: $Q->orWhereRaw($SQL, ...)
+              - pattern: $Q->selectRaw($SQL, ...)
+              - pattern: $Q->orderByRaw($SQL, ...)
+              - pattern: $Q->havingRaw($SQL, ...)
+          - focus-metavariable: $SQL
+
+  - id: php-code-injection
+    message: >-
+      Data from the incoming HTTP request is executed as PHP code (eval, assert
+      with a string, create_function) or used to choose which function to call.
+      Anyone who can send that request can run their own code on the server. Never
+      evaluate request input; map allowed actions to functions with a fixed
+      lookup table.
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: intval(...)
+          - pattern: floatval(...)
+          - pattern: (int) $X
+      - by-side-effect: true
+        patterns:
+          - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($CODE)
+              - pattern: assert($CODE, ...)
+              - pattern: create_function($ARGS, $CODE)
+              - pattern: call_user_func($CODE, ...)
+              - pattern: call_user_func_array($CODE, ...)
+          - focus-metavariable: $CODE
+
+  - id: php-command-injection
+    message: >-
+      Data from the incoming HTTP request is passed to a shell command (system,
+      exec, shell_exec, passthru, popen, proc_open). Shell metacharacters in the
+      request let an attacker run any command on the server. Wrap each value in
+      escapeshellarg(), or better, avoid the shell and validate against an
+      allow-list.
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: escapeshellarg(...)
+          - pattern: escapeshellcmd(...)
+          - pattern: intval(...)
+          - pattern: (int) $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: system($CMD, ...)
+              - pattern: exec($CMD, ...)
+              - pattern: shell_exec($CMD)
+              - pattern: passthru($CMD, ...)
+              - pattern: popen($CMD, ...)
+              - pattern: proc_open($CMD, ...)
+              - pattern: pcntl_exec($CMD, ...)
+          - focus-metavariable: $CMD
+
+  - id: php-file-inclusion
+    message: >-
+      A file path taken from the incoming HTTP request is passed to include /
+      require. An attacker can make the page load and run a different file — local
+      files such as logs or uploads, or, where allow_url_include is on, a remote
+      script. Map the request value to a fixed list of allowed templates instead.
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-98: Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: basename(...)
+          - pattern: intval(...)
+          - pattern: (int) $X
+      - by-side-effect: true
+        patterns:
+          - pattern: in_array($X, ...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: include $PATH;
+              - pattern: include_once $PATH;
+              - pattern: require $PATH;
+              - pattern: require_once $PATH;
+          - focus-metavariable: $PATH
+
+  - id: php-unserialize-untrusted
+    message: >-
+      Data from the incoming HTTP request is passed to unserialize(). A crafted
+      payload can instantiate any class your application loads and trigger its
+      magic methods (__wakeup, __destruct), which commonly leads to code execution
+      or file deletion. Use json_decode for request data, or pass
+      ['allowed_classes' => false].
+    severity: ERROR
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET
+          - pattern: $_POST
+          - pattern: $_REQUEST
+          - pattern: $_COOKIE
+          - pattern: $_FILES
+          - pattern: file_get_contents("php://input")
+          - patterns:
+              - pattern: $_SERVER["$KEY"]
+              - metavariable-regex:
+                  metavariable: $KEY
+                  regex: ^(HTTP_.*|QUERY_STRING|REQUEST_URI|PATH_INFO)$
+          - patterns:
+              - pattern-either:
+                  - pattern: $REQ->input(...)
+                  - pattern: $REQ->query(...)
+                  - pattern: $REQ->get(...)
+                  - pattern: $REQ->post(...)
+                  - pattern: $REQ->all(...)
+                  - pattern: $REQ->cookie(...)
+                  - pattern: $REQ->header(...)
+              - metavariable-regex:
+                  metavariable: $REQ
+                  regex: ^\$(request|req)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: unserialize($DATA, ...)
+              - pattern: maybe_unserialize($DATA)
+          - pattern-not: "unserialize($DATA, [..., 'allowed_classes' => false, ...])"
+          - focus-metavariable: $DATA

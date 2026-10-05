@@ -1,0 +1,46 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-unsafe-deserialization
+    message: >-
+      Data from the incoming HTTP request is passed to node-serialize's
+      unserialize(). That function revives functions embedded in the payload,
+      so a crafted request runs arbitrary code on the server. Use JSON.parse
+      for request data and never deserialise executable objects from a client.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sinks:
+      - patterns:
+          - pattern-inside: |
+              $S = require("$MOD");
+              ...
+          - pattern: $S.unserialize($DATA, ...)
+          - metavariable-regex:
+              metavariable: $MOD
+              regex: ^(node-serialize|serialize-to-js)$
+          - focus-metavariable: $DATA

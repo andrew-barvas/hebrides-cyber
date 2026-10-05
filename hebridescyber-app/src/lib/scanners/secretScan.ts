@@ -55,6 +55,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Finding } from "./index";
 import { resolveGithubAuth } from "../githubApp";
+import { sanitiseGitOutput } from "../repoClone";
 
 const execFileAsync = promisify(execFile);
 
@@ -149,14 +150,10 @@ function ghHeaders(token: string): Record<string, string> {
 
 /**
  * The clone URL embeds the PAT, so it lands in the temp clone's .git/config and
- * in any git error text. Every string this module returns goes through here.
+ * in any git error text. Every string this module returns goes through here —
+ * the shared sanitiser in src/lib/repoClone.ts (token, then any URL userinfo).
  */
-function sanitiseForOutput(text: string, token: string): string {
-  let out = text;
-  if (token) out = out.split(token).join("***");
-  // Belt and braces: strip userinfo from any URL that survived the above.
-  return out.replace(/https:\/\/[^@\s/]+:[^@\s/]+@/g, "https://***@");
-}
+const sanitiseForOutput = sanitiseGitOutput;
 
 // ---- Path / severity heuristics -------------------------------------------
 

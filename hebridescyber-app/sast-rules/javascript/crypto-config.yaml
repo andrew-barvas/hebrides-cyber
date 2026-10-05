@@ -1,0 +1,70 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-tls-verification-disabled
+    message: >-
+      TLS certificate verification is switched off for an outgoing connection
+      (rejectUnauthorized: false / strictSSL: false). The connection is still
+      encrypted, but to whoever answers — anyone on the network path can
+      impersonate the server and read or alter the traffic. Remove the option;
+      if the server uses a private CA, pass that CA certificate with the "ca"
+      option instead.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+      severity: medium
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: '{..., rejectUnauthorized: false, ...}'
+          - pattern: '{..., strictSSL: false, ...}'
+      - pattern-not-inside: |
+          if (<... process.env.NODE_ENV ...>) { ... }
+
+  - id: js-tls-verification-disabled-env
+    message: >-
+      NODE_TLS_REJECT_UNAUTHORIZED is set to 0, which turns off TLS
+      certificate verification for every HTTPS request the whole Node.js
+      process makes. Anyone on the network path can impersonate any server it
+      talks to. Remove the assignment and fix the certificate problem it was
+      working around.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+      severity: high
+      category: security
+    pattern-either:
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = 0
+      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0
+
+  - id: js-jwt-none-algorithm
+    message: >-
+      A JWT is signed or verified with the "none" algorithm, meaning the token
+      carries no signature at all. Anyone can forge a token claiming to be any
+      user. Pin the algorithms you actually use (for example ["HS256"] or
+      ["RS256"]) and never include "none".
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-347: Improper Verification of Cryptographic Signature"
+      confidence: HIGH
+      severity: high
+      category: security
+    patterns:
+      - pattern-either:
+          - pattern: '{..., algorithms: [..., "$ALG", ...], ...}'
+          - pattern: '{..., algorithm: "$ALG", ...}'
+      - metavariable-regex:
+          metavariable: $ALG
+          regex: ^(?i:none)$

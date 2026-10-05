@@ -1668,3 +1668,26 @@ one lockfile per ecosystem; Maven has no lockfile unless Gradle locking is
 on; Pipfile.lock, go.sum and gradle.lockfile record no graph; 2000-package
 cap per repo.
 **Category**: code. **Source**: competitive gap (Snyk comparison).
+
+## E-69 — Static code analysis (SAST) of the connected repository
+
+**Status: done (first slice).**
+**What**: `src/worker/tools/sast.ts` shallow-clones the connected repo
+(shared `src/lib/repoClone.ts`) and runs the Opengrep engine with our own
+rule pack, `sast-rules/` — 34 rules, taint mode where the engine supports
+it, for JavaScript/TypeScript, Python and PHP: SQL built from request input,
+eval/Function/vm, shell commands, unsafe deserialisation, PHP include,
+open redirects, TLS verification off, Flask/Django/Laravel debug on, JWT
+verification off. Findings are `sast.<rule-id>:<hash of path|line|rule>`,
+capped at 50 (most severe first), with CWE-based compliance refs, fix
+difficulty and per-language remediation. Scheduled scans only (full and
+osint profiles).
+**Why not Semgrep's rules**: the Semgrep Rules License v1.0 forbids use in a
+competing commercial SaaS, and opengrep-rules is archived "for research,
+testing & benchmarking" — so the rules are written from scratch here and the
+engine (LGPL-2.1) runs as a separate binary.
+**Follow-ups**: more frameworks (Koa/Fastify sources, FastAPI parameters),
+Java/Go/Ruby rule sets, cross-file taint (`--taint-intrafile`) once its
+false-positive rate is measured on real repos, and a per-repo
+false-positive feedback loop (see E-64).
+**Category**: code. **Source**: SAST build, 2026-10-01.

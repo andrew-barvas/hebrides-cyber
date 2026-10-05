@@ -10,9 +10,26 @@
 // Matched on the checkId's BASE — the part before the first ":" — same
 // convention as compliance.ts.
 
+import { SAST_RULE_CATEGORIES, type SastCategory } from "./sastCatalog";
+
 export type FixDifficulty = "trivial" | "easy" | "moderate" | "hard";
 
+// SAST findings point at an exact file and line, so fixing one is a local
+// code change — easier than the same weakness found blind by sqlmap/commix.
+const SAST_CATEGORY_DIFFICULTY: Record<SastCategory, FixDifficulty> = {
+  "sql-injection": "moderate", // rewrite to bound parameters, retest the query
+  "code-injection": "moderate",
+  "command-injection": "moderate",
+  "file-inclusion": "moderate",
+  deserialization: "moderate", // change the wire format on both ends
+  "open-redirect": "easy",
+  "tls-verification": "easy",
+  "debug-mode": "trivial",
+  "jwt-verification": "easy",
+};
+
 const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
+  ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_DIFFICULTY[category]])),
   // --- TLS: config-only changes on an existing cert/server ---
   "tls.hsts-missing": "trivial",
   "tls.hsts-short": "trivial",

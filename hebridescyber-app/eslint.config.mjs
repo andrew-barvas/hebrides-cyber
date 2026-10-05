@@ -27,6 +27,8 @@ const eslintConfig = [
       "playwright-report/**",
       "test-results/**",
       "next-env.d.ts",
+      // Opengrep rule tests: deliberately vulnerable sample code, not app source.
+      "sast-rules/**",
     ],
   },
   ...coreWebVitals,

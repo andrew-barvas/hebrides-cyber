@@ -1,0 +1,74 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-open-redirect
+    message: >-
+      A redirect target is taken straight from the incoming HTTP request. An
+      attacker can send people a link on your domain that bounces them to a
+      phishing site. Only redirect to relative paths you have checked (starts
+      with a single "/"), or to hosts on an explicit allow-list.
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+      confidence: MEDIUM
+      severity: medium
+      category: security
+    mode: taint
+    # Narrower sources than the injection rules: a Host header cannot be set
+    # by a link, so it is not an open-redirect vector.
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.nextUrl.searchParams
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: encodeURIComponent(...)
+          - patterns:
+              - pattern: '"$PREFIX" + $X'
+              - metavariable-regex:
+                  metavariable: $PREFIX
+                  regex: ^(/[^/\\]|https?://[^/]+/)
+      # A value passed to a validator (isSafeRedirect(next), allowList.includes(next),
+      # next.startsWith("/")) is treated as checked from then on.
+      - by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: $FN(..., $X, ...)
+              - pattern: $OBJ.$FN(..., $X, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: (?i)^.*(safe|valid|allow|whitelist|trusted|includes|has).*$
+          - focus-metavariable: $X
+      - by-side-effect: true
+        patterns:
+          - pattern: $X.startsWith(...)
+          - focus-metavariable: $X
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RES.redirect($URL)
+              - pattern: $RES.redirect($STATUS, $URL)
+              - pattern: $RES.location($URL)
+              - pattern: $RES.setHeader("Location", $URL)
+              - pattern: $RES.set("Location", $URL)
+              - pattern: $RES.header("Location", $URL)
+          - metavariable-regex:
+              metavariable: $RES
+              regex: ^(res|response|reply|ctx)$
+          - focus-metavariable: $URL
+      - patterns:
+          - pattern-either:
+              - pattern: NextResponse.redirect($URL, ...)
+              - pattern: Response.redirect($URL, ...)
+          - focus-metavariable: $URL

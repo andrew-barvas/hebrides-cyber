@@ -1,0 +1,118 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: py-tls-verification-disabled
+    message: >-
+      An HTTPS request is made with certificate verification switched off
+      (verify=False / ssl=False / cert_reqs=CERT_NONE). The connection is
+      still encrypted, but to whoever answers — anyone on the network path
+      can impersonate the server and read or change the traffic. Remove the
+      option; for a private CA, pass verify="/path/to/ca.pem".
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+      severity: medium
+      category: security
+    pattern-either:
+      - patterns:
+          - pattern: requests.$FN(..., verify=False, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(get|post|put|patch|delete|head|options|request)$
+      - patterns:
+          - pattern: $SESSION.$FN(..., verify=False, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(get|post|put|patch|delete|head|options|request|send|stream)$
+      - pattern: httpx.$CLIENT(..., verify=False, ...)
+      - pattern: aiohttp.TCPConnector(..., ssl=False, ...)
+      - pattern: aiohttp.TCPConnector(..., verify_ssl=False, ...)
+      - pattern: urllib3.PoolManager(..., cert_reqs="CERT_NONE", ...)
+      - pattern: urllib3.PoolManager(..., cert_reqs=ssl.CERT_NONE, ...)
+      - patterns:
+          - pattern-inside: |
+              $S = requests.Session(...)
+              ...
+          - pattern: $S.verify = False
+
+  - id: py-ssl-unverified-context
+    message: >-
+      An SSL context is created with certificate verification disabled
+      (ssl._create_unverified_context or verify_mode = CERT_NONE). Connections
+      made with it accept any certificate, so anyone on the network path can
+      impersonate the server. Use ssl.create_default_context() and, for a
+      private CA, load it with cafile=.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+      severity: medium
+      category: security
+    pattern-either:
+      - pattern: ssl._create_unverified_context(...)
+      - pattern: ssl._create_default_https_context = ssl._create_unverified_context
+      - pattern: $CTX.verify_mode = ssl.CERT_NONE
+
+  - id: py-flask-debug-enabled
+    message: >-
+      Flask debug mode is switched on in code that runs outside a local
+      __main__ block (or the debug server is bound to all interfaces). The
+      Werkzeug debugger lets anyone who can reach it run Python on the
+      server. Read debug from an environment variable that is off in
+      production, and never serve the development server publicly.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-489: Active Debug Code"
+      confidence: MEDIUM
+      severity: high
+      category: security
+    patterns:
+      - pattern-inside: |
+          $APP = flask.Flask(...)
+          ...
+      - pattern-either:
+          - patterns:
+              - pattern: $APP.run(..., debug=True, ...)
+              - pattern-not-inside: |
+                  if __name__ == "__main__":
+                    ...
+          - pattern: $APP.run(..., host="0.0.0.0", debug=True, ...)
+          - pattern: $APP.debug = True
+          - pattern: $APP.config["DEBUG"] = True
+          - pattern: $APP.config.update(..., DEBUG=True, ...)
+      - pattern-not-inside: |
+          if <... os.environ ...>:
+            ...
+
+  - id: py-jwt-verification-disabled
+    message: >-
+      A JWT is decoded with signature verification turned off (or with the
+      "none" algorithm allowed). If the decoded claims are used to decide who
+      the caller is, anyone can forge a token. Verify the signature with an
+      explicit algorithms=[...] list; use jwt.get_unverified_header only to
+      choose the key.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-347: Improper Verification of Cryptographic Signature"
+      confidence: MEDIUM
+      severity: medium
+      category: security
+    pattern-either:
+      - pattern: 'jwt.decode(..., options={..., "verify_signature": False, ...}, ...)'
+      - pattern: jwt.decode(..., verify=False, ...)
+      - patterns:
+          - pattern: jwt.decode(..., algorithms=[..., "$ALG", ...], ...)
+          - metavariable-regex:
+              metavariable: $ALG
+              regex: ^(?i:none)$

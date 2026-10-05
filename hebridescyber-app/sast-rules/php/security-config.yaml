@@ -1,0 +1,35 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: php-tls-verification-disabled
+    message: >-
+      An outgoing HTTPS request has certificate verification switched off
+      (CURLOPT_SSL_VERIFYPEER/VERIFYHOST off, verify_peer => false, or
+      Guzzle 'verify' => false). Anyone on the network path can impersonate
+      the server and read or change the traffic. Remove the option; for a
+      private CA, point CURLOPT_CAINFO (or Guzzle 'verify') at the CA file.
+    severity: WARNING
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+      severity: medium
+      category: security
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: curl_setopt($CH, CURLOPT_SSL_VERIFYPEER, $OFF)
+              - pattern: curl_setopt($CH, CURLOPT_SSL_VERIFYHOST, $OFF)
+          - metavariable-regex:
+              metavariable: $OFF
+              regex: ^(?i:false|0|"0"|'0')$
+      - pattern: "[..., CURLOPT_SSL_VERIFYPEER => false, ...]"
+      - pattern: "[..., CURLOPT_SSL_VERIFYPEER => 0, ...]"
+      - pattern: "[..., CURLOPT_SSL_VERIFYHOST => 0, ...]"
+      - pattern: "[..., CURLOPT_SSL_VERIFYHOST => false, ...]"
+      - pattern: "[..., 'verify_peer' => false, ...]"
+      - pattern: new \GuzzleHttp\Client([..., 'verify' => false, ...])
+      - pattern: new Client([..., 'verify' => false, ...])

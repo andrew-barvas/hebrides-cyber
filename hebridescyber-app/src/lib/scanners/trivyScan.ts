@@ -21,11 +21,9 @@
 // image (node:20-alpine, etc.), never anything the customer built.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { Finding } from "./index";
 import { resolveGithubAuth } from "../githubApp";
+import { withShallowClone } from "../repoClone";
 import { parseDockerfileStages, resolveBaseImages } from "./dockerBaseImage";
 import { trivyImagePackageRemediation, trivyConfigMisconfigRemediation } from "./remediationText";
 
@@ -49,11 +47,6 @@ type ExecFailure = { code?: string | number; killed?: boolean; signal?: string |
 
 function isMissingBinary(err: ExecFailure): boolean {
   return err.code === "ENOENT";
-}
-
-// The clone URL embeds the token — never let it leak into a stored note.
-function sanitiseForOutput(text: string, token: string): string {
-  return token ? text.split(token).join("[redacted]") : text;
 }
 
 // ============================================================================
@@ -220,26 +213,6 @@ export type TrivyConfigResult =
   | { status: "not_configured"; repo: string; findings: []; note: string }
   | { status: "error"; repo: string; findings: []; note: string };
 
-async function cloneRepositoryShallow(githubRepo: string, token: string, dir: string): Promise<void> {
-  const url = `https://x-access-token:${token}@github.com/${githubRepo}.git`;
-  await execFileAsync(
-    "git",
-    [
-      "-c", "credential.helper=",
-      "clone",
-      "--quiet",
-      "--depth", "1",
-      "--no-recurse-submodules",
-      url,
-      dir,
-    ],
-    {
-      timeout: CLONE_TIMEOUT_MS,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo", GCM_INTERACTIVE: "never" },
-    }
-  );
-}
-
 type TrivyConfigReport = {
   Results?: Array<{
     Target?: string;
@@ -291,42 +264,35 @@ export async function scanTrivyConfig(options: TrivyConfigOptions): Promise<Triv
     return { status: "not_configured", repo: githubRepo, findings: [], note: "No GitHub access configured (neither a GitHub App installation nor GITHUB_PAT) — skipping Trivy config scan. See .env.example." };
   }
 
-  let workDir: string | null = null;
-  try {
-    workDir = await mkdtemp(join(tmpdir(), "hebridescyber-trivy-"));
-  } catch (err) {
-    return { status: "error", repo: githubRepo, findings: [], note: `could not create temp directory: ${(err as Error).message}` };
-  }
-
-  const cloneDir = join(workDir, "repo");
-  try {
-    try {
-      await cloneRepositoryShallow(githubRepo, token, cloneDir);
-    } catch (err) {
-      const failure = err as ExecFailure;
-      if (isMissingBinary(failure)) {
-        return { status: "not_configured", repo: githubRepo, findings: [], note: "git is not installed in this environment — skipping Trivy config scan." };
+  // Shallow clone (current tree only) via the shared helper — it owns the
+  // token sanitising and the temp-directory cleanup.
+  const outcome = await withShallowClone(
+    githubRepo,
+    token,
+    { tempPrefix: "hebridescyber-trivy-", timeoutMs: CLONE_TIMEOUT_MS },
+    async (cloneDir): Promise<TrivyConfigResult> => {
+      try {
+        const { stdout } = await execFileAsync(
+          "trivy",
+          ["config", cloneDir, "--format", "json", "--severity", "MEDIUM,HIGH,CRITICAL", "--quiet"],
+          { timeout: TRIVY_CONFIG_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
+        );
+        const report = JSON.parse(stdout) as TrivyConfigReport;
+        const findings = buildTrivyConfigFindings(report);
+        return { status: "completed", repo: githubRepo, findings };
+      } catch (err) {
+        const failure = err as ExecFailure;
+        if (isMissingBinary(failure)) {
+          return { status: "not_configured", repo: githubRepo, findings: [], note: "trivy is not installed in this environment — skipping config scan." };
+        }
+        return { status: "error", repo: githubRepo, findings: [], note: `trivy config scan failed: ${failure.message ?? "unknown error"}` };
       }
-      return { status: "error", repo: githubRepo, findings: [], note: sanitiseForOutput(`could not clone ${githubRepo}: ${failure.message ?? "unknown git error"}`, token) };
     }
+  );
 
-    try {
-      const { stdout } = await execFileAsync(
-        "trivy",
-        ["config", cloneDir, "--format", "json", "--severity", "MEDIUM,HIGH,CRITICAL", "--quiet"],
-        { timeout: TRIVY_CONFIG_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
-      );
-      const report = JSON.parse(stdout) as TrivyConfigReport;
-      const findings = buildTrivyConfigFindings(report);
-      return { status: "completed", repo: githubRepo, findings };
-    } catch (err) {
-      const failure = err as ExecFailure;
-      if (isMissingBinary(failure)) {
-        return { status: "not_configured", repo: githubRepo, findings: [], note: "trivy is not installed in this environment — skipping config scan." };
-      }
-      return { status: "error", repo: githubRepo, findings: [], note: `trivy config scan failed: ${failure.message ?? "unknown error"}` };
-    }
-  } finally {
-    if (workDir) await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+  if (outcome.ok) return outcome.value;
+  if (outcome.failure.reason === "git_missing") {
+    return { status: "not_configured", repo: githubRepo, findings: [], note: "git is not installed in this environment — skipping Trivy config scan." };
   }
+  return { status: "error", repo: githubRepo, findings: [], note: outcome.failure.note };
 }

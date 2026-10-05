@@ -1,0 +1,51 @@
+name: SAST rule pack tests
+
+# Runs the annotated tests that sit next to each rule in
+# hebridescyber-app/sast-rules/ (`# ruleid:` lines must match, `# ok:` lines
+# must not) with the same pinned Opengrep release the scheduled scans use.
+# Also validates the rule files, so a broken rule can't reach production,
+# where it would turn every SAST run into status "error".
+
+on:
+  pull_request:
+    paths:
+      - "hebridescyber-app/sast-rules/**"
+      - ".github/workflows/sast-rules.yml"
+  push:
+    branches: [master]
+    paths:
+      - "hebridescyber-app/sast-rules/**"
+      - ".github/workflows/sast-rules.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rule-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install opengrep
+        # Same pin and checksum as scheduled-scans.yml. Unlike there, a failed
+        # install fails this job — there is nothing to degrade to.
+        env:
+          OPENGREP_VERSION: 1.30.0
+          OPENGREP_SHA256: 35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c
+        run: |
+          curl -fsSL \
+            "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+            -o /tmp/opengrep
+          echo "${OPENGREP_SHA256}  /tmp/opengrep" | sha256sum -c -
+          sudo install -m 0755 /tmp/opengrep /usr/local/bin/opengrep
+          opengrep --version
+
+      - name: Validate rules
+        working-directory: hebridescyber-app
+        run: opengrep validate sast-rules/
+
+      - name: Run annotated rule tests
+        working-directory: hebridescyber-app
+        run: opengrep test sast-rules/

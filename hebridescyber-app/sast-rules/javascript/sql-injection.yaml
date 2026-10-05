@@ -1,0 +1,126 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+rules:
+  - id: js-sql-injection
+    message: >-
+      Data from the incoming HTTP request is built into a SQL query string and
+      passed to the database driver. An attacker can change the meaning of the
+      query (read, modify or delete data). Pass request values as bound
+      parameters (placeholders such as ? or $1) instead of concatenating them
+      into the SQL text.
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: Boolean(...)
+          - pattern: $X.escape(...)
+          - pattern: $X.escapeId(...)
+          - pattern: $X.escapeLiteral(...)
+          - pattern: $X.escapeIdentifier(...)
+          - patterns:
+              - pattern: $FMT.format(...)
+              - metavariable-regex:
+                  metavariable: $FMT
+                  regex: ^(mysql|mysql2|SqlString|sqlstring)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.query($SQL, ...)
+              - pattern: $DB.execute($SQL, ...)
+          - pattern-not: $DB.query({...}, ...)
+          - pattern-not: $DB.execute({...}, ...)
+          - metavariable-regex:
+              metavariable: $DB
+              # metavariable-regex is anchored at the start (re.match), hence ^(.*\.)?
+              regex: (?i)^(.*\.)?(db|database|conn|connection|client|pool|pg|mysql|mysql2|sql|sqlite|mssql|tx|trx|transaction|datasource|manager|entitymanager|queryrunner)$
+          - focus-metavariable: $SQL
+
+  - id: js-sql-injection-raw-query
+    message: >-
+      Data from the incoming HTTP request reaches an ORM or query-builder "raw
+      SQL" method (Prisma $queryRawUnsafe/$executeRawUnsafe, Sequelize query,
+      Knex raw/whereRaw). These methods run the string as-is, so request input
+      inside it is SQL injection. Use the method's bound-parameter form (for
+      Prisma, the tagged-template $queryRaw; for Knex/Sequelize, ? placeholders
+      with a bindings array).
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.query
+              - pattern: $REQ.body
+              - pattern: $REQ.params
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.param(...)
+              - pattern: $REQ.header(...)
+              - pattern: $REQ.nextUrl.searchParams
+              - pattern: $REQ.json()
+              - pattern: $REQ.formData()
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(req|request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: parseInt(...)
+          - pattern: parseFloat(...)
+          - pattern: Number(...)
+          - pattern: Boolean(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $P.$queryRawUnsafe($SQL, ...)
+              - pattern: $P.$executeRawUnsafe($SQL, ...)
+              - pattern: $Q.whereRaw($SQL, ...)
+              - pattern: $Q.orWhereRaw($SQL, ...)
+              - pattern: $Q.havingRaw($SQL, ...)
+              - pattern: $Q.orderByRaw($SQL, ...)
+              - pattern: $Q.joinRaw($SQL, ...)
+              - patterns:
+                  - pattern: $K.raw($SQL, ...)
+                  - metavariable-regex:
+                      metavariable: $K
+                      regex: (?i)^(.*\.)?(knex|db|database|trx|tx|connection|conn)$
+              - patterns:
+                  - pattern: $S.query($SQL, ...)
+                  - pattern-not: $S.query({...}, ...)
+                  - metavariable-regex:
+                      metavariable: $S
+                      regex: (?i)^(.*\.)?sequelize$
+          - focus-metavariable: $SQL
