@@ -8,6 +8,14 @@
     "headers.csp-absent",
     "exposure.no-security-txt"
   ],
-  "mustNotFind": ["exposure.exposed-file:*", "directory-listing.*", "webapp.*", "business-logic.*"],
-  "optional": ["fingerprint.tech-detected"]
+  "mustNotFind": [
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "webapp.*",
+    "business-logic.*",
+    "graphql.*"
+  ],
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
 }
