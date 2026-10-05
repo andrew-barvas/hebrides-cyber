@@ -1,0 +1,13 @@
+{
+  "target": "spa-catch-all",
+  "description": "False-positive class: a SPA that returns its 200 shell (echoing the requested path) for every URL. No exposed-file, directory-listing or security.txt credit may come out of it.",
+  "mustFind": [
+    "tls.no-https",
+    "headers.missing-critical",
+    "headers.missing-recommended",
+    "headers.csp-absent",
+    "exposure.no-security-txt"
+  ],
+  "mustNotFind": ["exposure.exposed-file:*", "directory-listing.*", "webapp.*", "business-logic.*"],
+  "optional": ["fingerprint.tech-detected"]
+}

@@ -130,6 +130,8 @@ Import the base pipeline as `@/lib/scanners` (the directory). A single-file `src
 
 **False positives.** `exposure.ts` fetches a random-slug URL alongside the site root to learn what a "not found" response looks like, masks the probed path out of both bodies, and discards any probe whose body matches that baseline. Without this, every SPA that returns its shell for unknown paths reports an exposed `.env`. Any new check that probes for a file must reuse `fetchBaseline`/`normaliseBody` (`httpProbe.ts`) rather than trusting a 200 status.
 
+**Accuracy benchmark (E-73).** `bench/` scores the base checks (tls, headers, exposure, directory-listing, fingerprint, webapp, business-logic) against local fixture sites (`bench/fixtures/sites.ts`, loopback only, no internet) via the real `summariseResults()`. `bench/expectations/<target>.json` lists `mustFind`/`mustNotFind` checkIds (wildcards end in `*`), `optional` noise and `knownIssues` (tracked defects, still scored). `npm run bench` prints precision/recall per module, writes `bench/reports/latest.json` and exits 1 on a hard expectation failure or a drop below `bench/baseline.json`; `npm run bench -- --update-baseline` refreshes it after an improvement; `npm run bench:test` runs its unit tests (separate from `test:unit`). When you add or change a path-probing check, add a fixture and an expectation. `.github/workflows/benchmark.yml` runs it weekly and on `src/lib/scanners/**` changes.
+
 ### Real remediation PRs vs AI-tailored fixes vs static remediation text
 
 Four distinct, non-overlapping "help me fix this" features — don't conflate them:
