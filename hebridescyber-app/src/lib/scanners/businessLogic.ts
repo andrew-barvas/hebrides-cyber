@@ -399,9 +399,31 @@ export function postShowsCredentialHandling(status: number): boolean {
   return status === 400 || status === 401 || status === 403 || status === 422 || status === 429 || (status >= 300 && status < 400);
 }
 
+/** What a POST to a path that cannot be a login form gets back: status and redirect target. */
+type CatchAllPost = { status: number; location: string | null };
+
+async function probeCatchAllPost(origin: string): Promise<CatchAllPost | null> {
+  try {
+    const res = await fetch(`${origin}/hc-probe-${Math.random().toString(36).slice(2, 9)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "username=test&password=test",
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
+    });
+    return { status: res.status, location: res.headers.get("location") };
+  } catch {
+    return null;
+  }
+}
+
 export async function checkRateLimiting(targetUrl: string): Promise<RateLimitData> {
   const origin = new URL(targetUrl).origin;
   const REQUEST_COUNT = 5;
+  // A site that answers every POST the same way (redirect everything to /, say)
+  // shows nothing about credentials: only a response that differs from this
+  // baseline counts as the endpoint handling them.
+  const catchAll = await probeCatchAllPost(origin);
 
   // Try each common login endpoint until we find one that responds.
   for (const path of LOGIN_ENDPOINTS) {
@@ -433,7 +455,8 @@ export async function checkRateLimiting(targetUrl: string): Promise<RateLimitDat
             signal: AbortSignal.timeout(8_000),
           });
           sent++;
-          if (postShowsCredentialHandling(res.status)) handlesCredentials = true;
+          const sameAsCatchAll = catchAll !== null && res.status === catchAll.status && res.headers.get("location") === catchAll.location;
+          if (postShowsCredentialHandling(res.status) && !sameAsCatchAll) handlesCredentials = true;
 
           if (
             res.status === 429 ||

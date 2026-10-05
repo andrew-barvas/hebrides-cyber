@@ -33,6 +33,19 @@ describe("checkDirectoryListing", () => {
     expect(await listed()).toEqual([{ path: "/uploads/", fileCount: 3 }]);
   });
 
+  // Found by the accuracy benchmark: nginx's autoindex links "../" with no
+  // "Parent Directory" text.
+  it("reports an nginx-style autoindex", async () => {
+    const nginx = `<html><head><title>Index of /assets/</title></head><body><h1>Index of /assets/</h1><hr><pre><a href="../">../</a>\n<a href="app.js">app.js</a>\n<a href="logo.png">logo.png</a>\n</pre><hr></body></html>`;
+    serve({ "/assets/": { body: nginx } });
+    expect(await listed()).toEqual([{ path: "/assets/", fileCount: 2 }]);
+  });
+
+  it("still needs the 'Index of' heading when the page only has a ../ link", async () => {
+    serve({ "/assets/": { body: `<html><title>Assets</title><a href="../">back</a></html>` } });
+    expect(await listed()).toEqual([]);
+  });
+
   it("needs both the 'Index of' heading and a Parent Directory link", async () => {
     serve({
       "/uploads/": { body: "<html><title>Index of /uploads/</title><p>Our uploads</p></html>" },

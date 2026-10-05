@@ -1,7 +1,10 @@
 {
   "target": "nginx-autoindex",
   "description": "nginx-style directory listing on /assets/ only; everything else is hardened.",
-  "mustFind": ["tls.no-https", "directory-listing.open-directory:/assets/"],
+  "mustFind": [
+    "tls.no-https",
+    "directory-listing.open-directory:/assets/"
+  ],
   "mustNotFind": [
     "directory-listing.open-directory:/uploads/",
     "directory-listing.open-directory:/images/",
@@ -12,12 +15,7 @@
     "webapp.*",
     "business-logic.*"
   ],
-  "optional": ["fingerprint.tech-detected"],
-  "knownIssues": [
-    {
-      "checkId": "directory-listing.open-directory:/assets/",
-      "kind": "miss",
-      "note": "directoryListing.ts requires the literal text 'Parent Directory', which Apache autoindex emits but nginx does not (it links '../'). Found by this benchmark; remove once fixed."
-    }
+  "optional": [
+    "fingerprint.tech-detected"
   ]
 }

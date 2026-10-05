@@ -1,7 +1,10 @@
 {
   "target": "redirect-all",
   "description": "False-positive class: every unknown path 302-redirects to the homepage.",
-  "mustFind": ["tls.no-https", "exposure.no-security-txt"],
+  "mustFind": [
+    "tls.no-https",
+    "exposure.no-security-txt"
+  ],
   "mustNotFind": [
     "exposure.exposed-file:*",
     "directory-listing.*",
@@ -9,12 +12,7 @@
     "webapp.*",
     "business-logic.no-rate-limit"
   ],
-  "optional": ["fingerprint.tech-detected"],
-  "knownIssues": [
-    {
-      "checkId": "business-logic.no-rate-limit",
-      "kind": "false-positive",
-      "note": "checkRateLimiting treats any 3xx POST response as credential handling, so a site that redirects every path to / looks like an unthrottled /login. Found by this benchmark; remove once fixed."
-    }
+  "optional": [
+    "fingerprint.tech-detected"
   ]
 }
