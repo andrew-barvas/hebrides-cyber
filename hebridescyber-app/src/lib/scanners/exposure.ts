@@ -173,7 +173,12 @@ export async function checkExposure(targetUrl: string): Promise<ExposureResult> 
     // Fetch the site root fingerprint before probing — used to detect catch-all 200s
     const baseline = await fetchBaseline(origin);
 
-    const results = await Promise.allSettled(PROBE_TARGETS.map((t) => probeFile(origin, t, baseline)));
+    // Files that are good to have (security.txt) are not exposures: they used
+    // to be probed here too and reported as "exposed files", with leaked-file
+    // remediation and compliance refs. securityTxt below covers them.
+    const results = await Promise.allSettled(
+      PROBE_TARGETS.filter((t) => !t.goodIfPresent).map((t) => probeFile(origin, t, baseline))
+    );
 
     const exposed: ExposedFile[] = results
       .filter((r): r is PromiseFulfilledResult<ExposedFile> => r.status === "fulfilled" && r.value !== null)
