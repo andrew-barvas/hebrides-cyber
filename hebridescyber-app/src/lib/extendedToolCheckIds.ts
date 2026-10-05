@@ -47,5 +47,7 @@ export const EXTENDED_TOOL_PREFIXES = [
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {
   if (!checkId) return false;
+  // The signed-in crawl (crawl.auth.*) only runs in the extended suite; the anonymous crawl.* does not.
+  if (checkId.startsWith("crawl.auth.")) return true;
   return (EXTENDED_TOOL_PREFIXES as readonly string[]).includes(checkId.split(".")[0]);
 }
