@@ -49,6 +49,12 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.missing-recommended": "easy",
   "headers.cors-wildcard": "easy",
   "headers.info-disclosure": "trivial",
+  "crawl.header-gap": "easy",
+  "crawl.cookie-flags": "easy",
+  "crawl.mixed-content": "easy",
+  "crawl.insecure-form": "easy",
+  "crawl.error-disclosure": "easy",
+  "crawl.missing-sri": "easy",
   "headers.csp-weak": "moderate",
   "headers.csp-absent": "moderate", // needs enumerating every real script/style/connect source
 

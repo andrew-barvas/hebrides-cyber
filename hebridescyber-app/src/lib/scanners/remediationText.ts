@@ -2746,3 +2746,54 @@ Content-Security-Policy: script-src 'self' ${origin}
 
 Each scan compares this list with the previous one, so a new script source shows as **New** and one that disappears shows as **Fixed**. That catches sources being added or removed; it doesn't see changes inside a script's contents or to your security headers, which PCI DSS 11.6.1 also expects you to detect (weekly, or as your risk analysis sets). A Content-Security-Policy report endpoint or a client-side script-monitoring service covers that part.${paymentNote}`;
 }
+
+// ---- Crawler (E-70) --------------------------------------------------------------
+
+export function crawlHeaderGapRemediation(header: string): string {
+  const value = HEADER_VALUES[header] ?? "<value>";
+  return `Send \`${header}\` on every page, not only the home page. Some pages are answered by a different route, template, reverse-proxy rule or CMS plugin that doesn't add it.
+
+1. Set the header once at the outermost layer (the web server, CDN or framework middleware) so every response inherits it, rather than in individual page handlers.
+2. Check the pages listed above after the change; the ones that still lack it are served by something that bypasses that layer (a static-file rule, a separate backend, a redirect target).
+
+\`\`\`
+${header}: ${value}
+\`\`\``;
+}
+
+export const CRAWL_COOKIE_FLAGS = `Set the missing flags on this cookie where the page sets it. The home page doesn't set it, which is why the home-page cookie check didn't see it.
+
+- \`Secure\` so it is never sent over plain HTTP.
+- \`HttpOnly\` so scripts can't read it through \`document.cookie\` (skip only for cookies your own front-end code must read).
+- \`SameSite=Lax\` (or \`Strict\`) to blunt cross-site request forgery.
+
+\`\`\`
+Set-Cookie: name=value; Secure; HttpOnly; SameSite=Lax; Path=/
+\`\`\``;
+
+export const CRAWL_MIXED_CONTENT = MIXED_CONTENT;
+
+export const CRAWL_INSECURE_FORM = `Serve this page, and everything a form on it submits to, over HTTPS only.
+
+1. Change any form \`action\` that starts with \`http://\` to \`https://\` (or a relative path).
+2. Redirect all HTTP traffic to HTTPS and send \`Strict-Transport-Security\` so browsers stop trying HTTP at all.
+3. A page with a password field must itself be served over HTTPS: on plain HTTP anyone on the network path can read the password and alter the page.`;
+
+export const CRAWL_ERROR_DISCLOSURE = `Show a generic error page in production instead of the framework's own error output, which reveals file paths, library versions and sometimes code or configuration.
+
+- Turn off debug mode (\`DEBUG=False\`, \`APP_DEBUG=false\`, \`display_errors=Off\`, \`customErrors mode="On"\`) and log the detail server-side instead.
+- Make sure this applies to every route, not only the home page: error handling configured per route is the usual reason a deep page still leaks.`;
+
+export function crawlSriRemediation(): string {
+  return `Add a Subresource Integrity hash to each cross-origin script and stylesheet listed, so the browser refuses it if the third-party origin ever serves something different:
+
+\`\`\`html
+<script src="https://cdn.example.com/lib.js" integrity="sha384-<hash>" crossorigin="anonymous"></script>
+\`\`\`
+
+\`\`\`bash
+curl -s https://cdn.example.com/lib.js | openssl dgst -sha384 -binary | openssl base64 -A
+\`\`\`
+
+\`crossorigin="anonymous"\` must accompany \`integrity\`. Scripts that change by design (tag managers, payment SDKs) can't be pinned; list them in your Content-Security-Policy instead. Resources you control are better served from your own origin, which needs no hash.`;
+}
