@@ -8,6 +8,7 @@
 // justify the dependency surface, and this way there's nothing to `npm ci`
 // before the action can run.
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
@@ -128,7 +129,196 @@ async function pollUntilDone(apiBaseUrl, apiKey, scanId) {
   return null;
 }
 
-async function main() {
+// ---- Dependency check (mode: dependencies) ---------------------------------------
+//
+// On a pull request: read each changed lockfile on the base and the head,
+// send both to POST /api/v1/dependency-diff, and report only the vulnerable
+// packages the PR introduces. Needs `actions/checkout` with `fetch-depth: 0`
+// (git has to see the base commit). No GitHub App: the comment is posted with
+// the workflow's own GITHUB_TOKEN.
+
+const COMMENT_MARKER = "<!-- hebrides-cyber-dependency-check -->";
+
+// Lockfile name -> the manifest that lets its parser tell direct from
+// transitive packages. Mirrors LOCKFILES in src/lib/scanners/dependencyLockfiles.ts.
+const LOCKFILE_COMPANIONS = {
+  "npm-shrinkwrap.json": "package.json",
+  "package-lock.json": "package.json",
+  "pnpm-lock.yaml": null,
+  "yarn.lock": "package.json",
+  "poetry.lock": "pyproject.toml",
+  "Pipfile.lock": null,
+  "composer.lock": "composer.json",
+  "go.sum": "go.mod",
+  "gradle.lockfile": null,
+  "Gemfile.lock": null,
+  "Cargo.lock": null,
+  "packages.lock.json": null,
+};
+
+const baseName = (p) => String(p).split("/").pop();
+const dirName = (p) => (String(p).includes("/") ? String(p).slice(0, String(p).lastIndexOf("/") + 1) : "");
+
+/** The supported lockfiles among changed paths (monorepos have several). */
+function lockfilesIn(changedPaths) {
+  return (changedPaths || []).filter((p) => Object.prototype.hasOwnProperty.call(LOCKFILE_COMPANIONS, baseName(p)) && !String(p).includes("node_modules/"));
+}
+
+/** Introduced vulnerable packages at or above the threshold. */
+function blockingVulnerabilities(vulnerabilities, failOn) {
+  if (failOn === "none") return [];
+  const threshold = SEVERITY_RANK[failOn];
+  return (vulnerabilities || []).filter((v) => (SEVERITY_RANK[v.severity] ?? 0) >= threshold);
+}
+
+const mdEscape = (text) => String(text).replace(/[|\\`*_<>]/g, (c) => `\\${c}`);
+
+/** The PR comment: the introduced vulnerable packages and what to do about each. */
+function buildDependencyComment(result, failOn) {
+  const vulns = result.vulnerabilities || [];
+  const blocking = new Set(blockingVulnerabilities(vulns, failOn));
+  const lines = [COMMENT_MARKER, "### Hebrides Cyber — dependency check", ""];
+
+  if (vulns.length === 0 && result.complete) {
+    lines.push(`No known-vulnerable packages introduced by this pull request (${result.packages_added} package${result.packages_added === 1 ? "" : "s"} added).`);
+  } else if (vulns.length > 0) {
+    lines.push(`This pull request introduces **${vulns.length}** known-vulnerable package${vulns.length === 1 ? "" : "s"}${blocking.size ? ` — ${blocking.size} at or above \`${failOn}\`` : ""}.`, "");
+    lines.push("| Severity | Package | Advisories | Fixed in | Introduced via |", "|---|---|---|---|---|");
+    for (const v of vulns) {
+      const ids = v.advisories.map((a) => (a.cve_ids[0] || a.id)).slice(0, 4).join(", ");
+      const via = v.direct ? "direct dependency" : v.introduced_via && v.introduced_via.length ? v.introduced_via.join(" → ") : "transitive";
+      lines.push(`| ${v.severity}${blocking.has(v) ? " ⛔" : ""} | \`${mdEscape(v.name)}@${mdEscape(v.version)}\`${v.dev ? " (dev)" : ""} | ${mdEscape(ids)} | ${v.fixed_version ? `\`${mdEscape(v.fixed_version)}\`` : "no fix named"} | ${mdEscape(via)} |`);
+    }
+  }
+  if (!result.complete) {
+    lines.push("", "**Not everything could be checked:** " + (result.notes || []).join(" "));
+    for (const f of result.files || []) if (f.status === "error") lines.push(`- ${f.error}`);
+  }
+  return lines.join("\n");
+}
+
+function git(args) {
+  return execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+/** File content at a commit, or null if it doesn't exist there. */
+function gitShow(commit, path) {
+  try {
+    return git(["show", `${commit}:${path}`]);
+  } catch {
+    return null;
+  }
+}
+
+async function upsertPullRequestComment(token, repo, number, body, apiUrl) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
+  const base = `${apiUrl}/repos/${repo}/issues`;
+  const list = await fetchWithTimeout(`${base}/${number}/comments?per_page=100`, { headers }, 15_000);
+  if (!list.ok) throw new Error(`could not list comments (HTTP ${list.status})`);
+  const existing = (await list.json()).find((c) => typeof c.body === "string" && c.body.includes(COMMENT_MARKER));
+  const res = existing
+    ? await fetchWithTimeout(`${base}/comments/${existing.id}`, { method: "PATCH", headers, body: JSON.stringify({ body }) }, 15_000)
+    : await fetchWithTimeout(`${base}/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body }) }, 15_000);
+  if (!res.ok) throw new Error(`could not post the comment (HTTP ${res.status})`);
+}
+
+async function runDependencies() {
+  const apiKey = getInput("api-key", { required: true });
+  const failOn = getInput("fail-on", { defaultValue: "high" }).toLowerCase();
+  const apiBaseUrl = getInput("api-base-url", { defaultValue: "https://hebridescyber.com" }).replace(/\/$/, "");
+  const githubToken = getInput("github-token");
+  if (failOn !== "none" && !(failOn in SEVERITY_RANK)) {
+    fail(`fail-on must be one of critical, high, medium, low, none — got "${failOn}"`);
+    return;
+  }
+
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  const event = eventPath && fs.existsSync(eventPath) ? JSON.parse(fs.readFileSync(eventPath, "utf8")) : null;
+  const pr = event && event.pull_request;
+  if (!pr) {
+    notice("mode: dependencies only runs on pull_request events — nothing to check.");
+    return;
+  }
+
+  let changed;
+  let mergeBase;
+  try {
+    mergeBase = git(["merge-base", pr.base.sha, pr.head.sha]).trim();
+    changed = git(["diff", "--name-only", "--no-renames", mergeBase, pr.head.sha]).split("\n").filter(Boolean);
+  } catch (err) {
+    fail(`Could not compare the pull request's commits (${String(err.message).split("\n")[0]}). Use actions/checkout with fetch-depth: 0.`);
+    return;
+  }
+
+  const lockfiles = lockfilesIn(changed);
+  if (lockfiles.length === 0) {
+    notice("No lockfile changed in this pull request.");
+    setOutput("new-vulnerable-packages", "0");
+    return;
+  }
+
+  const files = lockfiles.slice(0, 20).map((path) => {
+    const companion = LOCKFILE_COMPANIONS[baseName(path)];
+    const companionPath = companion ? `${dirName(path)}${companion}` : null;
+    return {
+      name: path,
+      base: gitShow(mergeBase, path),
+      head: gitShow(pr.head.sha, path),
+      base_companion: companionPath ? gitShow(mergeBase, companionPath) : null,
+      head_companion: companionPath ? gitShow(pr.head.sha, companionPath) : null,
+    };
+  });
+  if (lockfiles.length > files.length) warning(`${lockfiles.length} lockfiles changed; only the first ${files.length} were checked.`);
+
+  console.log(`Checking ${files.length} changed lockfile(s): ${files.map((f) => f.name).join(", ")}`);
+
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      `${apiBaseUrl}/api/v1/dependency-diff`,
+      { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ files }) },
+      120_000
+    );
+  } catch (err) {
+    fail(`Could not reach the Hebrides Cyber API: ${err.message}`);
+    return;
+  }
+  const result = await res.json().catch(() => null);
+  if (!res.ok || !result) {
+    fail(`Dependency check failed (HTTP ${res.status}): ${(result && result.error) || "no response body"}`);
+    return;
+  }
+
+  const vulns = result.vulnerabilities || [];
+  setOutput("new-vulnerable-packages", String(vulns.length));
+  const comment = buildDependencyComment(result, failOn);
+  appendToFile("GITHUB_STEP_SUMMARY", comment.replace(COMMENT_MARKER, ""));
+
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (githubToken && repo) {
+    try {
+      await upsertPullRequestComment(githubToken, repo, pr.number, comment, process.env.GITHUB_API_URL || "https://api.github.com");
+    } catch (err) {
+      // Pull requests from forks get a read-only token: say so, don't fail the check for it.
+      warning(`Couldn't post the pull-request comment: ${err.message}. The result is in the job summary.`);
+    }
+  }
+
+  for (const v of vulns) warning(`[${v.severity}] ${v.name}@${v.version} — ${v.advisories.map((a) => a.cve_ids[0] || a.id).join(", ")}${v.fixed_version ? ` (fixed in ${v.fixed_version})` : ""}`);
+
+  const blocking = blockingVulnerabilities(vulns, failOn);
+  if (blocking.length > 0) {
+    fail(`${blocking.length} newly introduced vulnerable package(s) at or above "${failOn}" severity.`);
+    return;
+  }
+  if (!result.complete && failOn !== "none") {
+    fail(`The dependency check couldn't cover everything (${(result.notes || []).join(" ")}) — not passing it as clean.`);
+    return;
+  }
+  notice(vulns.length === 0 ? "No known-vulnerable packages introduced." : `${vulns.length} vulnerable package(s) introduced, none at or above "${failOn}".`);
+}
+
+async function runScan() {
   const apiKey = getInput("api-key", { required: true });
   const targetUrl = getInput("target-url", { required: true });
   const failOn = getInput("fail-on", { defaultValue: "high" }).toLowerCase();
@@ -209,7 +399,17 @@ async function main() {
   notice(`No untriaged new findings at or above "${failOn}" severity. (${newFindings.length} new finding(s) below threshold or triaged.)`);
 }
 
-module.exports = { isTriaged, blockingFindings };
+async function main() {
+  const mode = getInput("mode", { defaultValue: "scan" }).toLowerCase();
+  if (mode === "dependencies") return runDependencies();
+  if (mode !== "scan") {
+    fail(`mode must be "scan" or "dependencies" — got "${mode}"`);
+    return;
+  }
+  return runScan();
+}
+
+module.exports = { isTriaged, blockingFindings, lockfilesIn, blockingVulnerabilities, buildDependencyComment, LOCKFILE_COMPANIONS };
 
 // Run only as the action's entry point — requiring this file (the unit tests
 // do) must not start a scan.
