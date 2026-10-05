@@ -1,88 +1,149 @@
-// Real dependency manifest scanning — npm (package.json), pip
-// (requirements.txt), Composer (composer.json), Go (go.mod), and Maven
-// (pom.xml). Closes the gap between what the pricing/services pages claim
-// ("dependency scan") and what previously existed: src/lib/scanners/webapp.ts
-// only ever did client-side JS library *detection* (HTML/global pattern
-// matching), never a server-side manifest scan of any ecosystem.
+// Dependency scanning for a connected GitHub repo — the open-source half of
+// what Snyk sells: every package the project installs, transitive ones
+// included, checked against OSV.dev.
 //
-// v1 shipped npm-only, matching what src/lib/scanners/osv.ts already
-// supported (lookupCveIds's ecosystem param). pip, composer, go, and maven
-// were each added on the same OSV.dev-backed foundation — OSV.dev's query
-// API accepts any ecosystem string in the same request shape ("PyPI",
-// "Packagist", "Go", "Maven" all work identically to "npm"), so extending
-// coverage needed new manifest parsing, not a new data source.
+// LOCKFILE FIRST. For each ecosystem, a lockfile at the repo root is
+// preferred (package-lock.json / npm-shrinkwrap.json / pnpm-lock.yaml /
+// yarn.lock, poetry.lock / Pipfile.lock, composer.lock, go.sum, Gemfile.lock,
+// Cargo.lock, packages.lock.json, gradle.lockfile — parsers in
+// dependencyLockfiles.ts). A lockfile gives the exact installed version of
+// every package and, for most formats, the dependency graph, so a finding
+// can say "transitive, introduced via a > b > c". Most real vulnerabilities
+// live in transitive dependencies, which a manifest never lists.
 //
-// All five manifests at the repo root are checked independently and their
-// findings combined — a polyglot repo (say, a Go service with an npm
-// frontend) gets both, not just whichever is found first.
+// MANIFEST FALLBACK. With no (readable) lockfile for an ecosystem, the old
+// manifest-range check still runs for package.json, requirements.txt,
+// composer.json, go.mod and pom.xml: each declared range reduced to the
+// lowest version it allows (minVersionFromRange / the pip operator rules).
+// That's a disclosed approximation — the installed version may be newer —
+// and every such finding says so. Ranges that can't be reduced to a
+// concrete version (wildcards, git/URL specifiers, OR ranges) are skipped
+// rather than guessed at.
 //
-// NO LOCKFILE, for any ecosystem. Each parser reads the manifest's declared
-// dependency *ranges*, not a lockfile's exact resolved versions.
-// minVersionFromRange() (npm/composer, which share caret/tilde semver
-// semantics) and the pip-specific operator handling in
-// parsePipRequirements() both reduce a range down to the lowest version it
-// could resolve to that OSV.dev can be queried against. That is a real,
-// disclosed approximation (called out in the Finding detail and in
-// remediationText.ts's dependencyVulnerableRemediation): the actual
-// installed version could be newer and already patched. What it is NOT is a
-// guess at whether a vulnerability exists — every finding here still comes
-// from a real OSV.dev advisory matched against a real version string, never
-// fabricated. Ranges that can't be reduced to a concrete version with
-// confidence (wildcards, "latest", git/VCS/URL specifiers, OR alternatives,
-// compound comparisons) are skipped rather than guessed at.
+// OSV.dev: one POST /v1/querybatch for up to 1000 packages (≤ 2000 per repo),
+// then GET /v1/vulns/{id} per advisory for aliases (CVE ids), severity and
+// fixed versions (osv.ts). A failed batch makes the whole result "error" —
+// never "no vulnerabilities" — so finding_lifecycle doesn't mark anything
+// fixed on the strength of a lookup that didn't happen. A failed advisory
+// *detail* fetch still reports the package (the batch said it's affected),
+// just with less detail.
 //
-// Requires a connected repo (sql/migrations/009_repo_connections.sql,
-// written via src/pages/api/account/connect-repo.ts). No repo, or none of
-// the three manifests present at the repo root, is a clean "not_applicable"
-// result — never an error finding. Never throws, matching every other
-// scanner module's contract.
+// The result also carries the full package inventory (not just vulnerable
+// packages), which src/lib/sbomExport.ts turns into a CycloneDX SBOM.
 //
-// GitHub access resolves through src/lib/githubApp.ts's resolveGithubAuth():
-// a GitHub App installation token if the customer has installed the App on
-// this repo, else the shared GITHUB_PAT. `owner/repo` format, plain fetch
-// against api.github.com.
+// Requires a connected repo (sql/migrations/009_repo_connections.sql). No
+// repo, or no supported file at the repo root, is a clean "not_applicable".
+// Never throws. GitHub access resolves through githubApp.ts's
+// resolveGithubAuth() (App installation token, else GITHUB_PAT).
 
 import type { Finding } from "./index";
-import { lookupCveIds } from "./osv";
-import { dependencyVulnerableRemediation } from "./remediationText";
+import {
+  fetchOsvVulnDetails,
+  fixedVersionFromVulns,
+  osvCvss,
+  osvSeverity,
+  queryOsvBatch,
+  cveIdsOf,
+  type OsvVulnDetail,
+} from "./osv";
+import { dependencyVulnerableRemediation, type DependencyEcosystemSlug } from "./remediationText";
+import { LOCKFILES, packageKey, type LockfilePackage, type OsvEcosystem } from "./dependencyLockfiles";
 import { resolveGithubAuth } from "../githubApp";
 
 const githubApi = "https://api.github.com";
-const GITHUB_API_TIMEOUT_MS = 10_000;
+const GITHUB_API_TIMEOUT_MS = 15_000;
 
-// A project with 200 dependencies must not produce 200 rows. Same capping
-// pattern as subdomains.ts's MAX_HOST_FINDINGS / secretScan.ts's MAX_FINDINGS.
-// Applied per-ecosystem, not combined, so one large npm manifest can't starve
-// a smaller pip/composer one's share of listed findings.
+// A project with 200 vulnerable dependencies must not produce 200 rows.
+// Applied per ecosystem, so one large npm tree can't starve a smaller
+// pip/composer one's share of listed findings.
 const MAX_FINDINGS = 30;
 
-// Ceiling on OSV.dev round-trips per manifest. Dependencies beyond this are
-// still counted in the manifest total but not individually queried — called
-// out in the result's note, never silently dropped. Also per-ecosystem.
-const MAX_PACKAGES_QUERIED = 150;
+/** Ceiling on packages queried (and kept in the inventory) per repo. Beyond it the note says how many were left out. */
+export const MAX_PACKAGES_QUERIED = 2000;
 
-// Parallel OSV.dev lookups. OSV.dev is keyless and generally tolerant, but
-// there's no reason to fire 150 requests at once.
+/** Advisory detail fetches per scan; ids beyond it are still reported, without detail. */
+const MAX_VULN_DETAILS = 500;
+
+// Parallel GET /v1/vulns/{id} requests.
 const QUERY_CONCURRENCY = 10;
 
-function ghHeaders(token: string): Record<string, string> {
+// Lockfiles of big projects run to several MB; the Contents API's JSON form
+// stops returning content past 1 MB, which is why files are read raw.
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+function ghHeaders(token: string, raw = false): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
-    Accept: "application/vnd.github+json",
+    Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
 }
+
+// ---- Result + inventory types ------------------------------------------------
+
+export type DependencyInventoryFile = {
+  file: string;
+  ecosystem: OsvEcosystem;
+  /** "lockfile": exact installed versions; "manifest": lowest version a declared range allows. */
+  kind: "lockfile" | "manifest";
+  /** The file records which package depends on which. */
+  graph: boolean;
+};
+
+export type DependencyInventoryPackage = {
+  ecosystem: OsvEcosystem;
+  name: string;
+  version: string;
+  /** Declared by the project itself (true), pulled in by another package (false), unknown (null). */
+  direct: boolean | null;
+  /** "required" at runtime, "optional" for development-only or optional packages; absent when unknown. */
+  scope?: "required" | "optional";
+  /** Index into DependencyInventory.files. */
+  fileIndex: number;
+  /** Indices into DependencyInventory.packages, where the file records the graph. */
+  dependsOn?: number[];
+  /** OSV.dev advisory ids affecting this exact version. */
+  vulnIds?: string[];
+  /** The version OSV.dev names as fixing all of vulnIds, when it names one. */
+  fixedVersion?: string;
+};
+
+export type DependencyAdvisory = {
+  id: string;
+  cveIds: string[];
+  severity?: "critical" | "high" | "medium" | "low";
+  cvssVector?: string;
+  cvssScore?: number;
+  summary?: string;
+};
+
+/** Every package found, stored with the scan so an SBOM can be produced later. Bounded by MAX_PACKAGES_QUERIED. */
+export type DependencyInventory = {
+  schemaVersion: 1;
+  files: DependencyInventoryFile[];
+  packages: DependencyInventoryPackage[];
+  /** Packages found before the MAX_PACKAGES_QUERIED cap. */
+  totalPackages: number;
+  truncated: boolean;
+  /** "failed" means vulnIds are absent because OSV.dev couldn't be asked — not because there are none. */
+  vulnerabilityLookup: "completed" | "failed";
+  advisories: DependencyAdvisory[];
+};
 
 export type DependencyManifestResult =
   | {
       status: "completed";
       repo: string;
+      /** Every file read: lockfiles and manifests. */
       manifestsScanned: string[];
+      lockfilesScanned?: string[];
       dependenciesDeclared: number;
       dependenciesChecked: number;
       findings: Finding[];
+      inventory?: DependencyInventory;
       note?: string;
     }
+  | { status: "error"; repo: string; findings: []; note: string; inventory?: DependencyInventory }
   | { status: "not_applicable"; repo: string; findings: []; note: string }
   | { status: "not_configured"; repo: string; findings: []; note: string };
 
@@ -93,106 +154,53 @@ export type DependencyManifestOptions = {
   githubToken?: string;
 };
 
-// ---- Ecosystem-agnostic core -------------------------------------------------
+// ---- Ecosystems ------------------------------------------------------------
 
-type DeclaredDependency = { name: string; declaredRange: string; version: string };
-
-const ECOSYSTEM_SLUG: Record<"npm" | "PyPI" | "Packagist" | "Go" | "Maven", "npm" | "pip" | "composer" | "go" | "maven"> = {
+/** checkId slug per OSV ecosystem: `dependency-manifest.<slug>:<name>`. The first five predate lockfile support and must not change. */
+export const ECOSYSTEM_SLUG: Record<OsvEcosystem, DependencyEcosystemSlug> = {
   npm: "npm",
   PyPI: "pip",
   Packagist: "composer",
   Go: "go",
   Maven: "maven",
+  RubyGems: "ruby",
+  "crates.io": "cargo",
+  NuGet: "nuget",
 };
 
-/**
- * Shared OSV-query + cap + sort + Finding-shaping logic, parameterised by
- * ecosystem and already-parsed dependencies. This is what buildDependencyFindings
- * (npm-specific, exported for local verification) and its pip/composer
- * siblings below all call — one implementation of "turn a dependency list
- * into findings," not three copies that can drift.
- */
-async function buildFindingsForDeps(
-  ecosystem: "npm" | "PyPI" | "Packagist" | "Go" | "Maven",
-  manifestPath: string,
-  deps: DeclaredDependency[],
-  totalDeclaredCount: number
-): Promise<{ findings: Finding[]; note?: string }> {
-  const slug = ECOSYSTEM_SLUG[ecosystem];
-  const queryable = deps.slice(0, MAX_PACKAGES_QUERIED);
+const ECOSYSTEM_ORDER: OsvEcosystem[] = ["npm", "PyPI", "Packagist", "Go", "Maven", "RubyGems", "crates.io", "NuGet"];
 
-  const checked = await mapWithConcurrency(queryable, QUERY_CONCURRENCY, async (d) => ({
-    ...d,
-    cveIds: await lookupCveIds(ecosystem, d.name, d.version),
-  }));
+/** The manifest each ecosystem falls back to when it has no lockfile. */
+const MANIFEST_FALLBACK: Partial<Record<OsvEcosystem, string>> = {
+  npm: "package.json",
+  PyPI: "requirements.txt",
+  Packagist: "composer.json",
+  Go: "go.mod",
+  Maven: "pom.xml",
+};
 
-  // Deterministic order (alphabetical by name) so the MAX_FINDINGS cap and
-  // the New/Fixed diff (checkId-keyed) behave consistently run to run.
-  const vulnerable = checked.filter((c) => c.cveIds.length > 0).sort((a, b) => a.name.localeCompare(b.name));
+/** Every root file this scan may read: lockfiles, fallback manifests, and companions (pyproject.toml tells direct from transitive for poetry.lock). */
+export const CANDIDATE_FILES: string[] = [...new Set([...LOCKFILES.map((l) => l.file), ...Object.values(MANIFEST_FALLBACK), "pyproject.toml"])];
 
-  const findings: Finding[] = [];
-  const listed = vulnerable.slice(0, MAX_FINDINGS);
-  for (const v of listed) {
-    findings.push({
-      checkId: `dependency-manifest.${slug}:${v.name}`,
-      severity: "medium",
-      title: `Vulnerable dependency: ${v.name}@${v.version}`,
-      detail: `OSV.dev reports ${v.cveIds.length} known CVE${v.cveIds.length === 1 ? "" : "s"} (${v.cveIds.join(", ")}) affecting ${v.name} at version ${v.version}, the minimum version resolvable from the range declared in ${manifestPath} ("${v.declaredRange}"). This is a manifest-based check, not a lockfile-exact match — the actual installed version may differ.`,
-      remediation: dependencyVulnerableRemediation(v.name, slug),
-      cveIds: v.cveIds,
-    });
-  }
+/** One package to check, from either a lockfile or a manifest. */
+export type ScannedPackage = {
+  ecosystem: OsvEcosystem;
+  name: string;
+  version: string;
+  direct: boolean | null;
+  dev: boolean | null;
+  optional?: boolean;
+  introducedVia?: string[];
+  dependsOn?: string[];
+  file: string;
+  /** true: lockfile-exact; false: lowest version allowed by a manifest range. */
+  exact: boolean;
+  declaredRange?: string;
+};
 
-  const remaining = vulnerable.length - listed.length;
-  if (remaining > 0) {
-    findings.push({
-      checkId: `dependency-manifest.additional-vulnerable:${slug}`,
-      severity: "info",
-      title: `${remaining} further vulnerable ${slug} dependenc${remaining === 1 ? "y" : "ies"} not listed individually`,
-      detail: `${vulnerable.length} vulnerable dependencies were found in total out of ${totalDeclaredCount} declared in ${manifestPath}; the first ${MAX_FINDINGS} are listed above. Additional: ${vulnerable.slice(MAX_FINDINGS, MAX_FINDINGS + 10).map((v) => v.name).join(", ")}${remaining > 10 ? ` (+${remaining - 10} more)` : ""}.`,
-    });
-  }
+type DeclaredDependency = { name: string; declaredRange: string; version: string };
 
-  const notes: string[] = [];
-  const skipped = totalDeclaredCount - deps.length;
-  if (totalDeclaredCount > MAX_PACKAGES_QUERIED) {
-    notes.push(`Only the first ${MAX_PACKAGES_QUERIED} of ${totalDeclaredCount} declared dependencies in ${manifestPath} were queried against OSV.dev.`);
-  } else if (skipped > 0) {
-    notes.push(`${skipped} of ${totalDeclaredCount} declared dependencies in ${manifestPath} had a version range that couldn't be reduced to a concrete version and were not queried.`);
-  }
-
-  return { findings, ...(notes.length ? { note: notes.join(" ") } : {}) };
-}
-
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const i = index++;
-      results[i] = await fn(items[i]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-async function fetchRawFile(githubRepo: string, path: string, token: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${githubApi}/repos/${githubRepo}/contents/${path}`, {
-      headers: ghHeaders(token),
-      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { content?: string; encoding?: string };
-    if (!body.content) return null;
-    return Buffer.from(body.content, (body.encoding as BufferEncoding) ?? "base64").toString("utf-8");
-  } catch {
-    return null;
-  }
-}
-
-// ---- npm (package.json) ------------------------------------------------------
+// ---- Manifest parsers (fallback path) --------------------------------------
 
 type PackageJsonShape = {
   dependencies?: Record<string, string>;
@@ -208,12 +216,9 @@ type PackageJsonShape = {
  * specifiers (git/file/link/workspace URLs) — none of which OSV.dev could
  * meaningfully be queried with anyway.
  *
- * A bare two-component version (Composer's very common "^7.4" — a PHP
- * version constraint or a library that only ever versions by major.minor)
- * is zero-padded to X.Y.0. That's a mechanical, deterministic completion of
- * what "^7.4" already unambiguously means as a lower bound — not a guess —
- * so it's not the same category of thing minVersionFromRange otherwise
- * declines to do.
+ * A bare two-component version (Composer's very common "^7.4") is
+ * zero-padded to X.Y.0 — a mechanical completion of what "^7.4" already
+ * unambiguously means as a lower bound, not a guess.
  */
 export function minVersionFromRange(range: string): string | null {
   const trimmed = (range ?? "").trim();
@@ -227,37 +232,21 @@ export function minVersionFromRange(range: string): string | null {
   return match[0].split(".").length === 2 ? `${match[0]}.0` : match[0];
 }
 
-async function fetchPackageJson(githubRepo: string, token: string): Promise<PackageJsonShape | null> {
-  const raw = await fetchRawFile(githubRepo, "package.json", token);
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed as PackageJsonShape;
-  } catch {
-    return null;
+function npmManifestPackages(pkg: PackageJsonShape): { packages: ScannedPackage[]; declared: number } {
+  const entries: Array<[string, string, boolean]> = [
+    ...Object.entries(pkg.dependencies ?? {}).map(([n, r]) => [n, r, false] as [string, string, boolean]),
+    ...Object.entries(pkg.devDependencies ?? {}).map(([n, r]) => [n, r, true] as [string, string, boolean]),
+  ];
+  const seen = new Set<string>();
+  const packages: ScannedPackage[] = [];
+  for (const [name, range, dev] of entries) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const version = typeof range === "string" ? minVersionFromRange(range) : null;
+    if (version) packages.push({ ecosystem: "npm", name, version, direct: true, dev, file: "package.json", exact: false, declaredRange: range });
   }
+  return { packages, declared: seen.size };
 }
-
-/**
- * Exported for local verification without a GitHub token/repo: it's the half
- * of this module that must be provable against real OSV.dev data alone.
- */
-export async function buildDependencyFindings(
-  pkg: PackageJsonShape
-): Promise<{ findings: Finding[]; dependenciesDeclared: number; dependenciesChecked: number; note?: string }> {
-  const deps: Record<string, string> = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
-  const names = Object.keys(deps);
-
-  const queryable: DeclaredDependency[] = names
-    .map((name) => ({ name, declaredRange: deps[name], version: minVersionFromRange(deps[name]) }))
-    .filter((d): d is DeclaredDependency => d.version !== null);
-
-  const { findings, note } = await buildFindingsForDeps("npm", "package.json", queryable, names.length);
-  return { findings, dependenciesDeclared: names.length, dependenciesChecked: Math.min(queryable.length, MAX_PACKAGES_QUERIED), note };
-}
-
-// ---- pip (requirements.txt) ---------------------------------------------------
 
 // Only operators with an unambiguous lower bound are handled — the same
 // "skip rather than guess" discipline minVersionFromRange applies to npm
@@ -285,57 +274,17 @@ export function parsePipRequirements(raw: string): DeclaredDependency[] {
   return deps;
 }
 
-async function fetchRequirementsTxt(githubRepo: string, token: string): Promise<string | null> {
-  return fetchRawFile(githubRepo, "requirements.txt", token);
-}
-
-// ---- Composer (composer.json) -------------------------------------------------
-
-type ComposerJsonShape = {
-  require?: Record<string, string>;
-  "require-dev"?: Record<string, string>;
-};
-
 // Pseudo-packages Composer uses for platform requirements — not real
 // Packagist packages, so OSV.dev has nothing to match them against.
 const COMPOSER_PLATFORM_PACKAGE_RE = /^(php(-64bit)?|hhvm|composer(-plugin-api|-runtime-api)?|ext-[\w-]+|lib-[\w-]+)$/i;
 
-async function fetchComposerJson(githubRepo: string, token: string): Promise<ComposerJsonShape | null> {
-  const raw = await fetchRawFile(githubRepo, "composer.json", token);
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed as ComposerJsonShape;
-  } catch {
-    return null;
-  }
-}
-
-// ---- Go (go.mod) ---------------------------------------------------------
-
 // go.mod's `require` block pins exact versions (no ranges/carets — Go
-// modules don't have that concept), so there is no minVersionFromRange-style
-// reduction needed here: the declared version already is a concrete version.
-// Matches both the block form:
-//   require (
-//       github.com/pkg/errors v0.9.1
-//       golang.org/x/net v0.17.0 // indirect
-//   )
-// and single-line form: `require github.com/pkg/errors v0.9.1`. `// indirect`
-// dependencies are kept, not skipped — they're real entries in the module
-// graph OSV.dev can meaningfully be queried against, the same way npm's
-// devDependencies are included alongside dependencies.
-//
-// OSV.dev's Go ecosystem expects versions without the leading "v" Go module
-// version strings always carry — stripped for the query, kept in
-// declaredRange for the finding's own display text.
-// The version must be immediately followed by end-of-line or a "//"
-// comment — a pre-release/build suffix (v1.2.3-rc.1, v1.2.3+incompatible)
-// makes the whole line fail to match rather than being silently stripped
-// down to "1.2.3", which would query OSV.dev against a different (and
-// possibly not-yet-vulnerable, or differently-vulnerable) version than the
-// one actually declared.
+// modules don't have that concept), so no range reduction is needed. Matches
+// both the block form and the single-line `require x v1.2.3` form; `//
+// indirect` dependencies are kept. OSV.dev's Go ecosystem expects versions
+// without the leading "v". A pre-release/build suffix makes the line fail to
+// match rather than being silently stripped down to "1.2.3", which would
+// query a different version than the one declared.
 const GO_REQUIRE_LINE_RE = /^(\S+)\s+v(\d+\.\d+\.\d+)(?:\s*\/\/.*)?$/;
 
 export function parseGoModRequire(raw: string): DeclaredDependency[] {
@@ -366,22 +315,11 @@ export function parseGoModRequire(raw: string): DeclaredDependency[] {
   return deps;
 }
 
-async function fetchGoMod(githubRepo: string, token: string): Promise<string | null> {
-  return fetchRawFile(githubRepo, "go.mod", token);
-}
-
-// ---- Maven (pom.xml) ------------------------------------------------------
-
-// No XML parser dependency, matching every other manifest here — a targeted
-// regex extraction, same discipline as the JSON manifests' "only look at the
-// shape we need" approach. Deliberately narrow: only <dependency> blocks
-// directly inside <dependencies> (not <dependencyManagement>, whose entries
-// aren't necessarily all actually used — claiming they are would overstate
-// what's really in the build). Property-substituted versions (the extremely
-// common Maven pattern of `<version>${foo.version}</version>` resolved from
-// a sibling <properties> block) are resolved against that block when
-// possible; anything that still isn't a literal version afterward is
-// skipped rather than guessed, same as every other ecosystem here.
+// No XML parser dependency — a targeted regex extraction. Only <dependency>
+// blocks directly inside <dependencies> (not <dependencyManagement>, whose
+// entries aren't necessarily all used). `${property}` versions are resolved
+// against the <properties> block; anything still not a literal version is
+// skipped rather than guessed.
 const MAVEN_PROPERTY_RE = /<([\w.-]+)>([^<>]+)<\/\1>/g;
 const MAVEN_DEPENDENCIES_BLOCK_RE = /<dependencies>([\s\S]*?)<\/dependencies>/;
 const MAVEN_DEPENDENCY_BLOCK_RE = /<dependency>([\s\S]*?)<\/dependency>/g;
@@ -403,19 +341,15 @@ function resolveMavenVersion(raw: string, properties: Record<string, string>): s
   const propRef = /^\$\{([\w.-]+)\}$/.exec(trimmed);
   const resolved = propRef ? properties[propRef[1]] : trimmed;
   if (!resolved) return null;
-  // Only a literal, fully-numeric release version is queryable with
-  // confidence — a range ("[1.0,2.0)"), another unresolved "${...}", or a
-  // qualifier-only string ("RELEASE", "LATEST") is skipped.
+  // Only a literal release version is queryable with confidence — a range
+  // ("[1.0,2.0)"), another unresolved "${...}", or "RELEASE"/"LATEST" is skipped.
   return /^\d+(\.\d+){0,3}([.-][\w]+)?$/.test(resolved) ? resolved : null;
 }
 
 /**
  * The real, top-level <dependencies> block content, or null if there isn't
- * one. <dependencyManagement> has its own nested <dependencies><dependency>
- * block with the exact same shape — stripped out first, or a naive regex
- * would find that one instead of (or as well as) the real one. Shared by
- * parsePomXmlDependencies and scanDependencyManifest's own declared-count,
- * so the two can't drift out of sync on what "declared" means.
+ * one. <dependencyManagement>'s nested block of the same shape is stripped
+ * first, or a naive regex would find that one instead.
  */
 export function extractMavenDependenciesBlock(raw: string): string | null {
   const withoutManagement = raw.replace(/<dependencyManagement>[\s\S]*?<\/dependencyManagement>/, "");
@@ -445,16 +379,418 @@ export function parsePomXmlDependencies(raw: string): DeclaredDependency[] {
   return deps;
 }
 
-async function fetchPomXml(githubRepo: string, token: string): Promise<string | null> {
-  return fetchRawFile(githubRepo, "pom.xml", token);
+/** The manifest-range fallback for one ecosystem: packages to query plus how many dependencies were declared. Throws on unparseable JSON. */
+function manifestPackages(ecosystem: OsvEcosystem, file: string, raw: string): { packages: ScannedPackage[]; declared: number } {
+  const declared = (deps: DeclaredDependency[], extra: Partial<ScannedPackage> = {}) =>
+    deps.map((d) => ({ ecosystem, name: d.name, version: d.version, direct: true, dev: null, file, exact: false, declaredRange: d.declaredRange, ...extra }));
+
+  if (ecosystem === "npm") return npmManifestPackages(JSON.parse(raw) as PackageJsonShape);
+  if (ecosystem === "PyPI") {
+    const deps = parsePipRequirements(raw);
+    // A line skipped for having no version is still declared, just not queryable.
+    const total = raw
+      .split(/\r?\n/)
+      .map((l) => l.split("#")[0].trim())
+      .filter((l) => l && !/^(-|git\+|https?:|\.\/|\.\.\/)/i.test(l)).length;
+    return { packages: declared(deps), declared: total };
+  }
+  if (ecosystem === "Packagist") {
+    const composer = JSON.parse(raw) as { require?: Record<string, string>; "require-dev"?: Record<string, string> };
+    const packages: ScannedPackage[] = [];
+    let count = 0;
+    for (const [section, dev] of [["require", false], ["require-dev", true]] as const) {
+      for (const [name, range] of Object.entries(composer[section] ?? {})) {
+        if (COMPOSER_PLATFORM_PACKAGE_RE.test(name)) continue;
+        count++;
+        const version = typeof range === "string" ? minVersionFromRange(range) : null;
+        if (version) packages.push({ ecosystem, name, version, direct: true, dev, file, exact: false, declaredRange: range });
+      }
+    }
+    return { packages, declared: count };
+  }
+  if (ecosystem === "Go") {
+    const deps = parseGoModRequire(raw);
+    return { packages: deps.map((d) => ({ ...declared([d])[0], direct: !/\/\/\s*indirect/.test(d.declaredRange) })), declared: deps.length };
+  }
+  // Maven (pom.xml)
+  const deps = parsePomXmlDependencies(raw);
+  const block = extractMavenDependenciesBlock(raw);
+  return { packages: declared(deps), declared: block !== null ? (block.match(MAVEN_DEPENDENCY_BLOCK_RE) ?? []).length : deps.length };
+}
+
+// ---- Collecting packages from the repo's files -------------------------------
+
+export type CollectedPackages = {
+  packages: ScannedPackage[];
+  files: DependencyInventoryFile[];
+  /** Dependencies found, including manifest entries whose range couldn't be reduced to a version. */
+  declared: number;
+  notes: string[];
+};
+
+function fromLockfile(p: LockfilePackage, file: string): ScannedPackage {
+  return {
+    ecosystem: p.ecosystem,
+    name: p.name,
+    version: p.version,
+    direct: p.direct,
+    dev: p.dev ?? null,
+    ...(p.optional ? { optional: true } : {}),
+    ...(p.introducedVia ? { introducedVia: p.introducedVia } : {}),
+    ...(p.dependsOn ? { dependsOn: p.dependsOn } : {}),
+    file,
+    exact: true,
+  };
+}
+
+/**
+ * Pure: turns the repo-root files that were found (name → content) into
+ * the packages to check — a lockfile per ecosystem where one is present
+ * and parses, else that ecosystem's manifest ranges.
+ */
+export function collectDependencyPackages(contents: Record<string, string>): CollectedPackages {
+  const packages: ScannedPackage[] = [];
+  const files: DependencyInventoryFile[] = [];
+  const notes: string[] = [];
+  let declared = 0;
+
+  for (const ecosystem of ECOSYSTEM_ORDER) {
+    const present = LOCKFILES.filter((l) => l.ecosystem === ecosystem && contents[l.file] !== undefined);
+    let usedLockfile = false;
+    for (const lock of present) {
+      try {
+        const parsed = lock.parse(contents[lock.file], lock.companion ? contents[lock.companion] ?? null : null);
+        packages.push(...parsed.packages.map((p) => fromLockfile(p, lock.file)));
+        files.push({ file: lock.file, ecosystem, kind: "lockfile", graph: parsed.hasGraph });
+        declared += parsed.packages.length;
+        usedLockfile = true;
+        const ignored = present.filter((l) => l !== lock).map((l) => l.file);
+        if (ignored.length) notes.push(`${lock.file} was used for ${ecosystem}; ${ignored.join(", ")} also present and not read.`);
+        break;
+      } catch (err) {
+        notes.push(`${lock.file} could not be parsed (${(err as Error).message}).`);
+      }
+    }
+    if (usedLockfile) continue;
+
+    const manifest = MANIFEST_FALLBACK[ecosystem];
+    if (!manifest || contents[manifest] === undefined) continue;
+    try {
+      const m = manifestPackages(ecosystem, manifest, contents[manifest]);
+      packages.push(...m.packages);
+      files.push({ file: manifest, ecosystem, kind: "manifest", graph: false });
+      declared += m.declared;
+      if (present.length) notes.push(`Fell back to ${manifest}'s declared ranges for ${ecosystem}.`);
+      const skipped = m.declared - m.packages.length;
+      if (skipped > 0) notes.push(`${skipped} of ${m.declared} dependencies declared in ${manifest} had a version range that couldn't be reduced to a concrete version and were not queried.`);
+    } catch {
+      notes.push(`${manifest} could not be parsed.`);
+    }
+  }
+  return { packages, files, declared, notes };
+}
+
+/** Merges duplicates (same ecosystem/name/version from one file) and orders direct packages first, so a cap drops the deepest transitive ones. */
+function dedupeAndOrder(packages: ScannedPackage[]): ScannedPackage[] {
+  const byKey = new Map<string, ScannedPackage>();
+  for (const p of packages) {
+    const key = `${p.ecosystem}:${packageKey(p.name, p.version)}`;
+    if (!byKey.has(key)) byKey.set(key, p);
+  }
+  const rank = (p: ScannedPackage) => (p.direct === true ? 0 : p.direct === null ? 1 : 2);
+  return [...byKey.values()].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      ECOSYSTEM_ORDER.indexOf(a.ecosystem) - ECOSYSTEM_ORDER.indexOf(b.ecosystem) ||
+      (a.introducedVia?.length ?? 0) - (b.introducedVia?.length ?? 0) ||
+      a.name.localeCompare(b.name) ||
+      a.version.localeCompare(b.version)
+  );
+}
+
+// ---- Evaluating packages against OSV.dev -----------------------------------
+
+const SEVERITY_ORDER = ["low", "medium", "high", "critical"] as const;
+
+type Evaluated = {
+  findings: Finding[];
+  inventory: DependencyInventory;
+  checked: number;
+  notes: string[];
+  error?: string;
+};
+
+function scopeOf(p: ScannedPackage): "required" | "optional" | undefined {
+  if (p.dev === true || p.optional) return "optional";
+  if (p.dev === false) return "required";
+  return undefined;
+}
+
+function describeInstance(p: ScannedPackage): string {
+  if (p.direct === true) return "a direct dependency";
+  if (p.direct === false) {
+    return p.introducedVia?.length
+      ? `a transitive dependency, introduced via ${[...p.introducedVia, packageKey(p.name, p.version)].join(" > ")}`
+      : "a transitive dependency";
+  }
+  return "listed in the lockfile (it doesn't record whether the dependency is direct or transitive)";
+}
+
+/** One finding per vulnerable package name (all its vulnerable installed versions together), keeping the checkId stable across versions. */
+function buildFinding(
+  slug: DependencyEcosystemSlug,
+  instances: Array<{ pkg: ScannedPackage; vulnIds: string[]; fixedVersion: string | null }>,
+  details: Map<string, OsvVulnDetail>
+): Finding {
+  const first = instances[0].pkg;
+  const name = first.name;
+  const versions = instances.map((i) => i.pkg.version);
+  const vulnIds = [...new Set(instances.flatMap((i) => i.vulnIds))].sort();
+  const known = vulnIds.map((id) => details.get(id)).filter((d): d is OsvVulnDetail => !!d);
+  const cveIds = [...new Set([...cveIdsOf(known), ...cveIdsOf(vulnIds.map((id) => ({ id })))])].sort();
+  const exact = first.exact;
+
+  // Lockfile-exact: the advisories' own ratings. Manifest-range: the version
+  // is only a lower bound, so the finding stays at the long-standing medium
+  // rather than escalating on an install we haven't evidenced.
+  let severity: Finding["severity"] = "medium";
+  if (exact) {
+    const rated = known.map(osvSeverity).filter((s): s is NonNullable<typeof s> => !!s);
+    if (rated.length) severity = rated.reduce((a, b) => (SEVERITY_ORDER.indexOf(b) > SEVERITY_ORDER.indexOf(a) ? b : a));
+  }
+  const cvss = known.map(osvCvss).filter((c): c is NonNullable<typeof c> => !!c).sort((a, b) => b.score - a.score)[0];
+
+  // CVE ids where advisories have them, plus the OSV id of any advisory that has none.
+  const shownIds = [...cveIds, ...vulnIds.filter((id) => cveIdsOf([details.get(id) ?? { id }]).length === 0)];
+  const idList = shownIds.slice(0, 8).join(", ") + (shownIds.length > 8 ? ` (+${shownIds.length - 8} more)` : "");
+  const count = vulnIds.length;
+
+  let detail: string;
+  if (exact) {
+    const parts = instances.map((i) => {
+      const fix = i.fixedVersion ? ` Fixed in ${i.fixedVersion}.` : " OSV.dev names no single fixed version for every advisory found.";
+      const dev = i.pkg.dev === true ? " Development-only dependency." : "";
+      return `${name} ${i.pkg.version} is ${describeInstance(i.pkg)}.${dev}${fix}`;
+    });
+    detail = `OSV.dev reports ${count} known vulnerabilit${count === 1 ? "y" : "ies"} (${idList}) affecting ${name} ${versions.join(" and ")}, the exact version${versions.length === 1 ? "" : "s"} recorded in ${first.file} (lockfile-exact). ${parts.join(" ")}`;
+  } else {
+    const fix = instances[0].fixedVersion ? ` Fixed in ${instances[0].fixedVersion}.` : "";
+    detail = `OSV.dev reports ${count} known vulnerabilit${count === 1 ? "y" : "ies"} (${idList}) affecting ${name} at version ${first.version}, the minimum version resolvable from the range declared in ${first.file} ("${first.declaredRange ?? first.version}"). This is a manifest-range check, not a lockfile-exact match — the actual installed version may differ.${fix}`;
+  }
+
+  // Remediation speaks to the instance that matters most: a direct one if
+  // any, else the one with the shortest route in.
+  const lead = [...instances].sort((a, b) => (a.pkg.direct === true ? -1 : 0) - (b.pkg.direct === true ? -1 : 0) || (a.pkg.introducedVia?.length ?? 99) - (b.pkg.introducedVia?.length ?? 99))[0];
+  const fixedAll = instances.every((i) => i.fixedVersion) && new Set(instances.map((i) => i.fixedVersion)).size === 1 ? instances[0].fixedVersion : lead.fixedVersion;
+
+  return {
+    checkId: `dependency-manifest.${slug}:${name}`,
+    severity,
+    title: `Vulnerable dependency: ${name}@${versions.join(", ")}`,
+    detail,
+    remediation: dependencyVulnerableRemediation(name, slug, {
+      versionSource: exact ? "lockfile" : "manifest",
+      file: first.file,
+      fixedVersion: fixedAll,
+      direct: lead.pkg.direct,
+      introducedVia: lead.pkg.introducedVia,
+    }),
+    cveIds,
+    ...(cvss ? { cvssScore: cvss.score, cvssVector: cvss.vector } : {}),
+    metadata: {
+      ecosystem: first.ecosystem,
+      packageName: name,
+      versionSource: exact ? "lockfile" : "manifest",
+      file: first.file,
+      osvIds: vulnIds,
+      versions: instances.map((i) => ({
+        version: i.pkg.version,
+        direct: i.pkg.direct,
+        dev: i.pkg.dev,
+        ...(i.pkg.introducedVia ? { introducedVia: i.pkg.introducedVia } : {}),
+        fixedVersion: i.fixedVersion,
+      })),
+    },
+  };
+}
+
+function emptyInventory(files: DependencyInventoryFile[], packages: ScannedPackage[], total: number, lookup: "completed" | "failed"): DependencyInventory {
+  const fileIndex = new Map(files.map((f, i) => [f.file, i]));
+  const index = new Map(packages.map((p, i) => [`${p.ecosystem}:${packageKey(p.name, p.version)}`, i]));
+  return {
+    schemaVersion: 1,
+    files,
+    packages: packages.map((p) => {
+      const deps = (p.dependsOn ?? []).map((k) => index.get(`${p.ecosystem}:${k}`)).filter((i): i is number => i !== undefined);
+      const scope = scopeOf(p);
+      return {
+        ecosystem: p.ecosystem,
+        name: p.name,
+        version: p.version,
+        direct: p.direct,
+        ...(scope ? { scope } : {}),
+        fileIndex: fileIndex.get(p.file) ?? 0,
+        ...(deps.length ? { dependsOn: deps } : {}),
+      };
+    }),
+    totalPackages: total,
+    truncated: total > packages.length,
+    vulnerabilityLookup: lookup,
+    advisories: [],
+  };
+}
+
+/**
+ * Checks collected packages against OSV.dev and builds findings plus the
+ * inventory. `error` is set (and findings are empty) when the OSV.dev batch
+ * lookup failed — the caller reports that as an "error" result.
+ */
+export async function evaluateDependencyPackages(collected: CollectedPackages): Promise<Evaluated> {
+  const ordered = dedupeAndOrder(collected.packages);
+  const queried = ordered.slice(0, MAX_PACKAGES_QUERIED);
+  const notes: string[] = [];
+  if (ordered.length > queried.length) {
+    notes.push(`Only ${MAX_PACKAGES_QUERIED} of ${ordered.length} packages were checked against OSV.dev (direct dependencies first); the rest are not in this result.`);
+  }
+
+  const batch = await queryOsvBatch(queried.map((p) => ({ ecosystem: p.ecosystem, name: p.name, version: p.version })));
+  if (!batch.ok) {
+    return {
+      findings: [],
+      inventory: emptyInventory(collected.files, queried, ordered.length, "failed"),
+      checked: 0,
+      notes,
+      error: batch.error,
+    };
+  }
+
+  const affected = queried.map((pkg, i) => ({ pkg, ids: batch.vulnIds[i] })).filter((a) => a.ids.length > 0);
+  const allIds = [...new Set(affected.flatMap((a) => a.ids))].sort();
+  const toFetch = allIds.slice(0, MAX_VULN_DETAILS);
+  const { details, failed } = await fetchOsvVulnDetails(toFetch, { concurrency: QUERY_CONCURRENCY });
+  const missing = allIds.length - details.size;
+  if (missing > 0) {
+    notes.push(`Advisory details for ${missing} of ${allIds.length} OSV.dev advisories could not be fetched${failed.length ? ` (${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ", ..." : ""})` : ""}; those packages are still reported, with fewer CVE ids and no fixed version.`);
+  }
+
+  // A withdrawn advisory no longer claims anything.
+  const live = (ids: string[]) => ids.filter((id) => !details.get(id)?.withdrawn);
+  const inventory = emptyInventory(collected.files, queried, ordered.length, "completed");
+  const advisoryIds = new Set<string>();
+  const vulnerable: Array<{ pkg: ScannedPackage; vulnIds: string[]; fixedVersion: string | null }> = [];
+
+  queried.forEach((pkg, i) => {
+    const ids = live(batch.vulnIds[i]);
+    if (ids.length === 0) return;
+    const vulnDetails = ids.map((id) => details.get(id));
+    const fixedVersion = vulnDetails.every((d) => d) ? fixedVersionFromVulns(vulnDetails as OsvVulnDetail[], pkg.ecosystem, pkg.name, pkg.version) : null;
+    inventory.packages[i].vulnIds = ids;
+    if (fixedVersion) inventory.packages[i].fixedVersion = fixedVersion;
+    ids.forEach((id) => advisoryIds.add(id));
+    vulnerable.push({ pkg, vulnIds: ids, fixedVersion });
+  });
+
+  inventory.advisories = [...advisoryIds].sort().map((id) => {
+    const d = details.get(id);
+    const severity = d ? osvSeverity(d) : null;
+    const cvss = d ? osvCvss(d) : null;
+    return {
+      id,
+      cveIds: cveIdsOf(d ? [d] : [{ id }]),
+      ...(severity ? { severity } : {}),
+      ...(cvss ? { cvssVector: cvss.vector, cvssScore: cvss.score } : {}),
+      ...(d?.summary ? { summary: d.summary.slice(0, 200) } : {}),
+    };
+  });
+
+  const findings: Finding[] = [];
+  for (const ecosystem of ECOSYSTEM_ORDER) {
+    const slug = ECOSYSTEM_SLUG[ecosystem];
+    const byName = new Map<string, typeof vulnerable>();
+    for (const v of vulnerable.filter((v) => v.pkg.ecosystem === ecosystem)) {
+      byName.set(v.pkg.name, [...(byName.get(v.pkg.name) ?? []), v]);
+    }
+    // Deterministic order (alphabetical) so the cap and the checkId-keyed
+    // New/Fixed diff behave consistently run to run.
+    const names = [...byName.keys()].sort((a, b) => a.localeCompare(b));
+    for (const name of names.slice(0, MAX_FINDINGS)) {
+      const instances = byName.get(name)!.sort((a, b) => a.pkg.version.localeCompare(b.pkg.version));
+      findings.push(buildFinding(slug, instances, details));
+    }
+    const remaining = names.length - MAX_FINDINGS;
+    if (remaining > 0) {
+      const sourceFiles = [...new Set(vulnerable.filter((v) => v.pkg.ecosystem === ecosystem).map((v) => v.pkg.file))].join(", ");
+      findings.push({
+        checkId: `dependency-manifest.additional-vulnerable:${slug}`,
+        severity: "info",
+        title: `${remaining} further vulnerable ${slug} dependenc${remaining === 1 ? "y" : "ies"} not listed individually`,
+        detail: `${names.length} vulnerable ${slug} packages were found in total (from ${sourceFiles}); the first ${MAX_FINDINGS} are listed above. Additional: ${names.slice(MAX_FINDINGS, MAX_FINDINGS + 10).join(", ")}${remaining > 10 ? ` (+${remaining - 10} more)` : ""}.`,
+      });
+    }
+  }
+
+  return { findings, inventory, checked: queried.length, notes };
+}
+
+/**
+ * The manifest-only npm path, kept for local verification without a GitHub
+ * token/repo — the half of this module that must be provable against real
+ * OSV.dev data alone. Throws if the OSV.dev lookup fails.
+ */
+export async function buildDependencyFindings(
+  pkg: PackageJsonShape
+): Promise<{ findings: Finding[]; dependenciesDeclared: number; dependenciesChecked: number; note?: string }> {
+  const m = npmManifestPackages(pkg);
+  const collected: CollectedPackages = { packages: m.packages, files: [{ file: "package.json", ecosystem: "npm", kind: "manifest", graph: false }], declared: m.declared, notes: [] };
+  const evaluated = await evaluateDependencyPackages(collected);
+  if (evaluated.error) throw new Error(evaluated.error);
+  const notes = [...collected.notes, ...evaluated.notes];
+  return { findings: evaluated.findings, dependenciesDeclared: m.declared, dependenciesChecked: evaluated.checked, ...(notes.length ? { note: notes.join(" ") } : {}) };
+}
+
+// ---- GitHub ------------------------------------------------------------------
+
+type RepoFile = { status: "ok"; content: string } | { status: "missing" } | { status: "error"; reason: string };
+
+async function fetchRepoFile(githubRepo: string, path: string, token: string): Promise<RepoFile> {
+  try {
+    const res = await fetch(`${githubApi}/repos/${githubRepo}/contents/${encodeURIComponent(path)}`, {
+      headers: ghHeaders(token, true),
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+    });
+    if (res.status === 404) return { status: "missing" };
+    if (!res.ok) return { status: "error", reason: `HTTP ${res.status}` };
+    const length = Number(res.headers.get("content-length") ?? 0);
+    if (length > MAX_FILE_BYTES) return { status: "error", reason: `larger than ${MAX_FILE_BYTES / 1024 / 1024} MB` };
+    const text = await res.text();
+    if (text.length > MAX_FILE_BYTES) return { status: "error", reason: `larger than ${MAX_FILE_BYTES / 1024 / 1024} MB` };
+    return { status: "ok", content: text };
+  } catch (err) {
+    return { status: "error", reason: (err as Error).message };
+  }
+}
+
+/** Names of the files at the repo root (default branch), or an error string. */
+async function listRepoRoot(githubRepo: string, token: string): Promise<Set<string> | string> {
+  try {
+    const res = await fetch(`${githubApi}/repos/${githubRepo}/contents/`, {
+      headers: ghHeaders(token),
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+    });
+    if (!res.ok) return `listing the repository root returned HTTP ${res.status}`;
+    const body = (await res.json()) as unknown;
+    if (!Array.isArray(body)) return "listing the repository root returned an unexpected response";
+    return new Set(body.filter((e) => e && typeof e === "object" && (e as { type?: string }).type === "file").map((e) => String((e as { name?: unknown }).name)));
+  } catch (err) {
+    return `listing the repository root failed: ${(err as Error).message}`;
+  }
 }
 
 // ---- Entry point ---------------------------------------------------------
 
 /**
- * Scans whichever of package.json / requirements.txt / composer.json /
- * go.mod / pom.xml exist at the connected repo's root against OSV.dev.
- * Never throws.
+ * Scans the connected repo's root lockfiles (else manifests) against
+ * OSV.dev. Never throws.
  */
 export async function scanDependencyManifest(options: DependencyManifestOptions): Promise<DependencyManifestResult> {
   const githubRepo = options.githubRepo || null;
@@ -471,106 +807,63 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
   }
 
   try {
-    const [pkg, requirementsTxt, composer, goMod, pomXml] = await Promise.all([
-      fetchPackageJson(githubRepo, token),
-      fetchRequirementsTxt(githubRepo, token),
-      fetchComposerJson(githubRepo, token),
-      fetchGoMod(githubRepo, token),
-      fetchPomXml(githubRepo, token),
-    ]);
-
-    if (!pkg && !requirementsTxt && !composer && !goMod && !pomXml) {
+    const root = await listRepoRoot(githubRepo, token);
+    if (typeof root === "string") {
+      return { status: "error", repo: githubRepo, findings: [], note: `Could not read ${githubRepo}: ${root}. No dependency verdict for this scan.` };
+    }
+    const candidates = CANDIDATE_FILES.filter((f) => root.has(f));
+    const meaningful = candidates.filter((f) => f !== "pyproject.toml" || root.has("poetry.lock"));
+    if (meaningful.length === 0) {
       return {
         status: "not_applicable",
         repo: githubRepo,
         findings: [],
-        note: "No package.json, requirements.txt, composer.json, go.mod, or pom.xml found at the repository root — nothing to scan.",
+        note: "No supported lockfile (package-lock.json, yarn.lock, pnpm-lock.yaml, poetry.lock, Pipfile.lock, composer.lock, go.sum, Gemfile.lock, Cargo.lock, packages.lock.json, gradle.lockfile) or manifest (package.json, requirements.txt, composer.json, go.mod, pom.xml) found at the repository root — nothing to scan.",
       };
     }
 
-    const manifestsScanned: string[] = [];
-    const allFindings: Finding[] = [];
-    const notes: string[] = [];
-    let dependenciesDeclared = 0;
-    let dependenciesChecked = 0;
-
-    if (pkg) {
-      manifestsScanned.push("package.json");
-      const result = await buildDependencyFindings(pkg);
-      allFindings.push(...result.findings);
-      dependenciesDeclared += result.dependenciesDeclared;
-      dependenciesChecked += result.dependenciesChecked;
-      if (result.note) notes.push(result.note);
+    const fetched = await Promise.all(candidates.map(async (f) => [f, await fetchRepoFile(githubRepo, f, token)] as const));
+    const contents: Record<string, string> = {};
+    const fetchNotes: string[] = [];
+    for (const [file, r] of fetched) {
+      if (r.status === "ok") contents[file] = r.content;
+      else if (r.status === "error") fetchNotes.push(`${file} could not be read (${r.reason}).`);
     }
 
-    if (requirementsTxt) {
-      manifestsScanned.push("requirements.txt");
-      const deps = parsePipRequirements(requirementsTxt);
-      // parsePipRequirements already drops unparseable lines, so "declared"
-      // here counts what was recognised as a dependency line at all — a
-      // line skipped for having no version is still declared, just not
-      // queryable, same accounting convention as the npm path.
-      const totalLines = requirementsTxt
-        .split(/\r?\n/)
-        .map((l) => l.split("#")[0].trim())
-        .filter((l) => l && !/^(-|git\+|https?:|\.\/|\.\.\/)/i.test(l)).length;
-      const { findings, note } = await buildFindingsForDeps("PyPI", "requirements.txt", deps, totalLines);
-      allFindings.push(...findings);
-      dependenciesDeclared += totalLines;
-      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
-      if (note) notes.push(note);
+    const collected = collectDependencyPackages(contents);
+    const notes = [...fetchNotes, ...collected.notes];
+    if (collected.files.length === 0) {
+      // Files exist but none could be read or parsed: that's a failure to look, not "nothing to scan".
+      return { status: "error", repo: githubRepo, findings: [], note: `Dependency files were found but none could be read. ${notes.join(" ")}`.trim() };
     }
 
-    if (composer) {
-      manifestsScanned.push("composer.json");
-      const raw: Record<string, string> = { ...(composer.require ?? {}), ...(composer["require-dev"] ?? {}) };
-      const names = Object.keys(raw).filter((name) => !COMPOSER_PLATFORM_PACKAGE_RE.test(name));
-      const deps: DeclaredDependency[] = names
-        .map((name) => ({ name, declaredRange: raw[name], version: minVersionFromRange(raw[name]) }))
-        .filter((d): d is DeclaredDependency => d.version !== null);
-      const { findings, note } = await buildFindingsForDeps("Packagist", "composer.json", deps, names.length);
-      allFindings.push(...findings);
-      dependenciesDeclared += names.length;
-      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
-      if (note) notes.push(note);
+    const evaluated = await evaluateDependencyPackages(collected);
+    notes.push(...evaluated.notes);
+    if (evaluated.error) {
+      return {
+        status: "error",
+        repo: githubRepo,
+        findings: [],
+        inventory: evaluated.inventory,
+        note: `${evaluated.error}. No vulnerability verdict for this scan — this is not a clean result. ${notes.join(" ")}`.trim(),
+      };
     }
 
-    if (goMod) {
-      manifestsScanned.push("go.mod");
-      const deps = parseGoModRequire(goMod);
-      const { findings, note } = await buildFindingsForDeps("Go", "go.mod", deps, deps.length);
-      allFindings.push(...findings);
-      dependenciesDeclared += deps.length;
-      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
-      if (note) notes.push(note);
-    }
-
-    if (pomXml) {
-      manifestsScanned.push("pom.xml");
-      const deps = parsePomXmlDependencies(pomXml);
-      // extractMavenDependenciesBlock is the same scoping parsePomXmlDependencies
-      // itself uses, so this count matches what was actually considered (not
-      // inflated by <dependencyManagement>'s own <dependency> blocks).
-      const depsBlock = extractMavenDependenciesBlock(pomXml);
-      const totalDeclared = depsBlock !== null ? (depsBlock.match(MAVEN_DEPENDENCY_BLOCK_RE) ?? []).length : deps.length;
-      const { findings, note } = await buildFindingsForDeps("Maven", "pom.xml", deps, totalDeclared);
-      allFindings.push(...findings);
-      dependenciesDeclared += totalDeclared;
-      dependenciesChecked += Math.min(deps.length, MAX_PACKAGES_QUERIED);
-      if (note) notes.push(note);
-    }
-
+    const scanned = collected.files.map((f) => f.file);
     return {
       status: "completed",
       repo: githubRepo,
-      manifestsScanned,
-      dependenciesDeclared,
-      dependenciesChecked,
-      findings: allFindings,
+      manifestsScanned: scanned,
+      lockfilesScanned: collected.files.filter((f) => f.kind === "lockfile").map((f) => f.file),
+      dependenciesDeclared: collected.declared,
+      dependenciesChecked: evaluated.checked,
+      findings: evaluated.findings,
+      inventory: evaluated.inventory,
       ...(notes.length ? { note: notes.join(" ") } : {}),
     };
-  } catch {
-    // Backstop: this function's contract is that it never throws.
-    return { status: "not_applicable", repo: githubRepo, findings: [], note: "dependency manifest scan could not complete — treating as not applicable rather than surfacing an error finding." };
+  } catch (err) {
+    // Backstop: this function's contract is that it never throws. An
+    // unexpected failure is an error, never a clean "nothing found".
+    return { status: "error", repo: githubRepo, findings: [], note: `dependency scan could not complete: ${(err as Error).message}` };
   }
 }

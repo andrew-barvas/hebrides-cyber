@@ -1136,8 +1136,10 @@ access to it if it doesn't need to be public.`
  * quote across every advisory, so this stays generic rather than fabricating
  * a specific target version we haven't independently verified.
  */
+export type DependencyEcosystemSlug = "npm" | "pip" | "composer" | "go" | "maven" | "ruby" | "cargo" | "nuget";
+
 const DEPENDENCY_ECOSYSTEM_COMMANDS: Record<
-  "npm" | "pip" | "composer" | "go" | "maven",
+  DependencyEcosystemSlug,
   { manifest: string; checkInstalled: (pkg: string) => string; commands: (pkg: string) => string }
 > = {
   npm: {
@@ -1167,28 +1169,114 @@ const DEPENDENCY_ECOSYSTEM_COMMANDS: Record<
     commands: (pkg) =>
       `# ${pkg} is "groupId:artifactId" — update the <version> in pom.xml directly, then:\nmvn versions:display-dependency-updates -Dincludes=${pkg}\nmvn clean install`,
   },
+  ruby: {
+    manifest: "Gemfile",
+    checkInstalled: (pkg) => `bundle info ${pkg}`,
+    commands: (pkg) => `bundle update ${pkg} --conservative`,
+  },
+  cargo: {
+    manifest: "Cargo.toml",
+    checkInstalled: (pkg) => `cargo tree -i ${pkg}`,
+    commands: (pkg) => `cargo update -p ${pkg}\n# or move to a specific patched version:\ncargo update -p ${pkg} --precise <fixed-version>`,
+  },
+  nuget: {
+    manifest: "the .csproj file",
+    checkInstalled: () => `dotnet list package --include-transitive`,
+    commands: (pkg) => `dotnet add package ${pkg} --version <fixed-version>\ndotnet restore --force-evaluate   # refreshes packages.lock.json`,
+  },
 };
 
-export function dependencyVulnerableRemediation(packageName: string, ecosystem: "npm" | "pip" | "composer" | "go" | "maven" = "npm"): string {
+/** Where the vulnerable version came from, when the finding knows (dependencyManifest.ts sets it). */
+export type DependencyRemediationContext = {
+  /** "lockfile": the exact installed version; "manifest": the lowest version a declared range allows. */
+  versionSource: "lockfile" | "manifest";
+  /** The file the version was read from ("package-lock.json", "requirements.txt", ...). */
+  file: string;
+  /** A version OSV.dev names as fixing every advisory found, when it names one. */
+  fixedVersion?: string | null;
+  /** false when the package is only pulled in by another dependency. */
+  direct?: boolean | null;
+  /** Ancestors from the direct dependency down to the parent (name@version). */
+  introducedVia?: string[];
+};
+
+// How to force a patched version of a dependency the project doesn't declare itself.
+function transitiveOverride(slug: DependencyEcosystemSlug, file: string, pkg: string, fixed: string): string {
+  switch (slug) {
+    case "npm":
+      if (file === "yarn.lock") return `Yarn: add \`"resolutions": { "${pkg}": "${fixed}" }\` to package.json, then \`yarn install\`.`;
+      if (file === "pnpm-lock.yaml") return `pnpm: add \`"pnpm": { "overrides": { "${pkg}": "${fixed}" } }\` to package.json, then \`pnpm install\`.`;
+      return `npm: add \`"overrides": { "${pkg}": "${fixed}" }\` to package.json, then \`npm install\`.`;
+    case "pip":
+      return `Add \`${pkg}>=${fixed}\` as a direct requirement (or a constraint), then re-lock.`;
+    case "composer":
+      return `\`composer update ${pkg} --with-dependencies\`, or \`composer require ${pkg}:^${fixed}\` to pin it directly.`;
+    case "go":
+      return `\`go get ${pkg}@v${fixed.replace(/^v/, "")}\` then \`go mod tidy\` — Go builds the highest version any module requires.`;
+    case "maven":
+      return `Pin it in \`<dependencyManagement>\` (Maven) or a \`constraints\` block (Gradle, then \`./gradlew dependencies --write-locks\`).`;
+    case "ruby":
+      return `\`bundle update ${pkg} --conservative\`, or add \`gem "${pkg}", ">= ${fixed}"\` to the Gemfile.`;
+    case "cargo":
+      return `\`cargo update -p ${pkg} --precise ${fixed}\`, if the crates that depend on it allow that version.`;
+    case "nuget":
+      return `\`dotnet add package ${pkg} --version ${fixed}\` adds a direct reference that overrides the transitive one.`;
+  }
+}
+
+/**
+ * Without `context` (findings from before lockfile scanning) this is the
+ * original manifest-range text. With it, the text names the fixed version
+ * when OSV.dev gives one, says whether the version is lockfile-exact, and
+ * explains how to fix a transitive dependency.
+ */
+export function dependencyVulnerableRemediation(
+  packageName: string,
+  ecosystem: DependencyEcosystemSlug = "npm",
+  context?: DependencyRemediationContext
+): string {
   const cfg = DEPENDENCY_ECOSYSTEM_COMMANDS[ecosystem];
   const auditNote =
     ecosystem === "npm"
       ? " — `npm audit fix` applies it automatically when the fix doesn't require a major-version bump"
       : "";
+  const fixed = context?.fixedVersion ?? null;
+  const commands = fixed ? cfg.commands(packageName).replace(/<fixed-version>/g, fixed) : cfg.commands(packageName);
+  const target = fixed ? `**${fixed}** or later (the version OSV.dev names as fixing every advisory found)` : "a patched version";
 
-  return `Update **${packageName}** to a patched version.
+  let transitive = "";
+  if (context?.direct === false) {
+    const via = context.introducedVia ?? [];
+    const chain = via.length ? ` It is pulled in by ${via.join(" > ")}.` : "";
+    const parent = via.length ? ` (${via[0].replace(/@[^@]*$/, "")})` : "";
+    transitive = `
+
+**${packageName}** isn't declared by your project directly.${chain} Upgrading the
+dependency that brings it in${parent} to a release that requires a patched
+version is the cleanest fix. If there isn't one yet, force the patched version:
+${transitiveOverride(ecosystem, context.file, packageName, fixed ?? "<fixed-version>")}`;
+  }
+
+  const versionNote =
+    context?.versionSource === "lockfile"
+      ? `The version checked here is the exact one recorded in \`${context.file}\` —
+what your project actually installs — so update the lockfile, not just the
+manifest.`
+      : `The version checked here comes from the range declared in \`${context?.file ?? cfg.manifest}\`,
+not a lockfile, so it is an approximation of what's actually installed — run
+\`${cfg.checkInstalled(packageName)}\` to confirm the real installed version
+before deciding whether this is already fixed.`;
+
+  return `Update **${packageName}** to ${target}.
 
 \`\`\`bash
-${cfg.commands(packageName)}
-\`\`\`
+${commands}
+\`\`\`${transitive}
 
 Check the advisory OSV.dev matched (search \`${packageName}\` at
 https://osv.dev) for the exact patched range${auditNote}.
 
-The version checked here comes from the range declared in \`${cfg.manifest}\`,
-not a lockfile, so it is an approximation of what's actually installed — run
-\`${cfg.checkInstalled(packageName)}\` to confirm the real installed version
-before deciding whether this is already fixed.
+${versionNote}
 
 After upgrading, run your test suite and re-scan to confirm the finding
 clears.`;
