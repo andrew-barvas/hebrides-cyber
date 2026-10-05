@@ -33,3 +33,6 @@ azure/terraform/.terraform/
 azure/terraform/*.tfstate
 azure/terraform/*.tfstate.backup
 azure/terraform/.terraform.lock.hcl
+
+# Accuracy benchmark run output (bench/baseline.json is committed)
+bench/reports/

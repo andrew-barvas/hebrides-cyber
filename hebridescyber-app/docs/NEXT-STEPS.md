@@ -127,6 +127,15 @@ failing on regressions.
 **Done when:** the suite runs in CI with a baseline report, and at least
 one known false positive class (e.g. SPA catch-all) is a must-not case.
 
+**Status (E-73):** first slice built on branch `claude/e73-benchmark`: `bench/`,
+`npm run bench`, `.github/workflows/benchmark.yml`. It covers the base checks
+that run offline against 12 local fixture sites (SPA catch-all, soft-404 and
+redirect-all must-not cases included); the Juice Shop / badssl.com job is
+opt-in and informational (`bench:network`). It already surfaced two real
+defects, tracked as `knownIssues`: nginx autoindex is missed (`directoryListing.ts`
+requires "Parent Directory") and `no-rate-limit` fires on redirect-everything
+sites. Not yet covered: DNS, ports, recon and the extended tools.
+
 ### 5. E-74 — Cross-site findings view with bulk triage
 
 **Why:** everything is per scan. Agencies and anyone with several sites
