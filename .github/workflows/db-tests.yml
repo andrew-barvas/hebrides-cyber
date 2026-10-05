@@ -1,0 +1,56 @@
+name: Database tests
+
+# Applies every migration in hebridescyber-app/sql/migrations to a real
+# Postgres (with a minimal Supabase shim, tests/db/shim.sql) and asserts row
+# level security, claim_scan_job() concurrency and migration idempotency.
+# The normal unit run skips these; they only run with RUN_DB_TESTS=1.
+
+on:
+  pull_request:
+    paths:
+      - "hebridescyber-app/sql/**"
+      - "hebridescyber-app/tests/db/**"
+      - "hebridescyber-app/vitest.db.config.mts"
+      - ".github/workflows/db-tests.yml"
+  push:
+    branches: [master]
+    paths:
+      - "hebridescyber-app/sql/**"
+      - "hebridescyber-app/tests/db/**"
+      - "hebridescyber-app/vitest.db.config.mts"
+      - ".github/workflows/db-tests.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  db-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - run: npm ci
+      - run: npm run test:db
