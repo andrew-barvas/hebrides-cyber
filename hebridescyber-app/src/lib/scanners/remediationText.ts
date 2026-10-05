@@ -2824,3 +2824,28 @@ curl -s https://cdn.example.com/lib.js | openssl dgst -sha384 -binary | openssl 
 
 \`crossorigin="anonymous"\` must accompany \`integrity\`. Scripts that change by design (tag managers, payment SDKs) can't be pinned; list them in your Content-Security-Policy instead. Resources you control are better served from your own origin, which needs no hash.`;
 }
+
+// ---- Supabase backend exposure ---------------------------------------------------
+
+export const BACKEND_SERVICE_KEY = `A Supabase \`service_role\` key is visible in your site's public code. Treat it as already stolen.
+
+1. **Rotate it now.** In the Supabase dashboard open *Project Settings → API* and generate a new JWT secret (this invalidates both keys), then update your server-side configuration. Until you do, anyone who has copied the key can read and change every table.
+2. **Keep it out of the browser.** The \`service_role\` key belongs only in server code (API routes, edge functions, CI secrets) and must never be in a variable that is bundled for the client, such as one starting with \`NEXT_PUBLIC_\`, \`VITE_\` or \`REACT_APP_\`. The browser should only ever hold the \`anon\` key.
+3. **Check for misuse.** Review the project's logs and tables for reads or writes you don't recognise, and rotate any other secrets stored in the database.`;
+
+export function backendOpenTableRemediation(table: string): string {
+  const name = /^[a-z_][a-z0-9_]*$/i.test(table) ? table : "your_table";
+  return `Turn on row level security for \`${name}\` and add policies that only allow what each user should see. Without it, the public \`anon\` key (which every visitor's browser holds) can read the table.
+
+\`\`\`sql
+alter table public.${name} enable row level security;
+
+-- Example: signed-in users can read only their own rows.
+create policy "${name}: read own rows"
+  on public.${name} for select
+  to authenticated
+  using (user_id = auth.uid());
+\`\`\`
+
+If the data is meant to be public, say so deliberately with a narrow policy (only the columns and rows that are public, ideally through a view), rather than leaving RLS off. After the change, check it as an anonymous visitor: a request with only the anon key should return no rows. Tables created through the SQL editor have RLS **off** by default, so check every table in the \`public\` schema.`;
+}

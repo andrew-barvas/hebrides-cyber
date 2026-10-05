@@ -49,6 +49,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.missing-recommended": "easy",
   "headers.cors-wildcard": "easy",
   "headers.info-disclosure": "trivial",
+  "backend-exposure.service-key": "easy", // rotate the key and move it server-side
+  "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
   "crawl.header-gap": "easy",
   "crawl.cookie-flags": "easy",
   "crawl.mixed-content": "easy",

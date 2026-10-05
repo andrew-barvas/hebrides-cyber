@@ -174,6 +174,10 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "headers.cors-wildcard": [OWASP_A05, OWASP_A01, CIS_4, PCI_REQ6, ISO_A9],
   "headers.info-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
 
+  // --- Supabase backend exposure ---
+  "backend-exposure.service-key": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, CIS_4, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "backend-exposure.open-table": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
+
   // --- Site crawl (E-70): the same controls as the home-page checks they extend ---
   "crawl.header-gap": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
   "crawl.cookie-flags": [OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
