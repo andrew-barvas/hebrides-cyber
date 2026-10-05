@@ -23,5 +23,7 @@ export const CORPUS: CorpusTarget[] = [
   { id: "cors-reflect", description: "Reflects any Origin with credentials allowed", create: () => sites.corsReflect },
   { id: "login-unthrottled", description: "Login form, no CSRF token, no rate limiting", create: () => sites.loginUnthrottled },
   { id: "login-throttled", description: "Login form with CSRF token and 429 throttling", create: () => sites.createLoginThrottled() },
+  { id: "graphql-open", description: "GraphQL endpoint with introspection and GraphiQL exposed", create: () => sites.graphqlOpen },
+  { id: "graphql-locked", description: "GraphQL endpoint with introspection off, no suggestions, no IDE", create: () => sites.graphqlLocked },
   { id: "spa-login", description: "Client-rendered login that answers every POST with 200", create: () => sites.spaLogin },
 ];

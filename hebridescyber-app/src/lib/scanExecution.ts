@@ -752,7 +752,7 @@ export async function executeScan(
     metadata: { target_url: targetUrl, scan_profile: profile },
   });
 
-  const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "scriptInventory", "crawl", "backendExposure", "businessLogic"];
+  const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "scriptInventory", "crawl", "backendExposure", "graphql", "businessLogic"];
   const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 26 : BASE_CHECK_NAMES.length;
 
   await updateScanProgress(supabaseAdmin, scanId, {

@@ -16,7 +16,10 @@
     "exposure.exposed-file:/dump.sql",
     "exposure.exposed-file:/backup.zip",
     "exposure.exposed-file:/phpinfo.php",
-    "directory-listing.*"
+    "directory-listing.*",
+    "graphql.*"
   ],
-  "optional": ["fingerprint.tech-detected"]
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
 }

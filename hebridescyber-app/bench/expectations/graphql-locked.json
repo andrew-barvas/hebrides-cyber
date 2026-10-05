@@ -1,0 +1,18 @@
+{
+  "target": "graphql-locked",
+  "description": "GraphQL with introspection off, no suggestions and no IDE: the check must find the endpoint and stay silent.",
+  "mustFind": [
+    "tls.no-https"
+  ],
+  "mustNotFind": [
+    "graphql.*",
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "webapp.*"
+  ],
+  "optional": [
+    "exposure.no-security-txt",
+    "headers.*",
+    "fingerprint.tech-detected"
+  ]
+}

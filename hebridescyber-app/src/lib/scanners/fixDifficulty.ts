@@ -57,6 +57,9 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "crawl.insecure-form": "easy",
   "crawl.error-disclosure": "easy",
   "crawl.missing-sri": "easy",
+  "graphql.introspection": "easy",
+  "graphql.suggestions": "moderate",
+  "graphql.ide": "easy",
   "headers.csp-weak": "moderate",
   "headers.csp-absent": "moderate", // needs enumerating every real script/style/connect source
 

@@ -10,7 +10,8 @@
     "directory-listing.*",
     "headers.*",
     "webapp.*",
-    "business-logic.no-rate-limit"
+    "business-logic.no-rate-limit",
+    "graphql.*"
   ],
   "optional": [
     "fingerprint.tech-detected"

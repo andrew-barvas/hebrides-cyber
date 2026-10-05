@@ -25,6 +25,7 @@ import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
 import { checkCrawl, type CrawlResult } from "./crawler";
 import { checkBackendExposure, type BackendExposureResult } from "./backendExposure";
+import { checkGraphql, buildGraphqlFindings, type GraphqlResult } from "./graphql";
 import { buildCrawlFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
@@ -70,6 +71,7 @@ export type ScanResults = {
   scriptInventory?: ScriptInventoryResult;
   crawl?: CrawlResult;
   backendExposure?: BackendExposureResult;
+  graphql?: GraphqlResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -225,6 +227,7 @@ export async function runAllChecks(
     checkBusinessLogic(targetUrl),
     checkDomainRegistration(targetUrl),
     checkBackendExposure(targetUrl),
+    checkGraphql(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -246,6 +249,7 @@ export async function runAllChecks(
   const businessLogic = unwrap(settled1[12], { status: "error", note: "check crashed" } as BusinessLogicResult);
   const domainRegistration = unwrap(settled1[13], { status: "error", note: "check crashed" } as DomainRegistrationResult);
   const backendExposure = unwrap(settled1[14], { status: "error", note: "check crashed" } as BackendExposureResult);
+  const graphql = unwrap(settled1[15], { status: "error", note: "check crashed" } as GraphqlResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -354,6 +358,7 @@ export async function runAllChecks(
     scriptInventory,
     crawl,
     backendExposure,
+    graphql,
     zap,
   };
 }
@@ -1101,6 +1106,8 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // Only reported with evidence: a service_role key in client code, or a table
   // the anon key can read rows from (count above zero). "not_applicable" (no
   // Supabase on the page) and "error" produce nothing.
+  findings.push(...buildGraphqlFindings(results.graphql));
+
   if (results.backendExposure?.status === "checked") {
     for (const project of results.backendExposure.projects) {
       if (project.serviceKey) {

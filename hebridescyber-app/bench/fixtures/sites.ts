@@ -59,6 +59,38 @@ export const spaCatchAll: SiteHandler = (req, res) => {
   return send(req, res, 200, { ...HTML }, shell);
 };
 
+/** A GraphQL server at /graphql; the two fixtures below differ only in what they expose. */
+function graphqlSite(opts: { introspection: boolean; suggestions: boolean; ide: boolean }): SiteHandler {
+  return (req, res) => {
+    const p = pathOf(req);
+    if (p === "/graphql" && req.method === "POST") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const json = { "content-type": "application/json" };
+        if (raw.includes("__schema")) {
+          const body = opts.introspection ? { data: { __schema: { types: [{ name: "Query" }, { name: "User" }] } } } : { errors: [{ message: "GraphQL introspection is not allowed" }] };
+          return send(req, res, 200, json, JSON.stringify(body));
+        }
+        if (raw.includes("__typenam }")) {
+          const message = opts.suggestions ? 'Cannot query field "__typenam" on type "Query". Did you mean "__typename"?' : 'Cannot query field "__typenam" on type "Query".';
+          return send(req, res, 400, json, JSON.stringify({ errors: [{ message }] }));
+        }
+        return send(req, res, 200, json, JSON.stringify({ data: { __typename: "Query" } }));
+      });
+      return;
+    }
+    if (opts.ide && p === "/graphiql") return send(req, res, 200, { ...HTML }, "<!doctype html><title>GraphiQL</title><div id=graphiql></div>");
+    if (p === "/") return send(req, res, 200, { ...HTML }, HOME);
+    return send(req, res, 404, { ...HTML }, "<h1>Not found</h1>");
+  };
+}
+
+/** GraphQL with introspection, field suggestions and GraphiQL all open. */
+export const graphqlOpen: SiteHandler = graphqlSite({ introspection: true, suggestions: true, ide: true });
+/** GraphQL with introspection off, no suggestions and no IDE: nothing to report. */
+export const graphqlLocked: SiteHandler = graphqlSite({ introspection: false, suggestions: false, ide: false });
+
 /** SPA catch-all whose shell embeds a per-request nonce (defeats byte-equal comparison). */
 export const spaCatchAllNonce: SiteHandler = (req, res) => {
   const p = pathOf(req);
