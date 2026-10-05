@@ -213,9 +213,15 @@ function gitShow(commit, path) {
 async function upsertPullRequestComment(token, repo, number, body, apiUrl) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
   const base = `${apiUrl}/repos/${repo}/issues`;
-  const list = await fetchWithTimeout(`${base}/${number}/comments?per_page=100`, { headers }, 15_000);
-  if (!list.ok) throw new Error(`could not list comments (HTTP ${list.status})`);
-  const existing = (await list.json()).find((c) => typeof c.body === "string" && c.body.includes(COMMENT_MARKER));
+  // Page through the comments: on a busy PR our earlier comment may not be on the first page.
+  let existing;
+  for (let page = 1; page <= 10 && !existing; page++) {
+    const list = await fetchWithTimeout(`${base}/${number}/comments?per_page=100&page=${page}`, { headers }, 15_000);
+    if (!list.ok) throw new Error(`could not list comments (HTTP ${list.status})`);
+    const comments = await list.json();
+    existing = comments.find((c) => typeof c.body === "string" && c.body.includes(COMMENT_MARKER));
+    if (comments.length < 100) break;
+  }
   const res = existing
     ? await fetchWithTimeout(`${base}/comments/${existing.id}`, { method: "PATCH", headers, body: JSON.stringify({ body }) }, 15_000)
     : await fetchWithTimeout(`${base}/${number}/comments`, { method: "POST", headers, body: JSON.stringify({ body }) }, 15_000);

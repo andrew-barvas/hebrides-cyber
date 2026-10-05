@@ -343,7 +343,18 @@ export function crawledPagesForInventory(crawl: CrawlResult | undefined): Invent
 
 export async function checkScriptInventory(targetUrl: string, playwright: PlaywrightResult, crawl?: CrawlResult): Promise<ScriptInventoryResult> {
   const html = await fetchHtml(targetUrl);
-  return buildScriptInventory({ targetUrl, html, runtime: runtimeCapture(playwright), crawledPages: crawledPagesForInventory(crawl) });
+  const inventory = buildScriptInventory({ targetUrl, html, runtime: runtimeCapture(playwright), crawledPages: crawledPagesForInventory(crawl) });
+  // The inventory lists origins from inner pages too. If the crawl didn't
+  // cover the site this scan, an origin missing from the list isn't evidence
+  // it was removed — "partial" keeps findingLifecycle from resolving it.
+  if (crawl && crawl.status !== "checked" && inventory.status === "checked") {
+    return {
+      ...inventory,
+      status: "partial",
+      note: [inventory.note, "The site crawl was incomplete this scan, so scripts that only load on pages it didn't reach may be missing."].filter(Boolean).join(" "),
+    };
+  }
+  return inventory;
 }
 
 // ---- Finding text helpers ------------------------------------------------------
