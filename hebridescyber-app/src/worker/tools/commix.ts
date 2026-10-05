@@ -1,93 +1,60 @@
 // commix integration — dedicated OS command injection confirmation.
 //
-// Same precedent as sqlmap.ts: a dedicated, specialised tool
-// confirms exploitability of a specific vulnerability class far more
-// reliably than a generic DAST active-scan rule. commix (COMMand
-// Injection eXploiter) is explicitly modelled on sqlmap's own design and
-// batch-mode CLI conventions, so its integration here mirrors sqlmap.ts
-// closely.
+// A dedicated tool confirms a specific vulnerability class far more reliably
+// than a generic DAST rule, as sqlmap.ts does for SQL injection. Requires the
+// `commix` command (installed in scheduled-scans.yml); returns "not_configured"
+// when it is missing.
 //
-// CONFIDENCE NOTE (updated, docs/ENHANCEMENTS.md E-18): verified against a
-// real commix v4.2 binary (git clone, run locally) against a deliberately
-// vulnerable local test target — `--url`/`--batch` are confirmed correct
-// (`--batch` auto-answers every interactive prompt with commix's own
-// sensible default, matching sqlmap's identical flag), and the real
-// detection pipeline (heuristic → classic results-based → time-based blind
-// → file-based semi-blind) was observed correctly progressing end-to-end
-// against a genuine injection point.
-//
-// A `--crawl=1` flag that used to be here was REMOVED after confirming it
-// causes a real bug: when commix's crawler finds "no usable links" on the
-// target page, it stops without ever testing the URL's own query
-// parameter — so a target whose only injectable parameter is already in
-// the URL (the common case for a DAST-style scan) would be silently
-// skipped entirely. Confirmed by running with and without the flag against
-// the same target: with it, commix reported "No usable links found" and
-// exited; without it, commix proceeded to test the parameter directly.
-//
-// Still not independently confirmed: the exact wording of the
-// vulnerability-found marker parsed below. Live verification runs against
-// time/file-based blind techniques are slow (many timed requests) and both
-// were stopped before reaching a natural "confirmed" line — source tracing
-// (`commix`'s own `checks.py`) suggests the real message may not exactly
-// match this regex in every injection-type case (e.g. HTTP-header
-// injections vs. GET-parameter injections build the message differently).
-// The ENOENT/not_configured contract means a wrong flag or parser miss
-// still degrades to "found nothing" silently, never a crash or a false
-// finding — but don't treat this regex as fully proven.
-//
-// Requires the `commix` command (installed in scheduled-scans.yml's `work`
-// job). Returns gracefully when the binary is missing.
+// Output reading lives in commixOutput.ts, written against output captured
+// from a real commix v4.2 run (fixtures/commix/). Facts that shaped this
+// module: `--batch` auto-answers commix's prompts; `--crawl=1` was removed
+// because it skips the URL's own query parameter when no links are found; and
+// the positive-finding wording has not been captured yet, so a run that ends
+// without a recognised closing line is an "error", never a clean result.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { parseInjections, parametersRuledOut, runProblem } from "./commixOutput";
 
 const execFileAsync = promisify(execFile);
 
 const COMMIX_TIMEOUT_MS = 120_000;
+const COMMIX_MAX_BUFFER = 32 * 1024 * 1024;
 
 export type CommixFinding = {
   parameter: string;
+  /** Where the parameter lives: GET, POST, Cookie ... */
+  place: string;
 };
 
 export type CommixResult =
-  | { status: "completed"; vulnerable: boolean; findings: CommixFinding[] }
+  | { status: "completed"; vulnerable: boolean; findings: CommixFinding[]; parametersTested: number }
   | { status: "not_configured"; vulnerable: false; findings: [] }
+  /** Ran, but there was nothing to test: says nothing about the site. */
+  | { status: "not_applicable"; vulnerable: false; findings: []; note: string }
   | { status: "error"; vulnerable: false; findings: []; note: string };
 
 export async function runCommix(targetUrl: string): Promise<CommixResult> {
+  let stdout = "";
+  let runFailure: string | null = null;
   try {
-    const { stdout } = await execFileAsync(
-      "commix",
-      [
-        "--url", targetUrl,
-        "--batch", // never prompt, accept commix's own defaults — matches sqlmap.ts's identical flag
-      ],
-      { timeout: COMMIX_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 }
-    );
-
-    // commix reports a confirmed injection via a line naming the
-    // vulnerable parameter — this pattern is the least certain part of
-    // this module (see header note). Matched defensively: a miss here
-    // just means zero findings, not an error.
-    const findings: CommixFinding[] = [];
-    const foundPattern = /parameter '(.+?)' (?:seems|is) (?:injectable|vulnerable)/gi;
-    let match: RegExpExecArray | null;
-    while ((match = foundPattern.exec(stdout)) !== null) {
-      findings.push({ parameter: match[1] });
-    }
-
-    return { status: "completed", vulnerable: findings.length > 0, findings };
+    const run = await execFileAsync("commix", ["--url", targetUrl, "--batch"], { timeout: COMMIX_TIMEOUT_MS, maxBuffer: COMMIX_MAX_BUFFER });
+    stdout = run.stdout;
   } catch (err) {
-    const error = err as NodeJS.ErrnoException;
-    if (error.code === "ENOENT") {
-      return { status: "not_configured", vulnerable: false, findings: [] };
-    }
-    return {
-      status: "error",
-      vulnerable: false,
-      findings: [],
-      note: `commix exited: ${error.message}`,
-    };
+    const error = err as NodeJS.ErrnoException & { stdout?: string };
+    if (error.code === "ENOENT") return { status: "not_configured", vulnerable: false, findings: [] };
+    // A timeout or non-zero exit still leaves what commix had printed.
+    stdout = error.stdout ?? "";
+    runFailure = `commix exited: ${error.message}`;
   }
+
+  const findings = parseInjections(stdout);
+  // A reported injection is evidence even if the run didn't finish.
+  if (findings.length > 0) return { status: "completed", vulnerable: true, findings, parametersTested: Math.max(parametersRuledOut(stdout), findings.length) };
+
+  if (runFailure) return { status: "error", vulnerable: false, findings: [], note: runFailure };
+  const problem = runProblem(stdout);
+  if (problem?.kind === "not_applicable") return { status: "not_applicable", vulnerable: false, findings: [], note: problem.note };
+  if (problem) return { status: "error", vulnerable: false, findings: [], note: problem.note };
+  return { status: "completed", vulnerable: false, findings: [], parametersTested: parametersRuledOut(stdout) };
 }
