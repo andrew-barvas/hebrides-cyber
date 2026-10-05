@@ -29,6 +29,14 @@ import { buildHeaderAnalysis } from "./headers";
 import { extractScriptTags, DISCLOSURE_PATTERNS, type ScriptTag } from "./webapp";
 import { detectPaymentPage } from "./scriptInventory";
 
+/**
+ * Sent on every crawler request so site owners can recognise us in their logs
+ * and address us in robots.txt. A group for this token in robots.txt takes
+ * precedence over the "*" group.
+ */
+export const CRAWLER_AGENT_TOKEN = "hebridescyber";
+export const CRAWLER_USER_AGENT = `HebridesCyberScanner/1.0 (+https://www.hebridescyber.co.uk/what-we-check)`;
+
 export const CRAWL_LIMITS = {
   maxPages: 50,
   maxDepth: 3,
@@ -184,7 +192,11 @@ function ruleToRegex(rule: string): RegExp {
   return new RegExp(`^${body}${anchored ? "$" : ""}`);
 }
 
-/** Pure: the "*" group's Allow/Disallow rules (longest match wins, Allow on a tie). */
+/**
+ * Pure: the Allow/Disallow rules that apply to us — the group naming our
+ * agent token if there is one, otherwise the "*" group (longest match wins,
+ * Allow on a tie).
+ */
 export function parseRobots(text: string): RobotsRules {
   const sitemaps: string[] = [];
   type Group = { agents: string[]; rules: { allow: boolean; pattern: string }[] };
@@ -214,7 +226,8 @@ export function parseRobots(text: string): RobotsRules {
     lastWasAgent = false;
   }
 
-  const rules = groups.filter((g) => g.agents.includes("*")).flatMap((g) => g.rules);
+  const named = groups.filter((g) => g.agents.some((a) => a.startsWith(CRAWLER_AGENT_TOKEN)));
+  const rules = (named.length > 0 ? named : groups.filter((g) => g.agents.includes("*"))).flatMap((g) => g.rules);
   const compiled = rules.map((r) => ({ allow: r.allow, length: r.pattern.length, re: ruleToRegex(r.pattern) }));
 
   return {
@@ -379,7 +392,7 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
       res = await fetch(url.href, {
         redirect: "manual",
         signal: AbortSignal.timeout(CRAWL_LIMITS.requestTimeoutMs),
-        headers: { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5" },
+        headers: { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "user-agent": CRAWLER_USER_AGENT },
       });
     } catch {
       return { kind: "failed" };
@@ -426,7 +439,7 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
 
 async function fetchText(url: string, maxChars: number): Promise<{ status: number; text: string } | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(CRAWL_LIMITS.requestTimeoutMs), redirect: "follow" });
+    const res = await fetch(url, { signal: AbortSignal.timeout(CRAWL_LIMITS.requestTimeoutMs), redirect: "follow", headers: { "user-agent": CRAWLER_USER_AGENT } });
     const text = res.ok ? (await res.text()).slice(0, maxChars) : "";
     if (!res.ok) await res.body?.cancel();
     return { status: res.status, text };

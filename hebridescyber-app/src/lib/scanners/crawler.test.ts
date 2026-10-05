@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
+import { CRAWLER_USER_AGENT, urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
 import { buildCrawlFindings } from "./crawlFindings";
 import { buildScriptInventory, checkScriptInventory, crawledPagesForInventory } from "./scriptInventory";
 import { scanCoverage, isCovered } from "../findingLifecycle";
@@ -529,5 +529,26 @@ describe("remaining branches", () => {
     // Already partial (no browser): unchanged, no duplicate note.
     const noBrowser = await checkScriptInventory("https://x.test/", playwright, { ...ok, status: "partial" });
     expect(noBrowser.status).toBe("partial");
+  });
+});
+
+describe("crawler identity", () => {
+  it("prefers a robots.txt group naming the crawler over the * group", () => {
+    const rules = parseRobots("User-agent: *\nDisallow: /\n\nUser-agent: HebridesCyberScanner\nDisallow: /private\n");
+    expect(rules.allows("/public")).toBe(true);
+    expect(rules.allows("/private/x")).toBe(false);
+    expect(parseRobots("User-agent: hebridescyber\nDisallow: /").allows("/a")).toBe(false);
+  });
+
+  it("sends an identifying User-Agent on every request, including robots.txt and sitemaps", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      seen.push((init?.headers as Record<string, string>)["user-agent"]);
+      return new Response("<html><title>x</title></html>", { status: 200, headers: { "content-type": "text/html" } });
+    }));
+    await checkCrawl("https://x.test/");
+    expect(seen.length).toBeGreaterThanOrEqual(3); // robots, start page, sitemap
+    expect(new Set(seen)).toEqual(new Set([CRAWLER_USER_AGENT]));
+    expect(CRAWLER_USER_AGENT).toContain("hebridescyber.co.uk");
   });
 });

@@ -1010,7 +1010,27 @@ rest of the network. Treat this as urgent.
   parameterisation is what actually closes this class of bug.`;
 
 /** Same as SQLMAP_SQLI_BASE, with DBMS-specific prepared-statement syntax appended when sqlmap identified one. */
-export function sqlmapRemediation(dbms: string | null): string {
+export type SqlmapContext = { place?: string; techniques?: string[] };
+
+/** Where the injected value arrives changes where the fix goes. */
+const SQLMAP_PLACE_NOTES: Record<string, string> = {
+  GET: "The value comes from the URL query string. Check every handler behind this URL, not just the one that renders the page.",
+  POST: "The value comes from a form or request body. Parameterise it where the handler builds the query; client-side validation doesn't help, since attackers send requests directly.",
+  COOKIE: "The value comes from a cookie, which the browser treats as trusted and developers often forget to parameterise. Treat every cookie as user input.",
+  URI: "The value is part of the URL path (a REST-style id or slug). Parameterise it like any other input, and validate its type (an integer id should be parsed as an integer).",
+  "USER-AGENT": "The value comes from the User-Agent header, usually from logging or analytics code that builds a query from it. Parameterise those writes too.",
+  REFERER: "The value comes from the Referer header, usually from logging or analytics code. Parameterise those writes too.",
+  HOST: "The value comes from the Host header, which an attacker controls. Never put it in a query.",
+};
+
+const SQLMAP_TECHNIQUE_NOTES: Array<[RegExp, string]> = [
+  [/error-based/i, "Error-based injection worked, so database error messages reach the response: turn off verbose errors as well as fixing the query."],
+  [/time-based/i, "Time-based injection worked, which needs no visible output at all, so hiding results or errors isn't a fix: only parameterised queries are."],
+  [/union/i, "UNION injection worked, meaning an attacker can read other tables through this parameter. Run the application's database account with the least privilege it needs."],
+  [/stacked/i, "Stacked queries worked: an attacker can run extra statements, not just read. Check what the application's database account is allowed to modify."],
+];
+
+export function sqlmapRemediation(dbms: string | null, context: SqlmapContext = {}): string {
   const snippets: Record<string, string> = {
     mysql: "\n\n**MySQL / MariaDB (mysqli):**\n```php\n$stmt = $mysqli->prepare(\"SELECT * FROM users WHERE id = ?\");\n$stmt->bind_param(\"i\", $id);\n```",
     postgresql: "\n\n**PostgreSQL (node-postgres):**\n```js\nawait pool.query(\"SELECT * FROM users WHERE id = $1\", [id]);\n```",
@@ -1020,7 +1040,14 @@ export function sqlmapRemediation(dbms: string | null): string {
   };
   const key = (dbms ?? "").toLowerCase();
   const match = Object.keys(snippets).find((k) => key.includes(k));
-  return SQLMAP_SQLI_BASE + (match ? snippets[match] : "");
+  const notes: string[] = [];
+  const place = context.place ? SQLMAP_PLACE_NOTES[context.place.toUpperCase()] : undefined;
+  if (place) notes.push(place);
+  for (const [pattern, note] of SQLMAP_TECHNIQUE_NOTES) {
+    if ((context.techniques ?? []).some((t) => pattern.test(t))) notes.push(note);
+  }
+  const specific = notes.length > 0 ? `\n\n**For this finding:**\n${notes.map((n) => `- ${n}`).join("\n")}` : "";
+  return SQLMAP_SQLI_BASE + (match ? snippets[match] : "") + specific;
 }
 
 export const XSSER_XSS_BASE = `XSSer confirmed this parameter reflects attacker-controlled markup or
