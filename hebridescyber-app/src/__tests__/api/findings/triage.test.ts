@@ -50,6 +50,19 @@ const SCAN = "11111111-2222-4333-8444-555555555555";
 const OTHER_SCAN = "99999999-2222-4333-8444-555555555555";
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
 
+// The JSON body each test reads, typed so the assertions compile against
+// any node-mocks-http typing (its _getJSONData() is `unknown` in some builds).
+type TriageBody = {
+  available?: boolean;
+  host?: string;
+  items: Array<Record<string, unknown> & { checkId: string; active: boolean }>;
+  item?: Record<string, unknown>;
+  error?: string;
+  count?: number;
+  deleted?: number;
+};
+const json = (res: { _getJSONData(): unknown }): TriageBody => res._getJSONData() as TriageBody;
+
 function call(method: RequestMethod, body?: unknown, query: Record<string, string> = {}) {
   const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method, body: body as Record<string, unknown>, query });
   return handler(req, res).then(() => res);
@@ -91,7 +104,7 @@ describe("/api/findings/triage", () => {
       ];
       const res = await call("GET", undefined, { scanId: SCAN });
       expect(res._getStatusCode()).toBe(200);
-      const body = res._getJSONData();
+      const body = json(res);
       expect(body).toMatchObject({ available: true, host: "shop.example" });
       expect(body.items.map((i: { checkId: string; active: boolean }) => [i.checkId, i.active])).toEqual([["b", false], ["a", true]]);
       expect(body.items[1]).toMatchObject({ targetHost: "shop.example", state: "accepted_risk", triagedByEmail: "owner@shop.example" });
@@ -126,7 +139,7 @@ describe("/api/findings/triage", () => {
       tables.finding_triage = { data: null, error: { code: "PGRST205", message: "Could not find the table" } };
       const res = await call("GET", undefined, { host: "shop.example" });
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData()).toEqual({ available: false, host: "shop.example", items: [] });
+      expect(json(res)).toEqual({ available: false, host: "shop.example", items: [] });
     });
   });
 
@@ -142,7 +155,7 @@ describe("/api/findings/triage", () => {
           reason: "Legacy app, WAF in front", expires_at: null, created_by: "o1",
         }),
       ]);
-      expect(res._getJSONData().item).toMatchObject({ checkId: "headers.csp-absent", active: true, triagedByEmail: "owner@shop.example" });
+      expect(json(res).item).toMatchObject({ checkId: "headers.csp-absent", active: true, triagedByEmail: "owner@shop.example" });
       expect(logAuditEventMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ action: "finding.triaged", resourceType: "finding", resourceId: "shop.example/headers.csp-absent" })
@@ -171,7 +184,7 @@ describe("/api/findings/triage", () => {
     ])("rejects %s", async (_label, override, field) => {
       const res = await call("PUT", { targetHost: "shop.example", checkId: "a.b", state: "accepted_risk", reason: "Because", ...override });
       expect(res._getStatusCode()).toBe(400);
-      expect(res._getJSONData().error).toMatch(new RegExp(`^${field}`));
+      expect(json(res).error).toMatch(new RegExp(`^${field}`));
       expect(upserts()).toHaveLength(0);
     });
 
@@ -183,7 +196,7 @@ describe("/api/findings/triage", () => {
       ];
       const res = await call("PUT", { items });
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData().count).toBe(2);
+      expect(json(res).count).toBe(2);
       const payload = upserts()[0].payload as Array<{ check_id: string; reason: string }>;
       expect(payload.map((r) => [r.check_id, r.reason])).toEqual([
         ["script-inventory.unreviewed:https://cdn.example.net", "Authorised: payments widget v2"],
@@ -198,7 +211,7 @@ describe("/api/findings/triage", () => {
       expect((await call("PUT", { items: Array(201).fill(item) }))._getStatusCode()).toBe(400);
       expect((await call("PUT", { items: [] }))._getStatusCode()).toBe(400);
       const res = await call("PUT", { items: [item, { ...item, reason: "" }] });
-      expect(res._getJSONData().error).toMatch(/^items\.1\.reason/);
+      expect(json(res).error).toMatch(/^items\.1\.reason/);
       expect(upserts()).toHaveLength(0);
     });
 
@@ -239,7 +252,7 @@ describe("/api/findings/triage", () => {
       tables.finding_triage.data = [triageRow("a.b", { state: "snoozed", reason: "Later", expires_at: inDays(3) })];
       const res = await call("DELETE", { scanId: SCAN, checkId: "a.b" });
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData()).toEqual({ deleted: 1, items: [{ targetHost: "shop.example", checkId: "a.b" }] });
+      expect(json(res)).toEqual({ deleted: 1, items: [{ targetHost: "shop.example", checkId: "a.b" }] });
       expect(deletes()[0].filters).toEqual([["eq", "owner", "o1"], ["eq", "target_host", "shop.example"], ["in", "check_id", ["a.b"]]]);
       expect(logAuditEventMock.mock.calls[0][1]).toMatchObject({
         action: "finding.untriaged",
@@ -251,7 +264,7 @@ describe("/api/findings/triage", () => {
     it("accepts query parameters, and is a no-op (no audit) when nothing matched", async () => {
       const res = await call("DELETE", undefined, { host: "shop.example", checkId: "a.b" });
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData().deleted).toBe(0);
+      expect(json(res).deleted).toBe(0);
       expect(logAuditEventMock).not.toHaveBeenCalled();
     });
 
