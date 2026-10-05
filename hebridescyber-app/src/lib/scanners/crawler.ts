@@ -484,6 +484,48 @@ async function readSitemaps(start: URL, sitemapUrls: string[]): Promise<URL[]> {
   return out;
 }
 
+// ---- Next.js route discovery ------------------------------------------------------
+// A Next.js (pages router) site lists every page in /_next/static/<buildId>/_buildManifest.js
+// as `sortedPages:["/","/about",...]`, including pages nothing links to. Reading it
+// finds routes the link crawl can't. Static routes only: dynamic segments ("/post/[id]"),
+// Next internals ("/_app") and API routes have no page to check.
+
+const NEXT_MANIFEST_RE = /src\s*=\s*["']([^"']*\/_next\/static\/[A-Za-z0-9_-]{4,64}\/_buildManifest\.js)["']/;
+// A list of quoted strings: a route like "/blog/[slug]" contains "]" so the list can't end at the first one.
+const SORTED_PAGES_RE = /sortedPages\s*:\s*\[((?:\s*"(?:[^"\\]|\\.)*"\s*,?)*)\s*\]/;
+
+/** The build manifest URL named in a page's HTML, if it is a same-site Next.js page. */
+export function nextBuildManifestUrl(html: string, page: URL, start: URL): URL | null {
+  const m = NEXT_MANIFEST_RE.exec(html);
+  if (!m) return null;
+  const url = normaliseUrl(m[1], page.href);
+  return url && isSameSite(url, start) ? url : null;
+}
+
+/** Static page routes from a build manifest's `sortedPages` list. */
+export function parseNextPages(js: string): string[] {
+  const list = SORTED_PAGES_RE.exec(js)?.[1];
+  if (!list) return [];
+  const routes: string[] = [];
+  for (const m of list.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+    const route = m[1];
+    if (!route.startsWith("/") || route === "/" || route.includes("[") || route.startsWith("/_") || route.startsWith("/api/") || route === "/404" || route === "/500") continue;
+    routes.push(route);
+    if (routes.length >= CRAWL_LIMITS.maxSitemapUrls) break;
+  }
+  return routes;
+}
+
+async function readNextRoutes(start: URL, html: string, page: URL): Promise<URL[]> {
+  const manifest = nextBuildManifestUrl(html, page, start);
+  if (!manifest) return [];
+  const body = await fetchText(manifest.href, 500_000);
+  if (!body || body.status >= 400) return [];
+  return parseNextPages(body.text)
+    .map((route) => normaliseUrl(route, start.origin))
+    .filter((u): u is URL => u !== null);
+}
+
 function resolveBase(base: string | null, page: URL): string {
   try {
     return base ? new URL(base, page).href : page.href;
@@ -569,6 +611,7 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
     }
     const sitemapUrls = rules.sitemaps.length > 0 ? rules.sitemaps : [`${startUrl.origin}/sitemap.xml`];
     for (const u of await readSitemaps(startUrl, sitemapUrls)) enqueue(u, 1);
+    if (first.html) for (const u of await readNextRoutes(startUrl, first.html, first.finalUrl)) enqueue(u, 1);
     for (const p of options.seedPaths ?? []) enqueue(normaliseUrl(p, startUrl.origin), 1);
   }
 
