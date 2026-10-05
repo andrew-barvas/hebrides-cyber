@@ -151,6 +151,20 @@ is actually exploiting the CVE:
   exploited". `severity` never changes because of it; the dashboard uses it
   to order findings within a severity.
 
+Each finding also carries `triage` — your current decision about it on this
+site, or `null`:
+
+```json
+"triage": { "state": "snoozed", "reason": "Fix booked for next sprint", "expires_at": "2026-11-01T00:00:00.000Z", "triaged_at": "2026-10-01T09:12:00.000Z" }
+```
+
+`state` is `accepted_risk` (also used for "authorised"), `false_positive` or
+`snoozed`. Only triage still in effect is reported: once `expires_at` passes,
+the field is `null` again. It's current, not as-of-scan, so an older scan
+shows today's decisions. The packaged GitHub Action ignores triaged findings
+when deciding pass/fail. Webhook payloads carry the same field; the public
+share link does not.
+
 ### `GET /api/v1/scans/{id}/export`
 
 Flat, tabular export of one scan's findings — for a spreadsheet or your own
@@ -165,7 +179,10 @@ CSV columns: `severity, title, detail, check_id, cve_ids, cvss_score,
 cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
 `compliance_refs` are `;`-joined lists within a single cell.
 `known_exploited`/`epss` are blank when threat intel wasn't looked up,
-which is different from `false` (see `threat_intel` above). JSON returns
+which is different from `false` (see `threat_intel` above).
+`triage_state, triage_reason, triage_expires_at` come last, blank when the
+finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
+`expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
 (`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
 as stored).
@@ -232,6 +249,38 @@ CSV exports from both `/export` and `/compliance` prefix any cell that starts
 with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
+
+### `GET /PUT /DELETE /api/findings/triage`
+
+Accept a risk (or authorise it), mark a false positive, or snooze a finding —
+always with a reason — and undo it. A finding is named by site and
+`check_id`, so a decision holds for every later scan of that site. Name the
+site with `targetHost` (your account) or `scanId` (that scan's site).
+`checkId` isn't checked against any scan, so you can triage ahead of time.
+
+```bash
+# One finding
+curl -X PUT https://hebridescyber.com/api/findings/triage \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"targetHost":"shop.example.com","checkId":"headers.csp-absent","state":"snoozed","reason":"Fix booked for next sprint","expiresAt":"2026-11-01T00:00:00Z"}'
+
+# Up to 200 at once
+curl -X PUT https://hebridescyber.com/api/findings/triage \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"items":[{"targetHost":"shop.example.com","checkId":"dns.dmarc-missing","state":"false_positive","reason":"Parked domain, no mail"}]}'
+```
+
+- `state`: `accepted_risk`, `false_positive` or `snoozed`.
+- `reason`: 3–2000 characters, required.
+- `expiresAt`: ISO 8601, in the future and within a year. Required for
+  `snoozed`, optional otherwise (no expiry = until you undo it).
+- `GET ?host=` or `?scanId=` (or neither, for your whole account) lists
+  decisions, each with `active` (false once expired) and who made it.
+- `DELETE` takes `{ targetHost|scanId, checkId }`, `{ items: [...] }`, or the
+  same as query parameters (`host`/`scanId`, `checkId`).
+
+Only false positives leave future scores. Every change is audited
+(`finding.triaged` / `finding.untriaged`). A bulk request is all-or-nothing.
 
 ### `GET /api/v1/targets/{host}/trend`
 
@@ -461,6 +510,7 @@ jobs:
           compared=$(echo "$detail" | jq -r '.compared_to_previous_scan')
           new_high=$(echo "$detail" | jq '[.findings[]
             | select(.status == "new")
+            | select(.triage == null)
             | select(.severity == "critical" or .severity == "high")] | length')
 
           echo "score=$score" >> "$GITHUB_OUTPUT"

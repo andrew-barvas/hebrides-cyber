@@ -16,6 +16,8 @@ function makeQueryBuilder(result: unknown) {
     order: () => builder,
     limit: () => builder,
     maybeSingle: () => Promise.resolve(result),
+    // finding_triage is read as a list (awaited directly), not .maybeSingle().
+    then: (resolve: (v: unknown) => unknown) => Promise.resolve(result ?? { data: [], error: null }).then(resolve),
   };
   return builder;
 }
@@ -122,7 +124,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
 
     const body = res._getData() as string;
     const lines = body.split("\r\n");
-    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs");
+    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at");
     // Embedded quote/comma must be CSV-escaped (doubled quotes, wrapped in quotes).
     expect(lines[1]).toContain('"Finding with a ""quote"", and a comma"');
     expect(lines[1]).toContain("CVE-2024-1; CVE-2024-2");
@@ -160,8 +162,65 @@ describe("GET /api/v1/scans/[id]/export", () => {
     expect(res._getJSONData()).toEqual({
       scan_id: "scan-1",
       target_url: "https://example.com",
-      findings: [{ severity: "low", title: "t", detail: "d" }],
+      findings: [{ severity: "low", title: "t", detail: "d", triage: null }],
     });
+  });
+
+  it("adds the owner's current triage as columns (CSV) and a field (JSON)", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://Example.com/shop" } };
+    supabaseTables.scan_results = {
+      data: {
+        results: {
+          findings: [
+            { severity: "high", title: "Triaged", detail: "d", checkId: "headers.csp-absent" },
+            { severity: "low", title: "Expired", detail: "d", checkId: "dns.dmarc-missing" },
+            { severity: "low", title: "Untriaged", detail: "d", checkId: "tls.grade" },
+          ],
+        },
+      },
+    };
+    const future = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const past = new Date(Date.now() - 86_400_000).toISOString();
+    const triageRow = (check_id: string, state: string, expires_at: string | null, reason: string) => ({
+      id: check_id, owner: "owner-1", target_host: "example.com", check_id, state, reason, expires_at,
+      created_by: "owner-1", created_at: past, updated_at: past,
+    });
+    supabaseTables.finding_triage = {
+      data: [
+        triageRow("headers.csp-absent", "snoozed", future, "=cmd|' /C calc'!A0 fix in sprint"),
+        triageRow("dns.dmarc-missing", "snoozed", past, "old"),
+      ],
+      error: null,
+    };
+
+    const csv = mockReqRes({ id: "scan-1" });
+    await handler(csv.req, csv.res);
+    const lines = (csv.res._getData() as string).split("\r\n");
+    // The reason is the customer's own text — formula-neutralised like titles.
+    expect(lines[1]).toContain(`,snoozed,'=cmd|' /C calc'!A0 fix in sprint,${future}`);
+    expect(lines[2].endsWith(",,,")).toBe(true);
+    expect(lines[3].endsWith(",,,")).toBe(true);
+
+    const json = mockReqRes({ id: "scan-1", format: "json" });
+    await handler(json.req, json.res);
+    const body = json.res._getJSONData() as { findings: Array<{ triage: unknown }> };
+    expect(body.findings.map((f) => f.triage)).toEqual([
+      { state: "snoozed", reason: "=cmd|' /C calc'!A0 fix in sprint", expiresAt: future, triagedAt: past },
+      null,
+      null,
+    ]);
+  });
+
+  it("still exports, untriaged, before migration 046", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = { data: { results: { findings: [{ severity: "low", title: "t", detail: "d", checkId: "x.y" }] } } };
+    supabaseTables.finding_triage = { data: null, error: { code: "42P01", message: "relation does not exist" } };
+    const { req, res } = mockReqRes({ id: "scan-1", format: "json" });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(200);
+    expect((res._getJSONData() as { findings: Array<{ triage: unknown }> }).findings[0].triage).toBeNull();
   });
 
   it("handles a scan with zero findings without erroring", async () => {
@@ -173,7 +232,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs"]);
+    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at"]);
   });
 
   it("sanitises the target URL into a filesystem-safe filename", async () => {

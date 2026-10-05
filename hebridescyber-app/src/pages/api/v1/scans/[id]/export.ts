@@ -5,13 +5,21 @@
 // objects beyond a couple of joined string columns — for someone piping
 // results into a spreadsheet or their own ticketing/reporting pipeline,
 // not rendering a UI from it.
+//
+// Triage (accept risk / false positive / snooze, findingTriage.ts) is as of
+// export time, not scan time: the owner's current decision for each finding,
+// as triage_* columns (CSV) or a `triage` object, null when untriaged (JSON).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
+import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
 
-function findingsToCsv(findings: Finding[]): string {
-  const header = ["severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs"];
+function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
+  const header = [
+    "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
+    "triage_state", "triage_reason", "triage_expires_at",
+  ];
   const rows = findings.map((f) => [
     f.severity,
     f.title,
@@ -24,6 +32,9 @@ function findingsToCsv(findings: Finding[]): string {
     f.threatIntel ? String(f.threatIntel.knownExploited) : "",
     f.threatIntel?.epss != null ? String(f.threatIntel.epss) : "",
     (f.complianceRefs ?? []).map((r) => `${r.framework}: ${r.control}`).join("; "),
+    f.triage?.state ?? "",
+    f.triage?.reason ?? "",
+    f.triage?.expiresAt ?? "",
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }
@@ -44,7 +55,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data: result } = await supabaseAdmin.from("scan_results").select("results").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!result) return res.status(404).json({ error: "No results for this scan yet" });
 
-  const findings = ((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[];
+  const stored = ((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[];
+  const triage = await loadTriageIndexForTarget(supabaseAdmin, scan.owner, scan.target_url);
+  const findings = applyTriage(stored, triage.host ?? "", triage.index);
   const filenameSafeHost = scan.target_url.replace(/^https?:\/\//, "").replace(/[^a-z0-9.-]/gi, "-");
 
   if (format === "json") {

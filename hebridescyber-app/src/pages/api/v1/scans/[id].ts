@@ -5,8 +5,13 @@
 // pipeline fail only on newly introduced issues instead of the whole existing
 // backlog. Gating on total findings would red-line every pipeline on its first
 // run, and the check would be disabled the same day.
+//
+// Each finding also carries `triage` — the owner's current accept-risk /
+// false-positive / snooze decision, or null — so CI can ignore what the
+// owner has already triaged (action/index.js does).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 import { buildScanReport, findPreviousFindings, pendingScanReport } from "@/lib/scanReport";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -36,6 +41,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!result) return res.status(200).json(pendingScanReport(scan));
 
-  const previous = await findPreviousFindings(supabaseAdmin, scan.owner, scan.id, scan.target_url, scan.created_at);
-  return res.status(200).json(buildScanReport(scan, result, previous));
+  const [previous, triage] = await Promise.all([
+    findPreviousFindings(supabaseAdmin, scan.owner, scan.id, scan.target_url, scan.created_at),
+    loadTriageIndexForTarget(supabaseAdmin, scan.owner, scan.target_url),
+  ]);
+  return res.status(200).json(buildScanReport(scan, result, previous, triage.index));
 }

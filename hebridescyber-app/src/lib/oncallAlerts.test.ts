@@ -93,6 +93,20 @@ describe("triggerOncallAlerts", () => {
     expect(createPagerDutyIncidentMock).not.toHaveBeenCalled();
   });
 
+  it("never pages for a new critical finding the owner has triaged", async () => {
+    integrationRows = [{ provider: "pagerduty", pagerduty_routing_key: "rk", opsgenie_api_key: null, region: null }];
+    const r = report({
+      findings: [
+        {
+          check_id: "tls.weak-protocol", severity: "critical", title: "Weak TLS", detail: "d", remediation: null, status: "new",
+          triage: { state: "accepted_risk", reason: "Legacy kiosk, isolated network", expires_at: null, triaged_at: "2026-03-01T00:00:00Z" },
+        },
+      ],
+    });
+    await triggerOncallAlerts(makeSupabase(), "owner-1", r);
+    expect(createPagerDutyIncidentMock).not.toHaveBeenCalled();
+  });
+
   it("calls createPagerDutyIncident once with the deterministic dedup key for a new critical finding", async () => {
     integrationRows = [{ provider: "pagerduty", pagerduty_routing_key: "rk", opsgenie_api_key: null, region: null }];
     const r = report({

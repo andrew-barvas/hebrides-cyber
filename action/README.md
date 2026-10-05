@@ -61,6 +61,16 @@ available to a CI runner.
 | `new-finding-count` | Findings newly introduced since the previous scan |
 | `report-url` | Link to the full report in the dashboard |
 
+## Triaged findings don't fail the build
+
+A new finding you've triaged in the dashboard (or through
+`PUT /api/findings/triage`) — marked as an accepted risk / authorised, a
+false positive, or snoozed — never fails the step while that decision is in
+effect. It's logged as a `::notice::` instead of a `::warning::`. Once a
+snooze (or any triage with an expiry) runs out, the finding counts again.
+The action reads this from each finding's `triage` field in
+`GET /api/v1/scans/{id}`, and re-checks `expires_at` itself.
+
 ## First scan of a target
 
 There's nothing to compare against, so the action never fails on a first

@@ -4,7 +4,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diffFindings } from "./findingsDiff";
 import { computeCriticalPaths, type CriticalPath } from "./attackPathAnalysis";
+import { hostOf } from "./findingLifecycle";
+import type { TriageIndex, TriageState } from "./findingTriage";
 import type { Finding } from "./scanners";
+
+/** A finding's active triage (findingTriage.ts) as the API reports it. */
+export type ApiFindingTriage = { state: TriageState; reason: string; expires_at: string | null; triaged_at: string };
 
 export type ScanRow = { id: string; owner: string; target_url: string; status: string; created_at: string };
 export type ScanResultRow = { results: { findings?: Finding[] }; summary: string | null; score: number | null; created_at: string };
@@ -43,6 +48,11 @@ export type ScanReport = {
       epss?: number;
       epss_percentile?: number;
     };
+    // The owner's active triage of this finding (accepted risk / false
+    // positive / snooze), or null when there is none. Omitted entirely when
+    // the report was built without triage — the public share link, which
+    // must not expose an owner's reasons.
+    triage?: ApiFindingTriage | null;
   }>;
   fixed_findings?: Array<{ check_id: string | null; severity: string; title: string }>;
   /**
@@ -108,9 +118,22 @@ export async function findPreviousFindings(
  * finding new/unchanged/null against `previousFindings` (null when there's no
  * earlier scan of this target to compare against — callers should treat that
  * as "can't tell what's new", not "nothing is new").
+ *
+ * With `triage` (the owner's active triage for this site), every finding
+ * carries a `triage` field; without it the field is left out.
  */
-export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFindings: Finding[] | null): ScanReport {
+export function buildScanReport(
+  scan: ScanRow,
+  result: ScanResultRow,
+  previousFindings: Finding[] | null,
+  triage?: TriageIndex
+): ScanReport {
   const findings: Finding[] = result.results?.findings ?? [];
+  const host = hostOf(scan.target_url) ?? "";
+  const triageOf = (f: Finding): ApiFindingTriage | null => {
+    const row = triage?.get(host, f.checkId);
+    return row ? { state: row.state, reason: row.reason, expires_at: row.expires_at, triaged_at: row.updated_at } : null;
+  };
   const diff = previousFindings ? diffFindings(findings, previousFindings) : null;
 
   const statusByCheckId = new Map<string, "new" | "unchanged">();
@@ -155,6 +178,7 @@ export function buildScanReport(scan: ScanRow, result: ScanResultRow, previousFi
             epss_percentile: f.threatIntel.epssPercentile,
           }
         : undefined,
+      ...(triage ? { triage: triageOf(f) } : {}),
     })),
     fixed_findings: diff
       ? diff.fixed.map((f) => ({ check_id: f.checkId ?? null, severity: f.severity, title: f.title }))

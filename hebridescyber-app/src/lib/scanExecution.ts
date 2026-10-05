@@ -48,6 +48,7 @@ import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
+import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
 import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
@@ -724,6 +725,9 @@ export async function executeScan(
   // Which findings the extended suite produced — finding lifecycle needs it
   // so a passive scan can never mark an active-tool finding fixed.
   const extendedCheckIds = new Set<string>();
+  // The owner's active triage for this site (findingTriage.ts), loaded just
+  // before scoring. Empty before migration 046 or if the read fails.
+  let triage: TriageIndex = EMPTY_TRIAGE_INDEX;
 
   const profile: ScanProfile = options.profile ?? "safe";
 
@@ -878,8 +882,16 @@ export async function executeScan(
     // best-effort contract — absent intel means "unknown", never "safe".
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
 
-    summary = await generateAiSummary(results, findings);
-    score = scoreFromFindings(findings);
+    // Findings the owner has marked false positive (E-64) don't count
+    // towards this scan's score or its summary. They're still stored and
+    // reported, flagged as triaged. Accepted and snoozed findings still count
+    // — the risk exists. Never fails the scan: no triage means a normal score.
+    const triageLoad = await loadTriageIndexForTarget(supabaseAdmin, ownerId, targetUrl);
+    triage = triageLoad.index;
+    const scoredFindings = triageLoad.host ? excludeFalsePositives(findings, triageLoad.host, triage) : findings;
+
+    summary = await generateAiSummary(results, scoredFindings);
+    score = scoreFromFindings(scoredFindings);
 
     // One result per scan: a re-run (admin retry, stale-job recovery, or a
     // job that was somehow enqueued twice) replaces the previous result
@@ -951,10 +963,10 @@ export async function executeScan(
   let report: ScanReport;
   try {
     const previous = await findPreviousFindings(supabaseAdmin, ownerId, scanId, targetUrl, completedAt);
-    report = buildScanReport(scanRow, resultRow, previous);
+    report = buildScanReport(scanRow, resultRow, previous, triage);
   } catch (err) {
     console.error(`[scanExecution] could not look up previous scan for diffing (scan ${scanId}):`, (err as Error).message);
-    report = buildScanReport(scanRow, resultRow, null);
+    report = buildScanReport(scanRow, resultRow, null, triage);
   }
 
   // Phase 1.75: finding lifecycle (first seen / resolved per site) and the

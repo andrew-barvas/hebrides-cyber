@@ -3,6 +3,15 @@
 // functions over finding_lifecycle rows (see findingLifecycle.ts for how
 // first_seen/resolved are maintained), so the maths is testable without a
 // database and the API, dashboard and alerts all agree by construction.
+//
+// Triage (findingTriage.ts): a finding with an active triage — accepted
+// risk, false positive, or snoozed — is out of SLA tracking while the triage
+// lasts: no open item, no due-soon/breach alert. When it ends (expiry, or
+// Undo) the finding is tracked again against its original first-seen date;
+// triage doesn't extend a deadline, so a finding snoozed past its deadline
+// comes back breached. Every function here takes the index as an optional
+// last argument, and behaves exactly as before without it.
+import type { TriageIndex } from "./findingTriage";
 
 export const SLA_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 export type SlaSeverity = (typeof SLA_SEVERITIES)[number];
@@ -75,10 +84,18 @@ function isSlaSeverity(severity: string): severity is SlaSeverity {
   return (SLA_SEVERITIES as readonly string[]).includes(severity);
 }
 
-/** Where one open finding stands. Null for resolved rows and for severities
- *  with no SLA (info, or anything unrecognised). */
-export function slaItem(row: LifecycleRow, policy: SlaPolicy, now: Date): SlaItem | null {
+/** Open, with a severity that carries an SLA, but out of tracking because of
+ *  an active triage. */
+export function isTriagedOut(row: LifecycleRow, triage: TriageIndex | undefined): boolean {
+  return Boolean(!row.resolved_at && isSlaSeverity(row.severity) && triage?.get(row.target_host, row.check_id));
+}
+
+/** Where one open finding stands. Null for resolved rows, for severities
+ *  with no SLA (info, or anything unrecognised), and for findings with an
+ *  active triage. */
+export function slaItem(row: LifecycleRow, policy: SlaPolicy, now: Date, triage?: TriageIndex): SlaItem | null {
   if (row.resolved_at || !isSlaSeverity(row.severity)) return null;
+  if (triage?.get(row.target_host, row.check_id)) return null;
   const firstSeen = Date.parse(row.first_seen_at);
   if (Number.isNaN(firstSeen)) return null;
   const due = firstSeen + policy.days[row.severity] * DAY_MS;
@@ -99,6 +116,9 @@ export function slaItem(row: LifecycleRow, policy: SlaPolicy, now: Date): SlaIte
 
 export type SlaSummary = {
   open: number;
+  /** Open findings with an SLA severity left out of `open` (and everything
+   *  below) because they're triaged — accepted, false positive or snoozed. */
+  triaged: number;
   onTrack: number;
   dueSoon: number;
   breached: number;
@@ -122,9 +142,9 @@ function median(values: number[]): number | null {
  * reporting window — the caller decides the window, this just reports on
  * what it's given.
  */
-export function buildSlaSummary(rows: LifecycleRow[], policy: SlaPolicy, now: Date = new Date()): SlaSummary {
+export function buildSlaSummary(rows: LifecycleRow[], policy: SlaPolicy, now: Date = new Date(), triage?: TriageIndex): SlaSummary {
   const items = rows
-    .map((row) => slaItem(row, policy, now))
+    .map((row) => slaItem(row, policy, now, triage))
     .filter((item): item is SlaItem => item !== null)
     .sort((a, b) => a.daysRemaining - b.daysRemaining);
 
@@ -157,6 +177,7 @@ export function buildSlaSummary(rows: LifecycleRow[], policy: SlaPolicy, now: Da
 
   return {
     open: items.length,
+    triaged: rows.filter((row) => isTriagedOut(row, triage)).length,
     onTrack: items.filter((i) => i.state === "on_track").length,
     dueSoon: items.filter((i) => i.state === "due_soon").length,
     breached: items.filter((i) => i.state === "breached").length,
@@ -174,13 +195,14 @@ export function buildSlaSummary(rows: LifecycleRow[], policy: SlaPolicy, now: Da
 export function selectSlaAlerts(
   rows: LifecycleRow[],
   policy: SlaPolicy,
-  now: Date
+  now: Date,
+  triage?: TriageIndex
 ): { dueSoon: SlaItem[]; breached: SlaItem[] } {
   const dueSoon: SlaItem[] = [];
   const breached: SlaItem[] = [];
   if (!policy.alertsEnabled) return { dueSoon, breached };
   for (const row of rows) {
-    const item = slaItem(row, policy, now);
+    const item = slaItem(row, policy, now, triage);
     if (!item) continue;
     if (item.state === "breached" && !row.sla_breach_notified_at) breached.push(item);
     else if (item.state === "due_soon" && !row.sla_warned_at) dueSoon.push(item);

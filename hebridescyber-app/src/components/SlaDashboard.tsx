@@ -188,7 +188,11 @@ export default function SlaDashboard({ token }: { token: string | null }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Open with an SLA" value={summary.open} />
+        <StatCard
+          label="Open with an SLA"
+          value={summary.open}
+          hint={summary.triaged ? `${summary.triaged} triaged — not tracked while triaged` : undefined}
+        />
         <StatCard label="On track" value={summary.onTrack} tone="brand" />
         <StatCard label="Due soon" value={summary.dueSoon} tone={summary.dueSoon ? "warning" : "muted"} hint={`Within ${policy.warnDays} days`} />
         <StatCard label="Breached" value={summary.breached} tone={summary.breached ? "danger" : "muted"} />

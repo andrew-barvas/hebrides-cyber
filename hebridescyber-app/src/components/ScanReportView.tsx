@@ -17,6 +17,10 @@ import { COMPLIANCE_FRAMEWORK_LABELS, ALL_CONTROLS_BY_FRAMEWORK, type Compliance
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
 import { computeCriticalPaths } from "@/lib/attackPathAnalysis";
 import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
+import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
+import { TriageMenu, UndoTriageButton, describeTriage, type ViewTriage } from "./FindingTriage";
+
+export type { ViewTriage } from "./FindingTriage";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -41,6 +45,9 @@ export type ViewFinding = {
     epss?: number;
     epssPercentile?: number;
   };
+  /** The owner's active triage (accepted / false positive / snoozed) — see
+   *  src/lib/findingTriage.ts. Only ever set on the owner's dashboard. */
+  triage?: ViewTriage;
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -77,12 +84,14 @@ export type FindingsFilter = "all" | "new" | "fixed";
  * against `diff` (matching by checkId — see diffFindings), and returns the
  * subset matching `filter`. Shared by the scan report page and the dashboard
  * overview so both render the exact same New/Fixed semantics rather than two
- * copies that could drift.
+ * copies that could drift. With `triage` (active triage by checkId), each
+ * still-present finding also carries its triage.
  */
 export function buildFindingsView(
   findings: ViewFinding[],
   diff: FindingsDiff | null,
-  filter: FindingsFilter
+  filter: FindingsFilter,
+  triage?: ReadonlyMap<string, ViewTriage>
 ): ViewFinding[] {
   const allOrdered = sortFindingsBySeverity(findings);
 
@@ -91,10 +100,10 @@ export function buildFindingsView(
     diff.added.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "new"));
     diff.unchanged.forEach((f) => f.checkId && statusByCheckId.set(f.checkId, "unchanged"));
   }
-  const taggedOrdered: ViewFinding[] = allOrdered.map((f) => ({
-    ...f,
-    status: f.checkId ? statusByCheckId.get(f.checkId) : undefined,
-  }));
+  const taggedOrdered: ViewFinding[] = allOrdered.map((f) => {
+    const t = f.checkId ? triage?.get(f.checkId) : undefined;
+    return { ...f, status: f.checkId ? statusByCheckId.get(f.checkId) : undefined, ...(t ? { triage: t } : {}) };
+  });
 
   if (filter === "new") return taggedOrdered.filter((f) => f.status === "new");
   if (filter === "fixed") return diff ? sortFindingsBySeverity(diff.fixed) : [];
@@ -495,6 +504,7 @@ export function FindingCard({
   scanId,
   token,
   hasTicketIntegration,
+  onTriaged,
 }: {
   finding: ViewFinding;
   /** Owner-only — omit on the public share page. Enables the AI-tailored-fix button. */
@@ -502,6 +512,8 @@ export function FindingCard({
   token?: string;
   /** Owner-only, and only true once GET-confirmed a Jira/Linear integration exists. Enables the "Create ticket" button. */
   hasTicketIntegration?: boolean;
+  /** Owner-only, and only once finding triage is confirmed available. Enables "Mark as…". */
+  onTriaged?: (checkId: string, triage: ViewTriage | null) => void;
 }) {
   const meta = SEVERITY_META[finding.severity] ?? SEVERITY_META.info;
 
@@ -620,7 +632,72 @@ export function FindingCard({
           )}
         </details>
       )}
+
+      {scanId && token && finding.checkId && onTriaged && !finding.triage && (
+        <TriageMenu
+          scanId={scanId}
+          token={token}
+          checkId={finding.checkId}
+          onTriaged={(triage) => onTriaged(finding.checkId as string, triage)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The report's collapsed "Triaged" group: findings the owner has accepted,
+ * marked false positive or snoozed, each with its reason, who and when, and
+ * expiry — and Undo, which puts it straight back in the open list.
+ */
+export function TriagedFindings({
+  findings,
+  scanId,
+  token,
+  onTriaged,
+}: {
+  findings: ViewFinding[];
+  scanId?: string;
+  token?: string;
+  onTriaged?: (checkId: string, triage: ViewTriage | null) => void;
+}) {
+  const triaged = findings.filter((f): f is ViewFinding & { triage: ViewTriage } => Boolean(f.triage));
+  if (triaged.length === 0) return null;
+
+  return (
+    <details className="group mt-4 rounded-lg border border-cyberborder bg-cyberpanel">
+      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-cybertext">
+        <span className="mr-1 inline-block transition-transform group-open:rotate-90" aria-hidden="true">
+          ▸
+        </span>
+        Triaged ({triaged.length})
+        <span className="ml-2 text-xs font-normal text-cybermuted">accepted, false positive or snoozed — not counted as open</span>
+      </summary>
+      <ul className="space-y-3 border-t border-cyberborder p-4">
+        {triaged.map((f, i) => {
+          const meta = SEVERITY_META[f.severity] ?? SEVERITY_META.info;
+          return (
+            <li key={f.checkId ?? i} className="rounded-lg border border-cyberborder bg-cyberbg/40 p-3">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
+                <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
+                <span className="rounded-full border border-cyberborder px-1.5 py-0.5 text-[10px] font-semibold text-cybertext">
+                  {TRIAGE_STATE_LABELS[f.triage.state]}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-cybertext">{f.title}</p>
+              <p className="mt-1 whitespace-pre-line text-xs text-cybertext/80">{f.triage.reason}</p>
+              <p className="mt-1 text-xs text-cybermuted">{describeTriage(f.triage)}</p>
+              {scanId && token && f.checkId && onTriaged && (
+                <div className="mt-2">
+                  <UndoTriageButton scanId={scanId} token={token} checkId={f.checkId} onUndone={() => onTriaged(f.checkId as string, null)} />
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 
@@ -745,7 +822,10 @@ export function CriticalPaths({ findings }: { findings: ViewFinding[] }) {
 }
 
 export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[]; score: number }) {
-  const open = findings.filter((f) => f.status !== "fixed");
+  // Triaged findings (accepted / false positive / snoozed) aren't open work,
+  // so they're counted separately rather than in any of the tiles.
+  const open = findings.filter((f) => f.status !== "fixed" && !f.triage);
+  const triagedCount = findings.filter((f) => f.status !== "fixed" && f.triage).length;
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   let totalFixMinutes = 0;
   for (const f of open) {
@@ -781,6 +861,7 @@ export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[];
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
           <p className="text-2xl font-bold text-cybertext">{open.length}</p>
           <p className="text-[10px] uppercase tracking-wide text-cybertext/50">Open findings</p>
+          {triagedCount > 0 && <p className="mt-0.5 text-[10px] text-cybermuted">+{triagedCount} triaged</p>}
         </div>
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-3 text-center">
           <p className="text-2xl font-bold text-cybertext">{totalFixMinutes > 0 ? formatTime(totalFixMinutes) : "—"}</p>
@@ -803,6 +884,14 @@ export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[];
           );
         })}
       </div>
+
+      {triagedCount > 0 && (
+        <p className="mb-4 text-xs text-cybermuted">
+          {triagedCount} triaged finding{triagedCount === 1 ? "" : "s"} (accepted, false positive or snoozed){" "}
+          {triagedCount === 1 ? "isn’t" : "aren’t"} counted above. The score is as of the scan: findings marked false
+          positive stop counting from the next scan.
+        </p>
+      )}
 
       {topFindings.length > 0 && (
         <div>

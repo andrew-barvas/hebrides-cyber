@@ -9,7 +9,7 @@ const { authenticateApiRequestMock, hasSlaAccessMock, logAuditEventMock } = vi.h
 }));
 
 type Result = { data: unknown; error: { code?: string; message: string } | null };
-let results: { policy: Result; open: Result; resolved: Result; upsert: Result };
+let results: { policy: Result; open: Result; resolved: Result; upsert: Result; triage: Result };
 let upserted: { row: Record<string, unknown>; options: unknown } | null;
 
 function builder(table: string) {
@@ -24,9 +24,9 @@ function builder(table: string) {
       upserted = { row, options };
       return Promise.resolve(results.upsert);
     },
-    then: (resolve: (v: unknown) => unknown) => Promise.resolve(kind === "resolved" ? results.resolved : results.open).then(resolve),
+    then: (resolve: (v: unknown) => unknown) =>
+      Promise.resolve(table === "finding_triage" ? results.triage : kind === "resolved" ? results.resolved : results.open).then(resolve),
   };
-  void table;
   return b;
 }
 
@@ -63,6 +63,7 @@ describe("/api/account/sla", () => {
       open: { data: [lifecycle("late", "critical", 20), lifecycle("ok", "low", 2)], error: null },
       resolved: { data: [lifecycle("fixed", "high", 40, 30)], error: null },
       upsert: { data: null, error: null },
+      triage: { data: [], error: null },
     };
   });
 
@@ -89,6 +90,26 @@ describe("/api/account/sla", () => {
     expect(body.summary).toMatchObject({ open: 2, breached: 1, truncated: false });
     expect(body.summary.items.map((i) => i.id)).toEqual(["late", "ok"]);
     expect(body.summary.resolved.high.count).toBe(1);
+  });
+
+  it("leaves triaged findings out of SLA tracking and counts them", async () => {
+    results.triage.data = [{
+      id: "t1", owner: "o1", target_host: "shop.example", check_id: "c.late", state: "false_positive", reason: "Scanner hit a WAF page",
+      expires_at: null, created_by: "o1", created_at: daysAgo(1), updated_at: daysAgo(1),
+    }];
+    const body = (await call("GET"))._getJSONData() as { summary: { open: number; breached: number; triaged: number } };
+    expect(body.summary).toMatchObject({ open: 1, breached: 0, triaged: 1 });
+  });
+
+  it("treats triage as nothing triaged before migration 046", async () => {
+    results.triage = { data: null, error: { code: "PGRST205", message: "Could not find the table" } };
+    const body = (await call("GET"))._getJSONData() as { summary: { open: number; triaged: number } };
+    expect(body.summary).toMatchObject({ open: 2, triaged: 0 });
+  });
+
+  it("fails rather than report accepted findings as breaching when triage can't be read", async () => {
+    results.triage = { data: null, error: { code: "57014", message: "timeout" } };
+    expect((await call("GET"))._getStatusCode()).toBe(500);
   });
 
   it("applies the account's own targets", async () => {
