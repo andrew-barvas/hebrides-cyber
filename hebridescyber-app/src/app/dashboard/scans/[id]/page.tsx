@@ -17,6 +17,7 @@ import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
 import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/clientScanHistory";
 import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 import { checkBreakdown } from "@/lib/checkBreakdown";
+import { fetchExecutiveReport } from "@/lib/executiveReportClient";
 import type { DnsResult, ExposureResult, HeadersResult, ScriptInventoryResult, TlsResult } from "@/lib/scanners";
 
 type Finding = ViewFinding;
@@ -214,6 +215,49 @@ const EXPORTS = {
   export: { suffix: "findings", label: (format: string) => `Export ${format.toUpperCase()}` },
   compliance: { suffix: "compliance", label: () => "Compliance report" },
 } as const;
+
+function ExecutivePdfButton({ scanId, token, targetUrl }: { scanId: string; token: string | null; targetUrl: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function download() {
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await fetchExecutiveReport(scanId, token);
+      if (out.kind === "url") {
+        window.open(out.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      const url = URL.createObjectURL(out.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${targetUrl.replace(/^https?:\/\//, "").replace(/[^a-z0-9.-]/gi, "-")}-security-report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      <button
+        onClick={download}
+        disabled={!token || busy}
+        className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors disabled:opacity-50"
+      >
+        {busy ? "Preparing…" : "↓ Executive PDF"}
+      </button>
+      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
+    </span>
+  );
+}
 
 function ExportButton({
   scanId,
@@ -621,6 +665,7 @@ export default function ScanDetailPage() {
                 <ReplayButton scanId={result.scan_id} token={sessionToken} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} format="csv" targetUrl={targetUrl} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} kind="compliance" format="md" targetUrl={targetUrl} />
+                <ExecutivePdfButton scanId={result.scan_id} token={sessionToken} targetUrl={targetUrl} />
                 <button
                   onClick={() => window.print()}
                   className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
