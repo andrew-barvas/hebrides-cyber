@@ -27,7 +27,7 @@ Database migrations are applied through **046**; the next free number is **047**
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **65 / 59 / 67 / 67** (statements /
+Coverage floor (`vitest.config.mts`): **67 / 60 / 68 / 68** (statements /
 branches / functions / lines). Lint: 0 errors (31 known warnings).
 
 ## Rules that kept biting — follow these
