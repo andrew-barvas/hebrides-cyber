@@ -30,7 +30,7 @@ export type FindingsDiff = {
 // therefore stands for all of those ids here: a scan from before the
 // consolidation holding the old nuclei/ZAP finding must not read as "fixed"
 // when the same issue now lives on its canonical, nor the canonical as "new".
-export function diffFindings(current: Finding[], previous: Finding[]): FindingsDiff {
+export function diffFindings(current: Finding[], previous: Finding[], options: { canDetect?: (finding: Finding) => boolean } = {}): FindingsDiff {
   // Only real checkIds go in these lookups — a finding with no checkId is
   // simply never inserted, so it can never be "found" as a match in either
   // direction, which is what makes untagged findings always read as new/fixed
@@ -49,8 +49,11 @@ export function diffFindings(current: Finding[], previous: Finding[]): FindingsD
     }
   }
 
+  // "Fixed" needs the current scan to have been able to see the finding at all.
+  // Without `canDetect` every absent finding counts as fixed (the old behaviour).
+  const canDetect = options.canDetect ?? (() => true);
   const fixed: DiffedFinding[] = previous
-    .filter((f) => !findingCheckIds(f).some((id) => currentCheckIds.has(id)))
+    .filter((f) => !findingCheckIds(f).some((id) => currentCheckIds.has(id)) && canDetect(f))
     .map((f) => ({ ...f, status: "fixed" }));
 
   return { added, fixed, unchanged };

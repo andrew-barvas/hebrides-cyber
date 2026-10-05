@@ -9,7 +9,8 @@
 // logic.
 import { useEffect, useState } from "react";
 import { diffFindings } from "@/lib/findingsDiff";
-import { findFindingsForScan, type ScanListEntry } from "@/lib/clientScanHistory";
+import { findScanForDiff, type ScanListEntry } from "@/lib/clientScanHistory";
+import { canDetectFromResults } from "@/lib/findingLifecycle";
 import { SEVERITY_META, type ViewFinding } from "./ScanReportView";
 
 function ScanPicker({
@@ -61,15 +62,17 @@ export default function DiffView({ scans, initialScanId }: { scans: ScanListEntr
   const [afterId, setAfterId] = useState(initialScanId);
   const [beforeFindings, setBeforeFindings] = useState<ViewFinding[] | null>(null);
   const [afterFindings, setAfterFindings] = useState<ViewFinding[] | null>(null);
+  const [afterResults, setAfterResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!beforeId || !afterId) return;
     setLoading(true);
-    Promise.all([findFindingsForScan(beforeId), findFindingsForScan(afterId)])
+    Promise.all([findScanForDiff(beforeId), findScanForDiff(afterId)])
       .then(([before, after]) => {
-        setBeforeFindings(before ?? []);
-        setAfterFindings(after ?? []);
+        setBeforeFindings(before?.findings ?? []);
+        setAfterFindings(after?.findings ?? []);
+        setAfterResults(after?.results ?? null);
       })
       .finally(() => setLoading(false));
   }, [beforeId, afterId]);
@@ -78,7 +81,7 @@ export default function DiffView({ scans, initialScanId }: { scans: ScanListEntr
     return <p className="text-sm text-cybertext/50">Need at least two completed scans of this target to compare.</p>;
   }
 
-  const diff = beforeFindings && afterFindings ? diffFindings(afterFindings, beforeFindings) : null;
+  const diff = beforeFindings && afterFindings ? diffFindings(afterFindings, beforeFindings, { canDetect: canDetectFromResults(afterResults) }) : null;
 
   return (
     <div className="space-y-4">

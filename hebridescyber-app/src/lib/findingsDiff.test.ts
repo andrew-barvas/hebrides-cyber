@@ -81,3 +81,17 @@ describe("diffFindings", () => {
     expect(result.fixed.map((f) => f.checkId)).toEqual(["d.check"]);
   });
 });
+
+describe("diffFindings with canDetect", () => {
+  const f = (checkId: string): Finding => ({ severity: "high", title: checkId, detail: "d", checkId });
+
+  it("does not call a finding fixed when the current scan could not have seen it", () => {
+    const previous = [f("sqlmap.sqli:id"), f("headers.hsts")];
+    const diff = diffFindings([], previous, { canDetect: (x) => !x.checkId?.startsWith("sqlmap") });
+    expect(diff.fixed.map((x) => x.checkId)).toEqual(["headers.hsts"]);
+  });
+
+  it("keeps the old behaviour without canDetect", () => {
+    expect(diffFindings([], [f("a.b")]).fixed).toHaveLength(1);
+  });
+});

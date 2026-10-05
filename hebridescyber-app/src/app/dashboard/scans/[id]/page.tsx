@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
+import { canDetectFromResults } from "@/lib/findingLifecycle";
 import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, TriagedFindings, ScriptInventorySection, buildFindingsView, type ViewFinding, type ViewTriage } from "@/components/ScanReportView";
 import { viewTriageFrom } from "@/components/FindingTriage";
 import type { TriageRecord } from "@/lib/findingTriage";
@@ -482,7 +483,7 @@ export default function ScanDetailPage() {
 
     findPreviousFindingsClient(result.scan_id, result.results.target_url, result.created_at)
       .then((previousFindings) => {
-        if (previousFindings) setDiff(diffFindings(currentFindings, previousFindings));
+        if (previousFindings) setDiff(diffFindings(currentFindings, previousFindings, { canDetect: canDetectFromResults(result.results as Record<string, unknown>) }));
       })
       .catch(() => {
         // Non-fatal — the report still renders fully without the New/Fixed filter.

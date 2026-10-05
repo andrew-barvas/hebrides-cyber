@@ -4,15 +4,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diffFindings } from "./findingsDiff";
 import { computeCriticalPaths, type CriticalPath } from "./attackPathAnalysis";
-import { hostOf } from "./findingLifecycle";
+import { canDetectFromResults, hostOf } from "./findingLifecycle";
 import type { TriageIndex, TriageState } from "./findingTriage";
 import type { Finding } from "./scanners";
+import { confirmedProof } from "./proofEvidence";
 
 /** A finding's active triage (findingTriage.ts) as the API reports it. */
 export type ApiFindingTriage = { state: TriageState; reason: string; expires_at: string | null; triaged_at: string };
 
 export type ScanRow = { id: string; owner: string; target_url: string; status: string; created_at: string };
-export type ScanResultRow = { results: { findings?: Finding[] }; summary: string | null; score: number | null; created_at: string };
+export type ScanResultRow = { results: { findings?: Finding[] } & Record<string, unknown>; summary: string | null; score: number | null; created_at: string };
 
 export type ScanReport = {
   scan_id: string;
@@ -40,6 +41,8 @@ export type ScanReport = {
     // Other tools that reported this same issue, folded into this finding by
     // findingConsolidation.ts. Omitted when none did.
     corroborated_by?: Array<{ tool: string; check_id: string; title: string }>;
+    /** Present only when a follow-up check reproduced the issue (proofOfExploit.ts). */
+    proof_of_exploit?: { confirmed: true; evidence: string; validated_at: string | null };
     fix_difficulty?: string;
     estimated_fix_minutes?: number;
     // CISA KEV + FIRST EPSS for CVE-backed findings (scanners/threatIntel.ts).
@@ -137,7 +140,7 @@ export function buildScanReport(
     const row = triage?.get(host, f.checkId);
     return row ? { state: row.state, reason: row.reason, expires_at: row.expires_at, triaged_at: row.updated_at } : null;
   };
-  const diff = previousFindings ? diffFindings(findings, previousFindings) : null;
+  const diff = previousFindings ? diffFindings(findings, previousFindings, { canDetect: canDetectFromResults(result.results) }) : null;
 
   const statusByCheckId = new Map<string, "new" | "unchanged">();
   if (diff) {
@@ -184,6 +187,7 @@ export function buildScanReport(
             epss_percentile: f.threatIntel.epssPercentile,
           }
         : undefined,
+      ...(confirmedProof(f) ? { proof_of_exploit: { confirmed: true as const, evidence: confirmedProof(f)!.evidence, validated_at: confirmedProof(f)!.validatedAt ?? null } } : {}),
       ...(triage ? { triage: triageOf(f) } : {}),
     })),
     fixed_findings: diff

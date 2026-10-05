@@ -202,6 +202,28 @@ describe("sortFindingsBySeverity", () => {
   });
 });
 
+describe("FindingCard proof of exploit", () => {
+  it("shows a Confirmed exploitable badge, with the evidence, only when a check reproduced the issue", () => {
+    const proven = finding({ metadata: { proofOfExploit: { confirmed: true, evidence: "Marker reflected unencoded", request: "GET /s?q=x" } } });
+    const { unmount } = render(<FindingCard finding={proven} />);
+    expect(screen.getByText("Confirmed exploitable")).toHaveAttribute("title", "Marker reflected unencoded (GET /s?q=x)");
+    unmount();
+    render(<FindingCard finding={finding({ metadata: { proofOfExploit: { confirmed: true, evidence: "e" } } })} />);
+    expect(screen.getByText("Confirmed exploitable")).toHaveAttribute("title", "e");
+  });
+
+  it("shows nothing for an unconfirmed finding", () => {
+    render(<FindingCard finding={finding()} />);
+    expect(screen.queryByText("Confirmed exploitable")).not.toBeInTheDocument();
+  });
+
+  it("sorts confirmed findings first within a severity", () => {
+    const proven = finding({ title: "proven", severity: "high", metadata: { proofOfExploit: { confirmed: true } } });
+    const kev = finding({ title: "kev", severity: "high", threatIntel: { knownExploited: true } });
+    expect(sortFindingsBySeverity([kev, proven]).map((f) => f.title)).toEqual(["proven", "kev"]);
+  });
+});
+
 describe("FindingCard threat intel", () => {
   it("flags a CISA KEV finding as actively exploited, naming the CVEs and ransomware use", () => {
     render(

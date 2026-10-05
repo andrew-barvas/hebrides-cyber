@@ -479,7 +479,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // --- Exposure -------------------------------------------------------------
   if (results.exposure.status === "checked") {
     for (const file of results.exposure.exposed) {
-      findings.push({ checkId: `exposure.exposed-file:${file.path}`, severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE });
+      findings.push({ checkId: `exposure.exposed-file:${file.path}`, severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE, metadata: { path: file.path } });
     }
     if (!results.exposure.securityTxt) {
       findings.push({ checkId: "exposure.no-security-txt", severity: "info", title: "No security.txt found", detail: "Add /.well-known/security.txt with a contact address so researchers can report vulnerabilities.", remediation: FIX.SECURITY_TXT_MISSING });
@@ -903,6 +903,8 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         title: `Open redirect via "${redirect.parameter}" parameter`,
         detail: `The server redirected to ${redirect.redirectedTo} when the "${redirect.parameter}" query parameter was set to an external URL. This can be used in phishing attacks.`,
         remediation: FIX.BUSINESS_LOGIC_OPEN_REDIRECT,
+        // What proofOfExploit.ts re-requests to confirm the redirect.
+        metadata: { url: redirect.endpoint, parameter: redirect.parameter },
       });
     }
 

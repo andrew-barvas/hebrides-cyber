@@ -25,6 +25,7 @@ export type { ViewTriage } from "./FindingTriage";
 import type { ScriptFoundBy, ScriptIntegrity, ScriptInventoryResult } from "@/lib/scanners/scriptInventory";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
+import { confirmedProof } from "@/lib/proofEvidence";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -51,6 +52,8 @@ export type ViewFinding = {
     epss?: number;
     epssPercentile?: number;
   };
+  /** Scanner metadata; only `proofOfExploit` is read here (see proofEvidence.ts). */
+  metadata?: Record<string, unknown>;
   /** The owner's active triage (accepted / false positive / snoozed) — see
    *  src/lib/findingTriage.ts. Only ever set on the owner's dashboard. */
   triage?: ViewTriage;
@@ -68,11 +71,11 @@ const FIX_DIFFICULTY_META: Record<FixDifficulty, { label: string; time: string; 
 /** Within a severity: known-exploited first, then by EPSS likelihood. A
  *  library flaw in CISA's KEV catalog is a more urgent fix than an equally
  *  severe one nobody is using — the order is the prioritisation. */
-function exploitRank(f: { threatIntel?: ViewFinding["threatIntel"] }): number {
-  return (f.threatIntel?.knownExploited ? 2 : 0) + (f.threatIntel?.epss ?? 0);
+function exploitRank(f: { threatIntel?: ViewFinding["threatIntel"]; metadata?: Record<string, unknown> }): number {
+  return (confirmedProof(f) ? 3 : 0) + (f.threatIntel?.knownExploited ? 2 : 0) + (f.threatIntel?.epss ?? 0);
 }
 
-export function sortFindingsBySeverity<T extends { severity: Severity; threatIntel?: ViewFinding["threatIntel"] }>(list: T[]): T[] {
+export function sortFindingsBySeverity<T extends { severity: Severity; threatIntel?: ViewFinding["threatIntel"]; metadata?: Record<string, unknown> }>(list: T[]): T[] {
   return [...list].sort(
     (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) || exploitRank(b) - exploitRank(a)
   );
@@ -553,6 +556,14 @@ export function FindingCard({
             title={finding.cvssVector ?? `CVSS ${finding.cvssScore}`}
           >
             CVSS {finding.cvssScore.toFixed(1)}
+          </span>
+        )}
+        {confirmedProof(finding) && (
+          <span
+            className="rounded-full border border-red-400/40 bg-red-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400"
+            title={`${confirmedProof(finding)!.evidence}${confirmedProof(finding)!.request ? ` (${confirmedProof(finding)!.request})` : ""}`}
+          >
+            Confirmed exploitable
           </span>
         )}
         {finding.threatIntel?.knownExploited && (

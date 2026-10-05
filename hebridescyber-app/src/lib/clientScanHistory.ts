@@ -265,6 +265,13 @@ export async function findFindingsForScan(scanId: string): Promise<Finding[] | n
   return (data?.results as { findings?: Finding[] } | undefined)?.findings ?? null;
 }
 
+/** Like findFindingsForScan, plus the stored results (needed to tell what that scan could have detected). */
+export async function findScanForDiff(scanId: string): Promise<{ findings: Finding[]; results: Record<string, unknown> | null } | null> {
+  const { data } = await supabase.from("scan_results").select("results").eq("scan_id", scanId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const results = (data?.results ?? null) as ({ findings?: Finding[] } & Record<string, unknown>) | null;
+  return results?.findings ? { findings: results.findings, results } : null;
+}
+
 /** One scan's worth of category counts, for the history page's per-category sparklines. */
 export type CategoryCountPoint = { date: string; counts: Record<string, number> };
 

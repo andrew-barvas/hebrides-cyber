@@ -23,6 +23,7 @@ import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintS
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import ComplianceTrend from "@/components/ComplianceTrend";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
+import { canDetectFromResults } from "@/lib/findingLifecycle";
 import { findPreviousFindingsClient, findScoreHistoryClient, findComplianceHistoryClient, type CompliancePoint } from "@/lib/clientScanHistory";
 import { useBillingPortal } from "@/lib/useBillingPortal";
 import { Alert } from "@/components/ui/alert";
@@ -76,7 +77,7 @@ async function fetchOverview(): Promise<Overview | null> {
     scan: { id: latest.id, target_url: latest.target_url, score: resultRow.score ?? 0, created_at: createdAt },
     findings,
     results: resultRow.results as Record<string, unknown> | null,
-    diff: previousFindings ? diffFindings(findings, previousFindings) : null,
+    diff: previousFindings ? diffFindings(findings, previousFindings, { canDetect: canDetectFromResults(resultRow.results as Record<string, unknown> | undefined) }) : null,
     scoreHistory,
     complianceHistory,
   };

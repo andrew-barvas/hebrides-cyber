@@ -48,6 +48,8 @@ import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
 import { consolidateFindings } from "./findingConsolidation";
+import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
 import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
@@ -100,7 +102,25 @@ export type ExecuteScanOptions = {
   profile?: ScanProfile;
   /** Per-scan overrides on top of `profile`'s tool list — see scan_bundles. */
   toolOverrides?: Partial<Record<ExtendedToolName, boolean>>;
+  /**
+   * Re-check exploitable-looking findings (open redirect, CORS, exposed file,
+   * reflected XSS) with a few harmless requests and mark the ones that
+   * reproduce as confirmed (`metadata.proofOfExploit`). Defaults on for every
+   * profile except "safe", so on-demand and public-API scans never send them;
+   * `DISABLE_PROOF_OF_EXPLOIT=1` turns it off everywhere. See proofOfExploit.ts.
+   */
+  confirmExploits?: boolean;
 };
+
+/** Best-effort: never fails a scan, and a failed or skipped check leaves a finding unconfirmed (never "disproved"). */
+export async function confirmExploitable(targetUrl: string, findings: Finding[]): Promise<Finding[]> {
+  if (process.env.DISABLE_PROOF_OF_EXPLOIT === "1") return findings;
+  try {
+    return await enrichWithProofOfExploit(targetUrl, findings, { verifyDom: playwrightDomVerifier });
+  } catch {
+    return findings;
+  }
+}
 
 // Ports whose presence alone is worth a critical finding, regardless of what
 // nmap's service-detection guessed — an unauthenticated database or Docker
@@ -884,6 +904,9 @@ export async function executeScan(
     // CISA KEV + FIRST EPSS: is anyone actually exploiting these CVEs? Same
     // best-effort contract — absent intel means "unknown", never "safe".
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
+    // Proof of exploit: a handful of harmless re-checks mark which findings
+    // reproduce. Never changes severity or the score; it only adds evidence.
+    if (options.confirmExploits ?? profile !== "safe") findings = await confirmExploitable(targetUrl, findings);
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and

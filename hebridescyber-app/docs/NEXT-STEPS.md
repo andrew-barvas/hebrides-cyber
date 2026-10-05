@@ -22,6 +22,9 @@ Database migrations: files exist through **047**; the next free number is **048*
 | Third-party script inventory, PCI 6.4.3/11.6.1 (E-62) | PR #4 — `scriptInventory.ts`; `info` on ordinary pages, `low` on payment pages (owner decision) |
 | Finding triage: accept/authorise, false positive, snooze (E-64) | PR #5 — `finding_triage` (046), `/api/findings/triage`, report UI; only false positives leave the score |
 | Signed-in crawl, slice 1 (E-70 follow-up) | `authenticatedCrawl.ts`, `crawl.auth.*` findings, design + safety rules in `docs/AUTHENTICATED-CRAWL.md`; uses the saved cookie/Basic credential |
+| Confirmed-exploitable findings | `enrichWithProofOfExploit` now runs in `executeScan()` for every profile except `safe` (cap 20 per scan; `DISABLE_PROOF_OF_EXPLOIT=1` turns it off): open redirect, CORS, exposed file and reflected XSS (api-spec and ZAP alerts, which now carry url+parameter metadata). "Confirmed exploitable" badge, sort rank, `proof_of_exploit` in the API, flag in the executive report |
+| "Fixed" needs coverage | `diffFindings(…, { canDetect })` + `canDetectFromResults()`: a scan that couldn't have run a finding's tool (passive scan after a full scan, errored base check) no longer reports it fixed, which also stops ticket auto-close firing on it |
+| Scanner inventory | `docs/SCANNER-INVENTORY.md`: every tool, service and check family, derived from the code, with the discrepancies found against the docs |
 | Executive PDF report | `executiveReport.ts` (pure HTML: score, severity counts, top priorities, compliance snapshot incl. SOC 2/HIPAA, all findings, accepted risks, checks that did not finish; false positives left out; white label removes every "Hebrides Cyber"), rendered by `/api/generate-report`, "↓ Executive PDF" button on the scan page (`executiveReportClient.ts`). Not plan-gated yet (the route never was) |
 | Reflected-XSS confirmation | `xssConfirm.ts` + `validateExploit` (`proofOfExploit.ts`): one harmless GET probe, context-aware verdict (body / quoted attribute confirmed; encoded, comment, script, textarea, title not), optional browser check. **Not yet called from a scan**: `enrichWithProofOfExploit` has no production caller, so wiring it (opt-in) is the next step |
 | Page metadata for client-component routes | `pricing/`, `contact/`, `login/` layouts (own title/description; login noindex); `/agencies` added to the sitemap |
@@ -161,6 +164,16 @@ Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
 **Status:** page, API (`GET /api/findings`), bulk triage and CSV export are built with unit/component tests (see CLAUDE.md "Cross-site findings view"); only the authenticated e2e is outstanding, owned by the e2e branch.
 **Done when:** one page shows every open finding across sites, a bulk
 "authorise these 5 script sources" works, and it has e2e coverage.
+
+## Next five (planned 2026-10-05, from the competitor analysis and the DeepSeek/Copilot reviews)
+
+1. **Confirmed-exploitable findings**: done (see "Where things stand").
+2. **Guided onboarding and dashboard UX**: one add-site, verify, scan flow; Run scan disabled with a reason until the domain is verified; prominent empty-state "Start scan"; dashboard quick actions; Trends and SLAs grouped under Compliance. About 1.5 sessions.
+3. **Continuous attack-surface monitoring**: wire `easmDiscovery.ts` into the scheduled pipeline, keep a per-site asset ledger, alert on new and disappeared assets, feed `takeover.ts`. About 1.5 sessions.
+4. **Lookalike-domain and phishing watch**: typo and homoglyph permutations checked with passive DNS, flag registered ones, MX records first. Pro and Agency. About 1 session.
+5. **Cyber Essentials evidence pack**: a self-attested checklist for the controls a scan can't see, kept apart from the automated score, exported alongside the scan results through `executiveReport.ts`. About 2 sessions. Runner-up: DMARC aggregate-report processing.
+
+Not code (owner's call): hero copy, an NCSC Web Check / Mail Check replacement landing page, separate SaaS and local-business entry points.
 
 ## Also queued (smaller, pick up between the five)
 

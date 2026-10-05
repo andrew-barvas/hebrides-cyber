@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   backfillFirstSeen,
+  canDetectFromResults,
   dedupeFindings,
   findingSource,
   isCovered,
@@ -284,5 +285,30 @@ describe("signed-in crawl coverage", () => {
     expect(covered({ status: "checked" })).toBe(true);
     expect(covered({ status: "error" })).toBe(false);
     expect(covered({ status: "partial" })).toBe(false);
+  });
+});
+
+describe("canDetectFromResults", () => {
+  const sqli = { checkId: "sqlmap.sqli:id" };
+  const hsts = { checkId: "headers.hsts" };
+
+  it("a passive scan could not have seen an active-tool finding, but sees base findings", () => {
+    const can = canDetectFromResults({ headers: { status: "checked" } });
+    expect(can(sqli)).toBe(false);
+    expect(can(hsts)).toBe(true);
+  });
+
+  it("an extended scan that completed the tool could have seen it; one that errored could not", () => {
+    expect(canDetectFromResults({ extended: { sqlmap: { status: "completed" } } })(sqli)).toBe(true);
+    expect(canDetectFromResults({ extended: { sqlmap: { status: "error" }, nmap: { status: "completed" } } })(sqli)).toBe(false);
+  });
+
+  it("a base check that errored looked at nothing", () => {
+    expect(canDetectFromResults({ headers: { status: "error" } })(hsts)).toBe(false);
+  });
+
+  it("findings without a checkId, and missing results, are treated as detectable", () => {
+    expect(canDetectFromResults(null)({})).toBe(true);
+    expect(canDetectFromResults(undefined)(hsts)).toBe(true);
   });
 });
