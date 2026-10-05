@@ -70,3 +70,26 @@ describe("nmapDangerousPortRemediation", () => {
     expect(nmapDangerousPortRemediation(27017)).toMatch(/MongoDB/);
   });
 });
+
+describe("sqlmapRemediation context", () => {
+  it("adds nothing without context or for an unknown place", () => {
+    expect(sqlmapRemediation(null, {})).toBe(SQLMAP_SQLI_BASE);
+    expect(sqlmapRemediation(null, { place: "Weird", techniques: ["something else"] })).toBe(SQLMAP_SQLI_BASE);
+  });
+
+  it("says where the value arrives, case-insensitively", () => {
+    expect(sqlmapRemediation(null, { place: "Cookie" })).toContain("comes from a cookie");
+    expect(sqlmapRemediation(null, { place: "post" })).toContain("form or request body");
+    expect(sqlmapRemediation(null, { place: "URI" })).toContain("path");
+  });
+
+  it("adds a note for each technique that worked", () => {
+    const text = sqlmapRemediation("SQLite", { place: "GET", techniques: ["error-based", "time-based blind", "UNION query", "stacked queries"] });
+    expect(text).toContain("**For this finding:**");
+    expect(text).toContain("verbose errors");
+    expect(text).toContain("only parameterised queries are");
+    expect(text).toContain("read other tables");
+    expect(text).toContain("extra statements");
+    expect(text).toContain("SQLite (better-sqlite3)");
+  });
+});

@@ -11,7 +11,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
 import { hasProAccess } from "@/lib/planAccess";
-import { computeDependencyDiff, MAX_DIFF_FILES } from "@/lib/dependencyDiff";
+import { computeDependencyDiff, MAX_DIFF_FILES, MAX_TOTAL_CHARS } from "@/lib/dependencyDiff";
 
 const MAX_FILE_CHARS = 5_000_000;
 const content = z.string().max(MAX_FILE_CHARS).nullable().optional();
@@ -29,7 +29,10 @@ const schema = z.object({
     )
     .min(1, "at least one lockfile is required")
     .max(MAX_DIFF_FILES, `at most ${MAX_DIFF_FILES} lockfiles per request`),
-});
+}).refine(
+  (body) => body.files.reduce((sum, f) => sum + (f.base?.length ?? 0) + (f.head?.length ?? 0) + (f.base_companion?.length ?? 0) + (f.head_companion?.length ?? 0), 0) <= MAX_TOTAL_CHARS,
+  { message: `lockfile contents total more than ${MAX_TOTAL_CHARS / 1_000_000} MB`, path: ["files"] }
+);
 
 export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 

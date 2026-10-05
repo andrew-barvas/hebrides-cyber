@@ -200,3 +200,22 @@ describe("computeDependencyDiff", () => {
     expect(result.vulnerabilities[0].severity).toBe("high");
   });
 });
+
+describe("parse budget", () => {
+  it("skips files left over once the time budget is used up, reporting them as not checked", async () => {
+    const { introduced, results } = diffLockfiles([file(), file({ name: "yarn.lock" })], -1);
+    expect(introduced).toEqual([]);
+    expect(results.map((r) => r.status)).toEqual(["error", "error"]);
+    expect(results[0].error).toContain("time budget");
+    queryMock.mockResolvedValue({ ok: true, vulnIds: [[]] });
+    const result = await computeDependencyDiff([file()]);
+    if (result.status !== "completed") throw new Error("unexpected");
+    expect(result.complete).toBe(true);
+  });
+
+  it("survives pathological input (deep nesting) as a per-file error", () => {
+    const deep = "[".repeat(100_000);
+    const { results } = diffLockfiles([{ name: "Cargo.lock", base: null, head: deep }]);
+    expect(results[0].status).toBe("error");
+  });
+});

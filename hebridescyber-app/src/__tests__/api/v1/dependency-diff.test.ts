@@ -65,6 +65,16 @@ describe("POST /api/v1/dependency-diff", () => {
     expect(diffMock).not.toHaveBeenCalled();
   });
 
+  it("rejects lockfile contents over the total size cap", async () => {
+    const big = "x".repeat(4_900_000);
+    const files = Array.from({ length: 5 }, (_, i) => ({ name: `p${i}/package-lock.json`, base: big, head: big }));
+    const { req, res } = call({ files });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(400);
+    expect((res._getJSONData() as { error: string }).error).toContain("MB");
+    expect(diffMock).not.toHaveBeenCalled();
+  });
+
   it("returns the diff, defaulting absent contents to null", async () => {
     const { req, res } = call({ files: [{ name: "Cargo.lock", head: "x" }] });
     await handler(req, res);

@@ -19,6 +19,15 @@ import { cveIdsOf, fetchOsvVulnDetails, fixedVersionFromVulns, osvSeverity, quer
 
 export const MAX_DIFF_FILES = 20;
 export const MAX_INTRODUCED_QUERIED = 2000;
+/** Total lockfile text accepted per request (the route also caps each file). */
+export const MAX_TOTAL_CHARS = 20_000_000;
+/**
+ * Wall-clock budget for parsing. Parsing is synchronous (the lockfile readers
+ * are hand-written and take about a second per 5 MB at worst, measured), so
+ * it can't be interrupted; the budget is checked between files, and files
+ * left over are reported as not checked.
+ */
+export const PARSE_BUDGET_MS = 20_000;
 const MAX_VULN_DETAILS = 500;
 
 export type DiffSeverity = "critical" | "high" | "medium" | "low";
@@ -87,12 +96,17 @@ function safeParse(file: string, content: string, companion: string | null | und
 }
 
 /** Pure: which packages each file introduces, plus per-file results. */
-export function diffLockfiles(files: DiffFileInput[]): { introduced: Introduced[]; results: DiffFileResult[] } {
+export function diffLockfiles(files: DiffFileInput[], budgetMs = PARSE_BUDGET_MS): { introduced: Introduced[]; results: DiffFileResult[] } {
   const introduced: Introduced[] = [];
   const results: DiffFileResult[] = [];
   const seen = new Set<string>();
+  const deadline = Date.now() + budgetMs;
 
   for (const input of files) {
+    if (Date.now() > deadline) {
+      results.push({ file: input.name, ecosystem: null, status: "error", error: `${input.name}: skipped, the parsing time budget was used up`, packages_added: 0, packages_removed: 0 });
+      continue;
+    }
     const base = basename(input.name);
     const descriptor = LOCKFILES.find((d) => d.file === base);
     if (!descriptor) {

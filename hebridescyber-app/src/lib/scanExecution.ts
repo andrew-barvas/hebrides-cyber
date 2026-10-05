@@ -362,7 +362,7 @@ async function runExtendedTools(
         severity: "critical",
         title: `[sqlmap] SQL injection — param: ${f.parameter}`,
         detail: `DBMS: ${f.dbms ?? "unknown"}. The ${f.place} parameter "${f.parameter}"${where} is vulnerable to SQL injection.${how}`,
-        remediation: sqlmapRemediation(f.dbms),
+        remediation: sqlmapRemediation(f.dbms, { place: f.place, techniques: f.techniques }),
       });
     }
   }
