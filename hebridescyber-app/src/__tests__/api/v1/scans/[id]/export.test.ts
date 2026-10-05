@@ -109,6 +109,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
               checkId: "tls.grade",
               cveIds: ["CVE-2024-1", "CVE-2024-2"],
               complianceRefs: [{ framework: "owasp-top-10", control: "A03:2021 – Injection" }],
+              corroboratedBy: [{ tool: "ZAP", checkId: "zap.alert:x", title: "[ZAP] x" }, { tool: "nuclei", checkId: "nuclei.finding:y", title: "[Nuclei] y" }],
             },
           ],
         },
@@ -124,11 +125,12 @@ describe("GET /api/v1/scans/[id]/export", () => {
 
     const body = res._getData() as string;
     const lines = body.split("\r\n");
-    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at");
+    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by");
     // Embedded quote/comma must be CSV-escaped (doubled quotes, wrapped in quotes).
     expect(lines[1]).toContain('"Finding with a ""quote"", and a comma"');
     expect(lines[1]).toContain("CVE-2024-1; CVE-2024-2");
     expect(lines[1]).toContain("owasp-top-10: A03:2021 – Injection");
+    expect(lines[1]).toContain("ZAP: [ZAP] x; nuclei: [Nuclei] y");
   });
 
   // Titles quote text from the scanned site — a hostile site must not be able
@@ -232,7 +234,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at"]);
+    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by"]);
   });
 
   it("sanitises the target URL into a filesystem-safe filename", async () => {

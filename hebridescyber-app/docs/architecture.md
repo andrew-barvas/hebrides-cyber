@@ -53,7 +53,7 @@ between an on-demand scan and a scheduled one.
   HaveIBeenPwned, WPScan plugin CVE matching.
 - Pass `runExtendedTools: true` to also run the **extended active-tool
   suite** — nmap, nuclei (template-scoped to detected technology), sqlmap,
-  XSSer, commix, Subfinder, testssl.sh, plus (with a connected GitHub repo) Gitleaks
+  commix, Subfinder, testssl.sh, plus (with a connected GitHub repo) Gitleaks
   secret scanning, dependency-manifest scanning (npm/pip/Composer), and
   Dockerfile base-image checks, plus (with a saved credential) the
   authenticated header/cookie recheck.

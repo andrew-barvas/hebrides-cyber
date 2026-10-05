@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // Runs against a local `next dev` server that Playwright starts itself.
@@ -34,6 +35,11 @@ export default defineConfig({
       // and mocks "*.example-project.supabase.co" network requests to match.
       NEXT_PUBLIC_SUPABASE_URL: "https://example-project.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
+      // src/middleware.ts validates the session server-side, which a browser
+      // page.route() mock can't intercept. This preload answers that one
+      // request for the fake project, and only for the test JWT — see
+      // tests/e2e/helpers/supabase-auth-preload.cjs.
+      NODE_OPTIONS: `--require ${path.join(__dirname, "tests/e2e/helpers/supabase-auth-preload.cjs")}`,
     },
   },
 });

@@ -1,0 +1,18 @@
+{
+  "target": "redirect-all",
+  "description": "False-positive class: every unknown path 302-redirects to the homepage.",
+  "mustFind": [
+    "tls.no-https",
+    "exposure.no-security-txt"
+  ],
+  "mustNotFind": [
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "headers.*",
+    "webapp.*",
+    "business-logic.no-rate-limit"
+  ],
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
+}

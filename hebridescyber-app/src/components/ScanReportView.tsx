@@ -18,6 +18,7 @@ import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
 import { computeCriticalPaths } from "@/lib/attackPathAnalysis";
 import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
+import { corroboratingTools } from "@/lib/findingConsolidation";
 import { TriageMenu, UndoTriageButton, describeTriage, type ViewTriage } from "./FindingTriage";
 
 export type { ViewTriage } from "./FindingTriage";
@@ -35,6 +36,8 @@ export type ViewFinding = {
   checkId?: string;
   status?: DiffStatus;
   cveIds?: string[];
+  /** Other tools that reported the same issue — see src/lib/findingConsolidation.ts. */
+  corroboratedBy?: Array<{ tool: string; checkId: string; title: string }>;
   complianceRefs?: ComplianceRef[];
   fixDifficulty?: FixDifficulty;
   estimatedFixMinutes?: number;
@@ -398,7 +401,7 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
  * THIS finding specifically came back fixed, without making the customer
  * navigate away and compare two full reports themselves.
  *
- * Not rendered at all for an extended-tool finding (nuclei/sqlmap/xsser/
+ * Not rendered at all for an extended-tool finding (nuclei/sqlmap/
  * commix/etc. — see src/lib/extendedToolCheckIds.ts) — the on-demand path
  * never runs those tools, so "retesting" one of their findings this way
  * would silently claim "fixed" without ever re-checking it. The parent
@@ -582,6 +585,16 @@ export function FindingCard({
       </div>
       <p className="font-medium text-cybertext text-sm">{finding.title}</p>
       {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
+
+      {finding.corroboratedBy && finding.corroboratedBy.length > 0 && (
+        <p
+          data-testid="corroborated-by"
+          className="mt-1.5 text-[11px] text-cybermuted print:text-slate-500"
+          title={finding.corroboratedBy.map((c) => `${c.tool}: ${c.title}`).join("\n")}
+        >
+          Also reported by {corroboratingTools(finding.corroboratedBy).join(", ")}
+        </p>
+      )}
 
       {finding.cveIds && finding.cveIds.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">

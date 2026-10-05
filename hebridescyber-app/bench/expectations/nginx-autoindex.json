@@ -1,0 +1,21 @@
+{
+  "target": "nginx-autoindex",
+  "description": "nginx-style directory listing on /assets/ only; everything else is hardened.",
+  "mustFind": [
+    "tls.no-https",
+    "directory-listing.open-directory:/assets/"
+  ],
+  "mustNotFind": [
+    "directory-listing.open-directory:/uploads/",
+    "directory-listing.open-directory:/images/",
+    "directory-listing.open-directory:/static/",
+    "exposure.exposed-file:*",
+    "exposure.no-security-txt",
+    "headers.*",
+    "webapp.*",
+    "business-logic.*"
+  ],
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
+}

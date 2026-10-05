@@ -1,0 +1,12 @@
+{
+  "target": "login-unthrottled",
+  "description": "Login form without a CSRF token, whose POST handler answers 401 forever.",
+  "mustFind": [
+    "tls.no-https",
+    "exposure.no-security-txt",
+    "business-logic.csrf-missing",
+    "business-logic.no-rate-limit"
+  ],
+  "mustNotFind": ["exposure.exposed-file:*", "directory-listing.*", "headers.*"],
+  "optional": ["fingerprint.tech-detected"]
+}

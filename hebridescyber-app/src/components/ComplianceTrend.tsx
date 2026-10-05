@@ -45,7 +45,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   subdomains: "Subdomains",
   hibp: "Breached credentials",
   sqlmap: "SQL injection",
-  xsser: "XSS",
+  xsser: "XSS", // retired tool; label kept for findings stored before it was retired
   commix: "Command injection",
   nmap: "Network scan",
   secretScan: "Exposed secrets",

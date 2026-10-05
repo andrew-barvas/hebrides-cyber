@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   sqlmapRemediation,
   SQLMAP_SQLI_BASE,
-  xsserRemediation,
-  XSSER_XSS_BASE,
   commixRemediation,
   COMMIX_COMMAND_INJECTION_BASE,
   nmapDangerousPortRemediation,
@@ -30,18 +28,6 @@ describe("sqlmapRemediation", () => {
 
   it("appends the SQL Server snippet for sqlmap's exact DBMS label", () => {
     expect(sqlmapRemediation("Microsoft SQL Server 2019")).toContain("mssql");
-  });
-});
-
-describe("xsserRemediation", () => {
-  it("always returns the fixed XSS remediation text", () => {
-    expect(xsserRemediation()).toBe(XSSER_XSS_BASE);
-  });
-
-  it("mentions output encoding and CSP as the fix", () => {
-    const text = xsserRemediation();
-    expect(text).toMatch(/escape/i);
-    expect(text).toMatch(/Content-Security-Policy/);
   });
 });
 

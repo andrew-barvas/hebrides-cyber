@@ -45,11 +45,12 @@ const CANDIDATE_PATHS = [
 
 // Apache: <title>Index of /path</title>  —  nginx: <h1>Index of /path</h1>
 const INDEX_TITLE = /<(?:title|h1)[^>]*>\s*Index of \/[^<]*<\/(?:title|h1)>/i;
-// Present on virtually every autoindex page (the link back up a level) and
-// almost nowhere else — requiring both this and INDEX_TITLE together is what
-// makes it safe to flag without a per-path content assertion the way
-// exposure.ts needs one for each individual file type.
-const PARENT_DIRECTORY = /Parent Directory/i;
+// The link back up a level: Apache labels it "Parent Directory", nginx's
+// autoindex links "../" with no such text. Present on virtually every
+// autoindex page and almost nowhere else — requiring this and INDEX_TITLE
+// together is what makes it safe to flag without a per-path content assertion
+// the way exposure.ts needs one for each individual file type.
+const PARENT_DIRECTORY = /Parent Directory|<a\s+href=["']\.\.\/["']/i;
 
 function countListedEntries(body: string): number | null {
   const hrefs = body.match(/<a href="(?!\/|\?|\.\.\/?")[^"]+"/gi);

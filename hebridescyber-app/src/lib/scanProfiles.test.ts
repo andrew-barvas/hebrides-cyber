@@ -40,7 +40,6 @@ describe("resolveToolConfig", () => {
     expect(config.nuclei).toBe(true);
     expect(config.zap).toBe(true);
     expect(config.sqlmap).toBe(true);
-    expect(config.xsser).toBe(true);
     expect(config.commix).toBe(true);
     expect(config.authCheck).toBe(true);
     expect(config.nmap).toBe(false);
@@ -52,7 +51,6 @@ describe("resolveToolConfig", () => {
     const config = resolveToolConfig("cms");
     expect(config.nuclei).toBe(true);
     expect(config.zap).toBe(true);
-    expect(config.xsser).toBe(true);
     expect(config.authCheck).toBe(true);
     expect(config.sqlmap).toBe(false);
     expect(config.nmap).toBe(false);
@@ -66,7 +64,6 @@ describe("resolveToolConfig", () => {
     expect(config.trivyImage).toBe(true);
     expect(config.trivyConfig).toBe(true);
     expect(config.sqlmap).toBe(false);
-    expect(config.xsser).toBe(false);
     expect(config.commix).toBe(false);
     expect(config.zap).toBe(false);
   });

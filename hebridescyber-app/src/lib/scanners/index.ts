@@ -24,6 +24,7 @@ import { checkDomainRegistration, type DomainRegistrationResult } from "./domain
 import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
 import { checkCrawl, type CrawlResult } from "./crawler";
+import { checkBackendExposure, type BackendExposureResult } from "./backendExposure";
 import { buildCrawlFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
@@ -37,7 +38,7 @@ export type {
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
-  EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult, CrawlResult,
+  EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult, CrawlResult, BackendExposureResult,
 };
 
 export type ScanResults = {
@@ -68,8 +69,19 @@ export type ScanResults = {
   subdomainCerts?: SubdomainCertsResult;
   scriptInventory?: ScriptInventoryResult;
   crawl?: CrawlResult;
+  backendExposure?: BackendExposureResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
+};
+
+/** Another tool's report of the same underlying issue, folded into the canonical finding
+ *  by src/lib/findingConsolidation.ts. */
+export type Corroboration = {
+  /** Display name of the reporting tool ("nuclei", "ZAP", "testssl", or a built-in module). */
+  tool: string;
+  /** The duplicate's original checkId — kept so diffs and lifecycle can still recognise it. */
+  checkId: string;
+  title: string;
 };
 
 export type Finding = {
@@ -126,6 +138,12 @@ export type Finding = {
   fixDifficulty?: FixDifficulty;
   /** Rough remediation time estimate in minutes, derived from fixDifficulty. */
   estimatedFixMinutes?: number;
+  /**
+   * Other tools that reported this same issue, merged into this finding by
+   * findingConsolidation.ts before scoring (so the issue costs score once).
+   * Absent means nothing corroborated it — not that nothing else looked.
+   */
+  corroboratedBy?: Corroboration[];
   /** CVSS v3.1 base score (0.0–10.0), when the finding maps to a known CVE. */
   cvssScore?: number;
   /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
@@ -206,6 +224,7 @@ export async function runAllChecks(
     checkHibp(targetUrl),
     checkBusinessLogic(targetUrl),
     checkDomainRegistration(targetUrl),
+    checkBackendExposure(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -226,6 +245,7 @@ export async function runAllChecks(
   const hibp = unwrap(settled1[11], { status: "error" } as HibpResult);
   const businessLogic = unwrap(settled1[12], { status: "error", note: "check crashed" } as BusinessLogicResult);
   const domainRegistration = unwrap(settled1[13], { status: "error", note: "check crashed" } as DomainRegistrationResult);
+  const backendExposure = unwrap(settled1[14], { status: "error", note: "check crashed" } as BackendExposureResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -333,6 +353,7 @@ export async function runAllChecks(
     subdomainCerts,
     scriptInventory,
     crawl,
+    backendExposure,
     zap,
   };
 }
@@ -1071,6 +1092,33 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${entryContext} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
         remediation: FIX.scriptInventoryRemediation(entry.origin, onPayment),
       });
+    }
+  }
+
+  // --- Supabase backend exposure ------------------------------------------------
+  // Only reported with evidence: a service_role key in client code, or a table
+  // the anon key can read rows from (count above zero). "not_applicable" (no
+  // Supabase on the page) and "error" produce nothing.
+  if (results.backendExposure?.status === "checked") {
+    for (const project of results.backendExposure.projects) {
+      if (project.serviceKey) {
+        findings.push({
+          checkId: `backend-exposure.service-key:${project.ref}`,
+          severity: "critical",
+          title: "Supabase service_role key exposed in client-side code",
+          detail: `A key with the service_role role for project ${project.ref} (${project.serviceKey.fingerprint}) is delivered to every visitor in ${project.serviceKey.foundIn}. That key bypasses row level security, so anyone who copies it has full read and write access to the whole database.`,
+          remediation: FIX.BACKEND_SERVICE_KEY,
+        });
+      }
+      for (const t of project.openTables) {
+        findings.push({
+          checkId: `backend-exposure.open-table:${project.ref}:${t.table}`,
+          severity: "high",
+          title: `Supabase table "${t.table}" is readable without signing in`,
+          detail: `The public anon key for project ${project.ref} can read the "${t.table}" table: the API reports ${t.rowCount} row${t.rowCount === 1 ? "" : "s"} visible with no login. We asked only for the row count and read no data. Row level security is off for this table, or a policy allows everyone.`,
+          remediation: FIX.backendOpenTableRemediation(t.table),
+        });
+      }
     }
   }
 

@@ -18,7 +18,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "nuclei",
   "zap",
   "sqlmap",
-  "xsser",
+  "xsser", // retired tool: kept so a finding it once stored is never treated as re-verifiable by an on-demand rescan
   "commix",
   "nmap",
   "subdomains",
