@@ -121,6 +121,13 @@ describe("renderExecutiveReportHtml", () => {
     expect(html).toContain("Scanned:</b> 2026-10-05");
   });
 
+  it("ranks and flags findings a follow-up check confirmed as exploitable", () => {
+    const proven = f({ title: "proven", severity: "high", metadata: { proofOfExploit: { confirmed: true, evidence: "e" } } });
+    const other = f({ title: "other", severity: "high" });
+    expect(prioritise([other, proven]).map((x) => x.title)).toEqual(["proven", "other"]);
+    expect(renderExecutiveReportHtml(input({ findings: [proven] }))).toContain("confirmed exploitable");
+  });
+
   it("marks actively exploited findings and shows fix effort", () => {
     const html = renderExecutiveReportHtml(input({ findings: [f({ title: "Old lib", severity: "high", threatIntel: { knownExploited: true }, fixDifficulty: "easy", remediation: "Upgrade." })] }));
     expect(html).toContain("actively exploited");

@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "./dbErrors";
 import type { Finding } from "./scanners";
 import { findingCheckIds } from "./findingConsolidation";
+import { isExtendedToolFinding } from "./extendedToolCheckIds";
 
 /** A finding resolved this recently that shows up again is the same
  *  occurrence (a flapping check, a transient scanner error), not a new one:
@@ -108,6 +109,20 @@ export function isCovered(source: string, coverage: ScanCoverage, checkId?: stri
   if (source === "base") return !checkId || !coverage.failedBaseChecks.has(baseCheckKey(checkId));
   if (source === "extended") return coverage.extendedRan;
   return coverage.completedTools.has(source);
+}
+
+/**
+ * Could the scan that produced `results` have detected this finding? A finding
+ * that a later scan didn't report only counts as fixed if that scan could have
+ * seen it: an on-demand (passive) scan after a full scan never ran the active
+ * tools, and a base check that errored looked at nothing. Findings with no
+ * checkId can't be matched at all, so they stay as they were (detectable).
+ */
+export function canDetectFromResults(results: Record<string, unknown> | null | undefined): (finding: { checkId?: string }) => boolean {
+  const extended = (results?.extended ?? null) as Record<string, unknown> | null;
+  const coverage = scanCoverage(extended, results);
+  const toolKeys = Object.keys(extended ?? {});
+  return (finding) => !finding.checkId || isCovered(findingSource(finding.checkId, isExtendedToolFinding(finding.checkId), toolKeys), coverage, finding.checkId);
 }
 
 export type LifecycleDbRow = {

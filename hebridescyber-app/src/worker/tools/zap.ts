@@ -16,6 +16,8 @@ export type ZapAlert = {
   name: string;
   description: string;
   url: string;
+  /** The parameter ZAP attacked, when the alert has one. */
+  param?: string;
   solution: string;
   reference: string;
 };
@@ -158,6 +160,8 @@ export async function runZap(targetUrl: string): Promise<ZapResult> {
       title: `[ZAP] ${alert.name}`,
       detail: alert.description ?? alert.solution ?? "No additional detail.",
       remediation: alert.solution || undefined,
+      // Lets proofOfExploit.ts re-check a reflected-XSS alert with one harmless probe.
+      ...(alert.url && alert.param ? { metadata: { url: alert.url, parameter: alert.param } } : {}),
     }));
 
     return { status: "completed", alerts, findings };
