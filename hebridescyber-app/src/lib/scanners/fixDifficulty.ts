@@ -101,6 +101,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "webapp.cors-reflected": "easy",
   "webapp.vulnerable-js-lib": "moderate", // version bump, but can carry breaking changes
   "webapp.missing-sri": "easy",
+  "script-inventory.unreviewed": "trivial", // review the source and record a justification (or remove it)
 
   // --- Third-party threat intel ---
   "safe-browsing.flagged": "hard", // real malware/compromise cleanup, not a config change

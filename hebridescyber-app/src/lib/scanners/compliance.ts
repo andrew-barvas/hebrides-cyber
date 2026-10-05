@@ -69,6 +69,9 @@ const ISO_A13: ComplianceRef = { framework: "iso-27001", control: "A.13 – Comm
 const PCI_REQ4: ComplianceRef = { framework: "pci-dss", control: "Requirement 4 – Protect Cardholder Data with Strong Cryptography During Transmission" };
 const PCI_REQ6: ComplianceRef = { framework: "pci-dss", control: "Requirement 6 – Develop and Maintain Secure Systems and Software" };
 const PCI_REQ8: ComplianceRef = { framework: "pci-dss", control: "Requirement 8 – Identify Users and Authenticate Access to System Components" };
+// Sub-requirements, cited only where a check maps to one specifically (v4.0.1).
+const PCI_6_4_3: ComplianceRef = { framework: "pci-dss", control: "Requirement 6.4.3 – Payment Page Scripts Are Inventoried, Authorised and Integrity-Assured" };
+const PCI_11_6_1: ComplianceRef = { framework: "pci-dss", control: "Requirement 11.6.1 – Unauthorised Changes to Payment Pages Are Detected" };
 
 const NIS2_ART21: ComplianceRef = { framework: "nis2", control: "Article 21 – Cybersecurity Risk-Management Measures" };
 
@@ -177,6 +180,10 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "webapp.cors-reflected": [OWASP_A01, OWASP_A05, CIS_4, ISO_A9],
   "webapp.vulnerable-js-lib": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "webapp.missing-sri": [OWASP_A08, CIS_16, PCI_REQ6, ISO_A12],
+  // Third-party script inventory (scriptInventory.ts): 6.4.3's inventory and
+  // authorisation, 11.6.1's change detection, and CIS 16.4's inventory of
+  // third-party software components.
+  "script-inventory.unreviewed": [PCI_6_4_3, PCI_11_6_1, OWASP_A08, CIS_16],
 
   // --- Third-party threat intel ---
   "safe-browsing.flagged": [CE_MALWARE, CIS_9, CIS_7, NIS2_ART21, DORA_ART9],
