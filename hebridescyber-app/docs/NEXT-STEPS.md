@@ -12,7 +12,7 @@ and implement item N (E-7x)."* Do one item per session.
 ## Where things stand
 
 Everything below is merged to `master`, passed CI, and is deployed.
-Database migrations are applied through **046**; the next free number is **047**.
+Database migrations: files exist through **047**; the next free number is **048**. Deploys now apply pending files through `src/scripts/apply-migrations.ts` (ledger table `schema_migrations`, checksum drift check). **One-time step:** production was migrated by hand, so run the Deploy workflow manually (workflow_dispatch) with `baseline_up_to` = `047` before the next push to master, otherwise the migration job refuses the unrecorded database and blocks the deploy.
 
 | Shipped | Where |
 |---|---|
