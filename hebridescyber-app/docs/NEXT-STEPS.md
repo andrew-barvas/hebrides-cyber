@@ -22,6 +22,8 @@ Database migrations: files exist through **047**; the next free number is **048*
 | Third-party script inventory, PCI 6.4.3/11.6.1 (E-62) | PR #4 — `scriptInventory.ts`; `info` on ordinary pages, `low` on payment pages (owner decision) |
 | Finding triage: accept/authorise, false positive, snooze (E-64) | PR #5 — `finding_triage` (046), `/api/findings/triage`, report UI; only false positives leave the score |
 | Signed-in crawl, slice 1 (E-70 follow-up) | `authenticatedCrawl.ts`, `crawl.auth.*` findings, design + safety rules in `docs/AUTHENTICATED-CRAWL.md`; uses the saved cookie/Basic credential |
+| Reflected-XSS confirmation | `xssConfirm.ts` + `validateExploit` (`proofOfExploit.ts`): one harmless GET probe, context-aware verdict (body / quoted attribute confirmed; encoded, comment, script, textarea, title not), optional browser check. **Not yet called from a scan**: `enrichWithProofOfExploit` has no production caller, so wiring it (opt-in) is the next step |
+| Page metadata for client-component routes | `pricing/`, `contact/`, `login/` layouts (own title/description; login noindex); `/agencies` added to the sitemap |
 | commix parser from a real run | `commixOutput.ts`, `fixtures/commix/`; unfinished/unreachable runs are `error`, nothing to test is `not_applicable` |
 | Site crawler with page-level checks on every page (E-70) | `crawler.ts`, `crawlFindings.ts`, `crawl` in `ScanResults`; script inventory merges inner-page origins |
 | Pull-request dependency checks (E-71) | `POST /api/v1/dependency-diff`, `dependencyDiff.ts`, Action `mode: dependencies` |

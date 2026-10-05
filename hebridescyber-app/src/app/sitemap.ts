@@ -15,6 +15,7 @@ const STATIC_PAGES: Array<{ path: string; changeFrequency: MetadataRoute.Sitemap
   { path: "/web-check-alternative", changeFrequency: "monthly", priority: 0.8 },
   { path: "/services", changeFrequency: "monthly", priority: 0.7 },
   { path: "/blog", changeFrequency: "daily", priority: 0.7 },
+  { path: "/agencies", changeFrequency: "monthly", priority: 0.6 },
   { path: "/tourism", changeFrequency: "monthly", priority: 0.6 },
   { path: "/churches", changeFrequency: "monthly", priority: 0.6 },
   { path: "/local-trades", changeFrequency: "monthly", priority: 0.6 },
