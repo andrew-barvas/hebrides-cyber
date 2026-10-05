@@ -1,7 +1,19 @@
 {
   "target": "soft-404",
   "description": "False-positive class: unknown paths return 200 with a 'page not found' HTML page. Headers are complete.",
-  "mustFind": ["tls.no-https", "exposure.no-security-txt"],
-  "mustNotFind": ["exposure.exposed-file:*", "directory-listing.*", "headers.*", "webapp.*", "business-logic.*"],
-  "optional": ["fingerprint.tech-detected"]
+  "mustFind": [
+    "tls.no-https",
+    "exposure.no-security-txt"
+  ],
+  "mustNotFind": [
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "headers.*",
+    "webapp.*",
+    "business-logic.*",
+    "graphql.*"
+  ],
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
 }

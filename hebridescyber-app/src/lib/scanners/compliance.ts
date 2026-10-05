@@ -185,6 +185,9 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "crawl.insecure-form": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "crawl.error-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
   "crawl.missing-sri": [OWASP_A08, CIS_16],
+  "graphql.introspection": [CE_SECURE_CONFIG, OWASP_A05, CIS_16, ISO_A12],
+  "graphql.suggestions": [OWASP_A05, CIS_16],
+  "graphql.ide": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
 
   // --- DNS / email ---
   "dns.spf-missing": [CIS_9, ISO_A13],

@@ -2824,3 +2824,29 @@ create policy "${name}: read own rows"
 
 If the data is meant to be public, say so deliberately with a narrow policy (only the columns and rows that are public, ideally through a view), rather than leaving RLS off. After the change, check it as an anonymous visitor: a request with only the anon key should return no rows. Tables created through the SQL editor have RLS **off** by default, so check every table in the \`public\` schema.`;
 }
+
+// ---- GraphQL exposure ------------------------------------------------------------
+
+export const GRAPHQL_INTROSPECTION = `Turn introspection off in production unless the API is deliberately public. Anyone can currently list every type, query and mutation.
+
+- **Apollo Server:** \`new ApolloServer({ introspection: process.env.NODE_ENV !== "production" })\`
+- **graphql-yoga / Envelop:** use the \`useDisableIntrospection\` plugin.
+- **Hasura:** set \`HASURA_GRAPHQL_ENABLE_CONSOLE=false\` and restrict introspection to admin roles.
+- **Other servers:** look for an "introspection" or "NoSchemaIntrospectionCustomRule" option.
+
+Switching introspection off hides the schema, it doesn't protect it. Authorisation still has to be enforced on every field and mutation. After the change, send \`{ __schema { types { name } } }\` yourself and confirm it is refused.`;
+
+export const GRAPHQL_SUGGESTIONS = `Stop the server suggesting field names in error messages (the "Did you mean …" text). With introspection off, suggestions let an attacker rebuild the schema one guess at a time.
+
+- **Apollo Server 4+:** use a plugin or \`formatError\` that strips the suggestion from validation errors.
+- **graphql-js / Yoga:** the \`maskedErrors\` option or a custom \`formatError\` removing "Did you mean".
+
+Production errors should say what failed, not what the schema contains.`;
+
+export const GRAPHQL_IDE = `Remove or protect the GraphQL explorer in production. GraphiQL, Playground and Apollo Sandbox are development tools that make exploring the API trivial.
+
+- **Apollo Server:** drop the landing-page plugin in production (\`ApolloServerPluginLandingPageDisabled()\`).
+- **Yoga / Express GraphQL:** set \`graphiql: false\` (or \`graphiql: process.env.NODE_ENV !== "production"\`).
+- **Hasura:** disable the console on the public endpoint.
+
+If a team needs it, serve the explorer only behind your VPN or sign-in.`;

@@ -1,0 +1,20 @@
+{
+  "target": "graphql-open",
+  "description": "GraphQL with introspection, field suggestions and GraphiQL exposed. Introspection is reported (suggestions are only reported when introspection is off).",
+  "mustFind": [
+    "tls.no-https",
+    "graphql.introspection:/graphql",
+    "graphql.ide:/graphiql"
+  ],
+  "mustNotFind": [
+    "graphql.suggestions:*",
+    "exposure.exposed-file:*",
+    "directory-listing.*",
+    "webapp.*"
+  ],
+  "optional": [
+    "exposure.no-security-txt",
+    "headers.*",
+    "fingerprint.tech-detected"
+  ]
+}

@@ -29,6 +29,13 @@
       "precision": 1,
       "recall": 1
     },
+    "graphql": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1,
+      "recall": 1
+    },
     "headers": {
       "tp": 15,
       "fp": 0,
@@ -37,7 +44,7 @@
       "recall": 1
     },
     "tls": {
-      "tp": 12,
+      "tp": 14,
       "fp": 0,
       "fn": 0,
       "precision": 1,

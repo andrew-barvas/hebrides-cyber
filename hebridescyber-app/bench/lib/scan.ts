@@ -8,6 +8,7 @@ import { checkDirectoryListing } from "@/lib/scanners/directoryListing";
 import { checkFingerprint, getCmsType } from "@/lib/scanners/fingerprint";
 import { checkWebApp } from "@/lib/scanners/webapp";
 import { checkBusinessLogic } from "@/lib/scanners/businessLogic";
+import { checkGraphql } from "@/lib/scanners/graphql";
 import { summariseResults, type ScanResults } from "@/lib/scanners";
 
 /** Modules the benchmark can drive offline. Anything else is out of scope. */
@@ -19,6 +20,7 @@ export const BENCH_MODULES = [
   "fingerprint",
   "webapp",
   "business-logic",
+  "graphql",
 ] as const;
 
 export type BenchModule = (typeof BENCH_MODULES)[number];
@@ -27,13 +29,14 @@ const NOT_RUN = { status: "error", note: "not run by the benchmark" };
 
 /** Returns the checkIds the scanner reports for `targetUrl`. */
 export async function scanTarget(targetUrl: string): Promise<string[]> {
-  const [tls, headers, exposure, directoryListing, fingerprint, businessLogic] = await Promise.all([
+  const [tls, headers, exposure, directoryListing, fingerprint, businessLogic, graphql] = await Promise.all([
     checkTls(targetUrl),
     checkHeaders(targetUrl),
     checkExposure(targetUrl),
     checkDirectoryListing(targetUrl),
     checkFingerprint(targetUrl),
     checkBusinessLogic(targetUrl),
+    checkGraphql(targetUrl),
   ]);
   const cmsType = getCmsType(fingerprint.status === "checked" ? fingerprint.technologies : []);
   const webapp = await checkWebApp(targetUrl, {
@@ -65,6 +68,7 @@ export async function scanTarget(targetUrl: string): Promise<string[]> {
     softwareCveDb: NOT_RUN,
     businessLogic,
     apiSpec: NOT_RUN,
+    graphql,
     zap: NOT_RUN,
   } as unknown as ScanResults;
 
