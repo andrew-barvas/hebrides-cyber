@@ -18,6 +18,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DB_TESTS_ENABLED, createTestDb, type TestDb } from "./harness";
 import { loadFindingsView } from "../../src/lib/findingsView";
 
+// supabase-js builds its realtime client eagerly and throws on Node 20, which
+// has no native WebSocket (Node 22+ does). This test never uses realtime.
+if (!("WebSocket" in globalThis)) (globalThis as Record<string, unknown>).WebSocket = class {};
+
 const POSTGREST_BIN = process.env.POSTGREST_BIN;
 const enabled = DB_TESTS_ENABLED && !!POSTGREST_BIN;
 
