@@ -364,11 +364,13 @@ async function runExtendedTools(
 
   if (extended.commix.status === "completed" && extended.commix.vulnerable) {
     for (const f of extended.commix.findings) {
+      // GET keeps the original id; the same name in another place gets its own.
+      const key = f.place.toUpperCase() === "GET" ? f.parameter : `${f.parameter}:${f.place.toLowerCase()}`;
       findings.push({
-        checkId: `commix.command-injection:${f.parameter}`,
+        checkId: `commix.command-injection:${key}`,
         severity: "critical",
         title: `[commix] OS command injection — param: ${f.parameter}`,
-        detail: `Parameter "${f.parameter}" is vulnerable to OS command injection.`,
+        detail: `The ${f.place} parameter "${f.parameter}" is vulnerable to OS command injection.`,
         remediation: commixRemediation(),
       });
     }
