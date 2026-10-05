@@ -1,0 +1,29 @@
+        ___
+       __H__
+ ___ ___[(]_____ ___ ___  {1.10.9#pip}
+|_ -| . [,]     | .'| . |
+|___|_  [(]_|_|_|__,|  _|
+      |_|V...       |_|   https://sqlmap.org
+
+[!] legal disclaimer: Usage of sqlmap for attacking targets without prior mutual consent is illegal. It is the end user's responsibility to obey all applicable local, state and federal laws. Developers assume no liability and are not responsible for any misuse or damage caused by this program
+
+[*] starting @ 18:53:18 /2026-10-05/
+
+)0[1;24r[m[4l[?7h[24;1H[18:53:18] [WARNING] using '/tmp/e72/out3' as the output directory
+[18:53:18] [INFO] fetched random HTTP User-Agent header value 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.7204.92 Safari/537.36' from file '/usr/local/lib/python3.11/dist-packages/sqlmap/data/txt/user-agents.txt'
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [WARNING] if the problem persists please check that the provided target URL is reachable
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+[18:53:18] [CRITICAL] unable to connect to the target URL ('Connection refused') or proxy. sqlmap is going to retry the request(s)
+there seems to be a continuous problem with connection to the target. Are you sure that you want to continue? [y/N] N
+do you want to check for the existence of site's sitemap(.xml) [y/N] N
+[18:53:18] [INFO] starting crawler for target URL 'http://127.0.0.1:9/'
+[18:53:18] [INFO] searching for links with depth 1
+[18:53:18] [WARNING] no usable links found (with GET parameters) or forms
+
+[*] ending @ 18:53:18 /2026-10-05/
+
