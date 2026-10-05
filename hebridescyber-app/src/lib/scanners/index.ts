@@ -69,6 +69,16 @@ export type ScanResults = {
   zap: ZapResult;
 };
 
+/** Another tool's report of the same underlying issue, folded into the canonical finding
+ *  by src/lib/findingConsolidation.ts. */
+export type Corroboration = {
+  /** Display name of the reporting tool ("nuclei", "ZAP", "testssl", or a built-in module). */
+  tool: string;
+  /** The duplicate's original checkId — kept so diffs and lifecycle can still recognise it. */
+  checkId: string;
+  title: string;
+};
+
 export type Finding = {
   severity: "critical" | "high" | "medium" | "low" | "info";
   title: string;
@@ -123,6 +133,12 @@ export type Finding = {
   fixDifficulty?: FixDifficulty;
   /** Rough remediation time estimate in minutes, derived from fixDifficulty. */
   estimatedFixMinutes?: number;
+  /**
+   * Other tools that reported this same issue, merged into this finding by
+   * findingConsolidation.ts before scoring (so the issue costs score once).
+   * Absent means nothing corroborated it — not that nothing else looked.
+   */
+  corroboratedBy?: Corroboration[];
   /** CVSS v3.1 base score (0.0–10.0), when the finding maps to a known CVE. */
   cvssScore?: number;
   /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
