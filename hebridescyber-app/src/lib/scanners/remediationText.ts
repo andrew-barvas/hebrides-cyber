@@ -1,3 +1,5 @@
+import type { SastCategory } from "./sastCatalog";
+
 // Copy-pasteable fix guidance attached to findings at the point they are
 // created (see summariseResults in ./index.ts), where the full check result is
 // still in scope. Keeping the text here rather than inline keeps
@@ -2500,3 +2502,215 @@ to take the domain — and your website and email with it.
 It's a free setting in every major registrar's dashboard, usually under the
 domain's security or transfer options. Leave it on except when you are
 deliberately moving registrar.`;
+
+// ---- Static code analysis (src/worker/tools/sast.ts) -------------------------
+//
+// One block per weakness category (SastCategory in sastCatalog.ts, derived
+// from the rule's CWE), with the fix shown for the language of the file the
+// rule fired in. The finding's own detail already names the file and line.
+
+export type SastLanguage = "javascript" | "python" | "php" | "other";
+
+const SAST_FIX_BY_CATEGORY: Record<SastCategory, { intro: string; examples: Partial<Record<SastLanguage, string>> }> = {
+  "sql-injection": {
+    intro: `Never build SQL text out of request values. Keep the SQL constant and pass
+the values separately as bound parameters — the driver then sends them as data,
+so quotes and keywords in the input can't change the query.`,
+    examples: {
+      javascript: `\`\`\`js
+// mysql2 / pg
+await db.query("SELECT * FROM users WHERE id = ?", [req.params.id]);
+await client.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+// Prisma: use the tagged template, never $queryRawUnsafe with input
+await prisma.$queryRaw\`SELECT * FROM "User" WHERE email = \${email}\`;
+\`\`\``,
+      python: `\`\`\`python
+cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+# Django
+Person.objects.raw("SELECT * FROM people WHERE name = %s", [name])
+\`\`\``,
+      php: `\`\`\`php
+$stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+$stmt->execute([$_POST['email']]);
+// WordPress
+$wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->posts} WHERE post_author = %d", $author));
+\`\`\``,
+    },
+  },
+  "code-injection": {
+    intro: `Remove the dynamic evaluation. Request input must be treated as data, never
+as code: parse it (JSON, a number, an enum) and map it to behaviour through a
+fixed lookup table of allowed operations. If users genuinely need to write
+expressions, use a dedicated expression parser that cannot call functions or
+reach the runtime.`,
+    examples: {
+      javascript: `\`\`\`js
+const OPERATIONS = { sum: (a, b) => a + b, max: Math.max };
+const op = OPERATIONS[req.query.op];
+if (!op) return res.status(400).send("unknown operation");
+\`\`\``,
+      python: `\`\`\`python
+import ast
+value = ast.literal_eval(request.args["value"])  # literals only, no calls
+\`\`\``,
+      php: `\`\`\`php
+$actions = ['list' => 'listItems', 'show' => 'showItem'];
+$fn = $actions[$_GET['action']] ?? null;
+if ($fn === null) { http_response_code(400); exit; }
+$fn();
+\`\`\``,
+    },
+  },
+  "command-injection": {
+    intro: `Don't hand request input to a shell. Call the program directly with an
+argument list (no shell in between), and validate the value against an
+allow-list or a strict pattern before using it at all.`,
+    examples: {
+      javascript: `\`\`\`js
+const { execFile } = require("node:child_process");
+if (!/^[a-z0-9.-]+$/i.test(host)) return res.status(400).end();
+execFile("ping", ["-c", "1", host], (err, stdout) => res.send(stdout));
+\`\`\``,
+      python: `\`\`\`python
+import subprocess
+subprocess.run(["ping", "-c", "1", host], check=True, timeout=10)  # no shell=True
+\`\`\``,
+      php: `\`\`\`php
+$out = shell_exec('ping -c 1 ' . escapeshellarg($host));
+\`\`\``,
+    },
+  },
+  "file-inclusion": {
+    intro: `Never let the request choose a file path to include. Map the request value to
+a fixed list of allowed templates and include only from that list. Also make
+sure \`allow_url_include\` is Off in php.ini.`,
+    examples: {
+      php: `\`\`\`php
+$pages = ['home' => 'home.php', 'about' => 'about.php'];
+$page = $pages[$_GET['page'] ?? 'home'] ?? 'home.php';
+include __DIR__ . '/pages/' . $page;
+\`\`\``,
+    },
+  },
+  deserialization: {
+    intro: `Don't deserialise request data with a format that can create arbitrary objects
+or run code (pickle, PyYAML's full loader, PHP unserialize, node-serialize).
+Exchange request data as JSON. If you must keep the existing format, sign the
+payload server-side (HMAC) and verify the signature before deserialising.`,
+    examples: {
+      javascript: `\`\`\`js
+const profile = JSON.parse(req.cookies.profile);
+\`\`\``,
+      python: `\`\`\`python
+data = json.loads(request.get_data())
+config = yaml.safe_load(request.get_data())
+\`\`\``,
+      php: `\`\`\`php
+$cart = json_decode($_COOKIE['cart'], true);
+// or, if unserialize is unavoidable:
+$cart = unserialize($data, ['allowed_classes' => false]);
+\`\`\``,
+    },
+  },
+  "open-redirect": {
+    intro: `Only redirect to destinations you have checked. Accept relative paths that start
+with a single "/" (not "//" or "/\\"), or compare the target host against an
+explicit allow-list; otherwise fall back to a safe default page.`,
+    examples: {
+      javascript: `\`\`\`js
+const next = String(req.query.next || "/");
+const safe = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\\\");
+res.redirect(safe ? next : "/");
+\`\`\``,
+      python: `\`\`\`python
+from django.utils.http import url_has_allowed_host_and_scheme
+if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+    target = "/"
+return redirect(target)
+\`\`\``,
+      php: `\`\`\`php
+wp_safe_redirect($_GET['redirect_to']); // WordPress: only allowed hosts
+\`\`\``,
+    },
+  },
+  "tls-verification": {
+    intro: `Turn certificate verification back on. Disabling it is usually a workaround for
+a self-signed or privately issued certificate — the fix for that is to trust
+that specific CA, not to trust everything.`,
+    examples: {
+      javascript: `\`\`\`js
+const agent = new https.Agent({ ca: fs.readFileSync("/etc/ssl/private-ca.pem") });
+// and remove any NODE_TLS_REJECT_UNAUTHORIZED=0
+\`\`\``,
+      python: `\`\`\`python
+requests.get(url, verify="/etc/ssl/private-ca.pem")  # or just omit verify=
+\`\`\``,
+      php: `\`\`\`php
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+curl_setopt($ch, CURLOPT_CAINFO, '/etc/ssl/private-ca.pem');
+\`\`\``,
+    },
+  },
+  "debug-mode": {
+    intro: `Make debug mode come from the environment and default to off, so a production
+deployment can't ship with it enabled. Debug pages and debuggers expose source
+code, configuration and secrets — and Flask's Werkzeug debugger allows running
+code.`,
+    examples: {
+      python: `\`\`\`python
+# Django settings.py
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
+# Flask
+app.config["DEBUG"] = os.environ.get("FLASK_DEBUG") == "1"
+\`\`\``,
+      php: `\`\`\`php
+// config/app.php
+'debug' => (bool) env('APP_DEBUG', false),
+\`\`\``,
+    },
+  },
+  "jwt-verification": {
+    intro: `Always verify a token's signature before trusting any of its claims, and pin
+the algorithms you accept — never include "none". Decoding without
+verification is only safe for reading the header to choose a key.`,
+    examples: {
+      javascript: `\`\`\`js
+const claims = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
+\`\`\``,
+      python: `\`\`\`python
+claims = jwt.decode(token, key, algorithms=["HS256"])
+\`\`\``,
+    },
+  },
+};
+
+const SAST_GENERIC_FIX = `Open the file at the line given and review how request data reaches this
+code. The rule that fired describes the weakness in its message above; fix the
+data flow rather than suppressing the match. If you are certain the match is a
+false positive, add a \`// nosemgrep\` (or \`# nosemgrep\`) comment on that line
+so future scans skip it — and tell us, so we can tighten the rule.`;
+
+/** Language for remediation examples, from the matched file's extension. */
+export function sastLanguageForPath(path: string): SastLanguage {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  if (["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"].includes(ext)) return "javascript";
+  if (ext === "py") return "python";
+  if (["php", "phtml", "inc"].includes(ext)) return "php";
+  return "other";
+}
+
+/**
+ * Fix guidance for a SAST finding. `category` is null when the rule's CWE
+ * doesn't map to a known category — the generic text is returned then, not
+ * a guess.
+ */
+export function sastRemediation(category: SastCategory | null, language: SastLanguage): string {
+  if (!category) return SAST_GENERIC_FIX;
+  const entry = SAST_FIX_BY_CATEGORY[category];
+  const example = entry.examples[language];
+  const suppress = `If this specific match is a false positive (for example, the value was validated
+somewhere the analyser can't see), add a \`nosemgrep\` comment on that line so
+future scans skip it.`;
+  return [entry.intro, example, suppress].filter(Boolean).join("\n\n");
+}

@@ -403,6 +403,15 @@ Worth stating plainly, since it shapes several design decisions above:
 - **No full crawl-behind-login, no IDOR testing, no multi-step auth
   (OAuth/MFA) handling** — authenticated scanning is a narrow header/
   cookie recheck, not a penetration test.
+- **No full code review.** Source code analysis of a connected repository
+  (scheduled scans only) is pattern-based SAST: ~35 high-precision rules
+  for JavaScript/TypeScript, Python and PHP that look for request data
+  flowing into dangerous calls (SQL, eval, shell, deserialisation, include,
+  redirects) plus a few insecure settings (TLS verification off, debug mode
+  on, unverified JWTs). It can't follow validation into other files, judge
+  business logic or access control, or tell whether a route is reachable,
+  and a clean result is not proof the code is secure. Test folders,
+  dependencies and build output are skipped.
 - **No cloud account-level IAM auditing yet** (ScoutSuite/Prowler-style) —
   a real, acknowledged gap, out of scope until a credential-onboarding
   flow with real customer consent is built for it specifically.

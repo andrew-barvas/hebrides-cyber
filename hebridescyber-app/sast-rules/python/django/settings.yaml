@@ -1,0 +1,39 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+# Lives in its own folder so its annotated test file can be called settings.py
+# (the rule only runs on settings-like file names).
+rules:
+  - id: py-django-debug-enabled
+    message: >-
+      DEBUG = True is hard-coded in a Django settings file that looks like the
+      one used in production. With DEBUG on, any error page shows source code,
+      settings and environment details to visitors. Read DEBUG from an
+      environment variable that defaults to False.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-489: Active Debug Code"
+      confidence: MEDIUM
+      severity: medium
+      category: security
+    paths:
+      include:
+        - "settings.py"
+        - "production.py"
+        - "prod.py"
+        - "settings_prod*.py"
+        - "settings_production*.py"
+    patterns:
+      - pattern: DEBUG = True
+      - pattern-not-inside: |
+          if $COND:
+            ...
+      - pattern-not-inside: |
+          def $FN(...):
+            ...
+      - pattern-not-inside: |
+          class $CLS(...):
+            ...

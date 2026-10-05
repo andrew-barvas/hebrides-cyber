@@ -26,6 +26,7 @@ import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
+import { runSast } from "../worker/tools/sast";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
 import { runWhatWaf } from "../worker/tools/whatwaf";
 import { runWpScanCli } from "../worker/tools/wpscan";
@@ -148,6 +149,7 @@ async function runExtendedTools(
     dockerBaseImageResult,
     trivyImageResult,
     trivyConfigResult,
+    sastResult,
     authCheckResult,
     whatwafResult,
     wpscanResult,
@@ -239,6 +241,16 @@ async function runExtendedTools(
           findings: [] as Finding[],
           note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
         }),
+    // Static code analysis — Opengrep engine with our own rule pack
+    // (sast-rules/; see src/worker/tools/sast.ts for the licensing reason).
+    toolConfig.sast && githubRepo
+      ? runSast({ githubRepo })
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
     // place that needs to know where the credential comes from.
@@ -300,6 +312,7 @@ async function runExtendedTools(
     dockerBaseImage: dockerBaseImageResult.status === "fulfilled" ? dockerBaseImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(dockerBaseImageResult.reason) },
     trivyImage: trivyImageResult.status === "fulfilled" ? trivyImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyImageResult.reason) },
     trivyConfig: trivyConfigResult.status === "fulfilled" ? trivyConfigResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyConfigResult.reason) },
+    sast: sastResult.status === "fulfilled" ? sastResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(sastResult.reason) },
     authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
     whatwaf: whatwafResult.status === "fulfilled" ? whatwafResult.value : { status: "error" as const, note: String(whatwafResult.reason) },
     wpscan: wpscanResult.status === "fulfilled" ? wpscanResult.value : { status: "error" as const, findings: [], note: String(wpscanResult.reason) },
@@ -409,6 +422,10 @@ async function runExtendedTools(
   }
   if (extended.trivyConfig.status === "completed") {
     findings.push(...extended.trivyConfig.findings);
+  }
+  // sast.ts already builds full Finding[] (checkId, severity, remediation).
+  if (extended.sast.status === "completed") {
+    findings.push(...extended.sast.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
@@ -723,7 +740,7 @@ export async function executeScan(
   });
 
   const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "businessLogic"];
-  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 25 : BASE_CHECK_NAMES.length;
+  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 26 : BASE_CHECK_NAMES.length;
 
   await updateScanProgress(supabaseAdmin, scanId, {
     phase: "base",

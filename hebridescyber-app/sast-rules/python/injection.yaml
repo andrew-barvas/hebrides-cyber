@@ -1,0 +1,295 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+#
+# Request sources (Flask, Django, Starlette/FastAPI, aiohttp) are repeated in
+# each rule because the engine's YAML loader does not resolve anchors.
+rules:
+  - id: py-sql-injection
+    message: >-
+      Data from the incoming HTTP request is built into a SQL string (with +,
+      % or an f-string) and passed to cursor.execute(). An attacker can change
+      the meaning of the query. Pass values as parameters instead:
+      cursor.execute("... WHERE id = %s", (value,)).
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.view_args
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+              - pattern: $REQ.path_params
+              - pattern: $REQ.match_info
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: int(...)
+          - pattern: float(...)
+          - pattern: bool(...)
+          - pattern: $SQL.Identifier(...)
+          - pattern: $SQL.Literal(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CUR.execute($QUERY, ...)
+              - pattern: $CUR.executemany($QUERY, ...)
+              - pattern: $CUR.executescript($QUERY, ...)
+          # text(...) is reported by py-sql-injection-raw-query instead.
+          - pattern-not: $CUR.execute(sqlalchemy.text(...), ...)
+          - metavariable-regex:
+              metavariable: $CUR
+              # anchored at the start, hence ^(.*\.)?
+              regex: (?i)^(.*\.)?(cur|cursor|c|conn|connection|con|db|database|session|db_session|engine|tx|transaction)(\(.*\))?$
+          - focus-metavariable: $QUERY
+
+  - id: py-sql-injection-raw-query
+    message: >-
+      Data from the incoming HTTP request reaches a raw-SQL API (Django
+      .raw()/.extra()/RawSQL, SQLAlchemy text(), pandas read_sql). These run
+      the string as SQL, so request input inside it is SQL injection. Use the
+      API's params argument (or bind parameters with text(...).bindparams).
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      confidence: HIGH
+      severity: high
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.view_args
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+              - pattern: $REQ.path_params
+              - pattern: $REQ.match_info
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: int(...)
+          - pattern: float(...)
+          - pattern: bool(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $MODEL.objects.raw($QUERY, ...)
+              - pattern: $QS.extra(..., where=$QUERY, ...)
+              - pattern: $QS.extra(..., select=$QUERY, ...)
+              - pattern: RawSQL($QUERY, ...)
+              - pattern: sqlalchemy.text($QUERY, ...)
+              - pattern: pandas.read_sql($QUERY, ...)
+              - pattern: pandas.read_sql_query($QUERY, ...)
+          - focus-metavariable: $QUERY
+
+  - id: py-code-injection
+    message: >-
+      Data from the incoming HTTP request is executed as Python (eval, exec or
+      compile). Anyone who can send that request can run their own code on
+      the server. Parse the input as data instead — json.loads, or
+      ast.literal_eval for simple literals.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.view_args
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+              - pattern: $REQ.path_params
+              - pattern: $REQ.match_info
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: int(...)
+          - pattern: float(...)
+          - pattern: json.dumps(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($CODE, ...)
+              - pattern: exec($CODE, ...)
+              - pattern: compile($CODE, ...)
+          - focus-metavariable: $CODE
+
+  - id: py-command-injection-subprocess-shell
+    message: >-
+      Data from the incoming HTTP request is passed to subprocess with
+      shell=True, so the command line is interpreted by /bin/sh. Shell
+      metacharacters in the request let an attacker run any command on the
+      server. Pass an argument list without shell=True, and validate the
+      input against an allow-list.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.view_args
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+              - pattern: $REQ.path_params
+              - pattern: $REQ.match_info
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: int(...)
+          - pattern: float(...)
+          - pattern: shlex.quote(...)
+          - pattern: pipes.quote(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: subprocess.$FN($CMD, ..., shell=True, ...)
+              - pattern: asyncio.create_subprocess_shell($CMD, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(call|run|Popen|check_call|check_output)$
+          - focus-metavariable: $CMD
+
+  - id: py-command-injection-os-system
+    message: >-
+      Data from the incoming HTTP request is passed to os.system, os.popen or
+      subprocess.getoutput, all of which run the string through a shell. Shell
+      metacharacters let an attacker run any command on the server. Use
+      subprocess.run with an argument list (no shell) and validate the input.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      severity: critical
+      category: security
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern: $REQ.args
+              - pattern: $REQ.form
+              - pattern: $REQ.values
+              - pattern: $REQ.json
+              - pattern: $REQ.data
+              - pattern: $REQ.get_json(...)
+              - pattern: $REQ.get_data(...)
+              - pattern: $REQ.files
+              - pattern: $REQ.view_args
+              - pattern: $REQ.cookies
+              - pattern: $REQ.headers
+              - pattern: $REQ.GET
+              - pattern: $REQ.POST
+              - pattern: $REQ.body
+              - pattern: $REQ.COOKIES
+              - pattern: $REQ.META
+              - pattern: $REQ.FILES
+              - pattern: $REQ.query_params
+              - pattern: $REQ.path_params
+              - pattern: $REQ.match_info
+          - metavariable-regex:
+              metavariable: $REQ
+              regex: ^(request|req|self\.request|flask\.request)$
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: int(...)
+          - pattern: float(...)
+          - pattern: shlex.quote(...)
+          - pattern: pipes.quote(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: os.system($CMD)
+              - pattern: os.popen($CMD, ...)
+              - pattern: subprocess.getoutput($CMD)
+              - pattern: subprocess.getstatusoutput($CMD)
+          - focus-metavariable: $CMD

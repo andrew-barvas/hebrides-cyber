@@ -24,6 +24,7 @@ export type ExtendedToolName =
   | "dockerBaseImage"
   | "trivyImage"
   | "trivyConfig"
+  | "sast"
   | "authCheck"
   | "whatwaf"
   | "wpscan"
@@ -60,6 +61,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "dockerBaseImage",
   "trivyImage",
   "trivyConfig",
+  "sast",
   "authCheck",
   "whatwaf",
   "wpscan",
@@ -100,6 +102,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     dockerBaseImage: true,
     trivyImage: true,
     trivyConfig: true,
+    sast: true,
     photon: true,
     gospider: true,
     metadataLeak: true,

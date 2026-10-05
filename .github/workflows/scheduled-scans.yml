@@ -229,6 +229,26 @@ jobs:
           # matches nuclei's own "-update-templates" priming step above.
           trivy image --download-db-only --quiet || echo "trivy DB download failed — image scans will report status: error"
 
+      - name: Install opengrep
+        # Static code analysis of the connected repo (src/worker/tools/sast.ts)
+        # with our own rule pack in hebridescyber-app/sast-rules/. Opengrep is
+        # LGPL-2.1 and runs as a separate binary. Pinned release + the
+        # asset's SHA-256 as published by GitHub's release API, so a swapped
+        # asset fails the check instead of running. A failed install only
+        # degrades this check: sast.ts reports status not_configured.
+        env:
+          OPENGREP_VERSION: 1.30.0
+          OPENGREP_SHA256: 35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c
+        run: |
+          curl -fsSL \
+            "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
+            -o /tmp/opengrep \
+            && echo "${OPENGREP_SHA256}  /tmp/opengrep" | sha256sum -c - \
+            && sudo install -m 0755 /tmp/opengrep /usr/local/bin/opengrep \
+            && opengrep --version \
+            || echo "opengrep install failed — sast.ts will report status: not_configured"
+          rm -f /tmp/opengrep
+
       - name: Install whatwaf, wpscan, and cmsmap
         run: |
           pip3 install --break-system-packages whatwaf \

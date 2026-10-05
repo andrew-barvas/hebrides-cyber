@@ -1,0 +1,27 @@
+# Hebrides Cyber SAST rule pack — written from scratch for this project and
+# released under the project's MIT licence (hebridescyber-app/LICENSE). Not
+# derived from semgrep-rules or opengrep-rules. Run the annotated tests with:
+#   opengrep test sast-rules/
+#
+# Lives in laravel/config/ so its annotated test file can be called app.php
+# (the rule only runs on Laravel's config/app.php).
+rules:
+  - id: php-laravel-debug-enabled
+    message: >-
+      Laravel's config/app.php hard-codes 'debug' => true instead of reading
+      APP_DEBUG from the environment, so debug mode is on wherever this code
+      is deployed. Laravel's debug error pages show source code, queries and
+      environment variables (including secrets) to visitors. Use
+      'debug' => (bool) env('APP_DEBUG', false).
+    severity: WARNING
+    languages: [php]
+    metadata:
+      cwe:
+        - "CWE-489: Active Debug Code"
+      confidence: HIGH
+      severity: medium
+      category: security
+    paths:
+      include:
+        - "config/app.php"
+    pattern: "[..., 'debug' => true, ...]"
