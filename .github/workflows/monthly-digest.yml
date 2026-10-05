@@ -18,6 +18,7 @@ name: Monthly Digest
 #
 # Requires:
 #   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   RESEND_API_KEY                            - email delivery
 #   NEXT_PUBLIC_SITE_URL                      - optional, used for links in
 #                                                the digest email
 
@@ -45,5 +46,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # sendEmail (src/lib/email.ts) needs it; without it no digest was ever sent.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: npm run digest:monthly
