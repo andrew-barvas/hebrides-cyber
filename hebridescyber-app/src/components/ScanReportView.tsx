@@ -21,6 +21,9 @@ import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
 import { TriageMenu, UndoTriageButton, describeTriage, type ViewTriage } from "./FindingTriage";
 
 export type { ViewTriage } from "./FindingTriage";
+import type { ScriptFoundBy, ScriptIntegrity, ScriptInventoryResult } from "@/lib/scanners/scriptInventory";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert } from "@/components/ui/alert";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -915,6 +918,109 @@ export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[];
         </div>
       )}
     </div>
+  );
+}
+
+const FOUND_BY_LABEL: Record<ScriptFoundBy, string> = {
+  both: "HTML + runtime",
+  html: "HTML",
+  runtime: "Runtime",
+};
+
+const INTEGRITY_META: Record<ScriptIntegrity, { label: string; text: string }> = {
+  all: { label: "All tags", text: "text-neon" },
+  some: { label: "Some tags", text: "text-warning" },
+  none: { label: "None", text: "text-danger" },
+  unknown: { label: "Unknown", text: "text-cybermuted" },
+};
+
+/**
+ * Every third-party origin the scanned page loads JavaScript from
+ * (scriptInventory.ts) — the PCI DSS 6.4.3 inventory. Owner view only: the
+ * inventory lives in the raw results, which the public share page never
+ * receives. Authorising an origin happens on its finding, not here.
+ */
+export function ScriptInventorySection({ inventory }: { inventory: ScriptInventoryResult | undefined }) {
+  if (!inventory) return null; // scan stored before the inventory existed
+
+  return (
+    <Card className="print:border-slate-300 print:bg-white">
+      <CardHeader className="mb-2">
+        <CardTitle>third-party scripts</CardTitle>
+      </CardHeader>
+      {inventory.status === "error" ? (
+        <Alert variant="warning" title="Script inventory unavailable this scan">
+          <p className="text-xs">{inventory.note}</p>
+        </Alert>
+      ) : (
+        <div className="space-y-4">
+          <CardDescription className="text-xs">
+            Every outside source this page loads JavaScript from — the script inventory PCI DSS 6.4.3 asks for. Each one has an
+            &ldquo;unreviewed&rdquo; finding below until you authorise it by marking that finding as accepted with a justification.
+          </CardDescription>
+          {inventory.paymentPage.detected && (
+            <Alert variant="warning" title="This looks like a payment page">
+              <p className="text-xs">Evidence: {inventory.paymentPage.signals.join("; ")}.</p>
+            </Alert>
+          )}
+          {inventory.note && (
+            <Alert variant="info">
+              <p className="text-xs">{inventory.note}</p>
+            </Alert>
+          )}
+          {inventory.origins.length === 0 ? (
+            <p className="text-sm text-cybermuted">
+              {inventory.status === "partial"
+                ? "No third-party scripts in the page's HTML."
+                : "This page loads no scripts from third-party sources."}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b border-cyberborder text-cybermuted print:text-slate-600">
+                    <th scope="col" className="py-2 pr-4 font-semibold">Origin</th>
+                    <th scope="col" className="py-2 pr-4 font-semibold">Found by</th>
+                    <th scope="col" className="py-2 pr-4 font-semibold">Integrity</th>
+                    <th scope="col" className="py-2 font-semibold">Sample script</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventory.origins.map((entry) => {
+                    const integrity = INTEGRITY_META[entry.integrity];
+                    return (
+                      <tr key={entry.origin} className="border-b border-cyberborder/40 align-top last:border-0">
+                        <td className="py-2 pr-4">
+                          <span className="break-all font-mono text-cybertext print:text-slate-800">{entry.origin}</span>
+                          {entry.paymentProvider && (
+                            <span className="mt-1 block text-[10px] uppercase tracking-wide text-warning">
+                              {entry.paymentProvider} payment script
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap py-2 pr-4 text-cybertext/70 print:text-slate-700">{FOUND_BY_LABEL[entry.foundBy]}</td>
+                        <td className={`whitespace-nowrap py-2 pr-4 font-medium ${integrity.text}`}>{integrity.label}</td>
+                        <td className="py-2 text-cybertext/70 print:text-slate-700">
+                          <span className="break-all font-mono">{entry.sampleUrls[0]}</span>
+                          {entry.scriptCount > 1 && (
+                            <span className="mt-1 block text-cybermuted">+{entry.scriptCount - 1} more from this origin</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {inventory.truncated && (
+            <p className="text-xs text-cybermuted">
+              Showing {inventory.origins.length} of {inventory.totalOrigins} origins.
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 

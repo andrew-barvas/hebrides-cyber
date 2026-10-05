@@ -2714,3 +2714,35 @@ somewhere the analyser can't see), add a \`nosemgrep\` comment on that line so
 future scans skip it.`;
   return [entry.intro, example, suppress].filter(Boolean).join("\n\n");
 }
+
+// ---- Third-party script inventory (scriptInventory.ts) ------------------------
+
+/**
+ * List items are one line each: RemediationBody (ScanReportView.tsx) only
+ * renders a block as a list when every line starts with a bullet.
+ */
+export function scriptInventoryRemediation(origin: string, paymentPage: boolean): string {
+  const paymentNote = paymentPage
+    ? `
+
+On a payment page, the strongest fix is to take card entry off your page: use your payment provider's hosted fields or hosted payment page (an iframe or a redirect), so scripts on your page can't read what the customer types into the card form.`
+    : "";
+
+  return `Decide whether this page should load scripts from \`${origin}\`, then record the decision.
+
+1. **Identify it.** Work out which service it belongs to (analytics, chat widget, payment provider, tag manager…) and who added it. If nobody knows, treat that as a warning sign: card-skimming attacks work by adding exactly this kind of script.
+2. **Remove it** if the page doesn't need it. If it arrives through a tag manager, remove the tag there.
+3. **Authorise it** if it is needed: use **Mark as accepted / authorised** on this finding and write the justification — what it does, why this page needs it, and who approved it. That record is its entry in your PCI DSS 6.4.3 script inventory. You can authorise several sources at once.
+4. **Lock it down** so nothing else can join it unnoticed.
+
+- Pin versioned files (a library from a CDN) with Subresource Integrity: \`integrity="sha384-…" crossorigin="anonymous"\`. Scripts that change by design, such as a payment provider's SDK or a tag manager, can't be pinned; rely on the allowlist below instead.
+- Allow only the sources you have authorised in your Content-Security-Policy, and add a \`report-to\` (or \`report-uri\`) endpoint so the browser tells you when it blocks something new:
+
+\`\`\`
+Content-Security-Policy: script-src 'self' ${origin}
+\`\`\`
+
+- Limit who can publish in your tag manager: anyone who can publish a tag can add a script to every page.
+
+Each scan compares this list with the previous one, so a new script source shows as **New** and one that disappears shows as **Fixed**. That catches sources being added or removed; it doesn't see changes inside a script's contents or to your security headers, which PCI DSS 11.6.1 also expects you to detect (weekly, or as your risk analysis sets). A Content-Security-Policy report endpoint or a client-side script-monitoring service covers that part.${paymentNote}`;
+}

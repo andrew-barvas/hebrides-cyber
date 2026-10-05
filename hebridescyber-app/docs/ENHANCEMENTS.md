@@ -1559,7 +1559,13 @@ buy commercial EASM. It's time-sensitive.
 
 ## E-62 — Third-party script inventory and change alerts
 
-**Status: open.**
+**Status: done (2026-10-01).** `src/lib/scanners/scriptInventory.ts`, base
+suite, with runtime capture in `playwright.ts`. The open question below was
+settled as an inventory with acknowledgement inside the finding model: one
+persistent `script-inventory.unreviewed:<origin>` finding per origin, open
+while the page loads from it, closed by accepting it with a justification
+(E-64's triage) or by removing the script. New/Fixed diffing is the change
+signal; it sees origins appear or disappear, not changes inside a script.
 **What**: record every external script source per scanned page, and flag
 new ones since the previous scan.
 **Why**: PCI DSS v4.0.1 6.4.3 (payment-page script inventory) and 11.6.1

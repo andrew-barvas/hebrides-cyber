@@ -610,13 +610,30 @@ const INTEGRITY_ATTR_RE = /\bintegrity=["'][^"']+["']/i;
 // rolled-up wording used once this cap is hit.
 const MAX_UNPROTECTED_RESOURCES = 15;
 
-function isCrossOrigin(rawUrl: string, pageOrigin: string): boolean {
+export function isCrossOrigin(rawUrl: string, pageOrigin: string): boolean {
   try {
     const resolved = new URL(rawUrl, pageOrigin);
     return resolved.origin !== pageOrigin;
   } catch {
     return false; // unparseable (e.g. a data: URI) — not a cross-origin asset to flag
   }
+}
+
+export type ScriptTag = { src: string; hasIntegrity: boolean };
+
+/**
+ * Every `<script src>` tag in raw HTML, in document order: the src exactly as
+ * written (unresolved) and whether the tag carries an integrity attribute.
+ * Inline scripts are skipped. Shared with scriptInventory.ts, which lists
+ * every third-party script origin rather than only the unprotected ones.
+ */
+export function extractScriptTags(html: string): ScriptTag[] {
+  const tags: ScriptTag[] = [];
+  for (const tag of html.match(SCRIPT_TAG_RE) ?? []) {
+    const src = tag.match(SRC_ATTR_RE)?.[1];
+    if (src) tags.push({ src, hasIntegrity: INTEGRITY_ATTR_RE.test(tag) });
+  }
+  return tags;
 }
 
 async function checkSubresourceIntegrity(targetUrl: string): Promise<UnprotectedResource[]> {
@@ -628,11 +645,10 @@ async function checkSubresourceIntegrity(targetUrl: string): Promise<Unprotected
 
     const unprotected: UnprotectedResource[] = [];
 
-    for (const tag of html.match(SCRIPT_TAG_RE) ?? []) {
+    for (const { src, hasIntegrity } of extractScriptTags(html)) {
       if (unprotected.length >= MAX_UNPROTECTED_RESOURCES) break;
-      const src = tag.match(SRC_ATTR_RE)?.[1];
-      if (!src || !isCrossOrigin(src, pageOrigin)) continue; // inline or same-origin script — not this check's concern
-      if (!INTEGRITY_ATTR_RE.test(tag)) unprotected.push({ kind: "script", url: src });
+      if (!isCrossOrigin(src, pageOrigin)) continue; // same-origin script — not this check's concern
+      if (!hasIntegrity) unprotected.push({ kind: "script", url: src });
     }
 
     for (const tag of html.match(LINK_STYLESHEET_RE) ?? []) {

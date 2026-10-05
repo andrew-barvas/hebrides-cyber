@@ -45,8 +45,11 @@ export function normaliseToolKey(name: string): string {
 
 // A base check in either state looked at nothing. "not_applicable" is
 // different: the check ran and found its subject absent (no WordPress
-// plugins detected), which can genuinely be a fix.
-const BASE_NOT_RUN = new Set(["error", "not_configured"]);
+// plugins detected), which can genuinely be a fix. "partial" saw only part
+// of its subject (scriptInventory.ts without the headless browser lists the
+// HTML's scripts but not runtime-injected ones), so its silence about a
+// finding isn't a fix either.
+const BASE_NOT_RUN = new Set(["error", "not_configured", "partial"]);
 
 /**
  * From a scan's `extended` results object (absent for passive scans) and its

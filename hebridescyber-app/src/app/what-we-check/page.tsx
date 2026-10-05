@@ -190,6 +190,19 @@ const categories: CheckCategory[] = [
     ],
   },
   {
+    id: "script-inventory",
+    icon: "📜",
+    name: "Third-Party Script Inventory",
+    badge: "Runs on every scan",
+    desc: "Every outside source your page loads JavaScript from — the inventory PCI DSS v4.0.1 requirement 6.4.3 asks for on payment pages, and the most common route for card-skimming code. Each source stays listed as unreviewed until you authorise it with a written justification.",
+    checks: [
+      "Scripts written into the page's HTML, plus those a tag manager or another script adds once the page runs in a real browser",
+      "Whether each source's script tags carry a Subresource Integrity hash",
+      "Payment pages recognised from evidence — card input fields, a checkout form, or a payment provider's script (Stripe, PayPal, Square and others) — and their scripts raised to medium",
+      "New and removed script sources shown as changes between scans (PCI DSS 11.6.1). Changes inside a script's contents need a dedicated monitor",
+    ],
+  },
+  {
     id: "end-of-life",
     icon: "⏳",
     name: "End-of-Life Software",
