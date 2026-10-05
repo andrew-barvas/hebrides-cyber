@@ -21,11 +21,12 @@ Database migrations are applied through **046**; the next free number is **047**
 | SAST with Opengrep + our own 34-rule pack (E-69) | PR #3 — `src/worker/tools/sast.ts`, `sast-rules/`, `repoClone.ts`, `sast-rules.yml` |
 | Third-party script inventory, PCI 6.4.3/11.6.1 (E-62) | PR #4 — `scriptInventory.ts`; `info` on ordinary pages, `low` on payment pages (owner decision) |
 | Finding triage: accept/authorise, false positive, snooze (E-64) | PR #5 — `finding_triage` (046), `/api/findings/triage`, report UI; only false positives leave the score |
+| Site crawler with page-level checks on every page (E-70) | `crawler.ts`, `crawlFindings.ts`, `crawl` in `ScanResults`; script inventory merges inner-page origins |
 | End-of-life detection; certificate checks (incl. subdomains); TLS now reads broken certs | `endOfLife.ts`, `subdomainCerts.ts`, `tls.ts` |
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **64 / 57 / 65 / 65** (statements /
+Coverage floor (`vitest.config.mts`): **65 / 57 / 66 / 66** (statements /
 branches / functions / lines). Lint: 0 errors (31 known warnings).
 
 ## Rules that kept biting — follow these
@@ -58,9 +59,11 @@ branches / functions / lines). Lint: 0 errors (31 known warnings).
    PR bodies end with the Claude Code attribution line. Draft PR, wait for
    CI, squash-merge, watch the `Deploy` run.
 
-## The next five features, in order
+## The next four features, in order
 
-### 1. E-70 — Site crawler, with page-level checks on every page
+### ~~1. E-70 — Site crawler~~ — shipped (see "Where things stand")
+
+Kept for reference; not yet covered by the crawler: authenticated crawling, JS-rendered link discovery (a SPA's client-side routes), per-page SRI/cookies for pages behind forms.
 
 **Why:** most checks look only at the homepage. Headers, error disclosure,
 SRI, script inventory, cookies and mixed content never see `/login`,

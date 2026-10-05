@@ -33,6 +33,7 @@
 import { extractScriptTags } from "./webapp";
 import { registrableDomain, isWithinDomain } from "./registrableDomain";
 import type { PlaywrightResult, RuntimeScripts } from "./playwright";
+import type { CrawlResult } from "./crawler";
 
 export const MAX_ORIGINS = 50;
 export const MAX_SAMPLE_URLS = 5;
@@ -56,6 +57,8 @@ export type ScriptOrigin = {
   foundBy: ScriptFoundBy;
   /** Set when the origin is a known payment provider's script host. */
   paymentProvider?: string;
+  /** Crawled pages with payment signals that load this origin (paths, up to 3). */
+  paymentPages?: string[];
 };
 
 export type PaymentPageSignals = {
@@ -204,6 +207,7 @@ type Accumulator = {
   /** "<url>|<hasIntegrity>" per distinct tag seen. */
   tags: Set<string>;
   paymentProvider?: string;
+  paymentPages: Set<string>;
 };
 
 export type InventoryInput = {
@@ -214,6 +218,9 @@ export type InventoryInput = {
   html: { body: string; url: string } | null;
   /** What the browser saw, or null if it couldn't load the page. */
   runtime: { finalUrl: string; scripts: RuntimeScripts } | null;
+  /** Other pages of the site (from the crawler), already resolved to absolute
+   *  script URLs, with any payment-page evidence found on each. */
+  crawledPages?: { url: string; scripts: { src: string; hasIntegrity: boolean }[]; paymentSignals: string[] }[];
 };
 
 /** Pure: the inventory from whatever sources were read. */
@@ -227,7 +234,7 @@ export function buildScriptInventory(input: InventoryInput): ScriptInventoryResu
   const isFirstParty = firstPartyMatcher([targetUrl, html?.url ?? "", runtime?.finalUrl ?? ""].filter(Boolean));
   const byOrigin = new Map<string, Accumulator>();
 
-  function record(raw: string, base: string, source: "html" | "runtime", integrity: boolean | null) {
+  function record(raw: string, base: string, source: "html" | "runtime", integrity: boolean | null, paymentPage?: string) {
     let url: URL;
     try {
       url = new URL(raw, base);
@@ -237,13 +244,14 @@ export function buildScriptInventory(input: InventoryInput): ScriptInventoryResu
     if ((url.protocol !== "https:" && url.protocol !== "http:") || isFirstParty(url)) return;
     let entry = byOrigin.get(url.origin);
     if (!entry) {
-      entry = { urls: new Set(), html: false, runtime: false, tags: new Set() };
+      entry = { urls: new Set(), html: false, runtime: false, tags: new Set(), paymentPages: new Set() };
       byOrigin.set(url.origin, entry);
     }
     entry.urls.add(url.href);
     entry[source] = true;
     entry.paymentProvider ??= paymentProviderFor(url);
     if (integrity !== null) entry.tags.add(`${url.href}|${integrity}`);
+    if (paymentPage) entry.paymentPages.add(paymentPage);
   }
 
   if (html) {
@@ -252,6 +260,17 @@ export function buildScriptInventory(input: InventoryInput): ScriptInventoryResu
   if (runtime) {
     for (const el of runtime.scripts.elements) record(el.src, runtime.finalUrl, "runtime", el.integrity);
     for (const url of runtime.scripts.requested) record(url, runtime.finalUrl, "runtime", null);
+  }
+
+  for (const page of input.crawledPages ?? []) {
+    let path = page.url;
+    try {
+      const u = new URL(page.url);
+      path = `${u.pathname}${u.search}`.slice(0, 80);
+    } catch {
+      // keep the raw string
+    }
+    for (const tag of page.scripts) record(tag.src, page.url, "html", tag.hasIntegrity, page.paymentSignals.length > 0 ? path : undefined);
   }
 
   const all: ScriptOrigin[] = [...byOrigin.entries()]
@@ -268,6 +287,7 @@ export function buildScriptInventory(input: InventoryInput): ScriptInventoryResu
         integrity,
         foundBy: entry.html && entry.runtime ? "both" : entry.html ? "html" : "runtime",
         ...(entry.paymentProvider ? { paymentProvider: entry.paymentProvider } : {}),
+        ...(entry.paymentPages.size > 0 ? { paymentPages: [...entry.paymentPages].sort().slice(0, 3) } : {}),
       };
     });
 
@@ -310,9 +330,20 @@ async function fetchHtml(targetUrl: string): Promise<InventoryInput["html"]> {
   }
 }
 
-export async function checkScriptInventory(targetUrl: string, playwright: PlaywrightResult): Promise<ScriptInventoryResult> {
+/** Crawled pages whose scripts count toward the inventory: pages after the
+ *  start page that returned a real (non-error) page. A "partial" or missing
+ *  crawl just contributes fewer pages. */
+export function crawledPagesForInventory(crawl: CrawlResult | undefined): InventoryInput["crawledPages"] {
+  if (!crawl || (crawl.status !== "checked" && crawl.status !== "partial")) return [];
+  return crawl.pages
+    .slice(1)
+    .filter((p) => p.checks && p.status >= 200 && p.status < 300)
+    .map((p) => ({ url: p.url, scripts: p.checks!.scripts, paymentSignals: p.checks!.paymentSignals }));
+}
+
+export async function checkScriptInventory(targetUrl: string, playwright: PlaywrightResult, crawl?: CrawlResult): Promise<ScriptInventoryResult> {
   const html = await fetchHtml(targetUrl);
-  return buildScriptInventory({ targetUrl, html, runtime: runtimeCapture(playwright) });
+  return buildScriptInventory({ targetUrl, html, runtime: runtimeCapture(playwright), crawledPages: crawledPagesForInventory(crawl) });
 }
 
 // ---- Finding text helpers ------------------------------------------------------

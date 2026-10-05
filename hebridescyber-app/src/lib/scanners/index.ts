@@ -23,6 +23,8 @@ import { checkTakeover, type TakeoverResult } from "./takeover";
 import { checkDomainRegistration, type DomainRegistrationResult } from "./domainRegistration";
 import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
+import { checkCrawl, type CrawlResult } from "./crawler";
+import { buildCrawlFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
@@ -35,7 +37,7 @@ export type {
   PortsResult, PlaywrightResult, ReconResult, WebAppResult, DirectoryListingResult,
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
-  EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult,
+  EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult, CrawlResult,
 };
 
 export type ScanResults = {
@@ -65,6 +67,7 @@ export type ScanResults = {
   endOfLife?: EndOfLifeResult;
   subdomainCerts?: SubdomainCertsResult;
   scriptInventory?: ScriptInventoryResult;
+  crawl?: CrawlResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
 };
@@ -233,6 +236,12 @@ export async function runAllChecks(
     isDrupal: cmsType === "drupal",
   };
 
+  // Site crawl (E-70): page-level checks on every reachable page. Seeded with
+  // the Wayback URLs that still resolve; runs alongside the batch below.
+  const crawlPending = checkCrawl(targetUrl, {
+    seedPaths: waybackDiscovery.status === "checked" ? waybackDiscovery.discovered.map((d) => d.path) : [],
+  }).catch((err: Error): CrawlResult => ({ status: "error", note: `Crawl failed: ${err.message}` }));
+
   const settled2 = await Promise.allSettled([
     checkPlaywrightPageLoad(targetUrl),
     checkWebApp(targetUrl, cms),
@@ -254,7 +263,8 @@ export async function runAllChecks(
 
   // Needs the headless browser's runtime script capture; falls back to the
   // raw HTML alone ("partial") when Playwright failed.
-  const scriptInventoryPending = checkScriptInventory(targetUrl, playwright).catch(
+  const crawl = await crawlPending;
+  const scriptInventoryPending = checkScriptInventory(targetUrl, playwright, crawl).catch(
     (err: Error): ScriptInventoryResult => ({ status: "error", note: err.message })
   );
 
@@ -322,6 +332,7 @@ export async function runAllChecks(
     endOfLife,
     subdomainCerts,
     scriptInventory,
+    crawl,
     zap,
   };
 }
@@ -1043,6 +1054,10 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       ? `This page looks like a payment page (${signals.join("; ")}), so PCI DSS v4.0.1 applies to every script on it: requirement 6.4.3 needs each one inventoried, authorised and backed by a written business or technical justification, and 11.6.1 needs unauthorised changes to them detected.`
       : "This page shows no payment signals (card fields, a checkout form or a payment provider's script), so for PCI DSS this is good practice here rather than a requirement. If your checkout loads the same scripts (through a site-wide tag manager, for example), requirements 6.4.3 (inventory, authorisation and justification for every payment-page script) and 11.6.1 (detecting unauthorised changes) apply there.";
     for (const entry of inventory.origins) {
+      const onPayment = detected || !!entry.paymentPages?.length;
+      const entryContext = detected || !entry.paymentPages?.length
+        ? context
+        : `One of the pages that loads it looks like a payment page (${entry.paymentPages!.join(", ")}), so PCI DSS v4.0.1 applies to every script on it: requirement 6.4.3 needs each one inventoried, authorised and backed by a written business or technical justification, and 11.6.1 needs unauthorised changes to them detected.`;
       const shown = entry.origin.replace(/^https:\/\//, "");
       const more = entry.scriptCount > entry.sampleUrls.length ? ` (and ${entry.scriptCount - entry.sampleUrls.length} more)` : "";
       findings.push({
@@ -1051,13 +1066,18 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         // ordinary pages, "low" where payment signals make PCI 6.4.3 apply.
         // Owner decision 2026-10-05 — a typical site loads ~10 sources, and
         // charging each would cut scores ~20 points for normal analytics.
-        severity: detected ? "low" : "info",
+        severity: onPayment ? "low" : "info",
         title: `Unreviewed third-party script source: ${shown}`,
-        detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${context} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
-        remediation: FIX.scriptInventoryRemediation(entry.origin, detected),
+        detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${entryContext} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
+        remediation: FIX.scriptInventoryRemediation(entry.origin, onPayment),
       });
     }
   }
+
+  // --- Site crawl (E-70) ------------------------------------------------------
+  // Page-level issues on pages beyond the one scanned. "partial" still
+  // evidences what it saw; findingLifecycle.ts won't resolve on it.
+  findings.push(...buildCrawlFindings(results.crawl));
 
   if (findings.length === 0) {
     findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });

@@ -122,6 +122,14 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = {
   "headers.cors-wildcard": [OWASP_A05, OWASP_A01, CIS_4, PCI_REQ6, ISO_A9],
   "headers.info-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
 
+  // --- Site crawl (E-70): the same controls as the home-page checks they extend ---
+  "crawl.header-gap": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
+  "crawl.cookie-flags": [OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
+  "crawl.mixed-content": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+  "crawl.insecure-form": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+  "crawl.error-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
+  "crawl.missing-sri": [OWASP_A08, CIS_16],
+
   // --- DNS / email ---
   "dns.spf-missing": [CIS_9, ISO_A13],
   "dns.spf-issues": [CIS_9, ISO_A13],

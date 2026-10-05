@@ -178,7 +178,7 @@ async function checkHttpMethods(targetUrl: string): Promise<HttpMethodsData> {
 
 // ── Error page disclosure ─────────────────────────────────────────────────────
 
-const DISCLOSURE_PATTERNS: { re: RegExp; label: string }[] = [
+export const DISCLOSURE_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /at\s+[\w.<>]+\([\w./\\:]+:\d+:\d+\)/,    label: "Node.js stack trace" },
   { re: /File ".*", line \d+, in /,                label: "Python stack trace" },
   { re: /\.(rb|py|php|java|cs):\d+:/,              label: "Source file path in error" },
