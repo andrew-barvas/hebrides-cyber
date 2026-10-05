@@ -6,8 +6,8 @@ name: Deploy
 # blocks merge (with branch-protection configured) rather than only
 # blocking deploy after merge.
 #
-# E-49/E-56: migrations are applied automatically via `supabase db push`
-# before deploy. The schema check verifies the result. This eliminates
+# Migrations are applied before deploy by src/scripts/apply-migrations.ts
+# (ledger + drift check). The schema check verifies the result. This eliminates
 # the manual SQL Editor step that caused the 2026-09-13 incident.
 #
 # E-57: a health check curl runs post-deploy to catch runtime failures
@@ -27,7 +27,12 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      baseline_up_to:
+        description: "One-time: record migrations up to this number (e.g. 047) as already applied, before applying. Leave empty normally."
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -104,41 +109,48 @@ jobs:
         with:
           node-version: 20
 
-      # E-56: apply pending migrations automatically via psql.
-      # Requires DATABASE_URL (direct Postgres connection string from
-      # Supabase Settings > Database > Connection string > URI).
-      # All migrations use IF NOT EXISTS / DROP IF EXISTS so this is
-      # idempotent — safe to re-run on every deploy.
-      - name: Apply pending migrations (E-56)
-        if: ${{ env.DATABASE_URL != '' }}
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+
+      # Applies each pending migration once, in order, in its own transaction,
+      # and records it in public.schema_migrations with a checksum (see
+      # src/lib/migrationRunner.ts). It stops on the first failure, refuses
+      # edited applied migrations, and refuses a database that has tables but no
+      # history until it is baselined. The secret is read inside the script: a
+      # step's own `env` isn't visible to its `if`, which is why the old step
+      # never ran. Without DATABASE_URL the script exits 0 and says so.
+      - name: Baseline existing database (manual, one-time)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.baseline_up_to != '' }}
+        working-directory: hebridescyber-app
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          echo "Applying migrations from hebridescyber-app/sql/migrations/..."
-          FAILED=0
-          for f in $(ls hebridescyber-app/sql/migrations/*.sql | sort -V); do
-            echo "  → $(basename $f)"
-            if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$f" 2>&1; then
-              echo "::warning::Migration $(basename $f) failed (may already be applied or have a conflict)"
-              FAILED=$((FAILED + 1))
-            fi
-          done
-          if [ "$FAILED" -gt 0 ]; then
-            echo "::warning::${FAILED} migration(s) reported errors — see above"
-            echo "DB_PUSH_FAILED=true" >> "$GITHUB_ENV"
-          else
-            echo "All migrations applied successfully."
-          fi
+          BASELINE_UP_TO: ${{ inputs.baseline_up_to }}
+        run: npx tsx src/scripts/apply-migrations.ts baseline "$BASELINE_UP_TO"
+
+      - name: Apply pending migrations
+        working-directory: hebridescyber-app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx src/scripts/apply-migrations.ts apply
+
+      - name: Migration drift check
+        working-directory: hebridescyber-app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx src/scripts/apply-migrations.ts status
 
       # E-49: verify expected columns exist as a post-apply safety net.
       - name: Verify schema objects exist
-        if: ${{ env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
+            echo "Supabase secrets are not set - skipping the schema check."
+            exit 0
+          fi
 
           check_table_column() {
             local table="$1" column="$2"

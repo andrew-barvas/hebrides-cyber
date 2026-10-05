@@ -1,0 +1,21 @@
+[21:31:41] [info] Testing the boolean-based blind command injection technique, please wait... (done)
+
+[21:31:41] [warning] Time-related response comparison requires a larger statistical model, please wait................................. (done)
+
+
+[21:31:41] [info] Testing the time-based blind command injection technique, please wait......... (done)
+Enter a writable directory to use for file operations (e.g. '/var/www/html/') /var/www/html/
+[21:31:41] [info] Attempting to create a file in directory '/var/www/html/' for execution output.
+Do you want to use a random file 'ALGADQ.txt' to receive the execution output? [Y/n] Y
+Do you want to use the URL 'http://127.0.0.1:8099/ALGADQ.txt' to receive the execution output? [Y/n] Y
+
+
+[21:31:41] [info] Testing the file-based blind command injection technique, please wait.........
+Unable to write to '/var/www/html/'. Do you want to use '/tmp/' instead? [Y/n] Y
+[21:31:42] [info] Attempting to create a file in directory '/tmp/' for execution output.
+
+
+[21:31:42] [info] Continuing with the file-based blind command injection technique, please wait......... (done)
+[21:31:42] [warning] GET parameter 'q' does not seem to be injectable.
+[21:31:42] [critical] All tested parameters do not appear to be injectable. Try to increase value for '--level' option if you wish to perform more tests. Code injection was not tested; the '--eval' option tests for it. If you suspect that there is some kind of protection mechanism involved, maybe you could try to use option '--tamper' and/or switch '--random-agent'.
+
