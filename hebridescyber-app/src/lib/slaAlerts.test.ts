@@ -103,6 +103,30 @@ describe("sendSlaAlerts", () => {
     expect(updates).toEqual([]);
   });
 
+  it("skips findings the owner has triaged, and works before migration 046", async () => {
+    tables.finding_triage = {
+      data: [{
+        id: "t1", owner: "o1", target_host: "shop.example", check_id: "c.late", state: "accepted_risk", reason: "Compensating control",
+        expires_at: null, created_by: "o1", created_at: daysAgo(2), updated_at: daysAgo(2),
+      }],
+    };
+    await sendSlaAlerts(makeClient(), "o1", "shop.example", NOW);
+    expect(sendEmailMock.mock.calls[0][0].html).not.toContain("Finding late");
+    expect(updates).toEqual([{ values: { sla_warned_at: NOW.toISOString() }, ids: ["soon"] }]);
+
+    sendEmailMock.mockClear();
+    updates = [];
+    tables.finding_triage = { data: null, error: { code: "PGRST205", message: "Could not find the table" } };
+    await sendSlaAlerts(makeClient(), "o1", "shop.example", NOW);
+    expect(sendEmailMock.mock.calls[0][0].html).toContain("Finding late");
+  });
+
+  it("holds off when triage can't be read, rather than alert on accepted findings", async () => {
+    tables.finding_triage = { data: null, error: { code: "57014", message: "statement timeout" } };
+    await sendSlaAlerts(makeClient(), "o1", "shop.example", NOW);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
   it("does nothing before migration 043", async () => {
     tables.finding_lifecycle = { data: null, error: { code: "42P01", message: "relation does not exist" } };
     await expect(sendSlaAlerts(makeClient(), "o1", "shop.example", NOW)).resolves.toBeUndefined();

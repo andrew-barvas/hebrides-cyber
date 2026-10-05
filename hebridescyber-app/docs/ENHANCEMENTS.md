@@ -1584,7 +1584,16 @@ newly discovered hosts to `takeover.ts` and the Assets page.
 
 ## E-64 — Finding workflow state (accept risk / false positive / snooze)
 
-**Status: open.**
+**Status: done (2026-10-01).** `finding_triage` (migration 046), one row per
+(owner, host, checkId); `src/lib/findingTriage.ts` decides what each state
+does; `GET/PUT/DELETE /api/findings/triage` (session or API key, bulk up to
+200, audited); "Mark as…" and a collapsed "Triaged" group with Undo on the
+scan report. Triaged findings leave the open counts, SLA tracking and alerts,
+new-finding alerts and the GitHub Action's gate. One deliberate change from
+the description below: only false positives leave the score — an accepted or
+snoozed risk still exists, so it still counts. Triage doesn't extend an SLA
+deadline: a finding comes back from an expired snooze against its original
+first-seen date.
 **What**: per-finding state with a reason and optional expiry, keyed like
 `finding_lifecycle` (owner, host, checkId). Accepted or false-positive
 findings drop out of the score, alerts and SLA clocks, and come back when

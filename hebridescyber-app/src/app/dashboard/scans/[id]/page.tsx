@@ -6,7 +6,9 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, buildFindingsView, type ViewFinding } from "@/components/ScanReportView";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, TriagedFindings, buildFindingsView, type ViewFinding, type ViewTriage } from "@/components/ScanReportView";
+import { viewTriageFrom } from "@/components/FindingTriage";
+import type { TriageRecord } from "@/lib/findingTriage";
 import ShareLinks from "@/components/ShareLinks";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import FixWizard from "@/components/FixWizard";
@@ -378,6 +380,11 @@ export default function ScanDetailPage() {
   const [connectedRepo, setConnectedRepo] = useState<string | null>(null);
   const [wizardMode, setWizardMode] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Active triage for this scan's site, by checkId (E-64). triageAvailable
+  // stays false until the API confirms migration 046 is applied, so the
+  // "Mark as…" control never appears where saving would fail.
+  const [triage, setTriage] = useState<Map<string, ViewTriage>>(new Map());
+  const [triageAvailable, setTriageAvailable] = useState(false);
   // Kept fresh via onAuthStateChange — reading it once on mount left this page
   // holding an expired token after a few hours idle, which silently 401'd the
   // share-link and AI-fix buttons while the page still looked signed in.
@@ -469,6 +476,34 @@ export default function ScanDetailPage() {
       );
   }, [result]);
 
+  // Triage decisions are per site, not per scan, so they come from the API
+  // rather than this scan's stored results. Non-fatal: without them the
+  // report renders as before, minus "Mark as…".
+  useEffect(() => {
+    if (!result || !sessionToken) return;
+    let cancelled = false;
+    fetch(`/api/findings/triage?scanId=${encodeURIComponent(result.scan_id)}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { available: boolean; items: TriageRecord[] } | null) => {
+        if (cancelled || !body) return;
+        setTriageAvailable(body.available);
+        setTriage(new Map(body.items.filter((t) => t.active).map((t) => [t.checkId, viewTriageFrom(t)])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [result, sessionToken]);
+
+  function handleTriaged(checkId: string, next: ViewTriage | null) {
+    setTriage((prev) => {
+      const updated = new Map(prev);
+      if (next) updated.set(checkId, next);
+      else updated.delete(checkId);
+      return updated;
+    });
+  }
+
   // Gates the "Generate fix PR" button — same pattern as hasTicketIntegration.
   useEffect(() => {
     if (!result) return;
@@ -529,11 +564,18 @@ export default function ScanDetailPage() {
   }
 
   const findings: Finding[] = (result.results?.findings as Finding[] | undefined) ?? [];
-  const taggedOrdered = buildFindingsView(findings, diff, "all");
-  const newOrdered = buildFindingsView(findings, diff, "new");
-  const fixedOrdered = buildFindingsView(findings, diff, "fixed");
-  const visibleFindings = buildFindingsView(findings, diff, filter);
-  const criticalOrHighCount = findings.filter((f) => f.severity === "critical" || f.severity === "high").length;
+  const taggedOrdered = buildFindingsView(findings, diff, "all", triage);
+  const newOrdered = buildFindingsView(findings, diff, "new", triage);
+  const fixedOrdered = buildFindingsView(findings, diff, "fixed", triage);
+  const visibleFindings = buildFindingsView(findings, diff, filter, triage);
+  // Triaged findings leave the open list (they're grouped below it). A false
+  // positive also leaves the compliance, readiness and attack-chain views —
+  // it isn't real; an accepted or snoozed risk still is, so it stays in them.
+  const untriagedOrdered = taggedOrdered.filter((f) => !f.triage);
+  const realOrdered = taggedOrdered.filter((f) => f.triage?.state !== "false_positive");
+  const visibleOpen = visibleFindings.filter((f) => !f.triage);
+  const triagedCount = taggedOrdered.length - untriagedOrdered.length;
+  const criticalOrHighCount = untriagedOrdered.filter((f) => f.severity === "critical" || f.severity === "high").length;
 
   const targetUrl = result.results?.target_url ?? `Scan ${result.scan_id.slice(0, 8)}`;
   const checkedAt = result.results?.checked_at
@@ -590,7 +632,7 @@ export default function ScanDetailPage() {
                 >
                   Compare scans →
                 </Link>
-                {findings.some((f) => f.status !== "fixed") && (
+                {untriagedOrdered.some((f) => f.status !== "fixed") && (
                   <button
                     onClick={() => setWizardModeAndUrl(true)}
                     className="rounded-md border border-cyberborder px-4 py-2 text-sm font-medium text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
@@ -616,7 +658,7 @@ export default function ScanDetailPage() {
               {findings.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   {(["critical", "high", "medium", "low", "info"] as const).map((sev) => {
-                    const count = findings.filter((f) => f.severity === sev).length;
+                    const count = untriagedOrdered.filter((f) => f.severity === sev).length;
                     if (count === 0) return null;
                     const meta = SEVERITY_META[sev];
                     return (
@@ -625,6 +667,11 @@ export default function ScanDetailPage() {
                       </span>
                     );
                   })}
+                  {triagedCount > 0 && (
+                    <span className="rounded-full border border-cyberborder px-2 py-0.5 font-medium text-cybermuted">
+                      {triagedCount} triaged
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -641,13 +688,13 @@ export default function ScanDetailPage() {
           {result.score !== null && <ExecutiveSummary findings={taggedOrdered} score={result.score} />}
 
           {/* Compliance mapping */}
-          <ComplianceSummary findings={taggedOrdered} />
+          <ComplianceSummary findings={realOrdered} />
 
           {/* Cyber Essentials readiness assessment */}
-          <CeReadinessPanel report={assessCeReadiness(taggedOrdered)} />
+          <CeReadinessPanel report={assessCeReadiness(realOrdered)} />
 
           {/* Attack chains */}
-          <CriticalPaths findings={taggedOrdered} />
+          <CriticalPaths findings={realOrdered} />
 
           {/* Check breakdown */}
           <div>
@@ -662,7 +709,7 @@ export default function ScanDetailPage() {
           {/* Fix Wizard — one finding at a time, easiest-first */}
           {wizardMode && (
             <FixWizard
-              findings={taggedOrdered}
+              findings={untriagedOrdered}
               scanId={result.scan_id}
               token={sessionToken ?? undefined}
               hasTicketIntegration={hasTicketIntegration}
@@ -697,25 +744,34 @@ export default function ScanDetailPage() {
                   </div>
                 )}
               </div>
-              {visibleFindings.length > 0 ? (
+              {visibleOpen.length > 0 ? (
                 <div className="space-y-3">
-                  {visibleFindings.map((f, i) => (
+                  {visibleOpen.map((f, i) => (
                     <FindingCard
                       key={f.checkId ?? i}
                       finding={f}
                       scanId={result.scan_id}
                       token={sessionToken ?? undefined}
                       hasTicketIntegration={hasTicketIntegration}
+                      onTriaged={triageAvailable ? handleTriaged : undefined}
                     />
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-cybertext/40">
                   {filter === "new"
-                    ? "No new findings since your last scan of this target."
-                    : "No findings were fixed since your last scan of this target."}
+                    ? "No new open findings since your last scan of this target."
+                    : filter === "fixed"
+                      ? "No findings were fixed since your last scan of this target."
+                      : "Every finding on this scan has been triaged."}
                 </p>
               )}
+              <TriagedFindings
+                findings={visibleFindings}
+                scanId={result.scan_id}
+                token={sessionToken ?? undefined}
+                onTriaged={triageAvailable ? handleTriaged : undefined}
+              />
             </div>
           ) : (
             <div className="rounded-lg border border-neon/20 bg-neon/5 p-5 text-sm text-neon">

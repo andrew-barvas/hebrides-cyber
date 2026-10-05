@@ -274,6 +274,32 @@ management — gated behind `is_admin`, server-side.
    not available for extended-tool findings, see §3.4) for an immediate
    answer, or just re-scan to confirm it clears on the next full pass.
 
+### 4.6a Triage a finding you won't fix (accept, false positive, snooze)
+
+Not every finding is one you'll fix this week. On the scan report, every open
+finding has **Mark as…**:
+
+- **Accepted / authorised** — you know about it and accept it (or, for a
+  third-party script, you've authorised it). Still counts towards your score:
+  the risk is real.
+- **False positive** — not a real issue on your site. From the next scan it
+  no longer counts towards your score.
+- **Snooze 7 / 30 / 90 days** — not now. Still counts towards your score, and
+  comes back by itself when the snooze ends.
+
+A reason is always required, and every decision is recorded in the audit log
+with who made it. Triaged findings move into a collapsed **Triaged** group
+under the findings list (with the reason, who, when and any expiry), drop out
+of the open counts, remediation SLAs and alerts, and don't fail the GitHub
+Action. The decision is per site, not per scan — it applies to every later
+scan of that site until it expires or you click **Undo**. Triage pauses SLA
+tracking but doesn't extend the deadline: a finding snoozed past its deadline
+comes back overdue. Scores already recorded aren't recalculated.
+
+For many findings at once (for example authorising a list of third-party
+scripts), use `PUT /api/findings/triage` with `{ "items": [...] }` — see
+`docs/API.md`.
+
 ### 4.7 Unhappy paths
 
 What actually happens when something doesn't go to plan — per the
