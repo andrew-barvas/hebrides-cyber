@@ -1,0 +1,2 @@
+Target URL,Place,Parameter,Technique(s),Note(s)
+http://127.0.0.1:8099/item?id=1,GET,id,BETU,
