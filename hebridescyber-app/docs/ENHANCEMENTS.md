@@ -1636,3 +1636,35 @@ re-alerting when a `possibly_affected` match later becomes `affected`.
 **Category**: code. **Source**: competitive (Intruder), 2026-10-01.
 (E-67 is left for the untested-modules item `docs/SPRINT-PLAN.md` already
 refers to.)
+
+## E-67 — Lockfile-based, transitive dependency scanning (Snyk Open Source parity)
+
+**Status: done (2026-10-01), branch `feat/lockfile-deps`.**
+**What**: `dependencyManifest.ts` read only manifests' declared ranges at
+the repo root and queried the lowest version each allowed, so it never saw
+transitive dependencies (where most real vulnerabilities are) and could
+flag versions that weren't installed. It now prefers a lockfile per
+ecosystem — package-lock.json (v1–v3)/npm-shrinkwrap.json, pnpm-lock.yaml
+(v5/v6/v9), yarn.lock (v1 and berry), poetry.lock, Pipfile.lock,
+composer.lock, go.sum (+go.mod), gradle.lockfile, Gemfile.lock, Cargo.lock,
+packages.lock.json — and keeps the manifest-range check as a disclosed
+fallback. Findings say lockfile-exact vs manifest-range, direct vs
+transitive, "introduced via a > b > c" and the fixed version; checkIds are
+unchanged (new slugs ruby/cargo/nuget). OSV.dev is queried with
+`/v1/querybatch` (pagination followed) plus `/v1/vulns/{id}`; a failed batch
+is an `error` result. Two `osv.ts` bugs fixed on the way: `next_page_token`
+was ignored (long advisory lists were cut off), and only SEMVER ranges were
+read, so PyPI/Maven/RubyGems/NuGet/Packagist fix versions were lost.
+The scan stores a bounded inventory of every package; the CycloneDX SBOM
+is built from it (correct purls incl. `pkg:maven/group/artifact`, scope,
+dependency graph, linked vulnerabilities) instead of parsing finding
+titles, which remains only for scans stored before this change.
+**Why**: the core of what Snyk Open Source sells; manifest ranges alone
+were both incomplete and imprecise.
+**Parsers are pure** (`dependencyLockfiles.ts`, `parseLockfile()`), for a
+follow-up that diffs base vs head lockfiles on pull requests.
+**Known limits**: root-directory files only (no monorepo sub-packages);
+one lockfile per ecosystem; Maven has no lockfile unless Gradle locking is
+on; Pipfile.lock, go.sum and gradle.lockfile record no graph; 2000-package
+cap per repo.
+**Category**: code. **Source**: competitive gap (Snyk comparison).

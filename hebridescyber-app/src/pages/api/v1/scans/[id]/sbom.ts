@@ -1,10 +1,12 @@
 // GET /api/v1/scans/{id}/sbom — CycloneDX 1.5 JSON SBOM export.
-// Generates a standards-compliant Software Bill of Materials from the scan's
-// dependency manifest findings. Returns 404 if no dependency findings exist.
+// Built from the dependency inventory dependencyManifest.ts stores with the
+// scan (every package, with scope, graph and linked vulnerabilities). Scans
+// stored before that inventory existed fall back to their dependency
+// findings. 404 only when the scan has no dependency data at all.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import type { Finding } from "@/lib/scanners";
-import { generateCycloneDxBom } from "@/lib/sbomExport";
+import { generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory } from "@/lib/sbomExport";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -33,18 +35,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!result) return res.status(404).json({ error: "No results for this scan yet" });
 
-  const findings = ((result.results as { findings?: Finding[] })?.findings ?? []) as Finding[];
-  const depFindings = findings.filter((f) => f.checkId?.startsWith("dependency-manifest."));
+  const results = (result.results ?? {}) as { findings?: Finding[]; extended?: { dependencyManifest?: { inventory?: unknown } } };
+  const inventory = results.extended?.dependencyManifest?.inventory;
 
-  if (depFindings.length === 0) {
-    return res.status(404).json({ error: "No dependency findings in this scan — SBOM requires a connected repository with dependency manifests" });
+  let bom;
+  if (isDependencyInventory(inventory)) {
+    bom = generateCycloneDxBomFromInventory({ targetUrl: scan.target_url, scanId, inventory });
+  } else {
+    const depFindings = (results.findings ?? []).filter((f) => f.checkId?.startsWith("dependency-manifest."));
+    if (depFindings.length === 0) {
+      return res.status(404).json({ error: "No dependency data in this scan — SBOM requires a connected repository with a lockfile or dependency manifest" });
+    }
+    bom = generateCycloneDxBom({ targetUrl: scan.target_url, scanId, findings: depFindings });
   }
-
-  const bom = generateCycloneDxBom({
-    targetUrl: scan.target_url,
-    scanId,
-    findings: depFindings,
-  });
 
   const filenameSafeHost = scan.target_url.replace(/^https?:\/\//, "").replace(/[^a-z0-9.-]/gi, "-");
   res.setHeader("Content-Type", "application/vnd.cyclonedx+json; version=1.5");

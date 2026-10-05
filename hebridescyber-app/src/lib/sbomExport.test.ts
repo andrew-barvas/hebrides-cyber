@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateCycloneDxBom, type SbomInput } from "./sbomExport";
+import { buildPurl, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory, type SbomInput } from "./sbomExport";
+import type { DependencyInventory } from "./scanners/dependencyManifest";
 import type { Finding } from "./scanners";
 
 function makeFinding(overrides: Partial<Finding> = {}): Finding {
@@ -66,11 +67,11 @@ describe("generateCycloneDxBom", () => {
 
     const bom = generateCycloneDxBom(input);
 
-    expect(bom.vulnerabilities).toHaveLength(2);
-    expect(bom.vulnerabilities[0].id).toBe("CVE-2021-23337");
-    expect(bom.vulnerabilities[0].source.name).toBe("OSV.dev");
-    expect(bom.vulnerabilities[0].affects[0].ref).toBe("npm:lodash@4.17.20");
-    expect(bom.vulnerabilities[1].id).toBe("CVE-2020-28500");
+    expect(bom.vulnerabilities!).toHaveLength(2);
+    expect(bom.vulnerabilities![0].id).toBe("CVE-2021-23337");
+    expect(bom.vulnerabilities![0].source.name).toBe("OSV.dev");
+    expect(bom.vulnerabilities![0].affects[0].ref).toBe("npm:lodash@4.17.20");
+    expect(bom.vulnerabilities![1].id).toBe("CVE-2020-28500");
   });
 
   it("skips non-dependency findings", () => {
@@ -141,6 +142,116 @@ describe("generateCycloneDxBom", () => {
     };
 
     const bom = generateCycloneDxBom(input);
-    expect(bom.components[0].purl).toBe("pkg:golang/github.com/pkg/errors@0.9.1");
+    expect(bom.components[0].purl).toBe("pkg:golang/github.com/pkg/errors@v0.9.1");
+  });
+
+  it("builds a correct Maven purl (group/artifact, not %3A)", () => {
+    const bom = generateCycloneDxBom({
+      targetUrl: "https://example.com",
+      scanId: "s",
+      findings: [makeFinding({ checkId: "dependency-manifest.maven:org.example:demo-lib", title: "Vulnerable dependency: org.example:demo-lib@1.0.0" })],
+    });
+    expect(bom.components[0].purl).toBe("pkg:maven/org.example/demo-lib@1.0.0");
+  });
+
+  it("prefers structured metadata over the title, listing every version", () => {
+    const bom = generateCycloneDxBom({
+      targetUrl: "https://example.com",
+      scanId: "s",
+      findings: [
+        makeFinding({
+          checkId: "dependency-manifest.maven:org.example:demo-lib",
+          title: "Vulnerable dependency: org.example:demo-lib@1.0.0, 1.1.0",
+          metadata: { packageName: "org.example:demo-lib", versions: [{ version: "1.0.0" }, { version: "1.1.0" }] },
+        }),
+      ],
+    });
+    expect(bom.components.map((c) => c.purl)).toEqual(["pkg:maven/org.example/demo-lib@1.0.0", "pkg:maven/org.example/demo-lib@1.1.0"]);
+  });
+});
+
+describe("buildPurl", () => {
+  it("builds spec-correct purls per ecosystem", () => {
+    expect(buildPurl("Maven", "org.example:demo-lib", "1.2.3")).toBe("pkg:maven/org.example/demo-lib@1.2.3");
+    expect(buildPurl("npm", "@acme/widget", "2.0.0")).toBe("pkg:npm/%40acme/widget@2.0.0");
+    expect(buildPurl("PyPI", "Demo_Pkg", "1.0")).toBe("pkg:pypi/demo-pkg@1.0");
+    expect(buildPurl("Go", "example.com/mod/sub", "1.4.0")).toBe("pkg:golang/example.com/mod/sub@v1.4.0");
+    expect(buildPurl("RubyGems", "demo-gem", "3.1.0")).toBe("pkg:gem/demo-gem@3.1.0");
+    expect(buildPurl("crates.io", "demo_crate", "0.4.1")).toBe("pkg:cargo/demo_crate@0.4.1");
+    expect(buildPurl("NuGet", "Demo.Package", "6.0.0")).toBe("pkg:nuget/Demo.Package@6.0.0");
+    expect(buildPurl("Packagist", "vendor/demo", "5.0.0")).toBe("pkg:composer/vendor/demo@5.0.0");
+    expect(buildPurl("npm", "demo", "1.0.0+build.1")).toBe("pkg:npm/demo@1.0.0%2Bbuild.1");
+  });
+});
+
+function inventory(overrides: Partial<DependencyInventory> = {}): DependencyInventory {
+  return {
+    schemaVersion: 1,
+    files: [{ file: "package-lock.json", ecosystem: "npm", kind: "lockfile", graph: true }],
+    packages: [
+      { ecosystem: "npm", name: "app-dep", version: "1.0.0", direct: true, scope: "required", fileIndex: 0, dependsOn: [1] },
+      { ecosystem: "npm", name: "@acme/inner", version: "2.0.0", direct: false, scope: "required", fileIndex: 0, vulnIds: ["GHSA-test-0001"], fixedVersion: "2.0.1" },
+      { ecosystem: "npm", name: "dev-tool", version: "3.0.0", direct: true, scope: "optional", fileIndex: 0 },
+    ],
+    totalPackages: 3,
+    truncated: false,
+    vulnerabilityLookup: "completed",
+    advisories: [{ id: "GHSA-test-0001", cveIds: ["CVE-2099-0001"], severity: "high", cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", cvssScore: 7.5 }],
+    ...overrides,
+  };
+}
+
+describe("generateCycloneDxBomFromInventory", () => {
+  it("lists every package with purl, group, scope and properties", () => {
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inventory() });
+    expect(bom.components).toHaveLength(3);
+    const inner = bom.components[1];
+    expect(inner).toMatchObject({ group: "@acme", name: "inner", version: "2.0.0", purl: "pkg:npm/%40acme/inner@2.0.0", scope: "required" });
+    expect(inner.properties).toContainEqual({ name: "hebrides:dependency", value: "transitive" });
+    expect(inner.properties).toContainEqual({ name: "hebrides:version-source", value: "lockfile-exact" });
+    expect(bom.components[2].scope).toBe("optional");
+  });
+
+  it("builds the dependency graph from the application down", () => {
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inventory() });
+    expect(bom.metadata.component?.["bom-ref"]).toBe("application");
+    expect(bom.dependencies).toContainEqual({ ref: "application", dependsOn: ["pkg:npm/app-dep@1.0.0", "pkg:npm/dev-tool@3.0.0"] });
+    expect(bom.dependencies).toContainEqual({ ref: "pkg:npm/app-dep@1.0.0", dependsOn: ["pkg:npm/%40acme/inner@2.0.0"] });
+    expect(bom.dependencies).toContainEqual({ ref: "pkg:npm/%40acme/inner@2.0.0", dependsOn: [] });
+  });
+
+  it("links vulnerabilities to the affected components", () => {
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inventory() });
+    expect(bom.vulnerabilities).toHaveLength(1);
+    expect(bom.vulnerabilities![0]).toMatchObject({
+      id: "GHSA-test-0001",
+      references: [{ id: "CVE-2099-0001" }],
+      ratings: [{ severity: "high", method: "CVSSv31", score: 7.5 }],
+      affects: [{ ref: "pkg:npm/%40acme/inner@2.0.0" }],
+    });
+  });
+
+  it("omits vulnerabilities entirely when the lookup failed, rather than claiming none", () => {
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inventory({ vulnerabilityLookup: "failed", advisories: [] }) });
+    expect(bom.vulnerabilities).toBeUndefined();
+    expect(bom.metadata.properties).toContainEqual({ name: "hebrides:vulnerability-lookup", value: "failed" });
+  });
+
+  it("has no graph entries for files that record none", () => {
+    const inv = inventory({
+      files: [{ file: "gradle.lockfile", ecosystem: "Maven", kind: "lockfile", graph: false }],
+      packages: [{ ecosystem: "Maven", name: "org.example:demo-lib", version: "1.0", direct: null, scope: "required", fileIndex: 0 }],
+      advisories: [],
+    });
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inv });
+    expect(bom.components[0]).toMatchObject({ group: "org.example", name: "demo-lib", purl: "pkg:maven/org.example/demo-lib@1.0" });
+    expect(bom.dependencies).toBeUndefined();
+  });
+
+  it("recognises only a usable inventory", () => {
+    expect(isDependencyInventory(inventory())).toBe(true);
+    expect(isDependencyInventory(undefined)).toBe(false);
+    expect(isDependencyInventory({ schemaVersion: 2, files: [], packages: [] })).toBe(false);
+    expect(isDependencyInventory(inventory({ files: [] }))).toBe(false);
   });
 });

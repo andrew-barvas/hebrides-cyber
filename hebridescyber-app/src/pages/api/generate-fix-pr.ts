@@ -199,7 +199,8 @@ async function openRemediationPr(repo: string, baseBranch: string, scanId: strin
 //      fixed version for every vulnerability it reports at the currently
 //      declared floor version. Any vuln without one (still unpatched
 //      upstream, or only a `last_affected` event) means the whole lookup is
-//      treated as "no safe target" — see lookupOsvFixInfo's own comment.
+//      treated as "no safe target" — see lookupOsvFixInfo's own comment. A
+//      fixed version that isn't plain X.Y.Z is skipped here (parseConcreteVersion).
 //   2. The fixed version's major component matches the currently declared
 //      version's major component. A major-version difference is never
 //      auto-bumped, full stop — that's a human's call, not this feature's.
@@ -389,8 +390,9 @@ export async function buildDependencyBumpPlan(pkg: PackageJsonShape): Promise<{
 
     const fixed = parseConcreteVersion(c.fixInfo.fixedVersion);
     if (!fixed) {
-      // Defensive only — lookupOsvFixInfo's own parsing already guarantees
-      // this, but never trust a "safe to write" decision on an assumption.
+      // Load-bearing: lookupOsvFixInfo can name a prerelease or
+      // ecosystem-suffixed fix ("2.0.0-rc.1") since it learned ECOSYSTEM
+      // ranges; this write path only ever bumps to a plain X.Y.Z (gate 1).
       skipped.noFixAvailable.push(`${c.name}@${c.declared.raw}`);
       continue;
     }

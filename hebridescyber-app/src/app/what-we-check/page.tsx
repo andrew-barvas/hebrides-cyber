@@ -14,7 +14,7 @@ type CheckCategory = {
   id: string;
   icon: string;
   name: string;
-  badge?: "Runs on every scan" | "Runs when detected" | "Optional (ZAP)" | "Optional (Agency)";
+  badge?: "Runs on every scan" | "Runs when detected" | "Optional (ZAP)" | "Optional (Agency)" | "Connected repository";
   desc: string;
   checks: string[];
 };
@@ -232,6 +232,21 @@ const categories: CheckCategory[] = [
       "Missing security headers on the authenticated page",
       "Session cookies missing Secure/HttpOnly/SameSite — graded more seriously than the same issue on a public page",
       "CSP and CORS misconfiguration on authenticated responses",
+    ],
+  },
+  {
+    id: "dependencies",
+    icon: "📦",
+    name: "Open-Source Dependencies",
+    badge: "Connected repository",
+    desc: "Connect your GitHub repository and scheduled scans read its lockfile — the exact version of every package your project installs, including the ones your dependencies pull in — and check each against OSV.dev's vulnerability database. If OSV.dev can't be reached, the scan says so rather than reporting a clean result.",
+    checks: [
+      "Lockfiles: npm, pnpm and Yarn; Poetry and Pipenv; Composer; Go modules; Gradle; Bundler; Cargo; NuGet",
+      "Transitive dependencies, with the chain that brings each one in (\"introduced via a > b > c\")",
+      "Direct vs transitive and runtime vs development-only, where the lockfile records it",
+      "The version that fixes every advisory found, when the advisory names one",
+      "Projects without a lockfile: package.json, requirements.txt, composer.json, go.mod and pom.xml ranges, clearly marked as an approximation",
+      "A CycloneDX 1.5 SBOM of every package (not just vulnerable ones) from the API",
     ],
   },
 ];
