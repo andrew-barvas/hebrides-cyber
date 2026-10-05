@@ -353,11 +353,15 @@ async function runExtendedTools(
 
   if (extended.sqlmap.status === "completed" && extended.sqlmap.vulnerable) {
     for (const f of extended.sqlmap.findings) {
+      // GET keeps the original id; the same name in another place gets its own.
+      const key = f.place.toUpperCase() === "GET" ? f.parameter : `${f.parameter}:${f.place.toLowerCase()}`;
+      const where = f.url ? ` on ${f.url}` : "";
+      const how = f.techniques.length > 0 ? ` Techniques that worked: ${f.techniques.join(", ")}.` : "";
       findings.push({
-        checkId: `sqlmap.sqli:${f.parameter}`,
+        checkId: `sqlmap.sqli:${key}`,
         severity: "critical",
         title: `[sqlmap] SQL injection — param: ${f.parameter}`,
-        detail: `DBMS: ${f.dbms ?? "unknown"}. Parameter "${f.parameter}" is vulnerable to SQL injection.`,
+        detail: `DBMS: ${f.dbms ?? "unknown"}. The ${f.place} parameter "${f.parameter}"${where} is vulnerable to SQL injection.${how}`,
         remediation: sqlmapRemediation(f.dbms),
       });
     }

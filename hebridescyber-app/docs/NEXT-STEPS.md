@@ -27,7 +27,7 @@ Database migrations are applied through **046**; the next free number is **047**
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **65 / 58 / 66 / 66** (statements /
+Coverage floor (`vitest.config.mts`): **65 / 59 / 67 / 67** (statements /
 branches / functions / lines). Lint: 0 errors (31 known warnings).
 
 ## Rules that kept biting — follow these
@@ -101,19 +101,16 @@ inner pages; our own site still scores the same or better; docs updated.
 
 Not yet covered: lockfile-less PRs (manifest-only changes), a GitHub App for fork PRs' comments, and pinning a PR's finding to the exact changed line.
 
-### 3. E-72 — Fix sqlmap result reading; verify xsser output (E-18)
+### ~~3. E-72 — Fix sqlmap result reading~~ — sqlmap shipped; xsser outstanding
 
-**Why:** `src/worker/tools/sqlmap.ts` reads `<output-dir>/output.log`, a
-file sqlmap never writes (it writes `<output-dir>/<host>/log`), and matches a
-console line sqlmap doesn't print — so it can never report a finding.
-`xsser.ts`'s output format has never been checked against the real binary.
-**Design:** read sqlmap's per-host `log` (and stdout) and parse its
-injection-point summary block; dedupe by place + parameter; raise
-`maxBuffer`; clean the whole output dir. For xsser, run the real binary in
-CI against a deliberately vulnerable local test app and fix the parser to
-match. Both tests use captured real output as fixtures.
-**Done when:** each tool reports a known issue on a local vulnerable test
-target in a CI job, and its unit tests use real captured output.
+`sqlmap.ts` now reads sqlmap's real output (`sqlmapOutput.ts`, tested against
+captured output in `src/worker/tools/fixtures/sqlmap/`): an unreachable target
+or unfinished run is `error`, nothing to test is `not_applicable`, never clean.
+`.github/workflows/tool-integration.yml` runs the real sqlmap against
+`tests/fixtures/test-app` and uploads xsser's raw output as an artifact.
+**Next session:** download that artifact, write `xsserOutput.ts` + fixtures from
+the real text, and apply the same evidence rules to `xsser.ts` (and `commix.ts`,
+also unverified).
 
 ### 4. E-73 — Scanner accuracy benchmark suite
 
