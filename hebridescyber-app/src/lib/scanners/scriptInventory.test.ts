@@ -367,11 +367,11 @@ describe("script inventory findings", () => {
     runtime: runtime({ requested: ["https://js.stripe.com/v3/", "https://www.googletagmanager.com/gtag/js?id=G-TEST"] }),
   });
 
-  it("opens one low finding per third-party origin, keyed by origin, on an ordinary page", () => {
+  it("opens one info finding (no score cost) per third-party origin, keyed by origin, on an ordinary page", () => {
     const findings = summariseResults(results({ scriptInventory: marketing })).findings;
     expect(findings.map((f) => [f.checkId, f.severity, f.title])).toEqual([
-      ["script-inventory.unreviewed:http://cdn.x.net:8080", "low", "Unreviewed third-party script source: http://cdn.x.net:8080"],
-      ["script-inventory.unreviewed:https://www.googletagmanager.com", "low", "Unreviewed third-party script source: www.googletagmanager.com"],
+      ["script-inventory.unreviewed:http://cdn.x.net:8080", "info", "Unreviewed third-party script source: http://cdn.x.net:8080"],
+      ["script-inventory.unreviewed:https://www.googletagmanager.com", "info", "Unreviewed third-party script source: www.googletagmanager.com"],
     ]);
     const gtm = findings[1];
     expect(gtm.detail).toContain("https://www.googletagmanager.com/gtm.js?id=GTM-TEST");
@@ -383,9 +383,9 @@ describe("script inventory findings", () => {
     expect(gtm.remediation).not.toContain("hosted fields");
   });
 
-  it("raises every origin to medium on a page with payment signals, citing the evidence", () => {
+  it("raises every origin to low on a page with payment signals, citing the evidence", () => {
     const findings = summariseResults(results({ scriptInventory: checkout })).findings;
-    expect(findings.map((f) => f.severity)).toEqual(["medium", "medium"]);
+    expect(findings.map((f) => f.severity)).toEqual(["low", "low"]);
     const stripe = findings.find((f) => f.checkId === "script-inventory.unreviewed:https://js.stripe.com")!;
     expect(stripe.detail).toContain("looks like a payment page (Stripe script from js.stripe.com; a card input field");
     expect(stripe.detail).toContain("6.4.3");

@@ -1033,7 +1033,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // --- Third-party script inventory (PCI DSS 6.4.3 / 11.6.1) ----------------
   // One finding per third-party origin, open for as long as the page loads
   // from it: it closes when the customer authorises the origin (accepts the
-  // finding with a justification) or the page stops loading it. Medium on a
+  // finding with a justification) or the page stops loading it. Low on a
   // page with payment signals, where 6.4.3 applies directly. A "partial"
   // inventory (no headless browser) still evidences every origin it lists.
   const inventory = results.scriptInventory;
@@ -1047,7 +1047,11 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       const more = entry.scriptCount > entry.sampleUrls.length ? ` (and ${entry.scriptCount - entry.sampleUrls.length} more)` : "";
       findings.push({
         checkId: `script-inventory.unreviewed:${entry.origin}`,
-        severity: detected ? "medium" : "low",
+        // An inventory entry, not a vulnerability: "info" (no score cost) on
+        // ordinary pages, "low" where payment signals make PCI 6.4.3 apply.
+        // Owner decision 2026-10-05 — a typical site loads ~10 sources, and
+        // charging each would cut scores ~20 points for normal analytics.
+        severity: detected ? "low" : "info",
         title: `Unreviewed third-party script source: ${shown}`,
         detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${context} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
         remediation: FIX.scriptInventoryRemediation(entry.origin, detected),
