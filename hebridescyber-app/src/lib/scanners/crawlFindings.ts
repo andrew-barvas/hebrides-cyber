@@ -26,13 +26,9 @@ const HEADER_SEVERITY: Record<string, Finding["severity"]> = {
 
 /** Path + query, shortened — what a finding shows and keys on. */
 export function pagePath(url: string): string {
-  try {
-    const u = new URL(url);
-    const p = `${u.pathname}${u.search}`;
-    return p.length > 120 ? `${p.slice(0, 120)}…` : p;
-  } catch {
-    return url.slice(0, 120);
-  }
+  const u = new URL(url); // crawled URLs are always absolute
+  const p = `${u.pathname}${u.search}`;
+  return p.length > 120 ? `${p.slice(0, 120)}…` : p;
 }
 
 function listPages(pages: CrawledPage[]): string {

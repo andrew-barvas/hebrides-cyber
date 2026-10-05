@@ -111,7 +111,6 @@ const hostKey = (host: string) => host.toLowerCase().replace(/^www\./, "");
 /** Same site: same host (www and apex are one) and port; http or https. */
 export function isSameSite(url: URL, start: URL): boolean {
   return (
-    (url.protocol === "https:" || url.protocol === "http:") &&
     hostKey(url.hostname) === hostKey(start.hostname) &&
     // URL drops a scheme's default port, so http://x:80 and https://x both read "".
     url.port === start.port
@@ -135,12 +134,11 @@ export function normaliseUrl(raw: string, base: string): URL | null {
   url.username = "";
   url.password = "";
   const params = [...url.searchParams.entries()].filter(([k]) => !TRACKING_PARAM_RE.test(k));
-  params.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  params.sort(([a], [b]) => a.localeCompare(b));
   url.search = "";
   if (params.length > 0 && params.length <= CRAWL_LIMITS.maxQueryParams) {
     for (const [k, v] of params) url.searchParams.append(k, v);
   }
-  if (url.pathname === "") url.pathname = "/";
   return url;
 }
 
@@ -234,6 +232,9 @@ export function parseRobots(text: string): RobotsRules {
 
 // ---- HTML reading -------------------------------------------------------------------
 
+/** The captured value of a regex whose alternatives each capture one group. */
+const pick = (m: RegExpMatchArray): string => m.slice(1).find((g) => g !== undefined) as string;
+
 const decodeEntities = (s: string) => s.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'");
 
 const LINK_RE = /<(?:a|area)\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
@@ -259,10 +260,10 @@ export function extractLinks(html: string): { base: string | null; hrefs: string
   const base = html.match(BASE_RE);
   const hrefs: string[] = [];
   for (const m of html.matchAll(LINK_RE)) {
-    const href = decodeEntities(m[1] ?? m[2] ?? m[3] ?? "").trim();
+    const href = decodeEntities(pick(m)).trim();
     if (href && !href.startsWith("#") && !/^(?:javascript|mailto|tel|data|sms):/i.test(href)) hrefs.push(href);
   }
-  return { base: base ? decodeEntities(base[1] ?? base[2] ?? "") : null, hrefs };
+  return { base: base ? decodeEntities(pick(base)) : null, hrefs };
 }
 
 const MAX_LISTED = 5;
@@ -301,7 +302,7 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
     const kind = m[1].toLowerCase();
     if (kind === "link" && !REL_STYLESHEET_RE.test(tag)) continue;
     const raw = tag.match(SRC_RE);
-    const ref = decodeEntities(raw?.[1] ?? raw?.[2] ?? "").trim();
+    const ref = raw ? decodeEntities(pick(raw)).trim() : "";
     if (!ref) continue;
     let resolved: URL;
     try {
@@ -340,7 +341,7 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
   checks.formCount = forms.length;
   for (const tag of forms) {
     const m = tag.match(FORM_ACTION_RE);
-    const action = decodeEntities(m?.[1] ?? m?.[2] ?? "").trim();
+    const action = m ? decodeEntities(pick(m)).trim() : "";
     if (!action) continue;
     try {
       const target = new URL(action, url);
@@ -366,7 +367,7 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
 
 type Fetched =
   | { kind: "page"; page: CrawledPage; html: string | null; finalUrl: URL }
-  | { kind: "failed"; status: number | null }
+  | { kind: "failed" }
   /** Redirected to a page the crawl already has. */
   | { kind: "duplicate" };
 
@@ -381,12 +382,12 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
         headers: { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5" },
       });
     } catch {
-      return { kind: "failed", status: null };
+      return { kind: "failed" };
     }
 
     const location = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && location) {
-      await res.body?.cancel().catch(() => undefined);
+      await res.body?.cancel();
       const next = normaliseUrl(location, url.href);
       if (!next || !isSameSite(next, start)) {
         // Leaves the site: recorded, not followed.
@@ -406,7 +407,7 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
     const contentType = res.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? null;
     const isHtml = contentType === "text/html" || contentType === "application/xhtml+xml";
     if (!isHtml) {
-      await res.body?.cancel().catch(() => undefined);
+      await res.body?.cancel();
       return { kind: "page", page: { url: url.href, status: res.status, contentType, title: null, depth }, html: null, finalUrl: url };
     }
 
@@ -414,20 +415,20 @@ async function fetchPage(start: URL, first: URL, depth: number, seenKeys: Set<st
     try {
       html = (await res.text()).slice(0, CRAWL_LIMITS.maxBodyChars);
     } catch {
-      return { kind: "failed", status: res.status };
+      return { kind: "failed" };
     }
     const page: CrawledPage = { url: url.href, status: res.status, contentType, title: extractTitle(html), depth };
     page.checks = analysePage({ url, status: res.status, res, html });
     return { kind: "page", page, html, finalUrl: url };
   }
-  return { kind: "failed", status: null }; // redirect loop
+  return { kind: "failed" }; // redirect loop
 }
 
 async function fetchText(url: string, maxChars: number): Promise<{ status: number; text: string } | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(CRAWL_LIMITS.requestTimeoutMs), redirect: "follow" });
     const text = res.ok ? (await res.text()).slice(0, maxChars) : "";
-    if (!res.ok) await res.body?.cancel().catch(() => undefined);
+    if (!res.ok) await res.body?.cancel();
     return { status: res.status, text };
   } catch {
     return null;
@@ -568,7 +569,6 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
         }
         if (fetched.kind === "failed") {
           failures++;
-          if (fetched.status === 429 || fetched.status === 503) throttled = true;
           continue;
         }
         if (fetched.page.status === 429 || fetched.page.status === 503) throttled = true;
