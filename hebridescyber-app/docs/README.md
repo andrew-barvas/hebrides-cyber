@@ -34,6 +34,7 @@ entry).
   ID to reference | [`ENHANCEMENTS.md`](ENHANCEMENTS.md) |
 | ...see what's actually blocking this from being safe to sell/scale, with
   verifiable exit criteria | [`ROADMAP.md`](ROADMAP.md) |
+| ...pick up where the last session left off: current state, working rules, and the next five features with full briefs | [`NEXT-STEPS.md`](NEXT-STEPS.md) |
 | ...know what to actually work on next, sprint by sprint | [`SPRINT-PLAN.md`](SPRINT-PLAN.md) |
 | ...get oriented as a new contributor | [`ONBOARDING.md`](ONBOARDING.md) |
 | ...know the rules for writing or extending a scanner check | [`SCANNER-CONVENTIONS.md`](SCANNER-CONVENTIONS.md) |

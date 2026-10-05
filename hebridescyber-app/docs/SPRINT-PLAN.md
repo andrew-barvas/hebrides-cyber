@@ -482,6 +482,22 @@ proprietary. This is the "aggregate" model under AGPL-3.0.
 
 ---
 
+## Competitor-gap sprint (2026-10-01 – 2026-10-05) — delivered
+
+| Item | Status | Evidence |
+|---|---|---|
+| E-68 Emerging-threat alerts | ✅ | PR #1; live dry run against production 2026-10-05 |
+| E-67 Lockfile + transitive dependencies, inventory SBOM | ✅ | PR #2 |
+| E-69 SAST (Opengrep + own 34-rule pack) | ✅ | PR #3; `sast-rules.yml` passed in CI |
+| E-62 Third-party script inventory | ✅ | PR #4 |
+| E-64 Finding triage | ✅ | PR #5; migration 046 applied |
+| End-of-life detection, subdomain certificates, broken-cert detection | ✅ | `endOfLife.ts`, `subdomainCerts.ts`, `tls.ts` |
+| Security: fix-PR repo ownership; multi-repo; Playwright on scan runners | ✅ | commit 3180aa6; Chromium install verified on a real runner |
+| Monthly digest email key | ✅ | `monthly-digest.yml` now passes `RESEND_API_KEY` (no digest could have sent before) |
+
+**Next:** E-70 to E-74 — see `docs/NEXT-STEPS.md`, which has a full brief
+for each and the working rules for a fresh session.
+
 ## After Sprint 18
 
 Deferred long-horizon items (explicitly not forgotten):

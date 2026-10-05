@@ -1547,7 +1547,7 @@ Beagle offers this on its free tier.
 
 ## E-61 — NCSC Web Check / Mail Check replacement landing page
 
-**Status: open.**
+**Status: done (2026-10-01).** `src/app/web-check-alternative/page.tsx`, in the sitemap.
 **What**: a landing page for UK organisations that used NCSC Web Check or
 Mail Check (retired 31 March 2026). It maps what those services and NCSC's
 EASM buyer's guide cover to what we check, including the "Partial" rows
@@ -1654,7 +1654,7 @@ refers to.)
 
 ## E-67 — Lockfile-based, transitive dependency scanning (Snyk Open Source parity)
 
-**Status: done (2026-10-01), branch `feat/lockfile-deps`.**
+**Status: done (2026-10-05), PR #2.**
 **What**: `dependencyManifest.ts` read only manifests' declared ranges at
 the repo root and queried the lowest version each allowed, so it never saw
 transitive dependencies (where most real vulnerabilities are) and could
@@ -1706,3 +1706,48 @@ Java/Go/Ruby rule sets, cross-file taint (`--taint-intrafile`) once its
 false-positive rate is measured on real repos, and a per-repo
 false-positive feedback loop (see E-64).
 **Category**: code. **Source**: SAST build, 2026-10-01.
+
+## E-70 — Site crawler, with page-level checks on every crawled page
+
+**Status: open — next up.** Full brief in `docs/NEXT-STEPS.md` item 1.
+**What**: bounded, read-only, robots-aware crawl (~50 pages, depth 3, same
+origin) feeding headers, cookies, mixed content, SRI, script inventory and
+error disclosure per page, aggregated so one site-wide gap is one finding.
+**Why**: almost every page-level check sees only the homepage today.
+**Impact/effort**: very high / medium-high. **Category**: code.
+**Source**: industry-grade gap analysis, 2026-10-05.
+
+## E-71 — Pull-request dependency checks
+
+**Status: open.** Brief in `docs/NEXT-STEPS.md` item 2.
+**What**: `POST /api/v1/dependency-diff` plus `mode: dependencies` in the
+GitHub Action, reusing E-67's lockfile parsers to report only newly
+introduced vulnerable packages on a PR.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: competitor analysis (Snyk), 2026-10-01.
+
+## E-72 — Fix sqlmap result reading; verify xsser output (E-18)
+
+**Status: open.** Brief in `docs/NEXT-STEPS.md` item 3.
+**What**: `sqlmap.ts` reads a log path sqlmap never writes, so it can never
+report a finding; `xsser.ts`'s parser has never been checked against the
+real binary. Fix both against real captured output.
+**Impact/effort**: high / low-medium. **Category**: code (bug).
+**Source**: scanner test-hardening pass, 2026-10-01.
+
+## E-73 — Scanner accuracy benchmark suite
+
+**Status: open.** Brief in `docs/NEXT-STEPS.md` item 4.
+**What**: a corpus of known-vulnerable and known-clean targets with
+must-find / must-not-find checkIds, run in CI, reporting precision and
+recall per module and failing on regressions.
+**Impact/effort**: high / medium. **Category**: testing.
+**Source**: industry-grade gap analysis, 2026-10-05.
+
+## E-74 — Cross-site findings view with bulk triage
+
+**Status: open.** Brief in `docs/NEXT-STEPS.md` item 5.
+**What**: `/dashboard/findings` — every open finding across all sites,
+filterable and groupable, with bulk triage (E-64's bulk API) and export.
+**Impact/effort**: high / medium. **Category**: code (UI).
+**Source**: industry-grade gap analysis, 2026-10-05.

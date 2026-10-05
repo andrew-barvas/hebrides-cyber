@@ -630,6 +630,19 @@ step uses it today, not that a library exists.
    reported "fixed" (spawned as its own task). It affects ticket
    auto-close, not just SLA.
 
+**Update 2026-10-05.** Items 1, 2 and 4 are done (E-61, E-62, E-64). From a
+Snyk/Intruder comparison (2026-10-01) we also shipped emerging-threat alerts
+(Intruder's "emerging threat scans", E-68), lockfile + transitive dependency
+scanning with a full CycloneDX SBOM (Snyk Open Source parity, E-67) and SAST
+with Opengrep and our own rule pack (E-69; Semgrep's maintained rules can't be
+used in a commercial SaaS). Snyk's free tier covers 5 projects and Team starts
+at $25/month; its DAST, secrets and AI agent products are Enterprise-only.
+Remaining gaps against industry-grade scanners, in priority order, are tracked
+as E-70 to E-74 in `docs/NEXT-STEPS.md`: a site crawler (most checks still see
+only the homepage), PR dependency checks, the sqlmap/xsser fixes, a measured
+accuracy benchmark, and a cross-site findings view. Items 3, 5, 6 and 7 above
+remain open.
+
 The Sprint 17 section's claims about a specific 2026 attack campaign were
 not re-verified in this refresh. Cite the primary sources directly before
 reusing them in marketing.
