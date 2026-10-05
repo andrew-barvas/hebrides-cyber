@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { CRAWLER_USER_AGENT, urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
+import { nextBuildManifestUrl, parseNextPages, CRAWLER_USER_AGENT, urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
 import { buildCrawlFindings } from "./crawlFindings";
 import { buildScriptInventory, checkScriptInventory, crawledPagesForInventory } from "./scriptInventory";
 import { scanCoverage, isCovered } from "../findingLifecycle";
@@ -550,5 +550,51 @@ describe("crawler identity", () => {
     expect(seen.length).toBeGreaterThanOrEqual(3); // robots, start page, sitemap
     expect(new Set(seen)).toEqual(new Set([CRAWLER_USER_AGENT]));
     expect(CRAWLER_USER_AGENT).toContain("hebridescyber.co.uk");
+  });
+});
+
+describe("Next.js route discovery", () => {
+  const start = new URL("https://x.test/");
+  const HOME_WITH_MANIFEST = `<html><head><title>Home</title><script src="/_next/static/abc123XYZ/_buildManifest.js" defer></script></head><body>nothing linked</body></html>`;
+  const manifest = `self.__BUILD_MANIFEST={__rewrites:{},sortedPages:["/","/_app","/_error","/404","/500","/about","/admin/login","/blog/[slug]","/api/hello","/_next/x","/pricing","bad"]};`;
+
+  it("finds the build manifest in a page, only on the same site", () => {
+    expect(nextBuildManifestUrl(HOME_WITH_MANIFEST, start, start)?.href).toBe("https://x.test/_next/static/abc123XYZ/_buildManifest.js");
+    expect(nextBuildManifestUrl("<html></html>", start, start)).toBeNull();
+    // A manifest served from another site is not ours to fetch.
+    expect(nextBuildManifestUrl('<script src="https://cdn.other.test/_next/static/abc123XYZ/_buildManifest.js">', start, start)).toBeNull();
+  });
+
+  it("keeps only static page routes", () => {
+    expect(parseNextPages(manifest)).toEqual(["/about", "/admin/login", "/pricing"]);
+    expect(parseNextPages("no manifest here")).toEqual([]);
+    expect(parseNextPages("sortedPages:[]")).toEqual([]);
+    const many = `sortedPages:[${Array.from({ length: 250 }, (_, i) => `"/p${i}"`).join(",")}]`;
+    expect(parseNextPages(many)).toHaveLength(200);
+  });
+
+  it("crawls pages that nothing links to, using the manifest", async () => {
+    const requests = stubSite({
+      "/robots.txt": { body: "User-agent: *\nAllow: /" },
+      "/": html("<p>no links</p>").body ? { body: HOME_WITH_MANIFEST, headers: SECURE } : {},
+      "/_next/static/abc123XYZ/_buildManifest.js": { type: "application/javascript", body: manifest },
+      "/about": html("about", "About"),
+      "/admin/login": html("login", "Login"),
+      "/pricing": html("pricing", "Pricing"),
+    });
+    const crawl = await checkCrawl("https://x.test/");
+    const paths = requests.map((r) => new URL(r.url).pathname);
+    expect(paths).toEqual(expect.arrayContaining(["/about", "/admin/login", "/pricing"]));
+    expect(paths).not.toContain("/blog/[slug]");
+    expect(paths).not.toContain("/api/hello");
+    expect(crawl.status === "checked" || crawl.status === "partial").toBe(true);
+  });
+
+  it("is quiet when the manifest cannot be read", async () => {
+    stubSite({ "/robots.txt": { body: "User-agent: *\nAllow: /" }, "/": { body: HOME_WITH_MANIFEST, headers: SECURE }, "/_next/static/abc123XYZ/_buildManifest.js": { status: 404 } });
+    const crawl = await checkCrawl("https://x.test/");
+    expect(crawl.status).not.toBe("error");
+    stubSite({ "/robots.txt": { body: "User-agent: *\nAllow: /" }, "/": { body: HOME_WITH_MANIFEST, headers: SECURE }, "/_next/static/abc123XYZ/_buildManifest.js": { fail: true } });
+    expect((await checkCrawl("https://x.test/")).status).not.toBe("error");
   });
 });
