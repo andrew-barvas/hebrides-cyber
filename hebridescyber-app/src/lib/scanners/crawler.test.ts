@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
 import { buildCrawlFindings } from "./crawlFindings";
-import { buildScriptInventory, crawledPagesForInventory } from "./scriptInventory";
+import { buildScriptInventory, checkScriptInventory, crawledPagesForInventory } from "./scriptInventory";
 import { scanCoverage, isCovered } from "../findingLifecycle";
 
 const SECURE = {
@@ -511,5 +511,23 @@ describe("remaining branches", () => {
     if (result.status === "error") throw new Error("unexpected");
     expect(result.pages.find((p) => p.url.endsWith("/blank"))?.contentType).toBeNull();
     expect(result.pages.filter((p) => new URL(p.url).pathname === "/a")).toHaveLength(1);
+  });
+
+  it("marks the inventory partial when the crawl didn't cover the site, so findings aren't resolved", async () => {
+    stubSite({ "/": html("hi") });
+    const playwright = { status: "error", note: "x" } as unknown as Parameters<typeof checkScriptInventory>[1];
+    const ok = { status: "checked" as const, startUrl: "https://x.test/", truncated: false, pages: [] };
+    const browserOk = { status: "checked", loadedOk: true, finalUrl: "https://x.test/", scripts: { requested: [], elements: [] } } as unknown as Parameters<typeof checkScriptInventory>[1];
+
+    expect((await checkScriptInventory("https://x.test/", browserOk, ok)).status).toBe("checked");
+    expect((await checkScriptInventory("https://x.test/", browserOk)).status).toBe("checked");
+    const partial = await checkScriptInventory("https://x.test/", browserOk, { ...ok, status: "partial" });
+    expect(partial.status).toBe("partial");
+    if (partial.status === "partial") expect(partial.note).toContain("crawl was incomplete");
+    const errored = await checkScriptInventory("https://x.test/", browserOk, { status: "error", note: "x" });
+    expect(errored.status).toBe("partial");
+    // Already partial (no browser): unchanged, no duplicate note.
+    const noBrowser = await checkScriptInventory("https://x.test/", playwright, { ...ok, status: "partial" });
+    expect(noBrowser.status).toBe("partial");
   });
 });

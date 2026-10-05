@@ -223,10 +223,15 @@ jobs:
       # to catch runtime failures that pass the build. Waits 45s for Azure
       # SWA's Functions to warm up after deploy.
       - name: Post-deploy health check (E-57)
-        if: ${{ env.SITE_URL != '' }}
+        # The secret is checked inside the script: a step's own `env` isn't
+        # visible to its `if`, so `if: env.SITE_URL != ''` here never ran.
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
         run: |
+          if [ -z "${SITE_URL}" ]; then
+            echo "::notice::SITE_URL secret not set — skipping the post-deploy health check"
+            exit 0
+          fi
           echo "Waiting 45s for Azure Functions warm-up..."
           sleep 45
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/api/health" || echo "000")
