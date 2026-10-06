@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "SBOM Generation — Software Bill of Materials — Hebrides Cyber",
   description:
-    "Generate CycloneDX 1.5 Software Bills of Materials from your dependency manifests. EU Cyber Resilience Act compliant SBOM export for npm, pip, Composer, Go, and Maven projects.",
+    "CycloneDX 1.5 Software Bills of Materials built from your lockfiles, transitive dependencies included, with known vulnerabilities from OSV.dev.",
 };
 
 type Feature = {
@@ -21,8 +21,8 @@ const features: Feature[] = [
   },
   {
     icon: "📦",
-    title: "Five ecosystem coverage",
-    body: "Automatic detection and parsing of package.json (npm), requirements.txt (pip), composer.json (PHP), go.mod (Go), and pom.xml (Maven) — all from your connected GitHub repository.",
+    title: "Every package, transitive ones included",
+    body: "Read from your connected GitHub repository's lockfiles: npm, pnpm, Yarn, Poetry, Pipenv, Composer, Go, Gradle, Bundler, Cargo and NuGet, with exact versions and the chain that pulled each package in. Manifests (package.json, requirements.txt, composer.json, go.mod, pom.xml) are used where there is no lockfile.",
   },
   {
     icon: "🔍",
@@ -74,7 +74,7 @@ export default function SbomPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-cybertext/70">
             Know exactly what&apos;s in your software supply chain. CycloneDX 1.5 SBOMs generated
-            automatically from your dependency manifests, enriched with real vulnerability data.
+            automatically from your lockfiles, enriched with real vulnerability data.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link

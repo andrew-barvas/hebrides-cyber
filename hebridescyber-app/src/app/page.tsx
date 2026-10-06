@@ -39,6 +39,15 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* The NCSC retired its free Web Check and Mail Check services on
+          31 March 2026; people searching for a replacement land here. */}
+      <section aria-label="NCSC Web Check replacement" className="border-y border-cyberborder bg-cyberpanel px-6 py-4 text-center text-sm text-cybertext/80">
+        Used the NCSC&apos;s Web Check or Mail Check? Both were retired on 31 March 2026.{" "}
+        <Link href="/web-check-alternative" className="font-semibold text-neon hover:underline">
+          See what replaces them →
+        </Link>
+      </section>
+
       {/* Product preview — device mockups showing the real dashboard
           (illustrative data), not just prose claims about what it does. */}
       <section className="bg-cyberbg px-6 py-16">
