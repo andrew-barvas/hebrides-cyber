@@ -11,14 +11,11 @@
 // findings included. This version requires the caller to own the scan (or
 // be an admin), matching every other scan-scoped route in this codebase.
 import type { NextApiRequest, NextApiResponse } from "next";
-import { chromium } from "playwright";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { subscriptionGrants } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { renderExecutiveReportHtml } from "@/lib/executiveReport";
+import { htmlToPdf } from "@/lib/reportPdf";
 import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 import type { Finding } from "@/lib/scanners";
 
@@ -91,37 +88,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     branding,
   });
 
-  // Unique temp directory per invocation so concurrent requests never
-  // collide, cleaned up in `finally` regardless of success/failure.
-  const tempDir = await mkdtemp(path.join(tmpdir(), "hebridescyber-report-"));
-  const pdfPath = path.join(tempDir, `report-${scanId}.pdf`);
+  // A configured brand_logo_url is fetched during render — an https URL we
+  // store (Agency branding), checked by safeLogoUrl; nothing else is.
+  const pdfBuffer = await htmlToPdf(html);
 
-  try {
-    // TODO: in production, run Playwright with no network egress beyond what's
-    // needed to render local HTML, to avoid SSRF risk from the report template.
-    // No longer strictly zero-network as of Agency branding: a configured
-    // brand_logo_url is fetched during render. Narrow in practice (an
-    // Azure Blob URL we control, not attacker-supplied), but worth knowing
-    // if this TODO is ever actually addressed.
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle" });
-    await page.pdf({ path: pdfPath, format: "A4", printBackground: true });
-    await browser.close();
-
-    const pdfBuffer = await readFile(pdfPath);
-
-    if (storageConnectionString) {
-      const url = await uploadToBlobStorage(pdfBuffer, `report-${scanId}.pdf`);
-      return res.status(200).json({ url, expiresInSeconds: 3600 });
-    }
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="hebridescyber-report-${scanId}.pdf"`);
-    return res.status(200).send(pdfBuffer);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
+  if (storageConnectionString) {
+    const url = await uploadToBlobStorage(pdfBuffer, `report-${scanId}.pdf`);
+    return res.status(200).json({ url, expiresInSeconds: 3600 });
   }
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${branding ? "security" : "hebridescyber"}-report-${scanId}.pdf"`);
+  return res.status(200).send(pdfBuffer);
 }
 
 /**
@@ -165,5 +143,3 @@ async function uploadToBlobStorage(pdfBuffer: Buffer, blobName: string): Promise
 
   return `${blockBlob.url}?${sas}`;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
