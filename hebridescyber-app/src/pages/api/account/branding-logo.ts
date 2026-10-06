@@ -21,6 +21,7 @@ import { z } from "zod";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { randomUUID } from "node:crypto";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 
 export const config = {
@@ -45,14 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Branding can only be managed from a logged-in session, not with an API key." });
   }
 
-  const { data: subscription, error: subError } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("owner", caller.ownerId)
-    .maybeSingle();
-
-  if (subError) return res.status(500).json({ error: subError.message });
-  if (subscription?.plan !== "agency") {
+  const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
     return res.status(403).json({ error: "White-label branding is an Agency-plan feature." });
   }
 

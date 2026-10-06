@@ -6,9 +6,28 @@
 // One-off audit "buttons" stay as a mailto/contact link since those are
 // scoped, invoiced engagements, not self-serve subscriptions.
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getSession } from "@/lib/auth";
+
+class CheckoutError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+  }
+}
+
+// Stripe sends a customer who backs out of checkout to /pricing?checkout=cancelled.
+// Read in its own component, under Suspense, so the page still renders statically.
+function CheckoutCancelledNotice() {
+  const params = useSearchParams();
+  if (params?.get("checkout") !== "cancelled") return null;
+  return (
+    <p role="status" className="mb-5 text-sm text-cybertext/70">
+      Checkout cancelled, so nothing was charged. Pick a plan whenever you&apos;re ready.
+    </p>
+  );
+}
 
 const oneOff = [
   { name: "Small Website Audit", price: "£300", desc: "Automated scan, headers & TLS checks, dependency scan, 1-page Security Score." },
@@ -66,7 +85,7 @@ const subscriptions: Array<{
 
 export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
   async function subscribe(plan: "basic" | "pro" | "agency") {
     setError(null);
@@ -74,7 +93,7 @@ export default function PricingPage() {
     try {
       const session = await getSession();
       if (!session) {
-        setError("Sign in first, then come back to subscribe.");
+        setError({ message: "Sign in first, then come back to subscribe." });
         return;
       }
       const res = await fetch("/api/stripe/create-checkout-session", {
@@ -83,13 +102,13 @@ export default function PricingPage() {
         body: JSON.stringify({ plan }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `Checkout failed (${res.status})`);
+      if (!res.ok) throw new CheckoutError(body.error ?? `Checkout failed (${res.status})`, body.code);
       // react-hooks/immutability treats window.location as a value being
       // mutated; assigning href is just a navigation to Stripe Checkout.
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = body.url;
     } catch (err) {
-      setError((err as Error).message);
+      setError({ message: (err as Error).message, code: err instanceof CheckoutError ? err.code : undefined });
     } finally {
       setLoadingPlan(null);
     }
@@ -140,7 +159,22 @@ export default function PricingPage() {
         <h2 className="mb-6 font-mono text-xs uppercase tracking-widest text-cybertext/70">
           Monthly subscriptions — Security Score
         </h2>
-        {error && <p className="mb-5 text-sm text-red-400">{error}</p>}
+        <Suspense fallback={null}>
+          <CheckoutCancelledNotice />
+        </Suspense>
+        {error && (
+          <p role="alert" className="mb-5 text-sm text-red-400">
+            {error.message}
+            {error.code === "checkout_unavailable" && (
+              <>
+                {" "}
+                <Link href="/contact" className="font-semibold text-neon hover:underline">
+                  Contact us
+                </Link>
+              </>
+            )}
+          </p>
+        )}
         <div className="grid gap-5 sm:grid-cols-3">
           {subscriptions.map((p) => (
             <div

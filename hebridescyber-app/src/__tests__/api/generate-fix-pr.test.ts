@@ -6,12 +6,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, checkRateLimitMock, resolveGithubAuthMock, connectedReposMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, checkRateLimitMock, resolveGithubAuthMock, connectedReposMock, subscriptionMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   checkRateLimitMock: vi.fn(),
   resolveGithubAuthMock: vi.fn(),
   // The repos the caller has connected, as repo_connections rows.
   connectedReposMock: { rows: [] as Array<{ owner: string; github_repo: string }> },
+  // The caller's subscriptions row (planAccess.ts reads plan + status).
+  subscriptionMock: { row: null as { plan: string; status: string } | null, error: null as { message: string } | null },
 }));
 
 vi.mock("@/lib/apiAuth", () => ({
@@ -27,6 +29,7 @@ vi.mock("@/lib/apiAuth", () => ({
         },
         limit: () => builder,
         maybeSingle: async () => {
+          if (table === "subscriptions") return { data: subscriptionMock.row, error: subscriptionMock.error };
           if (table !== "repo_connections") return { data: null, error: null };
           const row = connectedReposMock.rows.find((r) => r.owner === filters.owner && r.github_repo === filters.github_repo);
           return { data: row ?? null, error: null };
@@ -51,6 +54,31 @@ describe("POST /api/generate-fix-pr", () => {
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     resolveGithubAuthMock.mockReset().mockResolvedValue({ token: null });
     connectedReposMock.rows = [{ owner: "owner-1", github_repo: "owner/repo" }];
+    subscriptionMock.row = { plan: "pro", status: "active" };
+    subscriptionMock.error = null;
+  });
+
+  it.each([
+    ["Basic", { plan: "basic", status: "active" }],
+    ["a cancelled Pro", { plan: "pro", status: "cancelled" }],
+    ["a past-due Agency", { plan: "agency", status: "past_due" }],
+    ["no", null],
+  ])("returns 403 plan_required for %s subscription, before touching GitHub", async (_label, row) => {
+    subscriptionMock.row = row;
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(403);
+    expect(JSON.parse(res._getData())).toMatchObject({ code: "plan_required" });
+    expect(resolveGithubAuthMock).not.toHaveBeenCalled();
+    expect(checkRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 500, not an upgrade prompt, when the plan can't be read", async () => {
+    subscriptionMock.error = { message: "db down" };
+    const { req, res } = mockReqRes();
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(500);
+    expect(resolveGithubAuthMock).not.toHaveBeenCalled();
   });
 
   it("returns 405 for non-POST", async () => {

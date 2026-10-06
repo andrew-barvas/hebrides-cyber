@@ -11,15 +11,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeHtml, sendEmail } from "./email";
 import { isMissingSchemaError } from "./dbErrors";
+import { hasAgencyAccess } from "./planAccess";
 import { buildTriageIndex, loadTriageForHost } from "./findingTriage";
 import { policyFromRow, selectSlaAlerts, type LifecycleRow, type SlaItem, type SlaPolicyRow } from "./slaMonitoring";
 
-export async function hasSlaAccess(supabaseAdmin: SupabaseClient, ownerId: string): Promise<boolean> {
-  const [{ data: sub }, { data: user }] = await Promise.all([
-    supabaseAdmin.from("subscriptions").select("plan, status").eq("owner", ownerId).maybeSingle(),
-    supabaseAdmin.from("users").select("is_admin").eq("id", ownerId).maybeSingle(),
-  ]);
-  return Boolean(user?.is_admin) || (sub?.plan === "agency" && sub?.status === "active");
+/** Remediation SLAs are an Agency feature (planAccess.ts decides what that means). */
+export function hasSlaAccess(supabaseAdmin: SupabaseClient, ownerId: string): Promise<boolean> {
+  return hasAgencyAccess(supabaseAdmin, ownerId);
 }
 
 function formatDays(daysRemaining: number): string {

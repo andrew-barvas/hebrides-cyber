@@ -5,6 +5,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 
@@ -72,20 +73,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Plan-gate writes (POST/DELETE) to Agency tier
-  const { data: subscription } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("owner", caller.ownerId)
-    .maybeSingle();
-
-  const { data: user } = await supabaseAdmin
-    .from("users")
-    .select("is_admin")
-    .eq("id", caller.ownerId)
-    .maybeSingle();
-
-  const isAdmin = Boolean(user?.is_admin);
-  if (!isAdmin && subscription?.plan !== "agency") {
+  const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
     return res.status(403).json({ error: "Cloud posture scanning is an Agency-plan feature." });
   }
 
