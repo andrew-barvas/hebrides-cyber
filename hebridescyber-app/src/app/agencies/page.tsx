@@ -74,7 +74,7 @@ const pricingFeatures = [
   "Scheduled report delivery",
   "Remediation SLAs with breach alerts",
   "SBOM generation (CycloneDX 1.5)",
-  "GitHub Action + GitLab / Bitbucket CI templates",
+  "CI templates for GitHub Actions, GitLab, Jenkins, Azure DevOps & Bitbucket",
 ];
 
 function CapabilityCard({ capability }: { capability: Capability }) {

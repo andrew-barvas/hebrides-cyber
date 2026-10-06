@@ -1,0 +1,43 @@
+# Hebrides Cyber security scan for GitHub Actions.
+#
+# 1. Save https://www.hebridescyber.co.uk/ci/hebrides-scan.sh in your repository
+#    as ci/hebrides-scan.sh.
+# 2. Settings -> Secrets and variables -> Actions: add the secret
+#    HEBRIDES_CYBER_API_KEY.
+# 3. Save this file as .github/workflows/security-scan.yml and set
+#    HEBRIDES_TARGET_URL to a site you have verified.
+#
+# Fails only on new findings at or above HEBRIDES_FAIL_ON that you have not
+# triaged. New findings are annotated on the run.
+
+name: Security scan
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hebrides Cyber security scan
+        env:
+          HEBRIDES_CYBER_API_KEY: ${{ secrets.HEBRIDES_CYBER_API_KEY }}
+          HEBRIDES_TARGET_URL: https://staging.example.com
+          HEBRIDES_FAIL_ON: high
+        run: sh ci/hebrides-scan.sh
+
+      - name: Keep the full result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebrides-scan
+          path: hebrides-scan.json
+          if-no-files-found: ignore

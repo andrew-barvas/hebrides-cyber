@@ -1,0 +1,50 @@
+# Hebrides Cyber security scan for Azure DevOps Pipelines.
+#
+# 1. Save https://www.hebridescyber.co.uk/ci/hebrides-scan.sh in your repository
+#    as ci/hebrides-scan.sh.
+# 2. Pipeline -> Edit -> Variables: add HEBRIDES_CYBER_API_KEY and tick
+#    "Keep this value secret". Secret variables are not passed to scripts
+#    automatically, so the step below maps it explicitly.
+# 3. Set HEBRIDES_TARGET_URL below to a site you have verified.
+#
+# Fails only on new findings at or above HEBRIDES_FAIL_ON that you have not
+# triaged. New findings also appear in the run's Tests tab.
+
+trigger:
+  branches:
+    include: [main]
+
+schedules:
+  - cron: "0 3 * * 1"
+    displayName: Weekly security scan
+    branches:
+      include: [main]
+    always: true
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  HEBRIDES_TARGET_URL: https://staging.example.com
+  HEBRIDES_FAIL_ON: high
+
+steps:
+  - script: sh ci/hebrides-scan.sh
+    displayName: Hebrides Cyber security scan
+    env:
+      HEBRIDES_CYBER_API_KEY: $(HEBRIDES_CYBER_API_KEY)
+      HEBRIDES_JUNIT_FILE: $(Common.TestResultsDirectory)/hebrides-junit.xml
+
+  - task: PublishTestResults@2
+    displayName: Publish scan findings
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: $(Common.TestResultsDirectory)/hebrides-junit.xml
+      testRunTitle: Hebrides Cyber security scan
+      failTaskOnMissingResultsFile: false
+
+  - publish: hebrides-scan.json
+    displayName: Keep the full result
+    artifact: hebrides-scan
+    condition: succeededOrFailed()
