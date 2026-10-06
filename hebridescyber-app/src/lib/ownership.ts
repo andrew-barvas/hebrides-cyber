@@ -3,8 +3,8 @@
 // built-in DNS resolver and fetch. This is the real implementation the
 // rest of the codebase's TODOs have been pointing at.
 //
-// Used by src/functions/verify-ownership/index.ts (the HTTP-triggered
-// function that drives this) and referenced by src/functions/run-scan.
+// Used by src/pages/api/verify-ownership.ts (start/check) and, through
+// isDomainVerified, by run-scan, the public API and the scheduled-scan queue.
 
 import { resolveTxt, resolve4, resolve6 } from "node:dns/promises";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -141,51 +141,103 @@ export async function isDomainVerified(
   return Boolean(data?.verified_at);
 }
 
+/** What the DNS TXT lookup found: our record, someone else's records, or none. */
+export type DnsTxtStatus = "match" | "other_txt" | "no_txt";
+
 /**
- * Checks whether `domain` has a DNS TXT record of the form
- * `hebridescyber-verify=<token>`.
- *
- * TODO: DNS propagation can take minutes to hours after the user adds the
- * record — the dashboard should say so and let them retry rather than
- * implying a single failed check means it'll never work.
+ * Whether `domain` has a DNS TXT record `hebridescyber-verify=<token>`, and if
+ * not, whether it has any TXT records at all (so the dashboard can tell "not
+ * added yet / still propagating" from "added, but with the wrong value").
  */
-export async function checkDnsTxt(domain: string, token: string): Promise<boolean> {
+export async function inspectDnsTxt(domain: string, token: string): Promise<DnsTxtStatus> {
   try {
     const records = await resolveTxt(domain);
     const expected = `${VERIFICATION_PREFIX}=${token}`;
     // resolveTxt returns string[][] — each TXT record can be split into
     // multiple strings by DNS itself, so join before comparing.
-    return records.some((chunks) => chunks.join("") === expected);
+    const values = records.map((chunks) => chunks.join(""));
+    if (values.includes(expected)) return "match";
+    return values.length > 0 ? "other_txt" : "no_txt";
   } catch {
     // NXDOMAIN, no TXT records, timeout, etc. — all just mean "not verified yet".
-    return false;
+    return "no_txt";
   }
 }
+
+export async function checkDnsTxt(domain: string, token: string): Promise<boolean> {
+  return (await inspectDnsTxt(domain, token)) === "match";
+}
+
+/** What fetching https://<domain>/.well-known/hebridescyber-verify.txt found. */
+export type FileStatus = "match" | "wrong_content" | "redirect" | "missing" | "http_error" | "unreachable";
 
 /**
- * Checks whether https://<domain>/.well-known/hebridescyber-verify.txt
- * exists and its (trimmed) body matches `token` exactly.
+ * Fetches the verification file without following redirects (an open
+ * redirect must not verify someone else's domain). The host is checked
+ * against private and reserved addresses first: the domain is whatever the
+ * user typed, and the reason a check failed is shown back to them, which
+ * would otherwise let it probe internal hosts.
  */
-export async function checkFileVerification(domain: string, token: string): Promise<boolean> {
+export async function inspectFile(domain: string, token: string): Promise<FileStatus> {
+  try {
+    await validateNoSsrf(`https://${domain}`);
+  } catch {
+    return "unreachable";
+  }
   try {
     const res = await fetch(`https://${domain}${WELL_KNOWN_PATH}`, {
-      redirect: "manual", // don't follow redirects — avoids SSRF via open redirects
+      redirect: "manual",
       signal: AbortSignal.timeout(8_000),
     });
-    if (!res.ok) return false;
-    const body = await res.text();
-    return body.trim() === token;
+    if (!res.ok) {
+      await res.body?.cancel();
+      if (res.status >= 300 && res.status < 400) return "redirect";
+      return res.status === 404 ? "missing" : "http_error";
+    }
+    const body = (await res.text()).slice(0, 4_096);
+    return body.trim() === token ? "match" : "wrong_content";
   } catch {
-    return false;
+    return "unreachable";
   }
 }
 
-/** Runs both checks and returns which method (if any) succeeded. */
-export async function verifyDomain(
-  domain: string,
-  token: string
-): Promise<{ verified: boolean; method: "dns" | "file" | null }> {
-  if (await checkDnsTxt(domain, token)) return { verified: true, method: "dns" };
-  if (await checkFileVerification(domain, token)) return { verified: true, method: "file" };
-  return { verified: false, method: null };
+export async function checkFileVerification(domain: string, token: string): Promise<boolean> {
+  return (await inspectFile(domain, token)) === "match";
+}
+
+export type VerifyResult = {
+  verified: boolean;
+  method: "dns" | "file" | null;
+  /** Why each method did or didn't match; the file is only fetched when DNS didn't. */
+  dns?: DnsTxtStatus;
+  file?: FileStatus;
+};
+
+/** Runs both checks and returns which method (if any) succeeded, and why each failed. */
+export async function verifyDomain(domain: string, token: string): Promise<VerifyResult> {
+  const dns = await inspectDnsTxt(domain, token);
+  if (dns === "match") return { verified: true, method: "dns", dns };
+  const file = await inspectFile(domain, token);
+  if (file === "match") return { verified: true, method: "file", dns, file };
+  return { verified: false, method: null, dns, file };
+}
+
+/** Plain-English next steps for a failed check, one per method that was tried. */
+export function verificationHints(domain: string, token: string, result: Pick<VerifyResult, "dns" | "file">): string[] {
+  const fileUrl = `https://${domain}${WELL_KNOWN_PATH}`;
+  const hints: string[] = [];
+  if (result.dns === "no_txt") {
+    hints.push(`DNS: no TXT record on ${domain} yet. New records usually show up within minutes but can take up to an hour. In your DNS provider, add it to the domain itself (often shown as "@"), not a subdomain.`);
+  } else if (result.dns === "other_txt") {
+    hints.push(`DNS: ${domain} has TXT records, but not the ${VERIFICATION_PREFIX} one. Check the value was copied exactly, without extra quotes, and is on ${domain} itself.`);
+  }
+  const file: Record<Exclude<FileStatus, "match">, string> = {
+    missing: `File: nothing at ${fileUrl} yet (it returned "not found").`,
+    http_error: `File: ${fileUrl} returned an error instead of the file.`,
+    redirect: `File: ${fileUrl} redirects elsewhere. It has to be served at that exact address. If your site redirects to another host (for example to www), verify that host instead.`,
+    wrong_content: `File: ${fileUrl} exists but doesn't contain the token. It should contain only: ${token}`,
+    unreachable: `File: we couldn't connect to https://${domain}.`,
+  };
+  if (result.file && result.file !== "match") hints.push(file[result.file]);
+  return hints;
 }

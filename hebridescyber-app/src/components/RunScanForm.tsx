@@ -12,6 +12,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { scanTargetHint, useVerifiedDomains } from "@/lib/verifiedDomains";
 
 class ScanRequestError extends Error {
   constructor(message: string, readonly code?: string) {
@@ -28,6 +29,8 @@ export default function RunScanForm({ onScanUpdate }: { onScanUpdate: () => void
   const [submitting, setSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const verified = useVerifiedDomains();
+  const hint = scanTargetHint(targetUrl, verified);
 
   async function startScan(e: React.FormEvent) {
     e.preventDefault();
@@ -154,6 +157,15 @@ export default function RunScanForm({ onScanUpdate }: { onScanUpdate: () => void
           {submitting ? "Scanning…" : "Run scan"}
         </Button>
       </form>
+      {hint && !error && (
+        <p role="status" className="mt-2 text-xs text-warning">
+          {hint.host} isn&apos;t verified on your account yet, so it can&apos;t be scanned.
+          {hint.verifiedAlternative && <> You&apos;ve verified {hint.verifiedAlternative}: scan that address instead, or verify {hint.host} as well.</>}{" "}
+          <Link href="/dashboard/assets#domain-verification" className="font-medium text-neon hover:underline">
+            Verify {hint.host} →
+          </Link>
+        </p>
+      )}
       <p id="scan-target-help" className="mt-2 text-xs text-cybermuted">
         We scan only domains you&apos;ve{" "}
         <Link href="/dashboard/assets#domain-verification" className="text-neon hover:underline">
