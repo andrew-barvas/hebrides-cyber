@@ -83,7 +83,15 @@ describe("discoverBackends", () => {
   });
 
   it("finds nothing on a page with no Supabase", () => {
-    expect(discoverBackends([{ label: "p", text: "<html>hello</html>" }])).toEqual({ refs: [], anonKeys: new Map(), serviceKeys: new Map(), tables: [] });
+    expect(discoverBackends([{ label: "p", text: "<html>hello</html>" }])).toEqual({ refs: [], anonKeys: new Map(), serviceKeys: new Map(), tables: [], buckets: [] });
+  });
+
+  it("treats .storage.from(\"x\") as a bucket, not a table, and caps buckets", () => {
+    const found = discoverBackends([
+      { label: "p", text: `supabase.storage.from("avatars").list(); supabase.storage .from('invoices'); db.from("profiles"); ${["a1", "b2", "c3", "d4", "e5", "f6"].map((b) => `s.storage.from("${b}")`).join(";")}` },
+    ]);
+    expect(found.tables).toEqual(["profiles"]);
+    expect(found.buckets).toEqual(["avatars", "invoices", "a1", "b2", "c3"]);
   });
 });
 
@@ -127,7 +135,7 @@ describe("checkBackendExposure", () => {
     const result = await checkBackendExposure(`${SITE}/`);
     expect(result).toEqual({
       status: "checked",
-      projects: [{ ref: REF, url: `https://${REF}.supabase.co`, serviceKey: null, openTables: [{ table: "profiles", rowCount: 2 }], tablesProbed: 4, schemaListed: true }],
+      projects: [{ ref: REF, url: `https://${REF}.supabase.co`, serviceKey: null, openTables: [{ table: "profiles", rowCount: 2 }], tablesProbed: 4, schemaListed: true, openBuckets: [], bucketsProbed: 0 }],
     });
     // Only row counts were asked for — no row data — and only the project's own host was contacted.
     const probes = calls.filter((c) => c.url.startsWith(API) && c.url !== `${API}/`);
@@ -190,6 +198,46 @@ describe("checkBackendExposure", () => {
     expect(await checkBackendExposure("not a url")).toMatchObject({ status: "error" });
   });
 
+  it("reports a bucket only when the anon key lists a file from it, asking for one name", async () => {
+    const STORAGE = `https://${REF}.supabase.co/storage/v1/object/list`;
+    const calls: { url: string; method: string; body: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, method: init?.method ?? "GET", body: String(init?.body ?? "") });
+        if (url === `${SITE}/`) return new Response(`<script>const k="${ANON}"; s.storage.from("avatars"); s.storage.from("private"); s.storage.from("broken"); s.storage.from("down")</script>`);
+        if (url === `${STORAGE}/avatars`) return new Response(JSON.stringify([{ name: "me.png" }]));
+        if (url === `${STORAGE}/private`) return new Response("[]");
+        if (url === `${STORAGE}/broken`) return new Response("not json", { status: 400 });
+        if (url === `${STORAGE}/down`) throw new Error("network down");
+        return new Response("", { status: 404 });
+      })
+    );
+    const result = await checkBackendExposure(`${SITE}/`);
+    if (result.status !== "checked") throw new Error("unexpected");
+    expect(result.projects[0]).toMatchObject({ openBuckets: [{ bucket: "avatars" }], bucketsProbed: 4 });
+    const lists = calls.filter((c) => c.url.startsWith(STORAGE));
+    expect(lists).toHaveLength(4);
+    for (const c of lists) {
+      expect(c.method).toBe("POST");
+      expect(JSON.parse(c.body)).toEqual({ prefix: "", limit: 1 });
+    }
+  });
+
+  it("checks Firebase from the same page material, even with no Supabase", async () => {
+    stub({
+      [`${SITE}/`]: { body: `<script src="/app.js"></script>` },
+      [`${SITE}/app.js`]: { body: `initializeApp({databaseURL:"https://shop-default-rtdb.firebaseio.com",projectId:"shop-app"})` },
+      ["https://shop-default-rtdb.firebaseio.com/.json?shallow=true"]: { body: JSON.stringify({ users: true }) },
+    });
+    const result = await checkBackendExposure(`${SITE}/`);
+    if (result.status !== "checked") throw new Error("unexpected");
+    expect(result.projects).toEqual([]);
+    expect(result.firebase?.open).toEqual([{ kind: "rtdb", url: "https://shop-default-rtdb.firebaseio.com", keyCount: 1 }]);
+    expect(result.firebase?.targets.projects).toEqual(["shop-app"]);
+  });
+
   it("caps projects and tables", async () => {
     const refs = ["a", "b", "c", "d"].map((c) => c.repeat(20));
     const tables = Array.from({ length: 40 }, (_, i) => `t${i}`);
@@ -230,6 +278,33 @@ describe("backend exposure findings", () => {
     expect(byId.get(`backend-exposure.open-table:${REF}:orders`)?.fixDifficulty).toBe("moderate");
   });
 
+  it("reports listable buckets and open Firebase stores with stable check ids", () => {
+    const { findings } = summariseResults(results({
+      status: "checked",
+      projects: [{ ...project, openBuckets: [{ bucket: "avatars" }], bucketsProbed: 1 }],
+      firebase: {
+        targets: { databases: [], buckets: [], projects: [], collections: [] },
+        probed: 3,
+        open: [
+          { kind: "rtdb", url: "https://shop-default-rtdb.firebaseio.com", keyCount: 1 },
+          { kind: "storage", bucket: "shop.appspot.com" },
+          { kind: "firestore", project: "shop-app", collection: "orders" },
+        ],
+      },
+    }));
+    const byId = new Map(findings.map((f) => [f.checkId, f]));
+    expect(byId.get(`backend-exposure.storage-bucket:${REF}:avatars`)).toMatchObject({ severity: "medium", fixDifficulty: "easy" });
+    expect(byId.get(`backend-exposure.storage-bucket:${REF}:avatars`)?.remediation).toContain("bucket_id = 'avatars'");
+    expect(byId.get("backend-exposure.firebase-rtdb:shop-default-rtdb.firebaseio.com")).toMatchObject({ severity: "high", fixDifficulty: "moderate" });
+    expect(byId.get("backend-exposure.firebase-rtdb:shop-default-rtdb.firebaseio.com")?.detail).toContain("1 top-level key.");
+    expect(byId.get("backend-exposure.firebase-storage:shop.appspot.com")).toMatchObject({ severity: "medium", fixDifficulty: "easy" });
+    expect(byId.get("backend-exposure.firestore:shop-app:orders")).toMatchObject({ severity: "high", title: 'Firestore collection "orders" is readable without signing in' });
+    expect(byId.get("backend-exposure.firestore:shop-app:orders")?.remediation).toContain("match /orders/{docId}");
+    for (const id of ["firebase-rtdb:shop-default-rtdb.firebaseio.com", "firebase-storage:shop.appspot.com", "firestore:shop-app:orders", `storage-bucket:${REF}:avatars`]) {
+      expect(byId.get(`backend-exposure.${id}`)?.complianceRefs?.length).toBeGreaterThan(0);
+    }
+  });
+
   it("reports nothing for a project with no evidence, not_applicable or error", () => {
     for (const r of [{ status: "checked" as const, projects: [project] }, { status: "not_applicable" as const }, { status: "error" as const, note: "x" }, undefined]) {
       expect(summariseResults(results(r)).findings.some((f) => f.checkId?.startsWith("backend-exposure."))).toBe(false);
@@ -239,5 +314,8 @@ describe("backend exposure findings", () => {
   it("falls back to a safe table name in the remediation SQL", async () => {
     const { backendOpenTableRemediation } = await import("./remediationText");
     expect(backendOpenTableRemediation("odd name; drop")).toContain("public.your_table");
+    const { backendStorageBucketRemediation, firestoreOpenRemediation } = await import("./remediationText");
+    expect(backendStorageBucketRemediation("x'; drop")).toContain("'your-bucket'");
+    expect(firestoreOpenRemediation("a/b")).toContain("match /yourCollection/");
   });
 });

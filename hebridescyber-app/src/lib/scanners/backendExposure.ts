@@ -14,8 +14,9 @@
 // whether the anon key can read those tables.
 //
 // Safety and evidence rules (docs/SCANNER-CONVENTIONS.md):
-// - Only https://<ref>.supabase.co hosts are ever contacted, only with GET, and
-//   only for the project the page itself points at.
+// - Only https://<ref>.supabase.co hosts are ever contacted, and only for the
+//   project the page itself points at. Every request is a read: GETs, plus the
+//   storage API's list call, which is a POST that changes nothing.
 // - No table row is ever requested: `?limit=0` with `Prefer: count=exact`
 //   returns just the total row count (Content-Range: */N). A table is reported
 //   only when that count is above zero — so an RLS-protected table, which
@@ -25,11 +26,20 @@
 //   project reference and a short fingerprint only.
 // - Nothing found → "not_applicable" (the site doesn't use Supabase). A page we
 //   could not read is "error", never an empty "checked".
+// - Storage: for each bucket the page's code names (`.storage.from("x")`), the
+//   anon key is used to list ONE object name. A bucket is reported only if that
+//   returns an object; no file is downloaded.
+// - Firebase (RTDB, Cloud Storage, Firestore) is checked the same way by
+//   firebaseExposure.ts, from the same page material.
+
+import { discoverFirebase, hasFirebase, probeFirebase, type FirebaseExposure, type FirebaseSource } from "./firebaseExposure";
 
 export type BackendExposureResult =
   | {
       status: "checked";
       projects: BackendProject[];
+      /** Firebase stores the page points at (firebaseExposure.ts); absent when none, or in scans stored before it existed. */
+      firebase?: FirebaseExposure;
     }
   | { status: "not_applicable" }
   | { status: "error"; note: string };
@@ -46,6 +56,10 @@ export type BackendProject = {
   tablesProbed: number;
   /** The table list came from the project's API root; false when only the page's own queries named them. */
   schemaListed: boolean;
+  /** Storage buckets the anon key can list an object from. Absent in scans stored before this check. */
+  openBuckets?: { bucket: string }[];
+  /** How many buckets the page's code names and were asked about. */
+  bucketsProbed?: number;
 };
 
 const PAGE_TIMEOUT_MS = 10_000;
@@ -58,6 +72,8 @@ const MAX_TABLES = 25;
 const SUPABASE_URL_RE = /https:\/\/([a-z0-9]{20})\.supabase\.co/g;
 const JWT_RE = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 const FROM_RE = /\.from\(\s*["'`]([a-z_][a-z0-9_]{0,62})["'`]\s*\)/g;
+const BUCKET_FROM_RE = /\.storage\s*\.from\(\s*["'`]([a-z0-9][a-z0-9._-]{1,62})["'`]\s*\)/g;
+const MAX_BUCKETS = 5;
 const SCRIPT_SRC_RE = /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi;
 
 type Source = { label: string; text: string };
@@ -88,6 +104,8 @@ export type Discovered = {
   anonKeys: Map<string, string>; // ref → key
   serviceKeys: Map<string, { key: string; foundIn: string }>; // ref → key
   tables: string[];
+  /** Storage bucket names the page's code uses. */
+  buckets: string[];
 };
 
 /** Pure: Supabase project refs, keys and queried table names found in page text. */
@@ -96,10 +114,16 @@ export function discoverBackends(sources: Source[]): Discovered {
   const anonKeys = new Map<string, string>();
   const serviceKeys = new Map<string, { key: string; foundIn: string }>();
   const tables = new Set<string>();
+  const buckets = new Set<string>();
 
   for (const { label, text } of sources) {
     for (const m of text.matchAll(SUPABASE_URL_RE)) refs.add(m[1]);
-    for (const m of text.matchAll(FROM_RE)) tables.add(m[1]);
+    for (const m of text.matchAll(BUCKET_FROM_RE)) buckets.add(m[1]);
+    for (const m of text.matchAll(FROM_RE)) {
+      // `.storage.from("avatars")` names a bucket, not a table.
+      if (/storage\s*$/.test(text.slice(Math.max(0, m.index - 16), m.index))) continue;
+      tables.add(m[1]);
+    }
     for (const m of text.matchAll(JWT_RE)) {
       const claims = decodeJwtClaims(m[0]);
       if (!claims || claims.iss !== "supabase" || !claims.ref || !/^[a-z0-9]{20}$/.test(claims.ref)) continue;
@@ -108,7 +132,7 @@ export function discoverBackends(sources: Source[]): Discovered {
       else if (claims.role === "anon" && !anonKeys.has(claims.ref)) anonKeys.set(claims.ref, m[0]);
     }
   }
-  return { refs: [...refs], anonKeys, serviceKeys, tables: [...tables] };
+  return { refs: [...refs], anonKeys, serviceKeys, tables: [...tables], buckets: [...buckets].slice(0, MAX_BUCKETS) };
 }
 
 /** Table names listed by PostgREST's OpenAPI root (paths other than "/" and "/rpc/…"). */
@@ -133,8 +157,13 @@ export function totalFromContentRange(header: string | null): number | null {
   return m ? Number(m[1]) : null;
 }
 
-async function probeProject(ref: string, anonKey: string | undefined, hintedTables: string[]): Promise<Pick<BackendProject, "openTables" | "tablesProbed" | "schemaListed">> {
-  if (!anonKey) return { openTables: [], tablesProbed: 0, schemaListed: false };
+/** True when a storage list answer holds at least one object name. */
+export function storageListHasObject(status: number, body: unknown): boolean {
+  return status === 200 && Array.isArray(body) && body.length > 0;
+}
+
+async function probeProject(ref: string, anonKey: string | undefined, hintedTables: string[], hintedBuckets: string[]): Promise<Pick<BackendProject, "openTables" | "tablesProbed" | "schemaListed" | "openBuckets" | "bucketsProbed">> {
+  if (!anonKey) return { openTables: [], tablesProbed: 0, schemaListed: false, openBuckets: [], bucketsProbed: 0 };
   const base = `https://${ref}.supabase.co/rest/v1`;
   const headers = { apikey: anonKey, authorization: `Bearer ${anonKey}` };
 
@@ -168,7 +197,23 @@ async function probeProject(ref: string, anonKey: string | undefined, hintedTabl
       // unreachable table probe: nothing evidenced
     }
   }
-  return { openTables, tablesProbed: candidates.length, schemaListed };
+
+  const openBuckets: { bucket: string }[] = [];
+  for (const bucket of hintedBuckets) {
+    try {
+      const res = await fetch(`https://${ref}.supabase.co/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ prefix: "", limit: 1 }),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      });
+      const parsed: unknown = await res.json().catch(() => null);
+      if (storageListHasObject(res.status, parsed)) openBuckets.push({ bucket });
+    } catch {
+      // unreachable bucket probe: nothing evidenced
+    }
+  }
+  return { openTables, tablesProbed: candidates.length, schemaListed, openBuckets, bucketsProbed: hintedBuckets.length };
 }
 
 export async function checkBackendExposure(targetUrl: string): Promise<BackendExposureResult> {
@@ -207,12 +252,13 @@ export async function checkBackendExposure(targetUrl: string): Promise<BackendEx
   }
 
   const found = discoverBackends(sources);
-  if (found.refs.length === 0) return { status: "not_applicable" };
+  const firebaseTargets = discoverFirebase(sources as FirebaseSource[]);
+  if (found.refs.length === 0 && !hasFirebase(firebaseTargets)) return { status: "not_applicable" };
 
   const projects: BackendProject[] = [];
   for (const ref of found.refs.slice(0, 3)) {
     const service = found.serviceKeys.get(ref);
-    const probe = await probeProject(ref, found.anonKeys.get(ref), found.tables);
+    const probe = await probeProject(ref, found.anonKeys.get(ref), found.tables, found.buckets);
     projects.push({
       ref,
       url: `https://${ref}.supabase.co`,
@@ -220,5 +266,5 @@ export async function checkBackendExposure(targetUrl: string): Promise<BackendEx
       ...probe,
     });
   }
-  return { status: "checked", projects };
+  return { status: "checked", projects, ...(hasFirebase(firebaseTargets) ? { firebase: await probeFirebase(firebaseTargets) } : {}) };
 }

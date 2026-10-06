@@ -1102,12 +1102,13 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     }
   }
 
-  // --- Supabase backend exposure ------------------------------------------------
-  // Only reported with evidence: a service_role key in client code, or a table
-  // the anon key can read rows from (count above zero). "not_applicable" (no
-  // Supabase on the page) and "error" produce nothing.
   findings.push(...buildGraphqlFindings(results.graphql));
 
+  // --- Supabase / Firebase backend exposure -------------------------------------
+  // Only reported with evidence: a service_role key in client code, a table
+  // the anon key can read rows from (count above zero), a bucket that lists a
+  // file, or a Firebase store that returned a key, object or document.
+  // "not_applicable" (neither on the page) and "error" produce nothing.
   if (results.backendExposure?.status === "checked") {
     for (const project of results.backendExposure.projects) {
       if (project.serviceKey) {
@@ -1126,6 +1127,42 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           title: `Supabase table "${t.table}" is readable without signing in`,
           detail: `The public anon key for project ${project.ref} can read the "${t.table}" table: the API reports ${t.rowCount} row${t.rowCount === 1 ? "" : "s"} visible with no login. We asked only for the row count and read no data. Row level security is off for this table, or a policy allows everyone.`,
           remediation: FIX.backendOpenTableRemediation(t.table),
+        });
+      }
+      for (const b of project.openBuckets ?? []) {
+        findings.push({
+          checkId: `backend-exposure.storage-bucket:${project.ref}:${b.bucket}`,
+          severity: "medium",
+          title: `Supabase storage bucket "${b.bucket}" can be listed without signing in`,
+          detail: `The public anon key for project ${project.ref} can list the files in the "${b.bucket}" bucket. We asked for one file name and downloaded nothing. A storage policy lets anonymous visitors select from this bucket.`,
+          remediation: FIX.backendStorageBucketRemediation(b.bucket),
+        });
+      }
+    }
+    for (const f of results.backendExposure.firebase?.open ?? []) {
+      if (f.kind === "rtdb") {
+        findings.push({
+          checkId: `backend-exposure.firebase-rtdb:${new URL(f.url).hostname}`,
+          severity: "high",
+          title: "Firebase Realtime Database is readable without signing in",
+          detail: `The database at ${f.url}, named in this site's Firebase config, answers an unauthenticated read of its root: ${f.keyCount} top-level key${f.keyCount === 1 ? "" : "s"}. We asked only for key names (a shallow read) and read no values. The security rules allow reads from the root, so anyone can download the whole database.`,
+          remediation: FIX.FIREBASE_RTDB_OPEN,
+        });
+      } else if (f.kind === "storage") {
+        findings.push({
+          checkId: `backend-exposure.firebase-storage:${f.bucket}`,
+          severity: "medium",
+          title: "Firebase Storage bucket can be listed without signing in",
+          detail: `The bucket ${f.bucket}, named in this site's Firebase config, lists its files to anyone. We asked for one file name and downloaded nothing.`,
+          remediation: FIX.FIREBASE_STORAGE_OPEN,
+        });
+      } else {
+        findings.push({
+          checkId: `backend-exposure.firestore:${f.project}:${f.collection}`,
+          severity: "high",
+          title: `Firestore collection "${f.collection}" is readable without signing in`,
+          detail: `The "${f.collection}" collection in Firebase project ${f.project}, which this site's code reads, returns documents to an unauthenticated request. We asked for one document name only and read no fields.`,
+          remediation: FIX.firestoreOpenRemediation(f.collection),
         });
       }
     }

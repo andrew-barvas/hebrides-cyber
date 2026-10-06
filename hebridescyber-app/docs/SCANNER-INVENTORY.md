@@ -87,6 +87,8 @@ All are invoked as separate processes (`execFile`) or over HTTP (ZAP). Every wra
 | Azure (Blob public listing; Entra token endpoint; Azure Management API) | `cloudMisconfig.ts`, `cloudPosture.ts` | Public containers; storage account public access, HTTP traffic, weak TLS | Customer credentials (tenant/subscription), as above | as above |
 | Google Cloud (GCS listing; `oauth2.googleapis.com`; Storage JSON API) | `cloudMisconfig.ts`, `cloudPosture.ts` | Public buckets; public-access prevention, uniform access | Customer service account, as above | as above |
 | Supabase REST API of the target's own project (`<ref>.supabase.co`) | `backendExposure.ts` | Count-only (`limit=0`) read of tables the page's code queries, using the anon key the page already ships | none | `not_applicable` when the page has no Supabase |
+| Supabase Storage API of the same project | `backendExposure.ts` | List one object name (`limit: 1`, read-only POST) from buckets the page's code names via `.storage.from("x")`, with the page's anon key | none | only when the page names a bucket |
+| Firebase (`*.firebaseio.com` / `*.firebasedatabase.app`, `firebasestorage.googleapis.com`, `firestore.googleapis.com`) | `firebaseExposure.ts` (via `backendExposure.ts`) | Unauthenticated GETs: RTDB shallow root read (key names only), Storage list `maxResults=1`, Firestore `pageSize=1` with a `__name__` mask, for the databases/bucket/project in the site's own Firebase config | none | only when the page carries a Firebase config |
 | Azure OpenAI | `generateAiSummary()` in `index.ts`; `src/lib/aiRemediation.ts` (per-finding AI fix, `pages/api/scans/[id]/ai-fix.ts`) | Plain-English scan summary; AI remediation | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`, `AZURE_OPENAI_DEPLOYMENT` | Templated summary; AI fix unavailable |
 | LLM provider behind Strix (provider not named in the code) | `strix.ts` | Strix agent inference | `STRIX_LLM_API_KEY` (passed to the CLI as `STRIX_API_KEY`) | `not_configured` |
 
@@ -143,7 +145,7 @@ Wired in `runAllChecks()`; findings derived in `summariseResults()` unless noted
 | End-of-life (`endOfLife.ts`) | PHP, nginx, Apache, Drupal, Joomla, Angular, jQuery, Bootstrap vs endoflife.date; 90-day heads-up; distro-packaged versions downgraded | `eol.unsupported:<product>`, `eol.approaching:<product>` | high/medium/low by kind and age; info | none |
 | Domain registration (`domainRegistration.ts`) | RDAP expiry (<=30 days / expired) and gTLD transfer lock | `domain.expired`, `domain.expiring`, `domain.transfer-lock-missing` | high / high or medium (14-day split) / low | none |
 | Script inventory (`scriptInventory.ts`) | External script origins from HTML and browser runtime capture; PCI DSS 6.4.3/11.6.1 | `script-inventory.unreviewed:<origin>` | info; low on payment pages | Chromium for runtime capture (else `partial`) |
-| Supabase exposure (`backendExposure.ts`) | service_role key in client code; anon-readable tables (count-only) | `backend-exposure.service-key:<ref>`, `backend-exposure.open-table:<ref>:<table>` | critical; high | Supabase on the page |
+| Supabase / Firebase exposure (`backendExposure.ts`, `firebaseExposure.ts`) | service_role key in client code; anon-readable tables (count-only); anon-listable storage buckets; Firebase RTDB readable at the root, Storage listable, Firestore collections readable without auth | `backend-exposure.service-key:<ref>`, `backend-exposure.open-table:<ref>:<table>`, `backend-exposure.storage-bucket:<ref>:<bucket>`, `backend-exposure.firebase-rtdb:<host>`, `backend-exposure.firebase-storage:<bucket>`, `backend-exposure.firestore:<project>:<collection>` | critical; high; medium; high; medium; high | Supabase or a Firebase config on the page |
 | Site crawl (`crawler.ts`, `crawlFindings.ts`) | Anonymous BFS crawl: max 50 pages, depth 3, 4 concurrent, 45 s, robots.txt honoured, GET only, seeded from Wayback | `crawl.header-gap:<header>`, `crawl.cookie-flags:<name>`, `crawl.mixed-content:<path>`, `crawl.insecure-form:<path>`, `crawl.error-disclosure:<path>`, `crawl.missing-sri` | medium / low / high | none |
 | ZAP spider start (`checkZap` in `index.ts`) | Starts an async spider; emits no findings | none | n/a | `ZAP_API_URL` |
 | Meta | Fallback when nothing found | `meta.no-issues` | info | none |
@@ -210,7 +212,7 @@ From `docs/USER-GUIDE.md` section 6 and `docs/COMPETITIVE-ANALYSIS.md` section 9
 - No full code review: SAST is pattern-based, about 35 rules, JS/TS, Python, PHP.
 - No cloud account-level IAM auditing (ScoutSuite/Prowler style).
 
-Code-level safety rules that are consistent across modules: GET-only crawling, forms never submitted, logout/delete/cart links never followed, subdomain tooling passive only, buckets tested only if referenced by the target's own page, Supabase tables read as counts only, secrets redacted and never stored.
+Code-level safety rules that are consistent across modules: GET-only crawling, forms never submitted, logout/delete/cart links never followed, subdomain tooling passive only, buckets tested only if referenced by the target's own page, Supabase tables read as counts only, storage and Firebase stores read as one name at most (never a value or file), secrets redacted and never stored.
 
 ---
 
