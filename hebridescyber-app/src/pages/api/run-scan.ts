@@ -250,12 +250,18 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   // insert a scan_jobs row, so the scan ran twice and left two scan_results
   // rows — which broke every "the result for this scan" read with
   // "JSON object requested, multiple (or no) rows returned".
-  const { data: claimed } = await supabaseAdmin
+  const { data: claimed, error: claimError } = await supabaseAdmin
     .from("scans")
     .update({ status: "queued", owner_verified: true })
     .eq("id", scanId)
     .eq("status", "pending")
     .select("id");
+  // A failed claim is an error, not "someone else claimed it": answering
+  // "queued" here left every scan pending forever, with nothing enqueued,
+  // while scans.status rejected 'queued' (fixed by migration 050).
+  if (claimError) {
+    return res.status(500).json({ error: `Couldn't queue the scan: ${claimError.message}`, code: "queue_failed" });
+  }
   if (!claimed?.length) {
     return res.status(202).json({ ok: true, scanId, status: "queued" });
   }

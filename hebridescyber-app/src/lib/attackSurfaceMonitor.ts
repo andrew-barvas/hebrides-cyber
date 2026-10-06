@@ -20,10 +20,9 @@
 //     unreported row is marked as known without an alert. When crt.sh
 //     couldn't be read there is no evidence either way, so rows stay pending
 //     for a later scan to decide.
-//   - The domain is the registrable domain from the full Public Suffix List
-//     (tldts, private suffixes included), not scanners/registrableDomain.ts's
-//     short list, which maps www.school.herts.sch.uk to the county's shared
-//     zone and mysite.github.io to github.io. Hostnames outside it are never
+//   - The domain is scanners/registrableDomain.ts's ownerDomain (the full
+//     Public Suffix List, private suffixes included), so mysite.github.io is
+//     watched as itself, not as github.io. Hostnames outside it are never
 //     reported.
 //   - A failed DNS lookup is "unknown", never "the record is gone": only
 //     ENODATA/ENOTFOUND mean absent. An unknown field keeps its stored value
@@ -42,13 +41,12 @@
 //     by the time this runs.
 import { Resolver } from "node:dns/promises";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getDomain } from "tldts";
 import { isMissingSchemaError } from "./dbErrors";
 import { escapeHtml, sendEmail } from "./email";
 import { channelsFor, type OwnerContext } from "./emergingThreatAlerts";
 import { sendTeamsNotice } from "./msTeams";
 import type { ReconResult } from "./scanners/recon";
-import { isWithinDomain } from "./scanners/registrableDomain";
+import { isWithinDomain, ownerDomain } from "./scanners/registrableDomain";
 import { sendSlackNotice } from "./slack";
 
 /** Hostnames listed in one alert; the rest are counted. */
@@ -65,7 +63,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The domain to watch for `host`, from the full Public Suffix List; null for IPs and bare suffixes. */
 export function monitoredDomain(host: string): string | null {
-  return getDomain(host, { allowPrivateDomains: true });
+  return ownerDomain(host);
 }
 
 // ---- DNS ----------------------------------------------------------------------

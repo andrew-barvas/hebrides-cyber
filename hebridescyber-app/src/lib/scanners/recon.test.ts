@@ -82,6 +82,19 @@ describe("checkRecon", () => {
     expect(crtUrl).toBe("https://crt.sh/?q=%25.example.co.uk&output=json");
   });
 
+  // Regression: a site on a platform's shared domain searched every site on it.
+  it("enumerates only the site's own names on a shared hosting domain", async () => {
+    for (const [target, query] of [
+      ["https://mysite.github.io/", "%25.mysite.github.io"],
+      ["https://www.stmarys.herts.sch.uk/", "%25.stmarys.herts.sch.uk"],
+    ]) {
+      const fetchMock = serve({});
+      await checkRecon(target);
+      const crtUrl = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("https://crt.sh/"))![0]);
+      expect(crtUrl).toBe(`https://crt.sh/?q=${query}&output=json`);
+    }
+  });
+
   // Regression: an outage used to read as "no subdomains", which let
   // takeover and subdomain-cert findings be marked fixed.
   it("says the lookup failed when crt.sh is down, without failing the scan", async () => {

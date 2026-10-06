@@ -127,4 +127,35 @@ describe.skipIf(!DB_TESTS_ENABLED)("claim_scan_job() (real Postgres)", () => {
     const { rows } = await db.pool.query("select count(*)::int n from scan_jobs where status = 'running' and attempts = 1");
     expect(rows[0].n).toBe(jobs);
   });
+
+  // Regression: scans.status rejected 'queued' until migration 050, so the
+  // dashboard's pending → queued claim and POST /api/v1/scans both failed,
+  // and every on-demand scan stayed 'pending' ("not started").
+  it("lets a scan take every status the app writes", async () => {
+    for (const status of ["pending", "queued", "running", "completed", "failed"]) {
+      const { rows } = await db.pool.query("insert into scans (owner, target_url, status) values ($1, 'https://s.test', $2) returning status", [OWNER, status]);
+      expect(rows[0].status).toBe(status);
+    }
+    const { rows } = await db.pool.query("insert into scans (owner, target_url) values ($1, 'https://s.test') returning id", [OWNER]);
+    await db.pool.query("update scans set status = 'queued' where id = $1 and status = 'pending'", [rows[0].id]);
+    await expect(db.pool.query("update scans set status = 'stuck' where id = $1", [rows[0].id])).rejects.toThrow(/scans_status_check/);
+  });
+
+  it("recovers a job orphaned by a killed runner, putting its scan back to queued", async () => {
+    await db.pool.query("delete from scan_jobs");
+    const scan = (await db.pool.query("insert into scans (owner, target_url, status) values ($1, 'https://orphan.test', 'running') returning id", [OWNER])).rows[0].id;
+    await db.pool.query(
+      "insert into scan_jobs (owner, target_url, scan_id, status, claimed_at, claimed_by) values ($1, 'https://orphan.test', $2, 'running', now() - interval '7 hours', 'dead-runner')",
+      [OWNER, scan],
+    );
+    const c = await asService(db);
+    try {
+      expect((await c.query("select reset_stale_scan_jobs() as n")).rows[0].n).toBe(1);
+      await c.query("commit");
+    } finally {
+      c.release();
+    }
+    expect((await db.pool.query("select status from scan_jobs where scan_id = $1", [scan])).rows[0].status).toBe("pending");
+    expect((await db.pool.query("select status from scans where id = $1", [scan])).rows[0].status).toBe("queued");
+  });
 });

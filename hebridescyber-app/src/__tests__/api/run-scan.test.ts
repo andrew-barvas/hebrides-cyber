@@ -323,6 +323,25 @@ describe("POST /api/run-scan", () => {
       expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();
     });
 
+    // Regression: scans.status rejected 'queued' (until migration 050), the
+    // claim's error was ignored, and the client was told "queued" while the
+    // scan stayed pending with no job: "not started" for every scan.
+    it("returns 500 without enqueuing when the pending → queued claim fails", async () => {
+      queues.scans = [
+        { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "pending" }, error: null },
+        { data: null, error: { code: "23514", message: 'new row for relation "scans" violates check constraint "scans_status_check"' } },
+      ];
+      queues.scan_jobs = [{ error: null }];
+      const { req, res } = mockReqRes({ scanId: "scan-1" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(500);
+      expect(res._getJSONData()).toMatchObject({ code: "queue_failed", error: expect.stringContaining("scans_status_check") });
+      expect(queues.scan_jobs).toHaveLength(1); // no job inserted
+      expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();
+    });
+
     it("verifies, marks running, queues the job, and dispatches the workflow on the happy path", async () => {
       queues.scans = [
         { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com", status: "pending" }, error: null },

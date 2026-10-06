@@ -14,7 +14,7 @@
 // Certificates are grouped: a wildcard served on ten hosts is one renewal,
 // so one finding, keyed by the certificate's name (stable across renewals).
 // The scanned site's own certificate is skipped — tls.ts reports that one.
-import { isWithinDomain, registrableDomain } from "./registrableDomain";
+import { isWithinDomain, ownerDomain } from "./registrableDomain";
 import { readCertificate, type CertificateRead } from "./tls";
 import type { SubdomainEntry } from "./recon";
 
@@ -38,10 +38,10 @@ export type SubdomainCertsResult =
   | { status: "not_applicable"; note: string }
   | { status: "error"; note: string };
 
-/** Subdomains to check: within the site's registered domain, not the site
+/** Subdomains to check: within the site owner's domain, not the site
  *  itself, no wildcards, most recently certified first. */
 export function pickHosts(targetHost: string, entries: SubdomainEntry[], max = MAX_SUBDOMAIN_CERT_HOSTS): string[] {
-  const domain = registrableDomain(targetHost);
+  const domain = ownerDomain(targetHost);
   if (!domain) return [];
   const self = targetHost.toLowerCase();
   const latest = new Map<string, number>();
