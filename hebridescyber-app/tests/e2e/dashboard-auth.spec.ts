@@ -62,6 +62,24 @@ test("a first-time account sees the empty state and onboarding", async ({ page }
   await expect(page.getByText("Security score", { exact: true })).toHaveCount(0);
 });
 
+test("onboarding doesn't count a refused scan as a first scan", async ({ page }) => {
+  // run-scan creates the row before checking ownership, so an attempt on an
+  // unverified domain leaves a `pending` scan behind. That isn't a scan.
+  await mockSupabase(page, {
+    subscriptions: [],
+    scans: [{ id: "pending-1", owner: "e2e-user", target_url: "https://example.com", status: "pending", created_at: "2026-10-01T00:00:00Z" }],
+    verifications: [{ id: "v1", domain: "example.com", verified_at: "2026-10-01T00:00:00Z" }],
+  });
+  await mockApi(page, {});
+
+  await page.goto("/dashboard");
+  const checklist = page.getByRole("heading", { name: /getting started \(1\/4\)/ }).locator("xpath=../..");
+  await expect(checklist).toBeVisible();
+  await expect(checklist.getByText("✓ Verify a domain you own")).toBeVisible();
+  await expect(checklist.getByText("○ Run your first scan")).toBeVisible();
+  await expect(checklist.getByRole("link", { name: "Run a scan" })).toHaveAttribute("href", "/dashboard/scans#run-a-scan");
+});
+
 test("a past-due subscription shows the payment banner", async ({ page }) => {
   await mockSupabase(page, { subscriptions: [{ ...SUBSCRIPTION, status: "past_due" }], scans: SCAN_ROWS });
   await mockApi(page, { "GET /api/emerging-threats": { json: { available: true, alerts: [] } } });
