@@ -67,6 +67,19 @@ describe("buildTrivyImageFindings", () => {
 });
 
 describe("buildTrivyConfigFindings", () => {
+  it("reads real trivy 0.75.0 `config --format json` output (captured from a Dockerfile running as root)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const report = JSON.parse(readFileSync(`${process.cwd()}/src/worker/tools/fixtures/trivy/config-0.75.0.json`, "utf8"));
+    expect(report.SchemaVersion).toBe(2);
+    const findings = buildTrivyConfigFindings(report);
+    expect(findings.map((f) => f.checkId)).toEqual([
+      "trivy-config.misconfiguration:DS-0002:Dockerfile",
+      "trivy-config.misconfiguration:DS-0025:Dockerfile",
+    ]);
+    expect(findings[0]).toMatchObject({ severity: "high", title: "[Trivy] Image user should not be 'root' (Dockerfile)" });
+    expect(findings[0].remediation).toContain("USER <non root user name>");
+  });
+
   it("returns an empty array when there are no results", () => {
     expect(buildTrivyConfigFindings({})).toEqual([]);
   });

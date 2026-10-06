@@ -1,0 +1,97 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.75.0"
+  },
+  "ReportID": "01a10ec0-bb1d-745f-be15-ed43b90476f6",
+  "CreatedAt": "2026-10-06T01:07:54.269288998Z",
+  "ArtifactName": "/tmp/repo",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "MisconfSummary": {
+        "Successes": 22,
+        "Failures": 2
+      },
+      "Misconfigurations": [
+        {
+          "Type": "Dockerfile Security Check",
+          "ID": "DS-0002",
+          "Title": "Image user should not be 'root'",
+          "Description": "Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.",
+          "Message": "Last USER command in Dockerfile should not be 'root'",
+          "Namespace": "builtin.dockerfile.DS002",
+          "Query": "data.builtin.dockerfile.DS002.deny",
+          "Resolution": "Add 'USER <non root user name>' line to the Dockerfile",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/ds-0002",
+          "References": [
+            "https://docs.docker.com/develop/develop-images/dockerfile_best-practices/",
+            "https://avd.aquasec.com/misconfig/ds-0002"
+          ],
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "Provider": "Dockerfile",
+            "Service": "general",
+            "StartLine": 2,
+            "EndLine": 2,
+            "Code": {
+              "Lines": [
+                {
+                  "Number": 2,
+                  "Content": "USER root",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "\u001b[38;5;64mUSER\u001b[0m\u001b[38;5;37m root\u001b[0m",
+                  "FirstCause": true,
+                  "LastCause": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "Type": "Dockerfile Security Check",
+          "ID": "DS-0025",
+          "Title": "'apk add' is missing '--no-cache'",
+          "Description": "You should use 'apk add' with '--no-cache' to clean package cached data and reduce image size.",
+          "Message": "'--no-cache' is missed: apk add curl",
+          "Namespace": "builtin.dockerfile.DS025",
+          "Query": "data.builtin.dockerfile.DS025.deny",
+          "Resolution": "Add '--no-cache' to 'apk add' in Dockerfile",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/ds-0025",
+          "References": [
+            "https://github.com/gliderlabs/docker-alpine/blob/master/docs/usage.md#disabling-cache",
+            "https://avd.aquasec.com/misconfig/ds-0025"
+          ],
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "Provider": "Dockerfile",
+            "Service": "general",
+            "StartLine": 3,
+            "EndLine": 3,
+            "Code": {
+              "Lines": [
+                {
+                  "Number": 3,
+                  "Content": "RUN apk add curl",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "\u001b[38;5;64mRUN\u001b[0m apk add curl",
+                  "FirstCause": true,
+                  "LastCause": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
