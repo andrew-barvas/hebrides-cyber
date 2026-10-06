@@ -31,7 +31,7 @@
 // authorise an origin by accepting that finding with a justification; the
 // New/Fixed comparison between scans (findingsDiff.ts) is the change signal.
 import { extractScriptTags } from "./webapp";
-import { registrableDomain, isWithinDomain } from "./registrableDomain";
+import { ownerDomain, isWithinDomain } from "./registrableDomain";
 import type { PlaywrightResult, RuntimeScripts } from "./playwright";
 import type { CrawlResult } from "./crawler";
 
@@ -192,7 +192,8 @@ export function firstPartyMatcher(pageUrls: string[]): (url: URL) => boolean {
     try {
       const u = new URL(raw);
       origins.add(u.origin);
-      domains.add(registrableDomain(u.hostname) ?? u.hostname.toLowerCase());
+      // The owner's domain: on mysite.github.io, other github.io sites are third parties.
+      domains.add(ownerDomain(u.hostname) ?? u.hostname.toLowerCase());
     } catch {
       // not a URL — contributes nothing
     }

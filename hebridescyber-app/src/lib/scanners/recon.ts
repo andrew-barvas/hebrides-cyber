@@ -1,6 +1,6 @@
 // Passive reconnaissance: Shodan InternetDB (free, no key) + crt.sh subdomain
 // enumeration via Certificate Transparency logs. No credentials required.
-import { registrableDomain } from "./registrableDomain";
+import { ownerDomain } from "./registrableDomain";
 
 export type ReconResult =
   | {
@@ -151,10 +151,12 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[] | null> {
 export async function checkRecon(targetUrl: string): Promise<ReconResult> {
   try {
     const hostname = new URL(targetUrl).hostname;
-    // Enumerate the whole registered domain: scanning shop.example.co.uk
-    // used to search only *.shop.example.co.uk and miss every sibling host —
-    // the candidates takeover.ts checks for dangling DNS.
-    const domain = registrableDomain(hostname) ?? hostname.replace(/^www\./, "");
+    // Enumerate the owner's whole domain: scanning shop.example.co.uk used to
+    // search only *.shop.example.co.uk and miss every sibling host (the
+    // candidates takeover.ts checks for dangling DNS). ownerDomain, not the
+    // registry-level domain, so mysite.github.io searches its own names, not
+    // every github.io site.
+    const domain = ownerDomain(hostname) ?? hostname.replace(/^www\./, "");
 
     const [ip, subdomains] = await Promise.all([
       resolveIp(hostname),

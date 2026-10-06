@@ -36,6 +36,10 @@ describe("pickHosts", () => {
     expect(hosts.sort()).toEqual(["api.example.co.uk", "shop.example.co.uk"]);
   });
 
+  it("leaves out other sites on a shared hosting domain", () => {
+    expect(pickHosts("mysite.github.io", [entry("docs.mysite.github.io"), entry("someone-else.github.io")])).toEqual(["docs.mysite.github.io"]);
+  });
+
   it("checks the most recently certified hosts first, and caps the list", () => {
     const entries = Array.from({ length: 30 }, (_, i) => entry(`h${i}.example.com`, `2025-${String((i % 12) + 1).padStart(2, "0")}-01`));
     entries.push(entry("fresh.example.com", "2026-09-30"));

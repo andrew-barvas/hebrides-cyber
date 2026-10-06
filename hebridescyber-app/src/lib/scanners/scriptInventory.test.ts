@@ -100,6 +100,12 @@ describe("first-party detection", () => {
     expect(isFirstParty(new URL("https://notexample.co.uk/a.js"))).toBe(false);
   });
 
+  it("treats other sites on a shared hosting domain as third parties", () => {
+    const isFirstParty = firstPartyMatcher(["https://mysite.github.io/"]);
+    expect(isFirstParty(new URL("https://mysite.github.io/a.js"))).toBe(true);
+    expect(isFirstParty(new URL("https://someone-else.github.io/a.js"))).toBe(false);
+  });
+
   it("counts the domain a scan was redirected to as first party too", () => {
     const result = build({
       targetUrl: "https://example.com/",

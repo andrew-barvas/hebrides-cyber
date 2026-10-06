@@ -17,7 +17,7 @@
 // Candidates are the site's own host plus the subdomains recon.ts found in
 // Certificate Transparency logs, scoped to the site's registrable domain.
 import { resolve4, resolveCname } from "node:dns/promises";
-import { isWithinDomain, registrableDomain } from "./registrableDomain";
+import { isWithinDomain, ownerDomain } from "./registrableDomain";
 
 export type TakeoverEvidence = { kind: "nxdomain" } | { kind: "body"; marker: string };
 
@@ -80,9 +80,10 @@ export function matchProvider(cname: string): TakeoverProvider | null {
 }
 
 /** The hosts worth checking: the site itself plus CT-log subdomains inside
- *  its registrable domain, wildcards dropped, de-duplicated, capped. */
+ *  its owner's domain (never a hosting platform's shared one), wildcards
+ *  dropped, de-duplicated, capped. */
 export function candidateHosts(targetHost: string, subdomains: string[]): string[] {
-  const domain = registrableDomain(targetHost);
+  const domain = ownerDomain(targetHost);
   if (!domain) return [];
   const hosts = new Set<string>([targetHost.toLowerCase()]);
   for (const raw of subdomains) {
