@@ -1,46 +1,45 @@
 // Erases one customer's account and all data derived from it — the
-// admin-run half of E-10's GDPR erasure commitment (docs/ENHANCEMENTS.md,
-// /privacy §7's 30-day response promise). The customer-facing half,
-// src/pages/api/account/request-deletion.ts, only records the request and
-// emails you — nothing is deleted until you run this script deliberately.
+// operator-run half of the GDPR erasure commitment (/privacy: actioned within
+// 30 days). The customer-facing half, src/pages/api/account/request-deletion.ts,
+// records the request in deletion_requests (migration 048) and emails you;
+// src/scripts/check-deletion-requests.ts reminds you daily as the deadline
+// nears. Nothing is deleted until you run this deliberately.
 //
-// Defaults to a DRY RUN: looks the account up, reports what would be
-// deleted, and exits without touching anything. Pass --confirm to actually
-// execute. This is irreversible — there is no undo once the auth user is
-// deleted.
+// Defaults to a DRY RUN: looks the account up, reports what would happen,
+// and exits without touching anything. Pass --confirm to execute. This is
+// irreversible — there is no undo once the auth user is deleted.
 //
-// Deletes, in this order:
-//   1. Report PDFs in the "reports" Blob Storage container for every scan
-//      this user owns. Must happen BEFORE step 2 — once the auth user row
-//      is gone, the scan rows that name which blobs belong to them are gone
-//      too (sql/migrations/001_init.sql's `on delete cascade`).
-//   2. The auth.users row, via the Supabase Admin API. The cascade chain
-//      already defined in the schema then removes, automatically:
-//      public.users, scans (and scan_results via scans' own cascade),
-//      monitored_targets, subscriptions, and every other table keyed to
-//      auth.users(id) with `on delete cascade`.
-//
-// Does NOT touch Stripe. An active subscription is flagged as a warning,
-// not cancelled — deleting billing state is a distinct, financially
-// consequential action left to a human decision in the Stripe Dashboard.
+// What --confirm does, in order (see accountErasure.ts's eraseAccount):
+//   1. Cancels the Stripe subscription, if one is still billing, so an
+//      erased customer isn't charged again. Refunds stay a decision for the
+//      Stripe Dashboard. Pass --keep-stripe-subscription to leave billing
+//      untouched (for example when it was already handled by hand).
+//   2. Deletes report PDFs from the "reports" Blob Storage container.
+//   3. Deletes the auth user; ON DELETE CASCADE removes public.users, scans,
+//      scan_results, monitored_targets, subscriptions and every other table
+//      keyed to the user.
+//   4. Marks the pending deletion request completed.
 //
 // Run with:
-//   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... [AZURE_STORAGE_CONNECTION_STRING=...] \
-//     npx tsx src/scripts/erase-user-data.ts <email> [--confirm]
+//   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... [STRIPE_SECRET_KEY=...] [AZURE_STORAGE_CONNECTION_STRING=...] \
+//     npm run account:erase -- <email or user id> [--confirm] [--keep-stripe-subscription]
 
 import { createClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
+import { eraseAccount, findAccount, planErasure } from "../lib/accountErasure";
+import { getStripe } from "../lib/stripeClient";
 
 async function main() {
-  const [, , emailArg, ...rest] = process.argv;
-  const confirm = rest.includes("--confirm");
+  const args = process.argv.slice(2);
+  const target = args.find((a) => !a.startsWith("--"));
+  const confirm = args.includes("--confirm");
+  const keepStripe = args.includes("--keep-stripe-subscription");
 
-  if (!emailArg) {
-    console.error("Usage: npx tsx src/scripts/erase-user-data.ts <email> [--confirm]");
+  if (!target) {
+    console.error("Usage: npm run account:erase -- <email or user id> [--confirm] [--keep-stripe-subscription]");
     process.exit(1);
   }
-  const email = emailArg.trim().toLowerCase();
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -53,38 +52,28 @@ async function main() {
     realtime: { transport: ws as unknown as WebSocketLikeConstructor },
   });
 
-  const { data: user, error: userError } = await supabaseAdmin
-    .from("users")
-    .select("id, email, full_name")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (userError) {
-    console.error(`Failed to look up ${email}:`, userError.message);
-    process.exit(1);
-  }
-  if (!user) {
-    console.error(`No user found with email ${email}.`);
+  const account = await findAccount(supabaseAdmin, target);
+  if (!account) {
+    console.error(`No user found for ${target}.`);
     process.exit(1);
   }
 
-  const { data: subscription } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan, status, stripe_subscription_id")
-    .eq("owner", user.id)
-    .maybeSingle();
-
-  const { data: scans } = await supabaseAdmin.from("scans").select("id").eq("owner", user.id);
-  const scanIds: string[] = (scans ?? []).map((s) => s.id as string);
-
-  console.log(`User: ${user.email} (${user.id})`);
-  console.log(`Scans to remove: ${scanIds.length}`);
-  if (subscription?.status === "active") {
-    console.log(
-      `WARNING: subscription is ACTIVE (${subscription.plan}, stripe_subscription_id=${
-        subscription.stripe_subscription_id ?? "none on file"
-      }) — cancel it in Stripe yourself; this script does not touch billing.`
-    );
+  const plan = await planErasure(supabaseAdmin, account);
+  console.log(`User: ${account.email ?? "(no email)"} (${account.id})`);
+  console.log(`Scans to remove: ${plan.scanIds.length}`);
+  if (plan.pendingRequest) {
+    console.log(`Deletion requested ${plan.pendingRequest.requestedAt}, due by ${plan.pendingRequest.dueAt}.`);
+  }
+  if (plan.stripeToCancel) {
+    if (keepStripe) {
+      console.log(`Stripe subscription ${plan.stripeToCancel} (${plan.subscription?.plan}, ${plan.subscription?.status}) will be LEFT RUNNING (--keep-stripe-subscription).`);
+    } else {
+      console.log(`Stripe subscription ${plan.stripeToCancel} (${plan.subscription?.plan}, ${plan.subscription?.status}) will be cancelled immediately. Decide any refund in the Stripe Dashboard.`);
+      if (!process.env.STRIPE_SECRET_KEY) {
+        console.error("STRIPE_SECRET_KEY is not set: set it, or pass --keep-stripe-subscription if billing is already dealt with.");
+        process.exit(1);
+      }
+    }
   }
 
   if (!confirm) {
@@ -92,18 +81,22 @@ async function main() {
     return;
   }
 
-  const blobResult = await deleteReportBlobs(scanIds);
-  console.log(
-    `Deleted ${blobResult.deleted} report PDF(s)${blobResult.skipped ? " (Blob Storage not configured — skipped)" : ""}.`
-  );
+  const result = await eraseAccount(supabaseAdmin, plan, {
+    cancelStripeSubscription: keepStripe
+      ? undefined
+      : async (id) => {
+          await getStripe().subscriptions.cancel(id);
+        },
+    deleteReportBlobs,
+  });
 
-  const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-  if (deleteError) {
-    console.error(`Failed to delete auth user ${user.id}:`, deleteError.message);
+  if (result.stripeCancelled) console.log(`Cancelled Stripe subscription ${plan.stripeToCancel}.`);
+  console.log(`Deleted ${result.reportsDeleted} report PDF(s)${result.reportsSkipped ? " (Blob Storage not configured — skipped)" : ""}.`);
+  console.log(`Deleted auth user ${account.id} — cascading deletes removed all related rows.`);
+  if (result.ledgerWarning) {
+    console.error(result.ledgerWarning);
     process.exit(1);
   }
-
-  console.log(`Deleted auth user ${user.id} — cascading deletes removed all related rows.`);
 }
 
 async function deleteReportBlobs(scanIds: string[]): Promise<{ deleted: number; skipped: boolean }> {

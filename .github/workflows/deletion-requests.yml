@@ -1,0 +1,48 @@
+name: Account deletion reminders
+
+# /privacy promises an account erasure request is actioned within 30 days.
+# Requests are recorded in deletion_requests (migration 048); this emails the
+# operator once a day about any due within 7 days or already overdue, with
+# the erase command for each. Erasure itself stays a deliberate, human-run
+# step (hebridescyber-app/src/scripts/erase-user-data.ts).
+#
+# Same pattern as data-retention-cleanup.yml: the script runs on the runner
+# directly against Supabase. Before migration 048 it logs and exits cleanly.
+# A reminder that is due but can't be sent fails the run, so it's visible.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   RESEND_API_KEY                            - to send the reminder
+#   CONTACT_EMAIL                             - optional; defaults to hello@hebridescyber.co.uk
+
+on:
+  schedule:
+    # Every day at 06:47 UTC.
+    - cron: "47 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Check deletion request deadlines
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+        run: npm run account:deletion-reminders
