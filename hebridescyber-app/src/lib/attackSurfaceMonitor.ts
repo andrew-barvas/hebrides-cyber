@@ -16,8 +16,10 @@
 //     certified names and can be down; Subfinder's passive sources vary run
 //     to run). A hostname is reported only when this scan's crt.sh data shows
 //     its earliest certificate was issued since the previous scan of the site,
-//     or within NEW_HOSTNAME_WINDOW_DAYS. Every other unreported row is
-//     marked as known without an alert.
+//     or within NEW_HOSTNAME_WINDOW_DAYS of when we first saw it. Every other
+//     unreported row is marked as known without an alert. When crt.sh
+//     couldn't be read there is no evidence either way, so rows stay pending
+//     for a later scan to decide.
 //   - The domain is the registrable domain from the full Public Suffix List
 //     (tldts, private suffixes included), not scanners/registrableDomain.ts's
 //     short list, which maps www.school.herts.sch.uk to the county's shared
@@ -193,13 +195,17 @@ export function firstCertificates(recon: ReconResult | undefined): Map<string, s
   return out;
 }
 
+export type PendingHostname = { name: string; firstSeenAt: string };
+
 /**
  * Splits unreported hostnames into the ones with evidence they are new (in
- * the domain, first certified after `since`, and not the scanned site
- * itself) and the rest.
+ * the domain, not the scanned site itself, and first certified after
+ * `since`, or within the window before we first saw the row, so one left
+ * pending by a failed alert doesn't age out before it is retried) and the
+ * rest.
  */
 export function classifyHostnames(
-  pending: string[],
+  pending: PendingHostname[],
   firsts: Map<string, string>,
   domain: string | null,
   scannedHost: string,
@@ -207,9 +213,11 @@ export function classifyHostnames(
 ): { report: NewHostname[]; known: string[] } {
   const report: NewHostname[] = [];
   const known: string[] = [];
-  for (const name of pending) {
+  for (const { name, firstSeenAt } of pending) {
     const first = firsts.get(name.toLowerCase());
-    const isNew = domain && first && name.toLowerCase() !== scannedHost && isWithinDomain(name, domain) && certTime(first) > since.getTime();
+    const seen = Date.parse(firstSeenAt);
+    const cutoff = Number.isFinite(seen) ? Math.min(since.getTime(), seen - NEW_HOSTNAME_WINDOW_DAYS * DAY_MS) : since.getTime();
+    const isNew = domain && first && name.toLowerCase() !== scannedHost && isWithinDomain(name, domain) && certTime(first) > cutoff;
     if (isNew) report.push({ name, firstCertificate: first });
     else known.push(name);
   }
@@ -301,6 +309,8 @@ export type AttackSurfaceResult = {
   reported: ChangeSet | null;
   /** Unreported hostnames marked as known without an alert (no evidence they are new, or no alerting plan). */
   silentlyRecorded: string[];
+  /** crt.sh couldn't be read, so unreported hostnames were left for a later scan to decide. */
+  hostnamesDeferred: boolean;
   /** DNS fields this run couldn't read (kept as they were, never a change). */
   unanswered: DnsField[];
   delivered: boolean;
@@ -410,7 +420,7 @@ export async function sendAttackSurfaceAlerts(
   recon: ReconResult | undefined,
   opts: AttackSurfaceOptions = {}
 ): Promise<AttackSurfaceResult> {
-  const result: AttackSurfaceResult = { reported: null, silentlyRecorded: [], unanswered: [], delivered: false, migrationPending: false, errors: [] };
+  const result: AttackSurfaceResult = { reported: null, silentlyRecorded: [], hostnamesDeferred: false, unanswered: [], delivered: false, migrationPending: false, errors: [] };
   const fail = (message: string) => {
     result.errors.push(message);
     console.error(`[attackSurfaceMonitor] ${targetUrl}: ${message}`);
@@ -424,11 +434,11 @@ export async function sendAttackSurfaceAlerts(
     const domain = monitoredDomain(host);
 
     // Every hostname syncAssetInventory recorded for this site that hasn't been reported or marked known.
-    const pending: string[] = [];
+    const pending: PendingHostname[] = [];
     for (let from = 0; from < MAX_PENDING_HOSTNAMES; from += PENDING_PAGE) {
       const page = await supabase
         .from("asset_inventory")
-        .select("hostname")
+        .select("hostname, first_seen_at")
         .eq("owner", ownerId)
         .eq("target_url", targetUrl)
         .is("notified_at", null)
@@ -441,8 +451,8 @@ export async function sendAttackSurfaceAlerts(
         }
         throw new Error(`could not load unreported hostnames: ${page.error.message}`);
       }
-      const rows = (page.data ?? []) as Array<{ hostname: string }>;
-      pending.push(...rows.map((r) => r.hostname));
+      const rows = (page.data ?? []) as Array<{ hostname: string; first_seen_at: string }>;
+      pending.push(...rows.map((r) => ({ name: r.hostname, firstSeenAt: r.first_seen_at })));
       if (rows.length < PENDING_PAGE) break;
     }
     if (pending.length >= MAX_PENDING_HOSTNAMES) console.warn(`[attackSurfaceMonitor] ${targetUrl}: over ${MAX_PENDING_HOSTNAMES} unreported hostnames; the rest wait for the next scan`);
@@ -476,8 +486,13 @@ export async function sendAttackSurfaceAlerts(
 
     const { owner, email, alerting } = await loadOwner(supabase, ownerId);
 
-    let hosts: { report: NewHostname[]; known: string[] } = { report: [], known: pending };
-    if (alerting && pending.length > 0) {
+    let hosts: { report: NewHostname[]; known: string[] } = { report: [], known: pending.map((p) => p.name) };
+    const ctRead = recon?.status === "checked" && !recon.ctLookupFailed;
+    if (alerting && pending.length > 0 && !ctRead) {
+      // No certificate evidence either way: leave them for a scan that has it.
+      hosts = { report: [], known: [] };
+      result.hostnamesDeferred = true;
+    } else if (alerting && pending.length > 0) {
       const prior = await previousScanAt(supabase, ownerId, scanId, host);
       const windowStart = new Date(nowDate.getTime() - NEW_HOSTNAME_WINDOW_DAYS * DAY_MS);
       const since = prior && prior < windowStart ? prior : windowStart;

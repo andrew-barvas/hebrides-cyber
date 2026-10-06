@@ -182,11 +182,21 @@ describe("new hostnames", () => {
       ["www.shop.example.com", daysAgo(1)],
       ["evil.other.com", daysAgo(1)],
     ]);
-    const pending = ["dev.example.com", "new2.example.com", "old.example.com", "www.shop.example.com", "evil.other.com", "subfinder-only.example.com"];
+    const seenNow = (name: string) => ({ name, firstSeenAt: NOW.toISOString() });
+    const pending = ["dev.example.com", "new2.example.com", "old.example.com", "www.shop.example.com", "evil.other.com", "subfinder-only.example.com"].map(seenNow);
     const { report, known } = classifyHostnames(pending, firsts, "example.com", "www.shop.example.com", new Date(NOW.getTime() - 14 * 86_400_000));
     expect(report.map((h) => h.name)).toEqual(["new2.example.com", "dev.example.com"]); // newest first
     expect(known).toEqual(["old.example.com", "www.shop.example.com", "evil.other.com", "subfinder-only.example.com"]);
-    expect(classifyHostnames(["dev.example.com"], firsts, null, "x", new Date(0)).report).toEqual([]);
+    expect(classifyHostnames([seenNow("dev.example.com")], firsts, null, "x", new Date(0)).report).toEqual([]);
+  });
+
+  it("judges a row left pending against when it was first seen, so a retried alert doesn't age out", () => {
+    const firsts = new Map([["shop.example.com", daysAgo(19)]]);
+    const since = new Date(NOW.getTime() - 14 * 86_400_000);
+    const seenAWeekAgo = { name: "shop.example.com", firstSeenAt: new Date(NOW.getTime() - 7 * 86_400_000).toISOString() };
+    expect(classifyHostnames([seenAWeekAgo], firsts, "example.com", "www.example.com", since).report).toHaveLength(1);
+    expect(classifyHostnames([{ ...seenAWeekAgo, firstSeenAt: NOW.toISOString() }], firsts, "example.com", "www.example.com", since).report).toEqual([]);
+    expect(classifyHostnames([{ ...seenAWeekAgo, firstSeenAt: "not a date" }], firsts, "example.com", "www.example.com", since).report).toEqual([]);
   });
 });
 
@@ -313,6 +323,7 @@ const asset = (hostname: string, notified: boolean, target = TARGET): Row => ({
   owner: OWNER,
   target_url: target,
   hostname,
+  first_seen_at: "2026-10-06T11:59:00Z",
   notified_at: notified ? "2026-09-01T00:00:00Z" : null,
 });
 
@@ -428,10 +439,29 @@ describe("sendAttackSurfaceAlerts", () => {
     expect((await run(ZONE, TARGET, recon)).silentlyRecorded).toEqual(["month.example.com"]); // window stays 14 days
   });
 
-  it("records everything as known when crt.sh couldn't be read", async () => {
-    const result = await run(ZONE, TARGET, { status: "checked", ip: null, shodan: null, subdomains: [], ctLookupFailed: true });
-    expect(result.reported).toBeNull();
-    expect(sendEmailMock).not.toHaveBeenCalled();
+  it("leaves hostnames pending when crt.sh couldn't be read: no evidence either way", async () => {
+    const before = pending();
+    for (const recon of [{ status: "checked", ip: null, shodan: null, subdomains: [], ctLookupFailed: true } as ReconResult, { status: "error", note: "x" } as ReconResult, undefined]) {
+      // Called directly: run()'s default would replace an undefined recon.
+      const result = await sendAttackSurfaceAlerts(makeClient(), OWNER, SCAN, TARGET, recon, {
+        resolver: resolverFor({ ...ZONE, mx: [{ priority: 10, exchange: "mx.attacker.example" }] }),
+        now: NOW,
+      });
+      expect(result).toMatchObject({ hostnamesDeferred: true, silentlyRecorded: [] });
+      expect(pending()).toEqual(before);
+    }
+    expect(sendEmailMock).toHaveBeenCalledTimes(1); // the DNS change still went out, once
+    expect(sendEmailMock.mock.calls[0][0].subject).toBe("DNS records changed for example.com");
+
+    const later = await run(); // a scan whose crt.sh data was read decides them
+    expect(later).toMatchObject({ hostnamesDeferred: false });
+    expect(later.reported?.newHostnames.map((h) => h.name)).toEqual(["api.example.com", "dev.example.com"]);
+  });
+
+  it("still records hostnames as known for an owner without an alerting plan when crt.sh failed", async () => {
+    db.subscriptions = [];
+    const result = await run(ZONE, TARGET, { status: "error", note: "x" });
+    expect(result).toMatchObject({ hostnamesDeferred: false });
     expect(pending()).toEqual([]);
   });
 
@@ -552,6 +582,19 @@ describe("sendAttackSurfaceAlerts", () => {
     const retry = await run({ ...ZONE, mx: [{ priority: 10, exchange: "other.example" }] });
     expect(retry.reported?.newHostnames).toHaveLength(2);
     expect(retry.reported?.dnsChanges).toHaveLength(1);
+  });
+
+  it("retries a released hostname a week later even though its certificate is now older than 14 days", async () => {
+    db.asset_inventory = [asset("shop.example.com", false)];
+    const recon = { ...RECON, subdomains: [{ name: "shop.example.com", issuer: "R11", notBefore: daysAgo(12), firstNotBefore: daysAgo(12) }] } as ReconResult;
+    sendEmailMock.mockResolvedValue({ ok: false, error: "down" });
+    expect((await run(ZONE, TARGET, recon)).delivered).toBe(false);
+
+    sendEmailMock.mockResolvedValue({ ok: true });
+    db.scans.push({ id: "scan-day0", owner: OWNER, target_url: TARGET, status: "completed", created_at: NOW.toISOString() });
+    const weekLater = new Date(NOW.getTime() + 7 * 86_400_000);
+    const result = await sendAttackSurfaceAlerts(makeClient(), OWNER, "scan-day7", TARGET, recon, { resolver: resolverFor(ZONE), now: weekLater });
+    expect(result.reported?.newHostnames.map((h) => h.name)).toEqual(["shop.example.com"]);
   });
 
   it("counts a chat delivery when email fails, and reports the failures", async () => {
