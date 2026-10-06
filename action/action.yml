@@ -28,7 +28,7 @@ inputs:
   api-base-url:
     description: "Base URL of the Hebrides Cyber API. Override only for a self-hosted or staging instance."
     required: false
-    default: "https://hebridescyber.com"
+    default: "https://www.hebridescyber.co.uk"
 
 outputs:
   score:

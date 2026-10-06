@@ -5,9 +5,11 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const action = require(path.resolve(process.cwd(), "..", "action", "index.js")) as {
+  DEFAULT_API_BASE_URL: string;
   isTriaged: (finding: unknown, now?: number) => boolean;
   blockingFindings: (findings: unknown[], failOn: string, now?: number) => Array<{ check_id: string }>;
   lockfilesIn: (paths: string[]) => string[];
@@ -21,6 +23,29 @@ const finding = (check_id: string, severity: string, extra: Record<string, unkno
   check_id, severity, title: check_id, status: "new", ...extra,
 });
 const triage = (state: string, expires_at: string | null = null) => ({ state, reason: "documented", expires_at, triaged_at: "2026-09-01T00:00:00Z" });
+
+describe("action API base URL", () => {
+  // The API key travels to this host as a Bearer token. hebridescyber.com was
+  // never registered: the old default failed every run and would have handed
+  // customers' keys to whoever registered it.
+  const repoRoot = path.resolve(process.cwd(), "..");
+
+  it("defaults to the live domain, the same in index.js and action.yml", () => {
+    expect(action.DEFAULT_API_BASE_URL).toBe("https://www.hebridescyber.co.uk");
+    const yml = readFileSync(path.join(repoRoot, "action", "action.yml"), "utf8");
+    expect(yml).toMatch(/api-base-url:[\s\S]*?default: "https:\/\/www\.hebridescyber\.co\.uk"/);
+  });
+
+  it("no shipped file points customers at the unregistered hebridescyber.com", () => {
+    const files = [
+      "action/index.js", "action/action.yml", "action/README.md",
+      "hebridescyber-app/docs/API.md", "hebridescyber-app/public/.well-known/security.txt",
+    ];
+    for (const f of files) {
+      expect(readFileSync(path.join(repoRoot, f), "utf8"), f).not.toMatch(/(?:https?:\/\/(?:www\.)?|@)hebridescyber\.com\b/);
+    }
+  });
+});
 
 describe("action isTriaged", () => {
   it("is true for a triage with no expiry or a future one", () => {

@@ -58,7 +58,7 @@ finish. Get the result via `GET /api/v1/scans/{id}` (poll it) or a webhook
 (push, no polling — see below). Usually completes within a minute.
 
 ```bash
-curl -X POST https://hebridescyber.com/api/v1/scans \
+curl -X POST https://www.hebridescyber.co.uk/api/v1/scans \
   -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"target_url": "https://example.com"}'
@@ -322,12 +322,12 @@ site with `targetHost` (your account) or `scanId` (that scan's site).
 
 ```bash
 # One finding
-curl -X PUT https://hebridescyber.com/api/findings/triage \
+curl -X PUT https://www.hebridescyber.co.uk/api/findings/triage \
   -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
   -d '{"targetHost":"shop.example.com","checkId":"headers.csp-absent","state":"snoozed","reason":"Fix booked for next sprint","expiresAt":"2026-11-01T00:00:00Z"}'
 
 # Up to 200 at once
-curl -X PUT https://hebridescyber.com/api/findings/triage \
+curl -X PUT https://www.hebridescyber.co.uk/api/findings/triage \
   -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
   -d '{"items":[{"targetHost":"shop.example.com","checkId":"dns.dmarc-missing","state":"false_positive","reason":"Parked domain, no mail"}]}'
 ```
@@ -536,7 +536,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          response=$(curl -sS -X POST https://hebridescyber.com/api/v1/scans \
+          response=$(curl -sS -X POST https://www.hebridescyber.co.uk/api/v1/scans \
             -H "Authorization: Bearer $API_KEY" \
             -H "Content-Type: application/json" \
             -d "{\"target_url\": \"$TARGET\"}")
@@ -553,7 +553,7 @@ jobs:
           # complete, so this same call replaces the old separate re-fetch.
           detail=""
           for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
-            detail=$(curl -sS "https://hebridescyber.com/api/v1/scans/$scan_id" \
+            detail=$(curl -sS "https://www.hebridescyber.co.uk/api/v1/scans/$scan_id" \
               -H "Authorization: Bearer $API_KEY")
             status=$(echo "$detail" | jq -r '.status')
             [ "$status" = "completed" ] && break
@@ -618,13 +618,13 @@ security_scan:
     - apk add --no-cache curl jq
   script:
     - |
-      scan_id=$(curl -sS -X POST https://hebridescyber.com/api/v1/scans \
+      scan_id=$(curl -sS -X POST https://www.hebridescyber.co.uk/api/v1/scans \
         -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" \
         -H "Content-Type: application/json" \
         -d "{\"target_url\": \"$TARGET_URL\"}" | jq -r '.scan_id')
 
       for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
-        curl -sS "https://hebridescyber.com/api/v1/scans/$scan_id" \
+        curl -sS "https://www.hebridescyber.co.uk/api/v1/scans/$scan_id" \
           -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" > result.json
         status=$(jq -r '.status' result.json)
         [ "$status" = "completed" ] && break

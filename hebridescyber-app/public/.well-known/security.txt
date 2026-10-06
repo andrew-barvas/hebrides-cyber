@@ -1,4 +1,5 @@
-Contact: mailto:security@hebridescyber.com
+Contact: mailto:hello@hebridescyber.co.uk
+Contact: https://www.hebridescyber.co.uk/contact
 Expires: 2027-09-13T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://hebridescyber.com/.well-known/security.txt
+Canonical: https://www.hebridescyber.co.uk/.well-known/security.txt

@@ -12,6 +12,12 @@ const { execFileSync } = require("node:child_process");
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
+// The live service. Must stay on a domain we own: the API key is sent here as a
+// Bearer token (and lockfiles in dependencies mode). This used to default to
+// hebridescyber.com, which was never registered, so every default run failed
+// and anyone registering it would have received customers' keys.
+const DEFAULT_API_BASE_URL = "https://www.hebridescyber.co.uk";
+
 /**
  * Has the owner triaged this finding — accepted the risk (or authorised it),
  * marked it a false positive, or snoozed it — with that decision still in
@@ -231,7 +237,7 @@ async function upsertPullRequestComment(token, repo, number, body, apiUrl) {
 async function runDependencies() {
   const apiKey = getInput("api-key", { required: true });
   const failOn = getInput("fail-on", { defaultValue: "high" }).toLowerCase();
-  const apiBaseUrl = getInput("api-base-url", { defaultValue: "https://hebridescyber.com" }).replace(/\/$/, "");
+  const apiBaseUrl = getInput("api-base-url", { defaultValue: DEFAULT_API_BASE_URL }).replace(/\/$/, "");
   const githubToken = getInput("github-token");
   if (failOn !== "none" && !(failOn in SEVERITY_RANK)) {
     fail(`fail-on must be one of critical, high, medium, low, none — got "${failOn}"`);
@@ -328,7 +334,7 @@ async function runScan() {
   const apiKey = getInput("api-key", { required: true });
   const targetUrl = getInput("target-url", { required: true });
   const failOn = getInput("fail-on", { defaultValue: "high" }).toLowerCase();
-  const apiBaseUrl = getInput("api-base-url", { defaultValue: "https://hebridescyber.com" }).replace(/\/$/, "");
+  const apiBaseUrl = getInput("api-base-url", { defaultValue: DEFAULT_API_BASE_URL }).replace(/\/$/, "");
 
   if (failOn !== "none" && !(failOn in SEVERITY_RANK)) {
     fail(`fail-on must be one of critical, high, medium, low, none — got "${failOn}"`);
@@ -415,7 +421,7 @@ async function main() {
   return runScan();
 }
 
-module.exports = { isTriaged, blockingFindings, lockfilesIn, blockingVulnerabilities, buildDependencyComment, LOCKFILE_COMPANIONS };
+module.exports = { DEFAULT_API_BASE_URL, isTriaged, blockingFindings, lockfilesIn, blockingVulnerabilities, buildDependencyComment, LOCKFILE_COMPANIONS };
 
 // Run only as the action's entry point — requiring this file (the unit tests
 // do) must not start a scan.
