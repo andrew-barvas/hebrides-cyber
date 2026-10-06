@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ScanSearch } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { deriveOnboardingFlags } from "@/lib/onboardingFlags";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import PlanUpsell from "@/components/PlanUpsell";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
@@ -84,17 +85,21 @@ async function fetchOverview(): Promise<Overview | null> {
 }
 
 // E-16 onboarding checklist inputs — existence checks only (.limit(1)),
-// since the checklist needs booleans, not rows.
-async function fetchOnboardingFlags() {
-  const [{ data: verified }, { data: webhook }, { data: anyScan }] = await Promise.all([
+// since the checklist needs booleans, not rows. What counts as done is
+// decided by onboardingFlags.ts.
+async function fetchOnboardingCounts() {
+  const [{ data: verified }, { data: webhook }, { data: startedScan }, { data: onCall }] = await Promise.all([
     supabase.from("verifications").select("id").not("verified_at", "is", null).limit(1),
     supabase.from("webhooks").select("id").limit(1),
-    supabase.from("scans").select("id").limit(1),
+    // A refused attempt (domain not verified) leaves a `pending` row; that isn't a scan.
+    supabase.from("scans").select("id").neq("status", "pending").limit(1),
+    supabase.from("ticket_integrations").select("provider").in("provider", ["pagerduty", "opsgenie"]).limit(1),
   ]);
   return {
-    verifiedDomain: (verified?.length ?? 0) > 0,
-    outboundWebhook: (webhook?.length ?? 0) > 0,
-    scanned: (anyScan?.length ?? 0) > 0,
+    verifiedDomainCount: verified?.length ?? 0,
+    webhookCount: webhook?.length ?? 0,
+    startedScanCount: startedScan?.length ?? 0,
+    onCallCount: onCall?.length ?? 0,
   };
 }
 
@@ -144,16 +149,16 @@ export default function DashboardPage() {
 
   const [loaded, setLoaded] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [flags, setFlags] = useState({ verifiedDomain: false, outboundWebhook: false, scanned: false });
+  const [counts, setCounts] = useState({ verifiedDomainCount: 0, webhookCount: 0, startedScanCount: 0, onCallCount: 0 });
   const [overviewFilter, setOverviewFilter] = useState<FindingsFilter>("all");
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchOverview(), fetchOnboardingFlags()])
+    Promise.all([fetchOverview(), fetchOnboardingCounts()])
       .then(([o, f]) => {
         if (cancelled) return;
         setOverview(o);
-        setFlags(f);
+        setCounts(f);
       })
       .catch((err) => console.error("[dashboard] overview load error:", (err as Error).message))
       .finally(() => {
@@ -165,6 +170,13 @@ export default function DashboardPage() {
   }, []);
 
   const overviewScan = overview?.scan ?? null;
+  const flags = deriveOnboardingFlags({
+    ...counts,
+    hasCompletedScan: overviewScan !== null,
+    activePlan: plan,
+    slackWebhookUrl,
+    teamsWebhookUrl,
+  });
   const overviewFindings = overview?.findings ?? [];
   const overviewDiff = overview?.diff ?? null;
   const overviewScoreHistory = overview?.scoreHistory ?? [];
@@ -223,13 +235,7 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      <OnboardingChecklist
-        verifiedDomain={flags.verifiedDomain}
-        hasScanned={flags.scanned}
-        hasReport={overviewScan !== null}
-        hasAlertChannel={flags.outboundWebhook || Boolean(slackWebhookUrl) || Boolean(teamsWebhookUrl)}
-        alertChannelIsSlackTeams={plan === "pro" || plan === "agency"}
-      />
+      <OnboardingChecklist {...flags} />
 
       <FleetOverview />
 
@@ -359,16 +365,16 @@ export default function DashboardPage() {
       ) : (
         <EmptyState
           icon={<ScanSearch />}
-          title={flags.scanned ? "Your first scan is on its way" : "No completed scans yet"}
+          title={flags.hasScanned ? "Your first scan is on its way" : "No completed scans yet"}
           description={
-            flags.scanned
+            flags.hasScanned
               ? "Once a scan finishes, your score, findings and trends appear here."
               : "Verify a domain you own and run a scan — your score, findings and trends will appear here."
           }
           action={
             <Button asChild>
-              <Link href={flags.scanned ? "/dashboard/scans#scan-history" : "/dashboard/scans#run-a-scan"}>
-                {flags.scanned ? "View scans" : "Run your first scan"}
+              <Link href={flags.hasScanned ? "/dashboard/scans#scan-history" : "/dashboard/scans#run-a-scan"}>
+                {flags.hasScanned ? "View scans" : "Run your first scan"}
               </Link>
             </Button>
           }
