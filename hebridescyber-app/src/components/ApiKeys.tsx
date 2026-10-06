@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/input";
 
@@ -196,7 +197,12 @@ export default function ApiKeys({ token }: { token: string }) {
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Use an API key to run scans from CI or scripts:{" "}
         <code className="font-mono text-neon/70">POST /api/v1/scans</code>. Keys only
-        work on domains you&apos;ve already verified.
+        work on domains you&apos;ve already verified. Ready-made templates for GitHub Actions,
+        GitLab, Jenkins, Azure DevOps and Bitbucket are in the{" "}
+        <Link href="/docs/ci" className="text-neon hover:underline">
+          CI setup guide
+        </Link>
+        .
       </p>
 
       {freshKey && (

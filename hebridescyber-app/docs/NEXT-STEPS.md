@@ -1,13 +1,13 @@
 # Next steps — session handoff
 
-**Last updated: 2026-10-05.** Read this first in any new session (local or
+**Last updated: 2026-10-06.** Read this first in any new session (local or
 cloud), after `CLAUDE.md` and `docs/SCANNER-CONVENTIONS.md`. It says where
-things stand, the rules that kept biting, and the next five features with
-enough detail to start each one cold.
+things stand, the rules that kept biting, the plan in order, and what only
+the owner can do.
 
 To resume in a cloud session: open the repo `andrew-barvas/hebrides-cyber`,
 branch from `master`, and prompt *"Read hebridescyber-app/docs/NEXT-STEPS.md
-and implement item N (E-7x)."* Do one item per session.
+and implement plan item N."* Do one item per session.
 
 ## Where things stand
 
@@ -29,6 +29,8 @@ Database migrations: files exist through **047**; the next free number is **048*
 | Scanner inventory | `docs/SCANNER-INVENTORY.md`: every tool, service and check family, derived from the code, with the discrepancies found against the docs |
 | Executive PDF report | `executiveReport.ts` (pure HTML: score, severity counts, top priorities, compliance snapshot incl. SOC 2/HIPAA, all findings, accepted risks, checks that did not finish; false positives left out; white label removes every "Hebrides Cyber"), rendered by `/api/generate-report`, "↓ Executive PDF" button on the scan page (`executiveReportClient.ts`). Not plan-gated yet (the route never was) |
 | Reflected-XSS confirmation | `xssConfirm.ts` + `validateExploit` (`proofOfExploit.ts`): one harmless GET probe, context-aware verdict (body / quoted attribute confirmed; encoded, comment, script, textarea, title not), optional browser check; runs in every non-`safe` scan via `enrichWithProofOfExploit` (row above) |
+| Domain fix | The Action's default API URL, `docs/API.md` and `security.txt` pointed at the never-registered `hebridescyber.com`; now `www.hebridescyber.co.uk`, pinned by a test |
+| CI templates for any CI system | `public/ci/hebrides-scan.sh` + GitHub Actions, GitLab, Azure DevOps, Bitbucket, Jenkins templates, `/docs/ci` guide (see CLAUDE.md "CI templates"); replaces the broken `sdk/` |
 | Supabase storage + Firebase exposure | `backendExposure.ts` lists one object name from buckets the code names (`.storage.from("x")`, `backend-exposure.storage-bucket`); `firebaseExposure.ts` checks the site's own Firebase config: RTDB shallow root read (`firebase-rtdb`, key names only), Storage list (`firebase-storage`), Firestore collections the code names (`firestore`, one document name). Only config keys count (`databaseURL`/`storageBucket`/`projectId`), so a site reading a public RTDB API isn't flagged. No bench fixture: the probes go to fixed Google/Supabase hosts, so evidence is covered by unit tests on recorded response shapes |
 | Page metadata for client-component routes | `pricing/`, `contact/`, `login/` layouts (own title/description; login noindex); `/agencies` added to the sitemap |
 | commix parser from a real run | `commixOutput.ts`, `fixtures/commix/`; unfinished/unreachable runs are `error`, nothing to test is `not_applicable` |
@@ -71,146 +73,58 @@ branches / functions / lines). Lint: 0 errors (34 known warnings).
    PR bodies end with the Claude Code attribution line. Draft PR, wait for
    CI, squash-merge, watch the `Deploy` run.
 
-## The next three features, in order
+## Follow-ups on shipped features
 
-### ~~1. E-70 — Site crawler~~ — shipped (see "Where things stand")
+Short notes on what each shipped feature still doesn't cover; the design of
+each lives in CLAUDE.md and the module's header.
 
-Kept for reference; not yet covered by the crawler: login recording for the signed-in crawl (slice 1 uses a saved cookie/Basic credential, see docs/AUTHENTICATED-CRAWL.md), JS-rendered link discovery (a SPA's client-side routes), per-page SRI/cookies for pages behind forms.
+- **Crawler (E-70):** login recording for the signed-in crawl (slice 1 uses a saved cookie/Basic credential, see `docs/AUTHENTICATED-CRAWL.md`); JS-rendered link discovery beyond the Next.js build manifest; per-page SRI/cookies for pages behind forms.
+- **PR dependency checks (E-71):** lockfile-less PRs (manifest-only changes); a GitHub App for comments on fork PRs; pinning a finding to the changed line.
+- **Benchmark (E-73):** DNS, ports, recon and the extended tools are not benchmarked; `knownIssues` lists the tracked defects.
+- **Cross-site findings (E-74):** no authenticated e2e yet.
+- **Duplicates:** `EQUIVALENCES` covers only confident id mappings; extend it as real nuclei/ZAP output confirms more. Injection findings need url+parameter evidence in their checkIds before they can be matched.
+- **SAST (E-69):** Koa `ctx`, FastAPI typed params, more languages.
+- **Emerging threats:** WordPress plugin matching; re-alert when "possibly affected" becomes "affected".
+- **RLS tests:** extend the matrix to ticket_integrations, sla_policies, organisations/RBAC, report_shares.
+- **e2e:** `/account`, `/admin`, `/dashboard/assets|sla|integrations`, the Fix Wizard and `/diff` are not covered signed-in.
 
-**Why:** most checks look only at the homepage. Headers, error disclosure,
-SRI, script inventory, cookies and mixed content never see `/login`,
-`/checkout` or `/contact`. Intruder, Detectify and Invicti crawl first. This
-is the biggest single detection gain available.
+## Plan (2026-10-06): DeepSeek/Copilot strategic review, checked against the code
 
-**Design:**
-- New base module `src/lib/scanners/crawler.ts`: breadth-first from the
-  target, same registrable origin only, **read-only GETs**, honours
-  `robots.txt` (reuse `webapp.ts`'s robots parsing), cap ~50 pages and depth
-  3, concurrency ≤4, per-request `AbortSignal.timeout`, total time budget
-  (~45 s on-demand). Sources: `<a href>`, `<form action>` (record, never
-  submit), sitemap.xml URLs (`robots.sitemapUrls`), and the existing
-  Wayback live URLs. Skip logout/delete-looking links and binary types.
-  Normalise URLs (strip fragments, sort/limit query params) to avoid traps.
-- Store `ScanResults.crawl = { status, pages: [{url, status, contentType, title}], truncated }`.
-- Run the page-level checks per crawled page and aggregate by **checkId
-  key + page**, de-duplicated so one site-wide header gap is one finding
-  listing affected pages (not 50 findings). Start with: security headers
-  (`headers.ts` `buildHeaderAnalysis`), cookie flags, mixed content, SRI and
-  script inventory (`scriptInventory.ts` per page, origins merged), error
-  disclosure on real 404s, forms posting over HTTP / password fields
-  without HTTPS.
-- Keep checkIds stable: site-wide findings keep their current ids; new
-  page-specific ones use `<module>.<check>:<path>` capped at N pages.
-- Lifecycle: `crawl` status `partial`/`error` must not resolve page findings.
+Both reviews worked from older docs. Already done in code: crawler (E-70), PR
+dependency checks (E-71), cross-site findings (E-74), sqlmap fix + xsser
+retirement (E-72), benchmark (E-73), auto-migration and post-deploy health
+check (E-56/57, they run once their secrets exist), executive summary/PDF,
+Subfinder install, signed-in crawl slice 1, confirmed-exploitable findings.
+No public page claims an unwired enterprise feature (SSO, SCIM, RBAC, MSP
+portal are either absent from marketing or labelled "not available yet").
 
-**Tests:** fixture site via stubbed `fetch` (links, loops, robots
-disallows, off-origin links, sitemap, traps), caps and budget, aggregation.
-**Done when:** a scan of a multi-page fixture reports issues found only on
-inner pages; our own site still scores the same or better; docs updated.
+In order, one PR each, merged on green CI:
 
-### ~~2. E-71 — Pull-request dependency checks~~ — shipped (see "Where things stand")
+1. ~~**Domain fix**~~ done (PR #15): the Action's default API URL, `docs/API.md` and `security.txt` pointed at the never-registered `hebridescyber.com` (customers' API keys would have gone to whoever registers it).
+2. ~~**CI templates that work:**~~ done: `public/ci/hebrides-scan.sh` (POSIX sh + curl + jq, the Action's exact gate: new, untriaged, at or above `HEBRIDES_FAIL_ON`; JUnit output; tested under dash and bash against a mock API) and templates for GitLab, Jenkins, Azure DevOps, Bitbucket and GitHub Actions, served from the site with a `/docs/ci` page. Replaces `sdk/`, whose templates sent `targetUrl` and parsed `scanId` (the API uses `target_url`/`scan_id`) and so never started a scan. Needed because the repo is private: customers cannot `uses:` the packaged Action.
+3. **Plan gates honour subscription status (E-02):** seven hand-rolled gates (`connect-repo`, `target-auth`, `branding-logo`, `team`, `team/members`, `partner-portal`, `cloud-credentials`) read `plan` and ignore `status`; Stripe sets `past_due`/`cancelled` without changing `plan`, so a cancelled Pro/Agency account keeps paid features. Move them onto `planAccess.ts` helpers (active only, admins exempt); gate fix PRs at PR time (Pro covers "Dependency & CI/CD scanning"). Customer-facing text when Stripe isn't configured instead of the env-var name; read `?checkout=cancelled` on /pricing.
+4. **NCSC Web Check / Mail Check replacement surface:** link `/web-check-alternative` and `/ai-threats` from header/footer/home (nothing links to either today); add `/ai-threats`, `/sample-reports`, `/sbom` to the sitemap; a Cyber Essentials readiness landing page; an evergreen NCSC-retirement blog post (seed); campaign copy drafts (email, LinkedIn, ads keywords) in `marketing/`.
+5. **Account erasure within 30 days:** the privacy policy promises it; today a request only writes an audit row and emails the operator, and nothing tracks the deadline. `deletion_requests` ledger (migration 048), a daily job that alerts the operator before day 30, erase logic as a library function (cancel the Stripe subscription too), fix the script's lookup (the alert suggests a user id, the script only accepts an email).
+6. **Onboarding and verification friction** (was item 4): verification copy without dev jargon ("dev token fallback"), say which method failed, separate rate limits for start and check (retries hit the shared 10/hour today), list pending verifications; Run scan disabled with a reason until verified; checklist flag derivation as a tested pure function plus e2e; dashboard quick actions; Trends/SLAs under Compliance.
+7. **Continuous monitoring** (was item 5): wire `easmDiscovery.ts`, asset ledger, new/removed asset and DNS change alerts.
+8. **Portfolio report** for agencies (was item 7), reusing `executiveReport.ts`.
+9. **Hardening:** SHA-256 check on the Subfinder download (opengrep has one, subfinder doesn't); tests for `dockerBaseImage.ts`, `subdomains.ts`, `waybackDiscovery.ts`, `nmap.ts`, `nuclei.ts`, `zap.ts`; correct the false headers of `easmDiscovery.ts` and `graphqlApi.ts`; refresh `BACKUP-RESTORE.md` (still says `supabase db push`).
+10. Then: login recorder, DOM-based XSS validation, remediation packs.
 
-Not yet covered: lockfile-less PRs (manifest-only changes), a GitHub App for fork PRs' comments, and pinning a PR's finding to the exact changed line.
+Not doing: MFA bypass, JWT forging, CSRF bypass, gRPC fuzzing (attacks, not scanning); SSRF callbacks (needs an owner decision on hosting an out-of-band endpoint).
 
-### ~~3. E-72 — Fix sqlmap result reading~~ — shipped; xsser retired; commix parser outstanding
-
-`sqlmap.ts` now reads sqlmap's real output (`sqlmapOutput.ts`, tested against
-captured output in `src/worker/tools/fixtures/sqlmap/`): an unreachable target
-or unfinished run is `error`, nothing to test is `not_applicable`, never clean.
-`tool-integration.yml` runs the real sqlmap against `tests/fixtures/test-app`
-(passed on a GitHub runner) and captures commix output into the job log.
-**xsser was retired**: the CI capture showed it is not installable on the runner
-image (no apt package on Ubuntu 24.04; the pip build of 1.9 crashes at import
-because it only runs from inside its source checkout), so it had only ever
-returned `not_configured`. ZAP covers XSS; reflected-XSS confirmation is planned
-for `proofOfExploit.ts`.
-**Next:** write `commixOutput.ts` + fixtures from the captured commix v4.2 run
-(negative case: `[warning] GET parameter 'q' does not seem to be injectable`,
-`[critical] All tested parameters do not appear to be injectable…`; needs
-`--batch`), with the same evidence rules as `sqlmap.ts`.
-
-### 4. E-73 — Scanner accuracy benchmark suite
-
-**Why:** "industry grade" needs measured precision/recall, and every recent
-bug here was a false positive or a silent miss that tests built on
-assumptions didn't catch.
-**Design:** `bench/` with a corpus of targets that exercise known findings:
-local containers (OWASP Juice Shop, a Next.js/Express/PHP fixture app with
-seeded misconfigurations), badssl.com hosts for TLS, and recorded HTTP
-fixtures for anything external. An expectations file lists, per target,
-checkIds that **must** appear and ones that **must not**. A workflow runs it
-weekly and on scanner changes, and prints precision/recall per module,
-failing on regressions.
-**Done when:** the suite runs in CI with a baseline report, and at least
-one known false positive class (e.g. SPA catch-all) is a must-not case.
-
-**Status (E-73):** first slice built on branch `claude/e73-benchmark`: `bench/`,
-`npm run bench`, `.github/workflows/benchmark.yml`. It covers the base checks
-that run offline against 12 local fixture sites (SPA catch-all, soft-404 and
-redirect-all must-not cases included); the Juice Shop / badssl.com job is
-opt-in and informational (`bench:network`). It already surfaced two real
-defects, tracked as `knownIssues`: nginx autoindex is missed (`directoryListing.ts`
-requires "Parent Directory") and `no-rate-limit` fires on redirect-everything
-sites. Not yet covered: DNS, ports, recon and the extended tools.
-
-### 5. E-74 — Cross-site findings view with bulk triage
-
-**Why:** everything is per scan. Agencies and anyone with several sites
-need one list: all open findings across all sites, filterable and
-groupable, with bulk actions.
-**Design:** new `/dashboard/findings` page reading `finding_lifecycle`
-(open rows) joined with the latest scan's finding detail and
-`finding_triage`; filters by site, severity, KEV/EPSS, category, triage
-state, age/SLA; group by check (e.g. "missing HSTS on 7 sites"); bulk
-triage via the existing bulk `PUT /api/findings/triage`; CSV export.
-Add to `AppNav.tsx` `NAV_ITEMS`. Authenticated e2e for it (see below).
-**Status:** page, API (`GET /api/findings`), bulk triage and CSV export are built with unit/component tests (see CLAUDE.md "Cross-site findings view"); only the authenticated e2e is outstanding, owned by the e2e branch.
-**Done when:** one page shows every open finding across sites, a bulk
-"authorise these 5 script sources" works, and it has e2e coverage.
-
-## Next five (planned 2026-10-05, from the competitor analysis and the DeepSeek/Copilot reviews)
-
-1. **Confirmed-exploitable findings**: done (see "Where things stand").
-2. **Guided onboarding and dashboard UX**: one add-site, verify, scan flow; Run scan disabled with a reason until the domain is verified; prominent empty-state "Start scan"; dashboard quick actions; Trends and SLAs grouped under Compliance. About 1.5 sessions.
-3. **Continuous attack-surface monitoring**: wire `easmDiscovery.ts` into the scheduled pipeline, keep a per-site asset ledger, alert on new and disappeared assets, feed `takeover.ts`. About 1.5 sessions.
-4. **Lookalike-domain and phishing watch**: typo and homoglyph permutations checked with passive DNS, flag registered ones, MX records first. Pro and Agency. About 1 session.
-5. **Cyber Essentials evidence pack**: a self-attested checklist for the controls a scan can't see, kept apart from the automated score, exported alongside the scan results through `executiveReport.ts`. About 2 sessions. Runner-up: DMARC aggregate-report processing.
-
-Not code (owner's call): hero copy, an NCSC Web Check / Mail Check replacement landing page, separate SaaS and local-business entry points.
-
-## Also queued (smaller, pick up between the five)
-
-- **Authenticated e2e tests** for the dashboard, report and triage (today's
-  9 e2e tests cover public pages only).
-- **Real Postgres tests** for RLS and migrations: done as `tests/db/` + `db-tests.yml` on plain Postgres with a Supabase shim, see CLAUDE.md "Testing strategy". Remaining: extend the RLS matrix to the tables not yet covered (ticket_integrations, sla_policies, organisations/RBAC, report_shares).
-- ~~Authenticated e2e tests~~ — done: dashboard, scans/start-scan, report and
-  triage run signed-in and hermetic (`tests/e2e/*-auth.spec.ts`; how it works
-  is under "Testing strategy" in `CLAUDE.md`). Not yet covered: `/account`,
-  `/admin`, `/dashboard/assets|sla|integrations`, the report's Fix Wizard and
-  the `/diff` page.
-- **Real Postgres tests** for RLS and migrations (Supabase CLI local stack in CI).
-- **Cross-tool duplicate findings** (nuclei, ZAP and our checks reporting the same issue).
-- **Evidence on findings** — the request/response that proves each one.
-- `findingsDiff.ts` passive-after-full gap: an on-demand scan after a
-  scheduled one reports active-tool findings as "Fixed" (affects ticket
-  auto-close; lifecycle is already correct).
-- E-63 continuous EASM, E-65 lookalike domains, E-66 DMARC reports.
-- `/methodology` page; the five-part briefing document (marketing/).
-- Per-target repo mapping (today the newest connected repo is scanned).
-
-**Cross-tool duplicates (done, `claude/dedupe-findings`):** `findingConsolidation.ts` merges extended-tool duplicates into the canonical finding (`corroboratedBy`). Still open: the table covers only issues with a confident id mapping (headers/HSTS/CSP, TLS, a few exposures, CVE-bearing library findings) — extend `EQUIVALENCES` as real nuclei/ZAP output confirms more ids; sqlmap/xsser/ZAP injection findings need parameter/URL evidence in their checkIds before they can be matched; our own overlapping checks (`tls.hsts-missing` vs `headers.missing-critical`) are deliberately not merged.
-- SAST: Koa `ctx`, FastAPI typed params, more languages (E-69 follow-ups).
-- Emerging threats: WordPress plugin matching; re-alert when
-  "possibly affected" becomes "affected".
-- `deploy.yml`'s post-deploy health step uses `if: env.SITE_URL != ''` with
-  `SITE_URL` set only in the step's own `env`, which the step `if` can't
-  see — check the step actually runs once the `SITE_URL` secret exists.
+**Owner decisions needed:** whether AI fix, API keys, share links and tickets should be paid-only (no page promises them for a tier, so gating them is new policy); whether to delete the seven unwired library modules (`rbac.ts`, `scimProvisioning.ts`, `mspPortal.ts`, `customScanPolicies.ts`, `riskScoring.ts`, `graphqlApi.ts`; `easmDiscovery.ts` gets wired in item 7). They are tested, so deleting them lowers the measured coverage.
 
 ## Owner actions pending (not code)
 
-- Add DNS **CAA** record at GoDaddy: `0 issue "digicert.com"` → own site 100/100.
-- **Replay** the own-site scan (the 61/100 report predates the fixes; current code scores 98).
-- GitHub secret **`SITE_URL`** = `https://www.hebridescyber.co.uk`.
-- Optional secret **`NVD_API_KEY`** (faster emerging-threat lookups).
-- **Stripe (E-07)** — `/api/health` is "degraded" until it's configured; blocks paid sign-ups.
-- Sentry DSN (E-03), staging Supabase, branch protection (needs GitHub Pro).
+In order of impact:
+
+1. **Stripe price IDs (E-07)**: paid sign-up is impossible until `STRIPE_PRICE_*` are set; `/api/health` stays "degraded".
+2. **Sentry DSN (E-03)**: failed scans are invisible in production without it.
+3. **Restore drill (E-13 / LIVE-4)**: restore a backup into a scratch Supabase project and record the result in `BACKUP-RESTORE.md`; consider Supabase Pro for point-in-time recovery.
+4. **Deploy secrets**: `DATABASE_URL` (then run Deploy via workflow_dispatch with `baseline_up_to=047` once) and `SITE_URL` = `https://www.hebridescyber.co.uk`, so migrations and the post-deploy health check actually run.
+5. **Publish the GitHub Action** from a public repository (this repo is private, so customers cannot `uses:` it); until then the CI templates in item 2 are the supported route.
+6. **Domains**: register `hebridescyber.com` defensively; optionally a `security@hebridescyber.co.uk` alias for `security.txt`.
+7. **ToS solicitor review** (BETA-B1).
+8. **NCSC replacement campaign**: send/post the drafts from item 4 (email list, LinkedIn, Google Ads), agency outreach.
+9. DNS **CAA** record at GoDaddy (`0 issue "digicert.com"`), then replay the own-site scan; optional `NVD_API_KEY`; staging Supabase; branch protection (needs GitHub Pro).

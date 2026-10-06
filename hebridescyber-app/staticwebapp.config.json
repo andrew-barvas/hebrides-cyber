@@ -17,6 +17,9 @@
     "Cross-Origin-Embedder-Policy": "require-corp"
   },
   "mimeTypes": {
-    ".json": "text/json"
+    ".json": "text/json",
+    ".sh": "text/plain",
+    ".yml": "text/plain",
+    ".groovy": "text/plain"
   }
 }
