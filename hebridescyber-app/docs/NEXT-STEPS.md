@@ -12,7 +12,7 @@ and implement plan item N."* Do one item per session.
 ## Where things stand
 
 Everything below is merged to `master`, passed CI, and is deployed.
-Database migrations: files exist through **049**; the next free number is **050**. Deploys now apply pending files through `src/scripts/apply-migrations.ts` (ledger table `schema_migrations`, checksum drift check). **One-time step:** production was migrated by hand, so run the Deploy workflow manually (workflow_dispatch) with `baseline_up_to` = `047` before the next push to master, otherwise the migration job refuses the unrecorded database and blocks the deploy (048 and 049 are then applied by the normal migration step; until they are, deletion requests fall back to the audit row and email, and attack-surface alerts do nothing).
+Database migrations: files exist through **050**; the next free number is **051**. **Apply 050 first, today:** until it is, `scans.status` rejects `queued`, so every dashboard scan stays "not started" and every `POST /api/v1/scans` fails (it is one `ALTER TABLE`, safe to paste into the Supabase SQL editor on its own). Deploys now apply pending files through `src/scripts/apply-migrations.ts` (ledger table `schema_migrations`, checksum drift check). **One-time step:** production was migrated by hand, so run the Deploy workflow manually (workflow_dispatch) with `baseline_up_to` = `047` before the next push to master, otherwise the migration job refuses the unrecorded database and blocks the deploy (048 to 050 are then applied by the normal migration step; until they are, deletion requests fall back to the audit row and email, and attack-surface alerts do nothing).
 
 | Shipped | Where |
 |---|---|
