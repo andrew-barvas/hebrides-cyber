@@ -182,6 +182,36 @@ export async function sendSlackThreatAlert(webhookUrl: string, items: ThreatAler
   if (!res.ok) throw new Error(`Slack responded ${res.status}`);
 }
 
+/**
+ * A titled list of lines with a dashboard button: for change notices
+ * (attackSurfaceMonitor.ts). Every line is escaped here. Throws on a
+ * non-2xx response, so the caller only records what was delivered.
+ */
+const SLACK_SECTION_LIMIT = 3000;
+
+export async function sendSlackNotice(webhookUrl: string, title: string, lines: string[], dashboardUrl: string): Promise<void> {
+  if (!isValidSlackWebhookUrl(webhookUrl)) {
+    throw new Error("Refusing to send Slack alert: URL is not a hooks.slack.com webhook");
+  }
+  const body = lines.map((l) => `• ${slackEscape(l)}`).join("\n");
+  // Slack rejects a section block over 3000 characters (20 long hostnames can get there).
+  const blockBody = body.length > SLACK_SECTION_LIMIT ? `${body.slice(0, SLACK_SECTION_LIMIT - 1)}…` : body;
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `*${slackEscape(title)}*\n${body}`,
+      blocks: [
+        { type: "section", text: { type: "mrkdwn", text: `*${slackEscape(title)}*` } },
+        { type: "section", text: { type: "mrkdwn", text: blockBody } },
+        { type: "actions", elements: [{ type: "button", text: { type: "plain_text", text: "Open dashboard" }, url: dashboardUrl }] },
+      ],
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Slack responded ${res.status}`);
+}
+
 // Admin global Slack alert (for internal monitoring — not customer-facing).
 export async function sendAdminSlackAlert(text: string): Promise<void> {
   const url = process.env.SLACK_WEBHOOK_URL;

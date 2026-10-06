@@ -48,6 +48,7 @@
     "react-dom": "^19.2.0",
     "stripe": "^16.2.0",
     "tailwind-merge": "^2.6.1",
+    "tldts": "^7.4.16",
     "zod": "^4.5.4"
   },
   "overrides": {

@@ -34,6 +34,7 @@ name: On-Demand Scan
 #   WPSCAN_API_TOKEN                          - optional, WordPress plugin CVE match
 #   GOOGLE_SAFE_BROWSING_API_KEY              - optional, malware/phishing check
 #   HIBP_API_KEY                              - optional, breach exposure check
+#   RESEND_API_KEY                            - post-scan emails (alerts, scan complete)
 # Every one of the optional secrets degrades to its own "not_configured"
 # result when unset — never blocks or fails the job.
 
@@ -83,6 +84,9 @@ jobs:
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          # The post-scan emails (critical findings, scan complete, SLA, new
+          # hostnames and DNS changes) need it; see scheduled-scans.yml.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           WORKER_ID: gha-ondemand-${{ github.run_id }}
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}

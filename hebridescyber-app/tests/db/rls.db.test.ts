@@ -40,6 +40,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "verifications", ownerCol: "owner", insert: "insert into verifications (owner, domain, token) values ($1, 'new.test', 'tok-new')" },
   { table: "scan_jobs", ownerCol: "owner", insert: "insert into scan_jobs (owner, target_url) values ($1, 'https://new.test')" },
   { table: "deletion_requests", ownerCol: "owner", insert: "insert into deletion_requests (owner) values ($1)" },
+  { table: "asset_inventory", ownerCol: "owner", insert: "insert into asset_inventory (owner, target_url, hostname, kind) values ($1, 'https://new.test', 'new.test', 'domain')" },
+  { table: "dns_snapshots", ownerCol: "owner", insert: "insert into dns_snapshots (owner, target_host) values ($1, 'new.test')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -47,7 +49,7 @@ const KEY_TABLES: TableSpec[] = [
 const SERVICE_WRITE_ONLY = [
   "subscriptions", "finding_lifecycle", "finding_triage", "ticket_links",
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
-  "deletion_requests",
+  "deletion_requests", "asset_inventory", "dns_snapshots",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -83,6 +85,8 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into verifications (owner, domain, token) values ($1, $2, 'tok')", [o, h]);
       await q("insert into scan_jobs (owner, target_url) values ($1, $2)", [o, `https://${h}`]);
       await q("insert into deletion_requests (owner) values ($1)", [o]);
+      await q("insert into asset_inventory (owner, target_url, hostname, kind) values ($1, $2, $3, 'domain')", [o, `https://${h}`, h]);
+      await q("insert into dns_snapshots (owner, target_host, ns) values ($1, $2, '{ns1.x.test}')", [o, h]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");

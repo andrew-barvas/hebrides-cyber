@@ -1,0 +1,575 @@
+// Attack-surface change alerts, sent after each completed scan
+// (scanExecution.ts Phase 2, after syncAssetInventory has recorded what this
+// scan saw). Two kinds of change:
+//
+//   1. New hostnames: names under the site's domain whose first certificate
+//      in Certificate Transparency logs was issued recently. A certificate
+//      for a subdomain nobody knew about is the classic sign of a forgotten
+//      service, or of someone else using the domain.
+//   2. Changes to the domain's NS, MX, SPF and DMARC records, compared with
+//      dns_snapshots. An unexpected change can mean a hijacked domain,
+//      redirected mail or broken email authentication.
+//
+// Rules this module keeps:
+//   - "New" needs evidence. A hostname missing from asset_inventory isn't
+//     new: the sources are partial (crt.sh is capped at the 50 most recently
+//     certified names and can be down; Subfinder's passive sources vary run
+//     to run). A hostname is reported only when this scan's crt.sh data shows
+//     its earliest certificate was issued since the previous scan of the site,
+//     or within NEW_HOSTNAME_WINDOW_DAYS. Every other unreported row is
+//     marked as known without an alert.
+//   - The domain is the registrable domain from the full Public Suffix List
+//     (tldts, private suffixes included), not scanners/registrableDomain.ts's
+//     short list, which maps www.school.herts.sch.uk to the county's shared
+//     zone and mysite.github.io to github.io. Hostnames outside it are never
+//     reported.
+//   - A failed DNS lookup is "unknown", never "the record is gone": only
+//     ENODATA/ENOTFOUND mean absent. An unknown field keeps its stored value
+//     and is never a change. dns.ts can't be reused for this: it treats a
+//     failed lookup as "no record". A field's first answer is its baseline,
+//     so the first scan, or a field that couldn't be read until now, never
+//     triggers an alert.
+//   - Each change is claimed before it is sent (notified_at set, or the
+//     snapshot advanced only if nobody else advanced it first), so two scans
+//     of www and apex finishing together can't both send it. If no channel
+//     delivers, the claim is released and the next scan retries.
+//   - Owners without an alerting plan get nothing, but their baselines still
+//     advance, so upgrading doesn't replay months of old changes.
+//   - Before migration 049 every read fails with a missing-schema error and
+//     this quietly does nothing. It never throws: a scan is already complete
+//     by the time this runs.
+import { Resolver } from "node:dns/promises";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getDomain } from "tldts";
+import { isMissingSchemaError } from "./dbErrors";
+import { escapeHtml, sendEmail } from "./email";
+import { channelsFor, type OwnerContext } from "./emergingThreatAlerts";
+import { sendTeamsNotice } from "./msTeams";
+import type { ReconResult } from "./scanners/recon";
+import { isWithinDomain } from "./scanners/registrableDomain";
+import { sendSlackNotice } from "./slack";
+
+/** Hostnames listed in one alert; the rest are counted. */
+export const MAX_LISTED_HOSTNAMES = 20;
+/** A hostname first certified this recently is new, even on a site's first scan. */
+export const NEW_HOSTNAME_WINDOW_DAYS = 14;
+/** Unreported rows read per page, and at most per scan (the rest wait for the next one). */
+const PENDING_PAGE = 1_000;
+const MAX_PENDING_HOSTNAMES = 10_000;
+/** Hostnames per update request, keeping the request URL short. */
+const STAMP_CHUNK = 100;
+const PAID_PLANS = new Set(["basic", "pro", "agency"]);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The domain to watch for `host`, from the full Public Suffix List; null for IPs and bare suffixes. */
+export function monitoredDomain(host: string): string | null {
+  return getDomain(host, { allowPrivateDomains: true });
+}
+
+// ---- DNS ----------------------------------------------------------------------
+
+export type DnsResolver = {
+  resolveNs(name: string): Promise<string[]>;
+  resolveMx(name: string): Promise<Array<{ priority: number; exchange: string }>>;
+  resolveTxt(name: string): Promise<string[][]>;
+};
+
+export type DnsField = "ns" | "mx" | "spf" | "dmarc";
+export const DNS_FIELDS: readonly DnsField[] = ["ns", "mx", "spf", "dmarc"];
+
+/** What a domain publishes. null = no such record. */
+export type DnsValues = { ns: string[] | null; mx: string[] | null; spf: string | null; dmarc: string | null };
+/** One lookup round. undefined = the lookup failed, so the value is unknown. */
+export type DnsObservation = { [K in DnsField]: DnsValues[K] | undefined };
+/** A stored snapshot: values are only meaningful for the fields in `known`. */
+export type DnsSnapshot = { values: DnsValues; known: DnsField[] };
+
+/** NXDOMAIN and "no records of this type": an answer, not a failure. */
+const ABSENT_CODES = new Set(["ENODATA", "ENOTFOUND"]);
+
+async function lookup<T>(run: () => Promise<T>, absent: T): Promise<T | undefined> {
+  try {
+    return await run();
+  } catch (err) {
+    return ABSENT_CODES.has((err as NodeJS.ErrnoException).code ?? "") ? absent : undefined;
+  }
+}
+
+const hostName = (h: string) => h.trim().toLowerCase().replace(/\.$/, "") || ".";
+const sortedOrNull = (values: string[]) => (values.length > 0 ? [...new Set(values)].sort() : null);
+const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** The TXT records starting with `prefix` (case-insensitive), chunks joined, one string. */
+function txtValue(records: string[][], prefix: RegExp): string | null {
+  const matching = records.map((chunks) => collapse(chunks.join(""))).filter((r) => prefix.test(r));
+  return matching.length > 0 ? [...new Set(matching)].sort().join(" | ") : null;
+}
+
+export async function observeDns(domain: string, resolver: DnsResolver): Promise<DnsObservation> {
+  const [ns, mx, txt, dmarcTxt] = await Promise.all([
+    lookup(() => resolver.resolveNs(domain), []),
+    lookup(() => resolver.resolveMx(domain), []),
+    lookup(() => resolver.resolveTxt(domain), []),
+    lookup(() => resolver.resolveTxt(`_dmarc.${domain}`), []),
+  ]);
+  return {
+    ns: ns === undefined ? undefined : sortedOrNull(ns.map(hostName)),
+    mx: mx === undefined ? undefined : sortedOrNull(mx.map((r) => `${r.priority} ${hostName(r.exchange)}`)),
+    spf: txt === undefined ? undefined : txtValue(txt, /^v=spf1(\s|$)/i),
+    dmarc: dmarcTxt === undefined ? undefined : txtValue(dmarcTxt, /^v=DMARC1(\s|;|$)/i),
+  };
+}
+
+export type DnsChange = { field: DnsField; before: string[] | string | null; after: string[] | string | null };
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const EMPTY_VALUES: DnsValues = { ns: null, mx: null, spf: null, dmarc: null };
+
+/**
+ * Compares this lookup with the stored snapshot. A field that answered
+ * before and now is compared; a field answering for the first time becomes
+ * its baseline without a change; a field that didn't answer keeps what was
+ * stored. `next` is what to store (null when there is nothing to store yet),
+ * `unanswered` the fields this lookup couldn't read.
+ */
+export function diffDns(
+  previous: DnsSnapshot | null,
+  observed: DnsObservation
+): { changes: DnsChange[]; next: DnsSnapshot | null; unanswered: DnsField[] } {
+  const values: DnsValues = { ...(previous?.values ?? EMPTY_VALUES) };
+  const known = new Set(previous?.known ?? []);
+  const changes: DnsChange[] = [];
+  const unanswered: DnsField[] = [];
+  for (const field of DNS_FIELDS) {
+    const value = observed[field];
+    if (value === undefined) {
+      unanswered.push(field);
+      continue;
+    }
+    if (known.has(field) && !same(values[field], value)) changes.push({ field, before: values[field], after: value } as DnsChange);
+    (values as Record<DnsField, unknown>)[field] = value;
+    known.add(field);
+  }
+  const next = known.size > 0 ? { values, known: DNS_FIELDS.filter((f) => known.has(f)) } : null;
+  return { changes, next, unanswered };
+}
+
+const FIELD_LABELS: Record<DnsField, string> = {
+  ns: "Name servers (NS)",
+  mx: "Mail servers (MX)",
+  spf: "SPF record",
+  dmarc: "DMARC record",
+};
+
+const show = (v: string[] | string | null) => (v === null ? "none" : Array.isArray(v) ? v.join(", ") : v);
+
+/** One plain sentence per change. */
+export function describeDnsChange(change: DnsChange): string {
+  const label = FIELD_LABELS[change.field];
+  if (change.before === null) return `${label} added: ${show(change.after)}`;
+  if (change.after === null) {
+    return change.field === "ns"
+      ? `${label} no longer found (was ${show(change.before)}): the domain may have expired or been deleted`
+      : `${label} removed (was ${show(change.before)})`;
+  }
+  return `${label} changed from ${show(change.before)} to ${show(change.after)}`;
+}
+
+// ---- New hostnames ----------------------------------------------------------------
+
+export type NewHostname = { name: string; firstCertificate: string };
+
+/** crt.sh dates carry no zone; they are UTC. */
+const certTime = (iso: string) => Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+
+/** Each hostname's earliest certificate date in this scan's crt.sh data. */
+export function firstCertificates(recon: ReconResult | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  if (recon?.status !== "checked") return out;
+  for (const s of recon.subdomains) {
+    const first = s.firstNotBefore;
+    if (first && Number.isFinite(certTime(first))) out.set(s.name.toLowerCase(), first);
+  }
+  return out;
+}
+
+/**
+ * Splits unreported hostnames into the ones with evidence they are new (in
+ * the domain, first certified after `since`, and not the scanned site
+ * itself) and the rest.
+ */
+export function classifyHostnames(
+  pending: string[],
+  firsts: Map<string, string>,
+  domain: string | null,
+  scannedHost: string,
+  since: Date
+): { report: NewHostname[]; known: string[] } {
+  const report: NewHostname[] = [];
+  const known: string[] = [];
+  for (const name of pending) {
+    const first = firsts.get(name.toLowerCase());
+    const isNew = domain && first && name.toLowerCase() !== scannedHost && isWithinDomain(name, domain) && certTime(first) > since.getTime();
+    if (isNew) report.push({ name, firstCertificate: first });
+    else known.push(name);
+  }
+  report.sort((a, b) => certTime(b.firstCertificate) - certTime(a.firstCertificate) || a.name.localeCompare(b.name));
+  return { report, known };
+}
+
+// ---- Message ------------------------------------------------------------------
+
+export type ChangeSet = { site: string; newHostnames: NewHostname[]; dnsChanges: DnsChange[] };
+
+export function noticeTitle(c: ChangeSet): string {
+  const hosts = c.newHostnames.length;
+  if (hosts > 0 && c.dnsChanges.length > 0) return `New hostnames and DNS changes for ${c.site}`;
+  if (hosts > 0) return `${hosts} new hostname${hosts === 1 ? "" : "s"} found for ${c.site}`;
+  return `DNS records changed for ${c.site}`;
+}
+
+const formatDate = (iso: string) =>
+  new Date(certTime(iso)).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const hostLine = (h: NewHostname) => `${h.name} (first certificate ${formatDate(h.firstCertificate)})`;
+
+const HOSTNAME_WHY =
+  "Public certificate logs show a certificate issued for each of these names for the first time. A name you don't recognise can be a forgotten service, or someone else using your domain. Check each one is yours and still needed.";
+const DNS_WHY =
+  "If you didn't make these changes, check your domain registrar and DNS provider accounts now: changed name or mail servers can mean the domain was taken over or email is being redirected, and an SPF or DMARC change can stop your email being delivered or make it easier to fake.";
+
+/** Plain lines for Slack/Teams (they escape them). */
+export function noticeLines(c: ChangeSet): string[] {
+  const lines: string[] = [];
+  if (c.newHostnames.length > 0) {
+    const listed = c.newHostnames.slice(0, MAX_LISTED_HOSTNAMES);
+    lines.push(`New hostname${listed.length === 1 ? "" : "s"}: ${listed.map(hostLine).join(", ")}`);
+    const more = c.newHostnames.length - listed.length;
+    if (more > 0) lines.push(`…and ${more} more on the Assets page`);
+    lines.push(HOSTNAME_WHY);
+  }
+  if (c.dnsChanges.length > 0) {
+    lines.push(...c.dnsChanges.map(describeDnsChange));
+    lines.push(DNS_WHY);
+  }
+  return lines;
+}
+
+export function buildAttackSurfaceEmail(c: ChangeSet, siteUrl: string): { subject: string; html: string } {
+  const p = (text: string) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.5;">${text}</p>`;
+  const list = (items: string[]) =>
+    `<ul style="margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.5;">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
+
+  let body = "";
+  if (c.newHostnames.length > 0) {
+    const listed = c.newHostnames.slice(0, MAX_LISTED_HOSTNAMES);
+    const more = c.newHostnames.length - listed.length;
+    body += `<h3 style="margin:16px 0 8px;font-size:16px;">New hostnames</h3>`;
+    body += list(listed.map(hostLine));
+    if (more > 0) body += p(`…and ${more} more, listed on the Assets page.`);
+    body += p(escapeHtml(HOSTNAME_WHY));
+  }
+  if (c.dnsChanges.length > 0) {
+    body += `<h3 style="margin:16px 0 8px;font-size:16px;">DNS changes</h3>`;
+    body += list(c.dnsChanges.map(describeDnsChange));
+    body += p(escapeHtml(DNS_WHY));
+  }
+
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
+      <h2 style="margin:0 0 8px;font-size:20px;">${escapeHtml(noticeTitle(c))}</h2>
+      <p style="margin:0 0 8px;color:#4b5563;font-size:14px;line-height:1.5;">
+        Your latest scan of ${escapeHtml(c.site)} found these changes.
+      </p>
+      ${body}
+      <p style="margin:16px 0 0;font-size:13px;"><a href="${siteUrl}/dashboard/assets">Open Assets</a></p>
+      <p style="margin:16px 0 0;color:#9ca3af;font-size:12px;">
+        We tell you about each new hostname and each DNS change once. A hostname counts as new when its first
+        certificate was issued since your previous scan (or in the last ${NEW_HOSTNAME_WINDOW_DAYS} days). DNS records
+        are compared with what we saw before, so your first scan of a site only records them.
+      </p>
+    </div>
+  `;
+  return { subject: noticeTitle(c), html };
+}
+
+// ---- The run ------------------------------------------------------------------
+
+export type AttackSurfaceOptions = { resolver?: DnsResolver; now?: Date; siteUrl?: string };
+
+export type AttackSurfaceResult = {
+  /** Hostnames and DNS changes the owner was told about in this run. */
+  reported: ChangeSet | null;
+  /** Unreported hostnames marked as known without an alert (no evidence they are new, or no alerting plan). */
+  silentlyRecorded: string[];
+  /** DNS fields this run couldn't read (kept as they were, never a change). */
+  unanswered: DnsField[];
+  delivered: boolean;
+  migrationPending: boolean;
+  errors: string[];
+};
+
+let defaultResolver: DnsResolver | null = null;
+function systemResolver(): DnsResolver {
+  // Short timeouts: this runs after the scan, in line with the other
+  // post-completion notifications.
+  defaultResolver ??= new Resolver({ timeout: 5_000, tries: 2 });
+  return defaultResolver;
+}
+
+type SnapshotRow = { ns: string[] | null; mx: string[] | null; spf: string | null; dmarc: string | null; known_fields: string[] | null; captured_at: string };
+
+/** When the owner's previous completed scan of exactly this host started, or null. */
+async function previousScanAt(supabase: SupabaseClient, ownerId: string, scanId: string, host: string): Promise<Date | null> {
+  // Bounded to this host in the query (any scheme, optional port or path), so
+  // other sites' scans can't crowd it out; the hostname is compared exactly below.
+  const { data, error } = await supabase
+    .from("scans")
+    .select("target_url, created_at")
+    .eq("owner", ownerId)
+    .eq("status", "completed")
+    .neq("id", scanId)
+    .or(`target_url.ilike.*://${host},target_url.ilike.*://${host}/*,target_url.ilike.*://${host}:*`)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw new Error(`could not load earlier scans: ${error.message}`);
+  for (const s of (data ?? []) as Array<{ target_url: string; created_at: string }>) {
+    try {
+      if (new URL(s.target_url).hostname.toLowerCase() === host) return new Date(s.created_at);
+    } catch {
+      // an unparseable stored URL is not this host
+    }
+  }
+  return null;
+}
+
+async function loadOwner(supabase: SupabaseClient, ownerId: string): Promise<{ owner: OwnerContext; email: string | null; alerting: boolean }> {
+  const [sub, user] = await Promise.all([
+    supabase.from("subscriptions").select("plan, status, slack_webhook_url, ms_teams_webhook_url").eq("owner", ownerId).maybeSingle(),
+    supabase.from("users").select("email, is_admin").eq("id", ownerId).maybeSingle(),
+  ]);
+  if (sub.error) throw new Error(`could not load the subscription: ${sub.error.message}`);
+  if (user.error) throw new Error(`could not load the user: ${user.error.message}`);
+  const s = sub.data as { plan: string | null; status: string | null; slack_webhook_url: string | null; ms_teams_webhook_url: string | null } | null;
+  const u = user.data as { email: string | null; is_admin: boolean | null } | null;
+  const owner: OwnerContext = {
+    ownerId,
+    plan: s?.plan ?? null,
+    status: s?.status ?? null,
+    isAdmin: Boolean(u?.is_admin),
+    slackWebhookUrl: s?.slack_webhook_url ?? null,
+    teamsWebhookUrl: s?.ms_teams_webhook_url ?? null,
+  };
+  const alerting = owner.isAdmin || (owner.status === "active" && PAID_PLANS.has(owner.plan ?? ""));
+  return { owner, email: u?.email ?? null, alerting };
+}
+
+async function deliver(owner: OwnerContext, email: string | null, changes: ChangeSet, siteUrl: string): Promise<{ delivered: boolean; errors: string[] }> {
+  const errors: string[] = [];
+  let delivered = false;
+
+  if (email) {
+    const { subject, html } = buildAttackSurfaceEmail(changes, siteUrl);
+    const sent = await sendEmail({ to: email, subject, html });
+    if (sent.ok) delivered = true;
+    else errors.push(`email failed: ${sent.error}`);
+  } else {
+    errors.push("no email address on file");
+  }
+
+  const title = noticeTitle(changes);
+  const lines = noticeLines(changes);
+  const dashboardUrl = `${siteUrl}/dashboard/assets`;
+  const channels = channelsFor(owner);
+  if (channels.slack) {
+    try {
+      await sendSlackNotice(owner.slackWebhookUrl!, title, lines, dashboardUrl);
+      delivered = true;
+    } catch (err) {
+      errors.push(`Slack failed: ${(err as Error).message}`);
+    }
+  }
+  if (channels.teams) {
+    try {
+      await sendTeamsNotice(owner.teamsWebhookUrl!, title, lines, dashboardUrl);
+      delivered = true;
+    } catch (err) {
+      errors.push(`Teams failed: ${(err as Error).message}`);
+    }
+  }
+  return { delivered, errors };
+}
+
+const chunks = <T,>(items: T[]) => Array.from({ length: Math.ceil(items.length / STAMP_CHUNK) }, (_, i) => items.slice(i * STAMP_CHUNK, (i + 1) * STAMP_CHUNK));
+const snapshotColumns = (s: DnsSnapshot) => ({ ...s.values, known_fields: s.known });
+
+export async function sendAttackSurfaceAlerts(
+  supabase: SupabaseClient,
+  ownerId: string,
+  scanId: string,
+  targetUrl: string,
+  recon: ReconResult | undefined,
+  opts: AttackSurfaceOptions = {}
+): Promise<AttackSurfaceResult> {
+  const result: AttackSurfaceResult = { reported: null, silentlyRecorded: [], unanswered: [], delivered: false, migrationPending: false, errors: [] };
+  const fail = (message: string) => {
+    result.errors.push(message);
+    console.error(`[attackSurfaceMonitor] ${targetUrl}: ${message}`);
+  };
+
+  try {
+    const nowDate = opts.now ?? new Date();
+    const now = nowDate.toISOString();
+    const siteUrl = opts.siteUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
+    const host = new URL(targetUrl).hostname.toLowerCase();
+    const domain = monitoredDomain(host);
+
+    // Every hostname syncAssetInventory recorded for this site that hasn't been reported or marked known.
+    const pending: string[] = [];
+    for (let from = 0; from < MAX_PENDING_HOSTNAMES; from += PENDING_PAGE) {
+      const page = await supabase
+        .from("asset_inventory")
+        .select("hostname")
+        .eq("owner", ownerId)
+        .eq("target_url", targetUrl)
+        .is("notified_at", null)
+        .order("hostname", { ascending: true })
+        .range(from, from + PENDING_PAGE - 1);
+      if (page.error) {
+        if (isMissingSchemaError(page.error)) {
+          result.migrationPending = true;
+          return result;
+        }
+        throw new Error(`could not load unreported hostnames: ${page.error.message}`);
+      }
+      const rows = (page.data ?? []) as Array<{ hostname: string }>;
+      pending.push(...rows.map((r) => r.hostname));
+      if (rows.length < PENDING_PAGE) break;
+    }
+    if (pending.length >= MAX_PENDING_HOSTNAMES) console.warn(`[attackSurfaceMonitor] ${targetUrl}: over ${MAX_PENDING_HOSTNAMES} unreported hostnames; the rest wait for the next scan`);
+
+    // The stored DNS snapshot, and this scan's lookup.
+    let previous: { snapshot: DnsSnapshot; capturedAt: string } | null = null;
+    let dns: ReturnType<typeof diffDns> | null = null;
+    if (domain) {
+      const snap = await supabase
+        .from("dns_snapshots")
+        .select("ns, mx, spf, dmarc, known_fields, captured_at")
+        .eq("owner", ownerId)
+        .eq("target_host", domain)
+        .maybeSingle();
+      if (snap.error) {
+        if (isMissingSchemaError(snap.error)) {
+          result.migrationPending = true;
+          return result;
+        }
+        throw new Error(`could not load the DNS snapshot: ${snap.error.message}`);
+      }
+      const row = snap.data as SnapshotRow | null;
+      if (row) {
+        const known = (row.known_fields ?? []).filter((f): f is DnsField => (DNS_FIELDS as readonly string[]).includes(f));
+        previous = { snapshot: { values: { ns: row.ns, mx: row.mx, spf: row.spf, dmarc: row.dmarc }, known }, capturedAt: row.captured_at };
+      }
+      dns = diffDns(previous?.snapshot ?? null, await observeDns(domain, opts.resolver ?? systemResolver()));
+      result.unanswered = dns.unanswered;
+      if (dns.unanswered.length > 0) console.warn(`[attackSurfaceMonitor] ${domain}: no answer for ${dns.unanswered.join(", ")}; kept as before`);
+    }
+
+    const { owner, email, alerting } = await loadOwner(supabase, ownerId);
+
+    let hosts: { report: NewHostname[]; known: string[] } = { report: [], known: pending };
+    if (alerting && pending.length > 0) {
+      const prior = await previousScanAt(supabase, ownerId, scanId, host);
+      const windowStart = new Date(nowDate.getTime() - NEW_HOSTNAME_WINDOW_DAYS * DAY_MS);
+      const since = prior && prior < windowStart ? prior : windowStart;
+      hosts = classifyHostnames(pending, firstCertificates(recon), domain, host, since);
+    }
+
+    // Hostnames without evidence they are new: known from now on, no alert.
+    let stampedSilently = true;
+    for (const chunk of chunks(hosts.known)) {
+      const { error } = await supabase.from("asset_inventory").update({ notified_at: now }).eq("owner", ownerId).is("notified_at", null).in("hostname", chunk);
+      if (error) {
+        fail(`could not mark hostnames as known: ${error.message}`);
+        stampedSilently = false;
+        break;
+      }
+    }
+    if (stampedSilently) result.silentlyRecorded = hosts.known;
+
+    const dnsChanges = alerting ? (dns?.changes ?? []) : [];
+    const writeSnapshot = async () => {
+      if (!domain || !dns?.next || (previous && same(previous.snapshot, dns.next))) return;
+      const { error } = await supabase
+        .from("dns_snapshots")
+        .upsert({ owner: ownerId, target_host: domain, ...snapshotColumns(dns.next), captured_at: now }, { onConflict: "owner,target_host" });
+      if (error) fail(`could not save the DNS snapshot: ${error.message}`);
+    };
+    // No change to claim: store a baseline, a newly answered field, or a non-alerting owner's change.
+    if (dnsChanges.length === 0) await writeSnapshot();
+    if (hosts.report.length === 0 && dnsChanges.length === 0) return result;
+
+    // Claim what this run will send, so a concurrent scan of the same domain can't send it too.
+    const claimedHosts: NewHostname[] = [];
+    for (const chunk of chunks(hosts.report)) {
+      const { data, error } = await supabase
+        .from("asset_inventory")
+        .update({ notified_at: now })
+        .eq("owner", ownerId)
+        .is("notified_at", null)
+        .in("hostname", chunk.map((h) => h.name))
+        .select("hostname");
+      if (error) {
+        fail(`could not claim new hostnames: ${error.message}`);
+        break;
+      }
+      const won = new Set(((data ?? []) as Array<{ hostname: string }>).map((r) => r.hostname));
+      claimedHosts.push(...chunk.filter((h) => won.has(h.name)));
+    }
+    let claimedDns: DnsChange[] = [];
+    if (dnsChanges.length > 0 && previous && dns?.next) {
+      const { data, error } = await supabase
+        .from("dns_snapshots")
+        .update({ ...snapshotColumns(dns.next), captured_at: now })
+        .eq("owner", ownerId)
+        .eq("target_host", domain)
+        .eq("captured_at", previous.capturedAt)
+        .select("target_host");
+      if (error) fail(`could not claim the DNS change: ${error.message}`);
+      else if ((data ?? []).length > 0) claimedDns = dnsChanges;
+    }
+    if (claimedHosts.length === 0 && claimedDns.length === 0) return result; // another scan got there first
+
+    const changes: ChangeSet = { site: domain ?? host, newHostnames: claimedHosts, dnsChanges: claimedDns };
+    const sent = await deliver(owner, email, changes, siteUrl);
+    sent.errors.forEach(fail);
+    if (sent.delivered) {
+      result.delivered = true;
+      result.reported = changes;
+      return result;
+    }
+
+    // Nothing delivered: release the claims so the next scan retries.
+    for (const chunk of chunks(claimedHosts)) {
+      const { error } = await supabase
+        .from("asset_inventory")
+        .update({ notified_at: null })
+        .eq("owner", ownerId)
+        .eq("notified_at", now)
+        .in("hostname", chunk.map((h) => h.name));
+      if (error) fail(`could not release new hostnames for a retry: ${error.message}`);
+    }
+    if (claimedDns.length > 0 && previous) {
+      const { error } = await supabase
+        .from("dns_snapshots")
+        .update({ ...snapshotColumns(previous.snapshot), captured_at: previous.capturedAt })
+        .eq("owner", ownerId)
+        .eq("target_host", domain)
+        .eq("captured_at", now);
+      if (error) fail(`could not release the DNS change for a retry: ${error.message}`);
+    }
+    return result;
+  } catch (err) {
+    fail((err as Error).message);
+    return result;
+  }
+}
