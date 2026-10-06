@@ -468,174 +468,51 @@ anything older than a few minutes.
 
 ## CI/CD
 
-### GitHub Actions
+### Any CI system
 
-Use the packaged action rather than the raw curl/jq below — it already
-implements the new-findings-only gate:
+The supported route is the scan-gate script and templates served by the app,
+documented for customers at **https://www.hebridescyber.co.uk/docs/ci**
+(source: `public/ci/`, page `src/app/docs/ci/page.tsx`):
+
+- `public/ci/hebrides-scan.sh` — POSIX `sh` + `curl` + `jq`. Queues a scan
+  (`POST /api/v1/scans`), polls `GET /api/v1/scans/{id}`, writes the result to
+  `hebrides-scan.json` and optionally a JUnit report. Same gate as the packaged
+  Action: it fails only on findings that are **new** since the previous scan,
+  at or above `HEBRIDES_FAIL_ON` (default `high`), and **not triaged**; the
+  first scan of a target sets the baseline and passes. Exit codes: `0` pass,
+  `1` blocked, `2` could not scan (never treated as a pass). The API key is
+  passed to curl on stdin, never on its command line.
+- Templates: `github-actions.yml`, `gitlab-ci.yml`, `azure-pipelines.yml`,
+  `bitbucket-pipelines.yml`, `jenkinsfile.groovy`. Each runs the script from
+  the customer's own repository (they keep a reviewed copy rather than
+  downloading it on every run) and takes the key from the CI system's secret
+  store.
+
+Tests: `src/lib/ciScanScript.test.ts` runs the real script under dash and bash
+against a stand-in API; `src/lib/ciTemplates.test.ts` keeps the templates
+consistent with it; `tests/e2e/ci-docs.spec.ts` checks the page and downloads.
+
+**Gate on new findings, not totals.** Gating on every finding red-lines a
+pipeline on its first run and the check gets disabled the same day.
+
+### GitHub Actions (packaged action)
 
 ```yaml
-name: Security
-on:
-  pull_request:
-  schedule:
-    - cron: "0 3 * * 1"
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
       - uses: andrew-barvas/hebrides-cyber/action@master
         id: scan
         with:
           api-key: ${{ secrets.HEBRIDES_CYBER_API_KEY }}
           target-url: https://staging.example.com
           fail-on: high
-
-      - name: Comment score on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `Security score: **${{ steps.scan.outputs.score }}/100** — [full report](${{ steps.scan.outputs.report-url }})`
-            })
 ```
 
-See [`action/README.md`](../../action/README.md) for the full input/output
-reference. It's a single dependency-free Node 20 script (`action/index.js`) —
-nothing to `npm install` before it runs.
-
-### Doing it yourself (any CI system)
-
-The pattern below is what the packaged action does internally — useful if
-you're not on GitHub Actions, or want to see exactly what it's doing.
-
-**Fail a build only on *new* findings.** This is the important pattern.
-Gating on *total* findings red-lines every pipeline on its first run and the
-check gets disabled the same day. Gate on what this change introduced instead.
-
-```yaml
-name: Security
-on:
-  pull_request:
-  schedule:
-    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run security scan
-        id: scan
-        env:
-          API_KEY: ${{ secrets.HEBRIDES_CYBER_API_KEY }}
-          TARGET: https://staging.example.com
-        run: |
-          set -euo pipefail
-
-          response=$(curl -sS -X POST https://www.hebridescyber.co.uk/api/v1/scans \
-            -H "Authorization: Bearer $API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"target_url\": \"$TARGET\"}")
-
-          scan_id=$(echo "$response" | jq -r '.scan_id')
-
-          if [ "$scan_id" = "null" ]; then
-            echo "Could not queue scan:"; echo "$response" | jq .
-            exit 1
-          fi
-
-          # POST only queues the scan — poll until it's done (usually under a
-          # minute). status field also carries the diff-tagged findings once
-          # complete, so this same call replaces the old separate re-fetch.
-          detail=""
-          for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
-            detail=$(curl -sS "https://www.hebridescyber.co.uk/api/v1/scans/$scan_id" \
-              -H "Authorization: Bearer $API_KEY")
-            status=$(echo "$detail" | jq -r '.status')
-            [ "$status" = "completed" ] && break
-            if [ "$status" = "failed" ]; then
-              echo "Scan failed:"; echo "$detail" | jq .
-              exit 1
-            fi
-            sleep 5
-          done
-          if [ "$status" != "completed" ]; then
-            echo "Scan $scan_id did not complete in time"
-            exit 1
-          fi
-
-          score=$(echo "$detail" | jq -r '.score')
-          compared=$(echo "$detail" | jq -r '.compared_to_previous_scan')
-          new_high=$(echo "$detail" | jq '[.findings[]
-            | select(.status == "new")
-            | select(.triage == null)
-            | select(.severity == "critical" or .severity == "high")] | length')
-
-          echo "score=$score" >> "$GITHUB_OUTPUT"
-          echo "Security score: $score/100"
-
-          if [ "$compared" != "true" ]; then
-            echo "::notice::First scan of this target — no baseline to compare against yet."
-            exit 0
-          fi
-
-          echo "$detail" | jq -r '.findings[]
-            | select(.status == "new")
-            | "::warning::NEW [\(.severity)] \(.title)"'
-
-          if [ "$new_high" -gt 0 ]; then
-            echo "::error::$new_high new critical/high finding(s) introduced"
-            exit 1
-          fi
-```
-
-### Post the score on the PR
-
-```yaml
-      - name: Comment score
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `Security score: **${{ steps.scan.outputs.score }}/100**`
-            })
-```
-
-### GitLab CI
-
-```yaml
-security_scan:
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache curl jq
-  script:
-    - |
-      scan_id=$(curl -sS -X POST https://www.hebridescyber.co.uk/api/v1/scans \
-        -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d "{\"target_url\": \"$TARGET_URL\"}" | jq -r '.scan_id')
-
-      for i in $(seq 1 108); do  # ~9 minutes at 5s intervals
-        curl -sS "https://www.hebridescyber.co.uk/api/v1/scans/$scan_id" \
-          -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" > result.json
-        status=$(jq -r '.status' result.json)
-        [ "$status" = "completed" ] && break
-        [ "$status" = "failed" ] && { echo "Scan failed"; exit 1; }
-        sleep 5
-      done
-
-      jq -e '.status == "completed" and .score >= 70' result.json
-  artifacts:
-    paths: [result.json]
-```
+Outputs `score`, `report-url`, `new-finding-count`, `compared-to-previous-scan`;
+`mode: dependencies` runs the pull-request dependency check (see
+`POST /api/v1/dependency-diff`). See [`action/README.md`](../../action/README.md).
+**Customers can't use it yet:** GitHub only lets other accounts `uses:` an
+action from a public repository, and this one is private. Until `action/` is
+published from a public repository, point customers at the GitHub Actions
+template on `/docs/ci`.
 
 ---
 
