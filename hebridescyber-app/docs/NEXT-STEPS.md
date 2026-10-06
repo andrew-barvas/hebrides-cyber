@@ -40,8 +40,8 @@ Database migrations: files exist through **048**; the next free number is **049*
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **70 / 63 / 71 / 71** (statements /
-branches / functions / lines). Lint: 0 errors (34 known warnings).
+Coverage floor (`vitest.config.mts`): **70 / 64 / 72 / 71** (statements /
+branches / functions / lines). Lint: 0 errors (33 known warnings).
 
 ## Rules that kept biting — follow these
 
@@ -107,7 +107,7 @@ In order, one PR each, merged on green CI:
 5. ~~**Account erasure within 30 days:**~~ done (migration 048 `deletion_requests`, `src/lib/accountErasure.ts`, `check-deletion-requests.ts` + `deletion-requests.yml` daily at 06:47 UTC, erase script takes email or user id and cancels Stripe by default; the account page shows the deadline): the privacy policy promises it; today a request only writes an audit row and emails the operator, and nothing tracks the deadline. `deletion_requests` ledger (migration 048), a daily job that alerts the operator before day 30, erase logic as a library function (cancel the Stripe subscription too), fix the script's lookup (the alert suggests a user id, the script only accepts an email).
 6. ~~**Onboarding and verification friction**~~ done. Verification (PR #20): a failed check says what each method found (`ownership.ts` `verifyDomain` → `dns`/`file` status, `verificationHints`), the file fetch refuses private/reserved hosts, start and check have separate rate-limit buckets (20 and 30 an hour), the panel lists your domains with copy buttons and no dev jargon, and Run scan warns when the typed host isn't verified (pointing out a verified www/apex twin). Checklist: `onboardingFlags.ts` decides what counts (a refused `pending` scan is not a first scan; any working alert channel, including a paid plan's emails and on-call, completes "Set up alerts"), with an e2e case. Not done on purpose: regrouping Trends/SLAs under "Compliance" (the nav is already short and flat, and Trends isn't a compliance feature); the sidebar's "New scan" button already is the quick action.
 7. **Continuous monitoring** (was item 5): wire `easmDiscovery.ts`, asset ledger, new/removed asset and DNS change alerts.
-8. **Portfolio report** for agencies (was item 7), reusing `executiveReport.ts`.
+8. ~~**Portfolio report**~~ done: `GET /api/portfolio-report` + dashboard button (Agency), see CLAUDE.md "Portfolio report". Not stored, so it needs no retention or erasure handling.
 9. **Hardening:** release installs in `scheduled-scans.yml` done: nuclei, subfinder and gitleaks are SHA-256-pinned, and trivy moved to 0.75.0 with a checksum (0.58.1's assets were removed upstream, so trivy had never installed), checked against captured real output. **Found: gospider, kiterunner, strix and cairn have never installed** (pinned versions or asset names don't exist; each step only logs the failure) and their wrappers have never run against a real binary: capture real output in `tool-integration.yml` (as for xsser/commix), then fix each wrapper or retire the tool. Still to do: tests for `dockerBaseImage.ts`, `subdomains.ts`, `waybackDiscovery.ts`, `nmap.ts`, `nuclei.ts`, `zap.ts`; correct the false headers of `easmDiscovery.ts` and `graphqlApi.ts`; refresh `BACKUP-RESTORE.md` (still says `supabase db push`).
 10. Then: login recorder, DOM-based XSS validation, remediation packs.
 

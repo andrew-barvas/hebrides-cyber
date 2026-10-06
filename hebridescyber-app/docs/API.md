@@ -344,6 +344,24 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/triage \
 Only false positives leave future scores. Every change is audited
 (`finding.triaged` / `finding.untriaged`). A bulk request is all-or-nothing.
 
+### `GET /api/portfolio-report`
+
+Agency plan. Every site the account monitors in one client-ready report:
+worst site first, open findings by severity (false positives and accepted or
+snoozed findings excluded), known-exploited counts, issues shared by more than
+one site, and the top priorities per site. White-labelled with the account's
+branding. Answers `application/pdf` by default, or `?format=html` for the same
+report as HTML. Session or API key. The PDF is generated on request and not
+stored.
+
+```bash
+curl -o portfolio.pdf https://www.hebridescyber.co.uk/api/portfolio-report \
+  -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY"
+```
+
+`403 { "code": "plan_required" }` below an active Agency plan; `404 { "code":
+"no_sites" }` when nothing is monitored yet; `429` when rate-limited.
+
 ### `GET /api/v1/targets/{host}/trend`
 
 Score history for every completed scan of `host` you own, oldest first — the
