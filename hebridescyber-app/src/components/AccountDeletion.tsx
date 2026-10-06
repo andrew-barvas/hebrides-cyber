@@ -4,14 +4,18 @@ import { useState } from "react";
 
 // Customer-facing half of E-10's GDPR erasure commitment (docs/ENHANCEMENTS.md,
 // /privacy §7's 30-day response promise). Calls
-// /api/account/request-deletion, which only records the request and emails
-// the account owner — it does not delete anything itself, so this button is
-// safe to click without a scarier confirmation flow than the two-step one
-// below.
+// /api/account/request-deletion, which only records the request (with its
+// deadline, shown back here) and notifies the operator — it does not delete
+// anything itself, so this button is safe to click without a scarier
+// confirmation flow than the two-step one below.
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
 export default function AccountDeletion({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<{ dueAt: string | null; alreadyRequested: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function submitRequest() {
@@ -22,11 +26,9 @@ export default function AccountDeletion({ token }: { token: string }) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Request failed (${res.status})`);
-      }
-      setDone(true);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+      setDone({ dueAt: typeof body.dueAt === "string" ? body.dueAt : null, alreadyRequested: body.alreadyRequested === true });
       setConfirming(false);
     } catch (err) {
       setError((err as Error).message);
@@ -40,8 +42,9 @@ export default function AccountDeletion({ token }: { token: string }) {
       <h2 className="font-mono text-xs text-red-400/70 uppercase tracking-wide mb-4">// danger zone</h2>
 
       {done ? (
-        <p className="text-sm text-cybertext/70">
-          Request received — we&apos;ll action it within 30 days, per our{" "}
+        <p role="status" className="text-sm text-cybertext/70">
+          {done.alreadyRequested ? "You've already asked us to delete your account" : "Request received"}
+          {done.dueAt ? <>. We&apos;ll erase your account and data by {formatDate(done.dueAt)}</> : <> — we&apos;ll action it within 30 days</>}, per our{" "}
           <a href="/privacy" className="text-neon hover:underline">Privacy Policy</a>.
         </p>
       ) : (

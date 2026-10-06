@@ -42,6 +42,21 @@ describe("AccountDeletion", () => {
     );
   });
 
+  it("shows the erasure deadline the server recorded, and says so when it was already requested", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ ok: true, dueAt: "2026-11-05T00:00:00Z", alreadyRequested: false }) });
+    const { unmount } = render(<AccountDeletion token="t" />);
+    fireEvent.click(screen.getByText("Request account deletion"));
+    fireEvent.click(screen.getByText("Yes, request deletion"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/Request received\. We'll erase your account and data by 5 November 2026/));
+    unmount();
+
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ ok: true, dueAt: "2026-11-05T00:00:00Z", alreadyRequested: true }) });
+    render(<AccountDeletion token="t" />);
+    fireEvent.click(screen.getByText("Request account deletion"));
+    fireEvent.click(screen.getByText("Yes, request deletion"));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/already asked us to delete your account\. We'll erase/));
+  });
+
   it("shows an error and stays in the confirm state when the request fails", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
