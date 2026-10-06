@@ -24,6 +24,7 @@ name: Scheduled Scans
 # Requires:
 #   SUPABASE_URL                 - to query/enqueue/claim scan_jobs
 #   SUPABASE_SERVICE_ROLE_KEY    - server-side only, never exposed to logs
+#   RESEND_API_KEY               - post-scan emails (alerts, scan complete)
 
 on:
   schedule:
@@ -355,6 +356,11 @@ jobs:
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          # Every email executeScan sends after a scan (critical findings,
+          # scan complete, SLA, new hostnames and DNS changes) goes through
+          # src/lib/email.ts, which skips sending without this key. It was
+          # never passed to the workers, so none of those emails ever went.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
           ZAP_API_KEY: changeme

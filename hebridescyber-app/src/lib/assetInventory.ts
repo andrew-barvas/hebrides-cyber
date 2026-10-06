@@ -10,6 +10,8 @@
 // the scan's success-determining Phase 1 — real complexity for a
 // foundation-level feature. This can be added later without changing this
 // module's shape; the table already has everything a diff would need.
+// attackSurfaceMonitor.ts reads the rows this sync leaves pending
+// (notified_at null) and alerts on the ones crt.sh shows are new.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ScanResults } from "./scanners";
 import { getCmsType } from "./scanners/fingerprint";

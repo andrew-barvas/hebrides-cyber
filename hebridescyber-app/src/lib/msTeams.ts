@@ -142,3 +142,28 @@ export async function sendTeamsThreatAlert(webhookUrl: string, items: ThreatAler
   });
   if (!res.ok) throw new Error(`Teams responded ${res.status}`);
 }
+
+/**
+ * A titled list of lines with a dashboard link: for change notices
+ * (attackSurfaceMonitor.ts). markdown is off, so the lines are shown as
+ * written. Throws on a non-2xx response.
+ */
+export async function sendTeamsNotice(webhookUrl: string, title: string, lines: string[], dashboardUrl: string): Promise<void> {
+  if (!isValidTeamsWebhookUrl(webhookUrl)) {
+    throw new Error("Refusing to send Teams alert: URL is not a recognised Teams webhook host");
+  }
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      "@type": "MessageCard",
+      "@context": "http://schema.org/extensions",
+      themeColor: "F1C40F",
+      summary: title,
+      sections: [{ activityTitle: title, text: lines.join("\n\n"), markdown: false }],
+      potentialAction: [{ "@type": "OpenUri", name: "Open dashboard", targets: [{ os: "default", uri: dashboardUrl }] }],
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Teams responded ${res.status}`);
+}

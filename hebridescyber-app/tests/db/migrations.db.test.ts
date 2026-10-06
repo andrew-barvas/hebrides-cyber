@@ -81,6 +81,24 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
     expect(rows.map((r) => r.relname)).toEqual([]);
   });
 
+  it("049 marks existing hostnames as already reported, but only when it first adds the column", async () => {
+    const owner = "eeeeeeee-0000-0000-0000-000000000049";
+    const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
+    await q("insert into auth.users (id, email) values ($1, 'm049@x.test')", [owner]);
+    await q("alter table asset_inventory drop column notified_at");
+    await q("insert into asset_inventory (owner, target_url, hostname, kind, first_seen_at) values ($1, 'https://a.test', 'old.a.test', 'subdomain', '2026-01-01T00:00:00Z')", [owner]);
+
+    await q(readMigration("049_attack_surface_monitoring.sql"));
+    await q("insert into asset_inventory (owner, target_url, hostname, kind) values ($1, 'https://a.test', 'new.a.test', 'subdomain')", [owner]);
+    await q(readMigration("049_attack_surface_monitoring.sql"));
+
+    const { rows } = await q("select hostname, notified_at from asset_inventory where owner = $1 order by hostname", [owner]);
+    expect(rows).toEqual([
+      { hostname: "new.a.test", notified_at: null },
+      { hostname: "old.a.test", notified_at: new Date("2026-01-01T00:00:00Z") },
+    ]);
+  });
+
   it("creates every key table", async () => {
     const { rows } = await db.pool.query<{ tablename: string }>(
       "select tablename from pg_tables where schemaname = 'public'",
@@ -90,6 +108,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
       "scans", "scan_results", "subscriptions", "finding_lifecycle", "finding_triage",
       "ticket_links", "emerging_threat_alerts", "api_keys", "repo_connections",
       "monitored_targets", "audit_logs", "contact_enquiries", "verifications", "scan_jobs",
+      "asset_inventory", "dns_snapshots", "deletion_requests",
     ]) {
       expect(have.has(t), `missing table ${t}`).toBe(true);
     }

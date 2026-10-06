@@ -43,6 +43,8 @@ import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
+import { sendAttackSurfaceAlerts } from "./attackSurfaceMonitor";
+import type { ReconResult } from "./scanners/recon";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
@@ -1033,6 +1035,10 @@ export async function executeScan(
       severity: score !== undefined && score < 50 ? "high" : "info",
       metadata: { targetUrl, score, findingsCount: findings.length },
     });
+    // New hostnames and NS/MX/SPF/DMARC changes since the previous scan; reads
+    // what syncAssetInventory recorded in Phase 1. Never throws, and last, so
+    // its DNS lookups can't hold up the alerts above.
+    await sendAttackSurfaceAlerts(supabaseAdmin, ownerId, scanId, targetUrl, baseResults?.recon as ReconResult | undefined);
   } catch (err) {
     console.error(`[scanExecution] post-completion notifications failed for scan ${scanId}:`, (err as Error).message);
   }

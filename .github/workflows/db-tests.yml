@@ -11,6 +11,9 @@ on:
       - "hebridescyber-app/sql/**"
       - "hebridescyber-app/tests/db/**"
       - "hebridescyber-app/vitest.db.config.mts"
+      # Modules whose PostgREST query shapes only these tests can check.
+      - "hebridescyber-app/src/lib/attackSurfaceMonitor.ts"
+      - "hebridescyber-app/src/lib/findingsView.ts"
       - ".github/workflows/db-tests.yml"
   push:
     branches: [master]
@@ -18,6 +21,9 @@ on:
       - "hebridescyber-app/sql/**"
       - "hebridescyber-app/tests/db/**"
       - "hebridescyber-app/vitest.db.config.mts"
+      # Modules whose PostgREST query shapes only these tests can check.
+      - "hebridescyber-app/src/lib/attackSurfaceMonitor.ts"
+      - "hebridescyber-app/src/lib/findingsView.ts"
       - ".github/workflows/db-tests.yml"
   workflow_dispatch: {}
 
