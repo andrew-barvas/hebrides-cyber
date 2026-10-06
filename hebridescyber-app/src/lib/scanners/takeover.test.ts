@@ -78,6 +78,14 @@ describe("candidateHosts", () => {
     ]);
   });
 
+  it("never takes in other sites on a shared hosting domain or a county's school zone", () => {
+    expect(candidateHosts("mysite.github.io", ["docs.mysite.github.io", "someone-else.github.io"])).toEqual(["docs.mysite.github.io", "mysite.github.io"]);
+    expect(candidateHosts("www.stmarys.herts.sch.uk", ["mail.stmarys.herts.sch.uk", "www.stjohns.herts.sch.uk"])).toEqual([
+      "mail.stmarys.herts.sch.uk",
+      "www.stmarys.herts.sch.uk",
+    ]);
+  });
+
   it(`caps the list at ${MAX_HOSTS}`, () => {
     const many = Array.from({ length: 100 }, (_, i) => `h${i}.example.com`);
     expect(candidateHosts("example.com", many)).toHaveLength(MAX_HOSTS);

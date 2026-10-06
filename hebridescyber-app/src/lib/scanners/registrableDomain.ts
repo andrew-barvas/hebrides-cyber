@@ -1,34 +1,36 @@
-// The registrable domain ("eTLD+1") of a hostname: shop.example.co.uk →
-// example.co.uk. Used where a check must reason about the domain a customer
-// actually registered (RDAP expiry) or scope a list of hostnames to it
-// (subdomain takeover).
+// Which domain a hostname belongs to, from the full Public Suffix List
+// (tldts). Two answers, because a site on a hosting platform's shared domain
+// has two:
 //
-// A curated list of multi-label public suffixes rather than the full Public
-// Suffix List: this product's customers are overwhelmingly on .uk and the
-// big gTLDs, and a wrong answer is harmless by construction — RDAP simply
-// has no record for it, and the check reports nothing. Add suffixes here
-// when a real customer domain needs one.
-const MULTI_LABEL_SUFFIXES = new Set([
-  // UK (Nominet second-level domains)
-  "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "sch.uk", "ac.uk", "gov.uk", "nhs.uk", "police.uk", "mod.uk",
-  // Common elsewhere
-  "com.au", "net.au", "org.au", "edu.au", "gov.au",
-  "co.nz", "org.nz", "net.nz",
-  "co.za", "org.za",
-  "co.jp", "ne.jp", "or.jp",
-  "com.br", "com.mx", "com.ar", "com.tr", "com.sg", "com.hk", "com.cn", "co.in", "co.il", "co.kr",
-]);
+//   registrableDomain: the domain registered at a registry, from the PSL's
+//     ICANN section: shop.example.co.uk → example.co.uk, mysite.github.io →
+//     github.io. Use it for what lives at registry level: RDAP expiry, the
+//     domain's email authentication (SPF/DMARC/DKIM), breach lookups by
+//     email domain.
+//   ownerDomain: the narrowest domain one customer controls, private
+//     suffixes included: mysite.github.io → mysite.github.io,
+//     app.azurewebsites.net → app.azurewebsites.net. Use it to scope
+//     hostnames to the customer (subdomain enumeration, takeover candidates,
+//     first-party scripts). With registrableDomain, a GitHub Pages site would
+//     be treated as owning every other github.io site.
+//
+// This used to be a hand-picked suffix list, on the theory that a wrong
+// answer was harmless. It wasn't: it mapped a school at
+// www.stmarys.herts.sch.uk to herts.sch.uk (the whole county's zone, so the
+// report graded the council's SPF/DMARC and listed other schools'
+// subdomains), and unlisted ccSLDs such as co.ke to the registry's own zone.
+// Both return null for IP addresses, localhost and bare public suffixes.
+import { getDomain } from "tldts";
 
 export function registrableDomain(hostname: string): string | null {
-  const host = hostname.trim().toLowerCase().replace(/\.$/, "");
-  const labels = host.split(".");
-  if (labels.length < 2 || labels.some((l) => l === "") || /^[\d.]+$/.test(host) || host.includes(":")) return null;
-  const lastTwo = labels.slice(-2).join(".");
-  if (MULTI_LABEL_SUFFIXES.has(lastTwo)) return labels.length >= 3 ? labels.slice(-3).join(".") : null;
-  return lastTwo;
+  return getDomain(hostname.trim());
 }
 
-/** Is `host` the registrable domain itself or a subdomain of it? */
+export function ownerDomain(hostname: string): string | null {
+  return getDomain(hostname.trim(), { allowPrivateDomains: true });
+}
+
+/** Is `host` the domain itself or a subdomain of it? */
 export function isWithinDomain(host: string, domain: string): boolean {
   const h = host.toLowerCase().replace(/\.$/, "");
   return h === domain || h.endsWith(`.${domain}`);
