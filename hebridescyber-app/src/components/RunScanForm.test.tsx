@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-const { getSessionMock } = vi.hoisted(() => ({ getSessionMock: vi.fn() }));
+const { getSessionMock, verifiedState } = vi.hoisted(() => ({
+  getSessionMock: vi.fn(),
+  verifiedState: { value: { domains: new Set<string>(["example.com"]), isAdmin: false, loaded: true } },
+}));
 vi.mock("@/lib/auth", () => ({ getSession: getSessionMock }));
+vi.mock("@/lib/verifiedDomains", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/verifiedDomains")>()),
+  useVerifiedDomains: () => verifiedState.value,
+}));
 
 import RunScanForm from "./RunScanForm";
 
@@ -28,6 +35,34 @@ function submit(url = "https://example.com") {
 }
 
 describe("RunScanForm", () => {
+  it("says a typed site isn't verified yet, and points out a verified www/apex twin", () => {
+    verifiedState.value = { domains: new Set(["example.com"]), isAdmin: false, loaded: true };
+    render(<RunScanForm onScanUpdate={() => {}} />);
+    const input = screen.getByLabelText("Website URL");
+    fireEvent.change(input, { target: { value: "https://example.com/shop" } });
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.change(input, { target: { value: "https://www.example.com" } });
+    expect(screen.getByRole("status").textContent).toMatch(/www\.example\.com isn't verified.*You've verified example\.com/);
+    expect(screen.getByRole("link", { name: "Verify www.example.com →" }).getAttribute("href")).toBe("/dashboard/assets#domain-verification");
+    fireEvent.change(input, { target: { value: "https://other.test" } });
+    expect(screen.getByRole("status").textContent).not.toMatch(/You've verified/);
+  });
+
+  it("gives no hint to admins, before the list loads, or for text that isn't a URL yet", () => {
+    for (const state of [{ isAdmin: true, loaded: true }, { isAdmin: false, loaded: false }]) {
+      verifiedState.value = { domains: new Set(), ...state };
+      const { unmount } = render(<RunScanForm onScanUpdate={() => {}} />);
+      fireEvent.change(screen.getByLabelText("Website URL"), { target: { value: "https://other.test" } });
+      expect(screen.queryByRole("status")).toBeNull();
+      unmount();
+    }
+    verifiedState.value = { domains: new Set(), isAdmin: false, loaded: true };
+    render(<RunScanForm onScanUpdate={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Website URL"), { target: { value: "not a url" } });
+    expect(screen.queryByRole("status")).toBeNull();
+    verifiedState.value = { domains: new Set(["example.com"]), isAdmin: false, loaded: true };
+  });
+
   it("labels the URL field (it was placeholder-only)", () => {
     render(<RunScanForm onScanUpdate={() => {}} />);
     expect(screen.getByLabelText("Website URL")).toHaveAttribute("type", "url");
