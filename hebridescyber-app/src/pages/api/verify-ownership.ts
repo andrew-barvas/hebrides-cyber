@@ -14,11 +14,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { hostnameFromUrl, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
+import { hostnameFromUrl, verificationHints, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
+
+const START_RATE_LIMIT = { max: 20, windowSeconds: 60 * 60 };
+const CHECK_RATE_LIMIT = { max: 30, windowSeconds: 60 * 60 };
 
 const bodySchema = z.object({
   action: z.enum(["start", "check"]).optional(),
@@ -34,17 +37,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Domain verification can only be managed from a logged-in session, not with an API key." });
   }
 
-  // E-12 (docs/ENHANCEMENTS.md): outbound DNS+HTTP per call, uncapped before
-  // this.
-  const limit = await checkRateLimit(caller.ownerId, "verify-ownership");
-  if (!limit.allowed) {
-    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
-    return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
-  }
-
   const parsed = parseBody(bodySchema, req.body, res);
   if (!parsed) return;
   const { action, targetUrl } = parsed;
+
+  // E-12 (docs/ENHANCEMENTS.md): outbound DNS+HTTP per check, uncapped before
+  // this. "start" and "check" have separate buckets: someone waiting for DNS
+  // to propagate presses "Check now" repeatedly, and that used to lock them
+  // out of fetching their instructions too.
+  const limit = action === "check"
+    ? await checkRateLimit(caller.ownerId, "verify-ownership-check", CHECK_RATE_LIMIT)
+    : await checkRateLimit(caller.ownerId, "verify-ownership", START_RATE_LIMIT);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    const minutes = Math.max(1, Math.ceil(limit.retryAfterSeconds / 60));
+    return res.status(429).json({ error: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`, retryAfterSeconds: limit.retryAfterSeconds });
+  }
 
   let domain: string;
   try {
@@ -88,7 +96,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       metadata: { method: result.method },
     });
 
-    return res.status(200).json({ verified: result.verified, method: result.method });
+    return res.status(200).json({
+      verified: result.verified,
+      method: result.method,
+      ...(result.verified ? {} : { hints: verificationHints(domain, existing.token, result) }),
+    });
   }
 
   // Default / "start": create-or-return the verification token for this domain.

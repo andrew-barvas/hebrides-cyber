@@ -96,6 +96,25 @@ describe("POST /api/verify-ownership", () => {
     expect(verifyDomainMock).not.toHaveBeenCalled();
   });
 
+  it("rate-limits start and check in separate buckets, check with the larger budget", async () => {
+    queues.verifications = [{ data: { token: "t", verified_at: null }, error: null }];
+    await handler(...(Object.values(mockReqRes({ targetUrl: "https://example.com" })) as [NextApiRequest, NextApiResponse]));
+    queues.verifications = [{ data: { id: "v1", token: "t", verified_at: "2026-01-01T00:00:00Z" }, error: null }];
+    await handler(...(Object.values(mockReqRes({ action: "check", targetUrl: "https://example.com" })) as [NextApiRequest, NextApiResponse]));
+    const [start, check] = checkRateLimitMock.mock.calls as [string, string, { max: number }][];
+    expect(start[1]).toBe("verify-ownership");
+    expect(check[1]).toBe("verify-ownership-check");
+    expect(check[2].max).toBeGreaterThan(start[2].max);
+  });
+
+  it("tells a rate-limited user how long to wait", async () => {
+    checkRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 125 });
+    const { req, res } = mockReqRes({ action: "check", targetUrl: "https://example.com" });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(429);
+    expect((res._getJSONData() as { error: string }).error).toBe("Too many attempts. Try again in 3 minutes.");
+  });
+
   it("returns 403 for an API-key caller (session-only route)", async () => {
     authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "key" });
     const { req, res } = mockReqRes({ targetUrl: "https://example.com" });
@@ -202,13 +221,18 @@ describe("POST /api/verify-ownership", () => {
 
     it("does not update the row and logs a failure audit event when verification fails", async () => {
       queues.verifications = [{ data: { id: "v1", token: "tok", verified_at: null }, error: null }];
-      verifyDomainMock.mockResolvedValue({ verified: false, method: null });
+      verifyDomainMock.mockResolvedValue({ verified: false, method: null, dns: "no_txt", file: "redirect" });
       const { req, res } = mockReqRes({ action: "check", targetUrl: "https://example.com" });
 
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(200);
-      expect(res._getJSONData()).toEqual({ verified: false, method: null });
+      const body = res._getJSONData() as { verified: boolean; method: null; hints: string[] };
+      expect(body).toMatchObject({ verified: false, method: null });
+      // Says why each method failed, in words the customer can act on.
+      expect(body.hints).toHaveLength(2);
+      expect(body.hints[0]).toMatch(/^DNS: no TXT record on example\.com yet/);
+      expect(body.hints[1]).toMatch(/redirects elsewhere.*verify that host instead/);
       expect(updated).toHaveLength(0);
       expect(logAuditEventMock).toHaveBeenCalledWith(
         expect.anything(),
