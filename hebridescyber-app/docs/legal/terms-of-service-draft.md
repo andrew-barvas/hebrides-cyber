@@ -178,7 +178,7 @@ Privacy Policy.
 
 ### 14. Contact
 
-Hebrides Cyber, Isle of Lewis, Scotland, UK — hello@hebridescyber.com
+Hebrides Cyber, Isle of Lewis, Scotland, UK — hello@hebridescyber.co.uk
 (matching `/privacy`'s `CONTACT_EMAIL` constant; used as-is on the live page).
 
 ---
