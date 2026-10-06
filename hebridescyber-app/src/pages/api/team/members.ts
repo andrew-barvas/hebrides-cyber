@@ -11,6 +11,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
 
@@ -82,13 +83,9 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
   // owner's subscription that determines whether the team can keep growing.
   // Only gates new growth (inviting); role changes/removal on an existing
   // team stay available even if the owner has since downgraded.
-  const { data: ownerSub, error: ownerSubError } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("owner", team.owner_id)
-    .maybeSingle();
-  if (ownerSubError) return res.status(500).json({ error: ownerSubError.message });
-  if (ownerSub?.plan !== "agency") {
+  const gate = await planGate(supabaseAdmin, team.owner_id, "agency");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
     return res.status(403).json({ error: "Team collaboration is an Agency-plan feature." });
   }
 

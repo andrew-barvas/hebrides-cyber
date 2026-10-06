@@ -44,7 +44,7 @@ describe("POST /api/team (createTeam) — E-02 plan gate", () => {
   });
 
   it("rejects team creation from a non-Agency plan with 403, before checking for an existing team", async () => {
-    queues.subscriptions = [{ data: { plan: "basic" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "basic", status: "active" }, error: null }];
 
     const { req, res } = mockReqRes("POST", { name: "My Team" });
     await handler(req, res);
@@ -53,8 +53,17 @@ describe("POST /api/team (createTeam) — E-02 plan gate", () => {
     expect(JSON.parse(res._getData()).error).toMatch(/Agency/);
   });
 
+  it("rejects team creation from a cancelled Agency subscription", async () => {
+    queues.subscriptions = [{ data: { plan: "agency", status: "cancelled" }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { name: "Ops" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(403);
+  });
+
   it("allows team creation from an Agency plan", async () => {
-    queues.subscriptions = [{ data: { plan: "agency" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
     queues.teams = [
       { data: null, error: null }, // "do they already own a team" check
       { data: { id: "t1", name: "My Team", created_at: "2026-01-01" }, error: null }, // insert result
