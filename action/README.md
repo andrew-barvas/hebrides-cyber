@@ -1,6 +1,6 @@
 # Hebrides Cyber Security Scan
 
-Runs a [Hebrides Cyber](https://hebridescyber.com) security scan against a
+Runs a [Hebrides Cyber](https://www.hebridescyber.co.uk) security scan against a
 verified domain and, by default, fails the step if a **new** critical or high
 finding was introduced since the previous scan of that target — not on the
 existing backlog. Gating on total findings would red-line every pipeline on
@@ -90,7 +90,7 @@ Supported lockfiles are listed under `POST /api/v1/dependency-diff` in
 | `target-url` | scan mode | — | URL to scan (must already be verified) |
 | `github-token` | no | — | `dependencies` mode: token for the PR comment (`secrets.GITHUB_TOKEN`) |
 | `fail-on` | no | `high` | Fail on a new finding at or above this severity: `critical`, `high`, `medium`, `low`, or `none` to never fail |
-| `api-base-url` | no | `https://hebridescyber.com` | Override for a self-hosted/staging instance |
+| `api-base-url` | no | `https://www.hebridescyber.co.uk` | Override for a self-hosted/staging instance |
 
 ## Outputs
 
