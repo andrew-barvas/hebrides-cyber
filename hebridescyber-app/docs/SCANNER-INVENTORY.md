@@ -43,25 +43,25 @@ All are invoked as separate processes (`execFile`) or over HTTP (ZAP). Every wra
 
 | Product | Used for | Wrapper | How installed / pinned in CI | Profiles | Licence stated in repo |
 |---|---|---|---|---|---|
-| Nuclei (ProjectDiscovery) | Template-based vulnerability scan, `-tags` scoped to detected technologies plus baseline tags | `src/worker/tools/nuclei.ts` | Release zip, pinned `v3.3.9`, no checksum; `nuclei -update-templates` at job start (templates unpinned) | full, api, cms | not stated |
+| Nuclei (ProjectDiscovery) | Template-based vulnerability scan, `-tags` scoped to detected technologies plus baseline tags | `src/worker/tools/nuclei.ts` | Release zip, pinned `v3.3.9` + SHA-256; `nuclei -update-templates` at job start (templates unpinned) | full, api, cms | not stated |
 | OWASP ZAP | Spider + active scan; AJAX spider | `zap.ts`, `zapAjaxSpider.ts`; also `checkZap()` in `index.ts` | `docker run ghcr.io/zaproxy/zaproxy:stable` (floating tag), daemon on :8090, API key `changeme` hard-coded in the workflow | full, api, cms (spider-start in the base suite whenever `ZAP_API_URL` is set) | not stated |
 | sqlmap | SQL injection confirmation (crawl depth 2, batch mode) | `sqlmap.ts`, `sqlmapOutput.ts` | `pip3 install sqlmap`, unpinned (also in `tool-integration.yml`) | full, api | not stated |
 | commix | OS command injection confirmation | `commix.ts`, `commixOutput.ts` | `git clone --depth 1` of default branch to `/opt/commix`, symlinked; unpinned | full, api | not stated |
 | nmap | Service/version detection (`-sV`, TCP connect) on 13 fixed ports | `nmap.ts` | `apt-get install nmap`, unpinned | full, osint | not stated |
-| Subfinder (ProjectDiscovery) | Passive subdomain enumeration (no brute-force, no `-active`); queries its own third-party passive sources | `src/lib/scanners/subdomains.ts` | Release zip, pinned `v2.16.0`, no checksum | full, osint | not stated |
+| Subfinder (ProjectDiscovery) | Passive subdomain enumeration (no brute-force, no `-active`); queries its own third-party passive sources | `src/lib/scanners/subdomains.ts` | Release zip, pinned `v2.16.0` + SHA-256 | full, osint | not stated |
 | testssl.sh | Deep TLS: protocols, cipher categories, forward secrecy, named vulnerabilities | `deepTls.ts` | `git clone --depth 1`, unpinned; path via `TESTSSL_PATH=/opt/testssl.sh/testssl.sh` | full, osint | not stated |
-| Gitleaks | Secret scanning of the connected repo's git history (`--redact`) | `secretScan.ts` | Release tarball, pinned `8.21.2`, no checksum | full, osint (repo) | not stated |
-| Trivy (Aqua) | `trivy image` (base-image package CVEs, HIGH/CRITICAL) and `trivy config` (IaC misconfig, MEDIUM+) | `trivyScan.ts` | Install script fetched from the same tag, pinned `0.58.1`; vulnerability DB pre-downloaded | full, osint (repo) | not stated |
+| Gitleaks | Secret scanning of the connected repo's git history (`--redact`) | `secretScan.ts` | Release tarball, pinned `8.21.2` + SHA-256 | full, osint (repo) | not stated |
+| Trivy (Aqua) | `trivy image` (base-image package CVEs, HIGH/CRITICAL) and `trivy config` (IaC misconfig, MEDIUM+) | `trivyScan.ts` | Release tarball, pinned `0.75.0` + SHA-256 (0.58.1's assets were removed upstream, so it had never installed); output checked against a captured 0.75.0 run | full, osint (repo) | not stated |
 | Opengrep | SAST engine, with the project's own 34-rule pack in `sast-rules/` (JS/TS 11, PHP 10, Python 13) | `src/worker/tools/sast.ts` | Release binary pinned `1.30.0`, SHA-256 verified; rule tests in `../.github/workflows/sast-rules.yml` | full, osint (repo) | Opengrep LGPL-2.1 (per `sast.ts`); rules MIT, written in-house |
 | WPScan CLI | WordPress themes, config backups, DB exports, TimThumb | `wpscan.ts` | `gem install wpscan`, unpinned | full, cms (only if WordPress detected) | not stated |
 | CMSmap | WordPress/Joomla/Drupal checks | `cmsmap.ts` | `pip3 install cmsmap`, unpinned | full, cms (only if a CMS detected) | not stated |
 | WhatWaf | WAF detection | `whatwaf.ts` | `pip3 install whatwaf`, unpinned | full, api, cms | not stated |
 | Photon | OSINT crawl: URLs, emails, JS endpoints | `photon.ts` | `pip3 install photon`, unpinned | full, osint | not stated |
-| Gospider | Crawl and JS endpoint / S3 reference discovery | `gospider.ts` | Release zip, pinned `1.1.6`, no checksum | full, osint | not stated |
-| Kiterunner (`kr`) | API route brute-force with a wordlist (`routes-small.kite`) | `kiterunner.ts` | Release tarball, pinned `2.0.2`, no checksum | full, api | not stated |
+| Gospider | Crawl and JS endpoint / S3 reference discovery | `gospider.ts` | **Never installed**: the workflow asks for `gospider_v1.1.6_linux_amd64.zip`, which doesn't exist (the asset is `…_linux_x86_64.zip`, binary inside a folder) | full, osint | not stated |
+| Kiterunner (`kr`) | API route brute-force with a wordlist (`routes-small.kite`) | `kiterunner.ts` | **Never installed**: `v2.0.2` doesn't exist (latest `v1.0.2`), and the `routes-small.kite` wordlist is never downloaded | full, api | not stated |
 | Arjun | Hidden HTTP parameter discovery | `arjun.ts` | `pip3 install arjun`, unpinned | full, api | not stated |
-| Strix | LLM-driven pentest agent with proof-of-concept exploits (`--mode deep`); needs Docker and an LLM key; about $2-5 per scan per `strix.ts` | `strix.ts` | Release tarball, pinned `0.5.0`, no checksum | ai-pentest only | Apache 2.0 (per `strix.ts`) |
-| Cairn | Autonomous exploitation engine, run as an isolated subprocess | `cairn.ts` | Release tarball, pinned `1.0.0` from `oritera/Cairn`, no checksum | ai-pentest only | AGPL-3.0 (per `cairn.ts`; subprocess isolation rationale in that file) |
+| Strix | LLM-driven pentest agent with proof-of-concept exploits (`--mode deep`); needs Docker and an LLM key; about $2-5 per scan per `strix.ts` | `strix.ts` | **Never installed**: `v0.5.0` doesn't exist (tags are `v1.x`); the CLI flags in `strix.ts` were never run against a real binary | ai-pentest only | Apache 2.0 (per `strix.ts`) |
+| Cairn | Autonomous exploitation engine, run as an isolated subprocess | `cairn.ts` | **Never installed**: `v1.0.0` doesn't exist in `oritera/Cairn` (latest `v0.2.1`); CLI flags unverified | ai-pentest only | AGPL-3.0 (per `cairn.ts`; subprocess isolation rationale in that file) |
 
 ### A(b) Third-party APIs and data sources called
 
@@ -217,6 +217,8 @@ Code-level safety rules that are consistent across modules: GET-only crawling, f
 ---
 
 ## Discrepancies noticed
+
+**Release installs checked 2026-10-06** (every asset downloaded and hashed): nuclei, subfinder and gitleaks install and are now SHA-256-pinned; trivy is moved to 0.75.0 with a checksum. **gospider, kiterunner, strix and cairn have never installed**: their pinned versions or asset names don't exist, and each install step only logs the failure, so their checks have always reported `not_configured`. Their wrappers have never run against a real binary (strix/cairn CLI flags, gospider/kiterunner output parsing, kiterunner's wordlist). Before enabling any of them, capture real output in `tool-integration.yml` the way the xsser/commix capture was done, then fix the wrapper or retire the tool (as xsser was).
 
 1. `docs/FUNCTIONALITY-MATRIX.md` section 3 is stale. It describes the extended suite as gated by `runExtendedTools` set via `const runExtendedTools = !scanId`; the code uses scan profiles (`scanProfiles.ts`, `decideScanConfig()` in `run-queued-scan-jobs.ts`). It says nmap does a "SYN, top-1000 ports, service/OS detect"; the code runs a TCP connect `-sV` on 13 fixed ports (nmap's own header documents this). It names `ajaxSpider.ts`; the file is `zapAjaxSpider.ts`. It says authenticated scanning is a header/cookie recheck; the code also runs a signed-in crawl (`crawl.auth.*`).
 2. `src/app/what-we-check/page.tsx` (and `CLAUDE.md`'s `ports.ts` line) say ports are checked "using Shodan's InternetDB, no port-scanning traffic sent to your infrastructure". `ports.ts` makes direct TCP connections to 30 ports; InternetDB is used only in `recon.ts` for CVEs. (Comment in `nmap.ts` repeats the InternetDB claim for `ports.ts`.)
