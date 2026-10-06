@@ -7,9 +7,16 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // (webhook.ts) is what actually activates the subscription once Stripe
 // confirms payment — this endpoint only starts the flow.
 //
-// TODO: STRIPE_PRICE_BASIC/PRO/AGENCY must be real Price IDs from the
-// Stripe Dashboard (Products > select product > copy the price's API ID,
-// looks like "price_1AbC..."). This will 500 until they're set.
+// STRIPE_PRICE_BASIC/PRO/AGENCY must be real Price IDs from the Stripe
+// Dashboard (Products > select product > copy the price's API ID, looks like
+// "price_1AbC..."). Until they (and STRIPE_SECRET_KEY) are set, a customer
+// gets a 503 `checkout_unavailable` with words they can act on; which
+// variable is missing goes to the server log, never to the browser.
+
+const CHECKOUT_UNAVAILABLE = {
+  error: "Online sign-up for this plan isn't open yet. Contact us and we'll set your account up.",
+  code: "checkout_unavailable",
+};
 
 const PRICE_IDS: Record<"basic" | "pro" | "agency", string | undefined> = {
   basic: process.env.STRIPE_PRICE_BASIC,
@@ -40,15 +47,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: "Invalid session" });
   }
 
-  const plan = req.body?.plan as "basic" | "pro" | "agency" | undefined;
-  const priceId = plan ? PRICE_IDS[plan] : undefined;
-  if (!plan || !priceId) {
-    return res.status(400).json({
-      error: `Unknown or unconfigured plan "${plan}" — set STRIPE_PRICE_${(plan ?? "").toUpperCase()} in the Function/API environment.`,
-    });
+  const plan = req.body?.plan as unknown;
+  if (plan !== "basic" && plan !== "pro" && plan !== "agency") {
+    return res.status(400).json({ error: "Unknown plan." });
+  }
+  const priceId = PRICE_IDS[plan];
+  if (!priceId) {
+    console.error(`[create-checkout-session] STRIPE_PRICE_${plan.toUpperCase()} is not set; checkout for "${plan}" is unavailable.`);
+    return res.status(503).json(CHECKOUT_UNAVAILABLE);
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
 
   try {
     const session = await getStripe().checkout.sessions.create({
@@ -72,6 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ url: session.url });
   } catch (err) {
     console.error("[create-checkout-session] Stripe error:", err);
-    return res.status(502).json({ error: (err as Error).message });
+    if (/STRIPE_SECRET_KEY/.test((err as Error).message)) return res.status(503).json(CHECKOUT_UNAVAILABLE);
+    return res.status(502).json({ error: "We couldn't start checkout. Please try again, or contact us if it keeps happening." });
   }
 }

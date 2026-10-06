@@ -16,6 +16,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { subscriptionGrants } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { renderExecutiveReportHtml } from "@/lib/executiveReport";
 import { loadTriageIndexForTarget } from "@/lib/findingTriage";
@@ -64,12 +65,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // today, not show a half-branded page.
   const { data: ownerSub } = await supabaseAdmin
     .from("subscriptions")
-    .select("plan, brand_logo_url, brand_name")
+    .select("plan, status, brand_logo_url, brand_name")
     .eq("owner", owner)
     .maybeSingle();
 
   const branding =
-    ownerSub?.plan === "agency" && (ownerSub.brand_logo_url || ownerSub.brand_name)
+    subscriptionGrants(ownerSub, "agency") && ownerSub && (ownerSub.brand_logo_url || ownerSub.brand_name)
       ? { logoUrl: ownerSub.brand_logo_url ?? undefined, name: ownerSub.brand_name ?? undefined }
       : undefined;
 

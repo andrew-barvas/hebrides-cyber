@@ -49,7 +49,7 @@ describe("POST /api/team/members (invite) — E-02 plan gate", () => {
 
   it("rejects an invite when the team owner has since downgraded off Agency, even though the caller IS the owner", async () => {
     queues.teams = [{ data: { id: TEAM_ID, owner_id: OWNER_ID }, error: null }];
-    queues.subscriptions = [{ data: { plan: "pro" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "pro", status: "active" }, error: null }];
 
     const { req, res } = mockReqRes("POST", { team_id: TEAM_ID, email: "new@example.com" });
     await handler(req, res);
@@ -58,10 +58,23 @@ describe("POST /api/team/members (invite) — E-02 plan gate", () => {
     expect(JSON.parse(res._getData()).error).toMatch(/Agency/);
   });
 
+  it("rejects an invite when the owner's Agency subscription is cancelled (plan unchanged, status not active)", async () => {
+    queues.teams = [{ data: { id: TEAM_ID, owner_id: OWNER_ID }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "cancelled" }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { team_id: TEAM_ID, email: "new@example.com" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(403);
+  });
+
   it("allows an invite when the team owner is on Agency", async () => {
     queues.teams = [{ data: { id: TEAM_ID, owner_id: OWNER_ID }, error: null }];
-    queues.subscriptions = [{ data: { plan: "agency" }, error: null }];
-    queues.users = [{ data: { id: INVITEE_ID, email: "new@example.com" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
+    queues.users = [
+      { data: { is_admin: false }, error: null }, // planGate's admin check
+      { data: { id: INVITEE_ID, email: "new@example.com" }, error: null },
+    ];
     queues.team_members = [
       { data: null, error: null }, // existing-membership check
       { data: [], error: null }, // current member count

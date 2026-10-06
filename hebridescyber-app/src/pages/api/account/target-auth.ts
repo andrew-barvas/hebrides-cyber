@@ -14,6 +14,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 
 
@@ -85,13 +86,9 @@ async function handleTargetAuth(
   // an account that's since downgraded can still remove a credential it can
   // no longer add.
   if (req.method === "POST") {
-    const { data: subscription, error: subError } = await supabaseAdmin
-      .from("subscriptions")
-      .select("plan")
-      .eq("owner", caller.ownerId)
-      .maybeSingle();
-    if (subError) return res.status(500).json({ error: subError.message });
-    if (subscription?.plan !== "agency") {
+    const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
+    if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+    if (gate === "denied") {
       return res.status(403).json({ error: "Authenticated scanning is an Agency-plan feature." });
     }
   }

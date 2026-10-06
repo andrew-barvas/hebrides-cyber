@@ -6,6 +6,7 @@
 // same stats the component needs, so the component no longer needs DB access.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 
 type PartnerPortalStats = {
   brandName: string | null;
@@ -24,20 +25,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
 
-  // Server-side plan check — must be an agency subscriber.
-  const { data: sub, error: subError } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan, brand_logo_url, brand_name")
-    .eq("owner", caller.ownerId)
-    .maybeSingle();
-
-  if (subError) return res.status(500).json({ error: "Could not verify subscription" });
-  if (!sub || sub.plan !== "agency") {
+  // Server-side plan check — must be an active agency subscriber.
+  const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
+  if (gate === "error") return res.status(500).json({ error: "Could not verify subscription" });
+  if (gate === "denied") {
     return res.status(403).json({ error: "Partner portal requires an Agency subscription" });
   }
 
-  const brandName = (sub.brand_name as string | null) ?? null;
-  const brandLogoUrl = (sub.brand_logo_url as string | null) ?? null;
+  const { data: sub } = await supabaseAdmin
+    .from("subscriptions")
+    .select("brand_logo_url, brand_name")
+    .eq("owner", caller.ownerId)
+    .maybeSingle();
+  const brandName = (sub?.brand_name as string | null) ?? null;
+  const brandLogoUrl = (sub?.brand_logo_url as string | null) ?? null;
 
   const [targetsRes, scansRes] = await Promise.all([
     supabaseAdmin

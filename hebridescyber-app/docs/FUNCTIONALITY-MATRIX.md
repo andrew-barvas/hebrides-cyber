@@ -132,7 +132,7 @@ required) · **key-or-session** (either credential) · **admin**
 | `run-scan.ts` | POST | session only | on-demand, two-step | free-tier cap (1 scan ever); 10/hr rate limit | ✅ server (`isFreeTierExhausted`, `checkRateLimit`) |
 | `verify-ownership.ts` | POST | session only | manual | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
 | `generate-report.ts` | GET | key-or-session | manual | branding applied only on `plan === "agency"`; 10/hr rate limit (E-12) | ✅ server for branding and rate limit |
-| `generate-fix-pr.ts` | POST | session only | manual, **no UI caller exists** | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
+| `generate-fix-pr.ts` | POST | session only | manual, **no UI caller exists** | Pro/Agency | ✅ server — `planGate(…, "pro")` at PR time (a repo connection outlives a downgrade), then 10/hr rate limit (E-12) |
 | `scans/[id]/ai-fix.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate, Azure OpenAI spend still uncapped per-request within that limit |
 | `scans/[id]/create-ticket.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit (E-12, fixed); no plan gate |
 | `scans/[id]/retest-finding.ts` | POST | key-or-session | manual, per-finding | none | ✅ server — 10/hr rate limit, plus a correctness gate: 400s any finding from an extended scan tool (`src/lib/extendedToolCheckIds.ts`) since the on-demand path this triggers never runs them (E-30) |
@@ -145,17 +145,17 @@ required) · **key-or-session** (either credential) · **admin**
 |---|---|---|---|
 | `keys.ts` | session only | max 20 keys | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision if that's meant to change (`docs/ENHANCEMENTS.md` E-02) |
 | `webhooks.ts` | session only | max 20 | ✅ **intentional, not a gap** — `docs/USER-GUIDE.md` §3.5 explicitly documents outbound webhooks as "for anyone building their own integration," unlike Slack/Teams alerts (Pro/Agency) on the same page |
-| `account/connect-repo.ts` | session only | Pro/Agency (POST only) | ✅ **server** (E-02, fixed) — `subscription?.plan` must be `"pro"`/`"agency"`; DELETE stays available regardless of plan |
+| `account/connect-repo.ts` | session only | Pro/Agency (POST only) | ✅ **server** — `planGate(…, "pro")` (active subscription only, admins exempt); DELETE stays available regardless of plan |
 | `account/ticket-integration.ts` | session only | — | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision |
-| `account/target-auth.ts` | session only | Agency (POST only) | ✅ **server** (E-02, fixed) — `subscription?.plan !== "agency"` → 403; DELETE stays available regardless of plan |
+| `account/target-auth.ts` | session only | Agency (POST only) | ✅ **server** — `planGate(…, "agency")` → 403; DELETE stays available regardless of plan |
 | `account/branding-logo.ts` | session only | Agency | ✅ **server** — `subscription?.plan !== "agency"` → 403 |
-| `team.ts` / `team/members.ts` | session only | max 25 members; Agency (create/invite only) | ✅ **server** (E-02, fixed) — `team.ts`'s `createTeam` and `team/members.ts`'s `invite` both check `plan === "agency"` (the latter checks the team *owner's* plan, not the caller's, since an admin-role member could invite on an owner's behalf); role changes/removal/viewing stay available regardless of plan |
+| `team.ts` / `team/members.ts` | session only | max 25 members; Agency (create/invite only) | ✅ **server** (E-02, fixed) — `team.ts`'s `createTeam` and `team/members.ts`'s `invite` both use `planGate(…, "agency")` (the latter checks the team *owner's* plan, not the caller's, since an admin-role member could invite on an owner's behalf); role changes/removal/viewing stay available regardless of plan |
 
 ### Billing
 
 | Route | Auth | Notes |
 |---|---|---|
-| `stripe/create-checkout-session.ts` | Bearer session JWT | **500s until `STRIPE_PRICE_BASIC/PRO/AGENCY` are set** — currently blocks the entire paid-signup funnel |
+| `stripe/create-checkout-session.ts` | Bearer session JWT | **503 `checkout_unavailable` until `STRIPE_PRICE_BASIC/PRO/AGENCY` (and `STRIPE_SECRET_KEY`) are set** — blocks paid sign-up; the customer sees "sign-up isn't open yet" with a contact link, the missing variable goes to the server log |
 | `stripe/customer-portal.ts` | Bearer session JWT | 404 if no `stripe_customer_id` |
 | `stripe/webhook.ts` | Stripe signature | Plan defaults to `"basic"` on missing metadata — a metadata-less event silently *downgrades* an Agency customer |
 
@@ -219,7 +219,7 @@ fails the build only on newly-introduced findings.
 | Critical-finding email alert | `scanAlerts.ts` | Any active plan, incl. Basic | ✅ server, deliberately not tier-gated |
 | Monthly digest email | `send-monthly-digest.ts` | Any active plan | ✅ server, not tier-gated (advertised as a Basic bullet, but not a differentiator since every tier gets it) |
 | Emerging-threat alerts (new CISA KEV CVEs vs each site's latest scan, every 6 h) | `emergingThreats.ts` (pure matching), `emergingThreatAlerts.ts`, `check-emerging-threats.ts` + `emerging-threats.yml`, `GET /api/emerging-threats`, `EmergingThreatsPanel.tsx` on `/dashboard` | Email: any active paid plan; Slack/Teams: Pro/Agency; admins exempt | ✅ server (owner selection + `channelsFor`). NVD configurations + OSV npm ranges; `affected` only for a detected version in range, else `possibly_affected`, never name-only. Needs migration 045 — no-op before it. Tests: `emergingThreats.test.ts`, `emergingThreatAlerts.test.ts`, `techInventory.test.ts`, `threatAlertChannels.test.ts`, `__tests__/api/emerging-threats.test.ts`, `EmergingThreatsPanel.test.tsx` |
-| Authenticated scanning | `MonitoredTargets.tsx` + `target-auth.ts` | "Optional (Agency)" per `/what-we-check` | ✅ server — `target-auth.ts` enforces `plan !== "agency"` → 403 on POST (E-02 fix, 2026-08-28); DELETE stays ungated so downgraded accounts can remove a credential |
+| Authenticated scanning | `MonitoredTargets.tsx` + `target-auth.ts` | "Optional (Agency)" per `/what-we-check` | ✅ server — `target-auth.ts` uses `planGate(…, "agency")` → 403 on POST; DELETE stays ungated so downgraded accounts can remove a credential |
 | Partner Portal (fleet management) | `PartnerPortalPanel.tsx`, rendered on the dashboard | Agency | ⚠️ **client-only** — `{plan === "agency" && ...}` in `dashboard/page.tsx`; component shows only the caller's own RLS-scoped data, so exposure is informational not exploitable (E-39) |
 | Asset inventory | `AssetInventory.tsx`, `/dashboard/assets` | — | n/a — not a gated capability; populated by `syncAssetInventory()` post-scan (E-40) |
 | Critical path analysis | `CriticalPaths` in scan detail page | — | n/a — not a gated capability (E-41) |
@@ -331,3 +331,5 @@ for the full decision record.
 | Playwright/Chromium | Page-health check, PDF rendering | Required for those two features specifically |
 | Slack, MS Teams, Jira, Linear, GitHub App/PAT, Azure OpenAI, Upstash Redis, WPScan, Safe Browsing, HIBP, Resend, Google Analytics | Various (see rows above / `docs/architecture.md`) | All degrade gracefully to `not_configured`/disabled — **except** Upstash, which fails **open** (allows the request) when unreachable, silently removing the only cost control on the two rate-limited routes |
 | Shodan InternetDB, OSV.dev, crt.sh, Cloudflare DoH, Wayback/CDX, endoflife.date, CISA KEV/NVD/security RSS | Free, keyless, no config | Any failure degrades to a clean empty result, never an error |
+
+**Plan gates (2026-10-06).** Every server-side gate goes through `src/lib/planAccess.ts` (`planGate`, `hasProAccess`, `hasAgencyAccess`; `slaAlerts.ts`'s `hasSlaAccess` delegates to it): only an **active** subscription grants a tier, admins are exempt, Agency includes Pro, and a failed lookup is a 500, never an upgrade prompt. Before this, seven routes read `plan` alone, and the Stripe webhook marks a lapsed or cancelled subscription `past_due`/`cancelled` without changing `plan`, so cancelled accounts kept paid features (and white-labelled reports). Still ungated by design, pending an owner decision because no page sells them per tier: AI fix, API keys, share links, ticketing.

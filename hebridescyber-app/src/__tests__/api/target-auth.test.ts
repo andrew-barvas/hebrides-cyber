@@ -44,7 +44,7 @@ describe("POST/DELETE /api/account/target-auth — E-02 plan gate", () => {
 
   it("rejects a POST (new credential) from a non-Agency plan with 403, before writing anything", async () => {
     queues.monitored_targets = [{ data: { id: TARGET_ID, owner: OWNER_ID }, error: null }];
-    queues.subscriptions = [{ data: { plan: "pro" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "pro", status: "active" }, error: null }];
 
     const { req, res } = mockReqRes("POST", { monitoredTargetId: TARGET_ID, authType: "cookie", cookieValue: "abc" });
     await handler(req, res);
@@ -53,9 +53,19 @@ describe("POST/DELETE /api/account/target-auth — E-02 plan gate", () => {
     expect(JSON.parse(res._getData()).error).toMatch(/Agency/);
   });
 
+  it("rejects a POST from a past-due Agency subscription", async () => {
+    queues.monitored_targets = [{ data: { id: TARGET_ID, owner: OWNER_ID }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "past_due" }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { monitoredTargetId: TARGET_ID, authType: "cookie", cookieValue: "abc" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(403);
+  });
+
   it("allows a POST from an Agency plan", async () => {
     queues.monitored_targets = [{ data: { id: TARGET_ID, owner: OWNER_ID }, error: null }];
-    queues.subscriptions = [{ data: { plan: "agency" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
     queues.target_auth_credentials = [{ data: null, error: null }];
 
     const { req, res } = mockReqRes("POST", { monitoredTargetId: TARGET_ID, authType: "cookie", cookieValue: "abc" });

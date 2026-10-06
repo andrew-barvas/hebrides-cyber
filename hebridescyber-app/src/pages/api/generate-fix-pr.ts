@@ -21,6 +21,7 @@ import { z } from "zod";
 import { buildRemediationMarkdown } from "@/lib/remediation";
 import type { Finding } from "@/lib/scanners";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { lookupOsvFixInfo } from "@/lib/scanners/osv";
 import { resolveGithubAuth } from "@/lib/githubApp";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -49,6 +50,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
   if (caller.via !== "session") {
     return res.status(403).json({ error: "Remediation PRs can only be requested from a logged-in session, not with an API key." });
+  }
+
+  // Pro and up ("Dependency & CI/CD scanning" on /pricing). Connecting a repo
+  // is already Pro-gated, but a connection outlives a downgrade or a cancelled
+  // subscription, so the plan is checked here too, when the PR is opened.
+  const gate = await planGate(supabaseAdmin, caller.ownerId, "pro");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
+    return res.status(403).json({ error: "Remediation pull requests are a Pro-and-up feature.", code: "plan_required" });
   }
 
   // E-12 (docs/ENHANCEMENTS.md): real GitHub API calls per request, uncapped

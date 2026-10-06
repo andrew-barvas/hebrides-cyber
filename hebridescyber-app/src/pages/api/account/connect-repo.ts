@@ -21,6 +21,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { resolveGithubAuth } from "@/lib/githubApp";
 import { parseBody } from "@/lib/validate";
 
@@ -70,13 +71,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // gate for all of dependencyManifest.ts/secretScan.ts/dockerBaseImage.ts,
   // not just dependency scanning specifically — was enforced nowhere. Only
   // gates the connection (POST); DELETE stays available regardless of plan.
-  const { data: subscription, error: subError } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("owner", caller.ownerId)
-    .maybeSingle();
-  if (subError) return res.status(500).json({ error: subError.message });
-  if (subscription?.plan !== "pro" && subscription?.plan !== "agency") {
+  const gate = await planGate(supabaseAdmin, caller.ownerId, "pro");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
     return res.status(403).json({ error: "Connecting a repository for dependency/secret scanning is a Pro-and-up feature." });
   }
 

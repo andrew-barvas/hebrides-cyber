@@ -48,7 +48,7 @@ describe("POST/DELETE /api/account/connect-repo — E-02 plan gate", () => {
   });
 
   it("rejects connecting a repo from a Basic plan with 403, before ever calling GitHub", async () => {
-    queues.subscriptions = [{ data: { plan: "basic" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "basic", status: "active" }, error: null }];
 
     const { req, res } = mockReqRes("POST", { githubRepo: "owner/repo" });
     await handler(req, res);
@@ -58,8 +58,32 @@ describe("POST/DELETE /api/account/connect-repo — E-02 plan gate", () => {
     expect(resolveGithubAuthMock).not.toHaveBeenCalled();
   });
 
+  it.each(["cancelled", "past_due"])("rejects a Pro plan whose subscription is %s", async (status) => {
+    queues.subscriptions = [{ data: { plan: "pro", status }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { githubRepo: "owner/repo" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(403);
+    expect(resolveGithubAuthMock).not.toHaveBeenCalled();
+  });
+
+  it("answers 500 when the plan can't be read, and lets an admin through without a subscription", async () => {
+    queues.subscriptions = [{ data: null, error: { message: "db down" } }];
+    const failed = mockReqRes("POST", { githubRepo: "owner/repo" });
+    await handler(failed.req, failed.res);
+    expect(failed.res._getStatusCode()).toBe(500);
+
+    queues.users = [{ data: { is_admin: true }, error: null }];
+    resolveGithubAuthMock.mockResolvedValue({ token: null });
+    const admin = mockReqRes("POST", { githubRepo: "owner/repo" });
+    await handler(admin.req, admin.res);
+    expect(admin.res._getStatusCode()).not.toBe(403);
+    expect(resolveGithubAuthMock).toHaveBeenCalled();
+  });
+
   it.each(["pro", "agency"])("allows connecting a repo from a %s plan", async (plan) => {
-    queues.subscriptions = [{ data: { plan }, error: null }];
+    queues.subscriptions = [{ data: { plan, status: "active" }, error: null }];
     resolveGithubAuthMock.mockResolvedValue({ token: "gh-token", via: "app" });
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     queues.repo_connections = [{ data: null, error: null }];

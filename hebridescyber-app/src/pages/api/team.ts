@@ -5,6 +5,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 
 const MAX_TEAM_NAME_LENGTH = 60;
@@ -90,13 +91,9 @@ async function createTeam(req: NextApiRequest, res: NextApiResponse, userId: str
   // only (docs/USER-GUIDE.md §3.7) but was enforced nowhere. Only gates
   // creation, not team.ts's GET — a downgraded owner/member should still be
   // able to see who they're teamed with.
-  const { data: subscription, error: subError } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("owner", userId)
-    .maybeSingle();
-  if (subError) return res.status(500).json({ error: subError.message });
-  if (subscription?.plan !== "agency") {
+  const gate = await planGate(supabaseAdmin, userId, "agency");
+  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "denied") {
     return res.status(403).json({ error: "Team collaboration is an Agency-plan feature." });
   }
 

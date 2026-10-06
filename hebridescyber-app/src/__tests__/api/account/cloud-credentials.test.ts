@@ -85,7 +85,7 @@ describe("GET/POST/DELETE /api/account/cloud-credentials — E-32", () => {
   });
 
   it("rejects a POST from a non-Agency plan with 403", async () => {
-    queues.subscriptions = [{ data: { plan: "pro" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "pro", status: "active" }, error: null }];
     queues.users = [{ data: { is_admin: false }, error: null }];
 
     const { req, res } = mockReqRes("POST", {
@@ -98,8 +98,20 @@ describe("GET/POST/DELETE /api/account/cloud-credentials — E-32", () => {
     expect(res._getStatusCode()).toBe(403);
   });
 
+  it("rejects a POST from a cancelled Agency subscription", async () => {
+    queues.subscriptions = [{ data: { plan: "agency", status: "cancelled" }, error: null }];
+    queues.users = [{ data: { is_admin: false }, error: null }];
+    const { req, res } = mockReqRes("POST", {
+      provider: "aws",
+      label: "prod",
+      credentials: { accessKeyId: "AKIAABCDEFGHIJKLMNOP", secretAccessKey: "secret" },
+    });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(403);
+  });
+
   it("allows a POST from an Agency plan and upserts the credential", async () => {
-    queues.subscriptions = [{ data: { plan: "agency" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
     queues.users = [{ data: { is_admin: false }, error: null }];
     queues.cloud_credentials = [{ error: null }];
 
@@ -114,7 +126,7 @@ describe("GET/POST/DELETE /api/account/cloud-credentials — E-32", () => {
   });
 
   it("POST returns 503 (not 500) when migration 030 hasn't been applied", async () => {
-    queues.subscriptions = [{ data: { plan: "agency" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
     queues.users = [{ data: { is_admin: false }, error: null }];
     queues.cloud_credentials = [{ error: { code: "42P01", message: "relation does not exist" } }];
 
