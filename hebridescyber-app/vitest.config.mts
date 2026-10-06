@@ -42,8 +42,8 @@ export default defineConfig({
       // same convention this mirrors.
       thresholds: {
         statements: 70,
-        branches: 63,
-        functions: 71,
+        branches: 64,
+        functions: 72,
         lines: 71,
       },
     },

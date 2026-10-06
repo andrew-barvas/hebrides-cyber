@@ -72,6 +72,7 @@ const pricingFeatures = [
   "Findings mapped to 7 compliance frameworks, with per-framework report export",
   "Jira, Linear, ServiceNow & GitHub Issues ticketing",
   "Scheduled report delivery",
+  "Portfolio PDF: every client site in one report, worst first",
   "Remediation SLAs with breach alerts",
   "SBOM generation (CycloneDX 1.5)",
   "CI templates for GitHub Actions, GitLab, Jenkins, Azure DevOps & Bitbucket",

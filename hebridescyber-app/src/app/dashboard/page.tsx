@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { ScanSearch } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { deriveOnboardingFlags } from "@/lib/onboardingFlags";
+import PortfolioReportButton from "@/components/PortfolioReportButton";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import PlanUpsell from "@/components/PlanUpsell";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
@@ -236,6 +237,8 @@ export default function DashboardPage() {
       )}
 
       <OnboardingChecklist {...flags} />
+
+      {plan === "agency" && <PortfolioReportButton token={sessionToken} />}
 
       <FleetOverview />
 
