@@ -58,7 +58,7 @@ const webCheckRows: CheckRow[] = [
     ncsc: "Forgotten subdomains and dangling DNS",
     us: "Subdomains from Certificate Transparency logs, and a dangling-DNS / subdomain-takeover check",
     coverage: "partial",
-    detail: "We check the subdomains we can see in public logs. We don't yet run continuous discovery of shadow IT — that's on the roadmap.",
+    detail: "We check the subdomains we can see in public logs, and on paid plans tell you after each scan about any whose first certificate is new. We only see subdomains that have a certificate or public DNS record: we don't guess names.",
   },
 ];
 

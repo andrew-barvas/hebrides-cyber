@@ -25,8 +25,13 @@ export type ShodanData = {
 
 export type SubdomainEntry = {
   name: string;
+  /** Issuer and start date of the name's most recent certificate. */
   issuer: string;
   notBefore: string;
+  /** Start date of the name's earliest logged certificate: when the name
+   *  first appeared in CT. attackSurfaceMonitor.ts uses it as the evidence
+   *  that a hostname is new. Optional: older stored results lack it. */
+  firstNotBefore?: string;
 };
 
 // ── IP resolution ─────────────────────────────────────────────────────────────
@@ -108,6 +113,7 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[] | null> {
     const byName = new Map<string, SubdomainEntry>();
 
     for (const cert of body) {
+      const notBefore = cert.not_before ?? "";
       // name_value may contain multiple newline-separated names (SANs)
       const names = cert.name_value.split(/\n/).map((n) => n.trim().toLowerCase());
       for (const name of names) {
@@ -117,11 +123,15 @@ async function queryCrtSh(domain: string): Promise<SubdomainEntry[] | null> {
         // the apex itself as one of its own subdomains.
         const display = name.startsWith("*.") ? name.slice(2) : name;
         if (display === domain) continue;
-        // Keep each name's most recent certificate: a host still being
-        // issued certificates is most likely still in use.
+        // Keep each name's most recent certificate (a host still being issued
+        // certificates is most likely still in use) and its earliest date.
         const existing = byName.get(display);
-        if (existing && (existing.notBefore >= (cert.not_before ?? ""))) continue;
-        byName.set(display, { name: display, issuer: cert.issuer_name ?? "", notBefore: cert.not_before ?? "" });
+        const first = [existing?.firstNotBefore, notBefore].filter(Boolean).sort()[0];
+        if (existing && existing.notBefore >= notBefore) {
+          if (first) existing.firstNotBefore = first;
+          continue;
+        }
+        byName.set(display, { name: display, issuer: cert.issuer_name ?? "", notBefore, ...(first ? { firstNotBefore: first } : {}) });
       }
     }
 

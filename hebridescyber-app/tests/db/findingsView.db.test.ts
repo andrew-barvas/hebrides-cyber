@@ -8,42 +8,23 @@
 // Needs the PostgREST binary: set POSTGREST_BIN to its path (the db-tests
 // workflow downloads the official release). Skipped without it.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { spawn, type ChildProcess } from "node:child_process";
-import { createServer, type Server } from "node:http";
-import { createHmac } from "node:crypto";
-import { writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { DB_TESTS_ENABLED, createTestDb, type TestDb } from "./harness";
+import { POSTGREST_BIN, startPostgrest, type Postgrest } from "./postgrest";
 import { loadFindingsView } from "../../src/lib/findingsView";
 
-// supabase-js builds its realtime client eagerly and throws on Node 20, which
-// has no native WebSocket (Node 22+ does). This test never uses realtime.
-if (!("WebSocket" in globalThis)) (globalThis as Record<string, unknown>).WebSocket = class {};
-
-const POSTGREST_BIN = process.env.POSTGREST_BIN;
 const enabled = DB_TESTS_ENABLED && !!POSTGREST_BIN;
 
-const SECRET = "test-secret-test-secret-test-secret-1234";
-const PORT = 3991; // PostgREST
-const API_PORT = 3992; // what supabase-js talks to: /rest/v1/* forwarded to PostgREST
+const PORT = 3991; // PostgREST; supabase-js talks to a /rest/v1 proxy on PORT + 1
 const A = "aaaaaaaa-0000-0000-0000-000000000001";
 const B = "bbbbbbbb-0000-0000-0000-000000000002";
 const SCAN_OLD = "11111111-0000-0000-0000-000000000001";
 const SCAN_NEW = "11111111-0000-0000-0000-000000000002";
 const SCAN_B = "11111111-0000-0000-0000-000000000003";
 
-const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
-function jwt(role: string): string {
-  const head = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ role, exp: Math.floor(Date.now() / 1000) + 3600 })}`;
-  return `${head}.${createHmac("sha256", SECRET).update(head).digest("base64url")}`;
-}
-
 describe.skipIf(!enabled)("loadFindingsView against real PostgREST + Postgres", () => {
   let db: TestDb;
-  let server: ChildProcess;
-  let proxy: Server;
+  let postgrest: Postgrest;
   let client: SupabaseClient;
 
   beforeAll(async () => {
@@ -79,38 +60,12 @@ describe.skipIf(!enabled)("loadFindingsView against real PostgREST + Postgres", 
     await q("insert into finding_triage (owner, target_host, check_id, state, reason) values ($1, 'one.test', 'recon.shodan-cves', 'accepted_risk', 'documented and accepted')", [A]);
     await q("insert into finding_triage (owner, target_host, check_id, state, reason, expires_at) values ($1, 'two.test', 'dns.spf-missing', 'snoozed', 'snoozed in the past', now() - interval '1 day')", [A]);
 
-    const dir = mkdtempSync(path.join(tmpdir(), "postgrest-"));
-    const conf = path.join(dir, "postgrest.conf");
-    writeFileSync(conf, [`db-uri = "${db.url}"`, `db-schemas = "public"`, `db-anon-role = "anon"`, `jwt-secret = "${SECRET}"`, `server-port = ${PORT}`, `server-host = "127.0.0.1"`, ""].join("\n"));
-    server = spawn(POSTGREST_BIN as string, [conf], { stdio: "ignore" });
-    for (let i = 0; i < 60; i++) {
-      try {
-        if ((await fetch(`http://127.0.0.1:${PORT}/`, { headers: { apikey: jwt("service_role") } })).status < 500) break;
-      } catch {
-        // not up yet
-      }
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    // supabase-js addresses PostgREST at /rest/v1 (as Supabase's gateway does); PostgREST serves at the root.
-    proxy = createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (c: Buffer) => chunks.push(c));
-      req.on("end", async () => {
-        const upstream = await fetch(`http://127.0.0.1:${PORT}${(req.url ?? "").replace(/^\/rest\/v1/, "")}`, {
-          method: req.method,
-          headers: Object.fromEntries(Object.entries(req.headers).filter(([k]) => k !== "host" && k !== "content-length") as [string, string][]),
-          body: ["GET", "HEAD"].includes(req.method ?? "GET") ? undefined : Buffer.concat(chunks),
-        });
-        res.writeHead(upstream.status, Object.fromEntries(upstream.headers.entries()));
-        res.end(Buffer.from(await upstream.arrayBuffer()));
-      });
-    }).listen(API_PORT, "127.0.0.1");
-    client = createClient(`http://127.0.0.1:${API_PORT}`, jwt("service_role"), { auth: { persistSession: false } });
+    postgrest = await startPostgrest(db, PORT);
+    client = postgrest.client;
   }, 60_000);
 
   afterAll(async () => {
-    server?.kill();
-    proxy?.close();
+    postgrest?.stop();
     await db?.drop();
   });
 

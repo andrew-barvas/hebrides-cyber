@@ -429,6 +429,19 @@ export default function WhatWeCheckPage() {
             />
             <CategoryCard
               category={{
+                id: "attack-surface-changes",
+                icon: "🛰️",
+                name: "New hostname and DNS change alerts",
+                desc: "After each scan we tell you about hostnames under your domain whose first certificate in public Certificate Transparency logs was issued since your previous scan, and about changes to your name servers, mail servers, SPF and DMARC records. A subdomain nobody recognises can be a forgotten service or someone else using your domain; a changed name or mail server you didn't make can mean the domain was taken over. Paid plans: email, plus Slack or Teams on Pro and Agency.",
+                checks: [
+                  "A hostname counts as new only when the certificate logs show it is: one our sources simply hadn't listed before is not",
+                  "Each new hostname and each DNS change is reported once, even when you monitor both www and the bare domain",
+                  "DNS records are compared with what we saw before, and a lookup that fails is never reported as a removed record",
+                ],
+              }}
+            />
+            <CategoryCard
+              category={{
                 id: "remediation",
                 icon: "🛠️",
                 name: "Copy-pasteable remediation",

@@ -124,6 +124,27 @@ describe("checkRecon", () => {
     expect(result.subdomains.find((s) => s.name === "h00.example.com")?.notBefore).toBe("2026-09-01T00:00:00");
   });
 
+  it("records when each name first appeared in CT, whatever order crt.sh lists its certificates in", async () => {
+    serve({
+      crt: {
+        status: 200,
+        body: [
+          { name_value: "shop.example.com", not_before: "2026-09-01T00:00:00", issuer_name: "R11" },
+          { name_value: "shop.example.com\n*.api.example.com", not_before: "2023-02-01T00:00:00", issuer_name: "R3" },
+          { name_value: "api.example.com", not_before: "2026-10-01T00:00:00", issuer_name: "R10" },
+          { name_value: "undated.example.com" },
+        ],
+      },
+    });
+    const result = await checkRecon("https://example.com");
+    if (result.status !== "checked") throw new Error("expected checked");
+    expect(result.subdomains).toEqual([
+      { name: "api.example.com", issuer: "R10", notBefore: "2026-10-01T00:00:00", firstNotBefore: "2023-02-01T00:00:00" },
+      { name: "shop.example.com", issuer: "R11", notBefore: "2026-09-01T00:00:00", firstNotBefore: "2023-02-01T00:00:00" },
+      { name: "undated.example.com", issuer: "", notBefore: "" },
+    ]);
+  });
+
   it("caps the list at 50", async () => {
     serve({ crt: { status: 200, body: Array.from({ length: 80 }, (_, i) => ({ name_value: `h${String(i).padStart(2, "0")}.example.com` })) } });
     const result = await checkRecon("https://example.com");
