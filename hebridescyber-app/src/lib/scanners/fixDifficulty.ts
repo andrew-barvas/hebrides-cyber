@@ -51,6 +51,10 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.info-disclosure": "trivial",
   "backend-exposure.service-key": "easy", // rotate the key and move it server-side
   "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
+  "backend-exposure.storage-bucket": "easy", // drop one storage.objects policy
+  "backend-exposure.firebase-rtdb": "moderate", // rules per path, not just one switch
+  "backend-exposure.firebase-storage": "easy", // one rules change
+  "backend-exposure.firestore": "moderate", // rules per collection
   "crawl.header-gap": "easy",
   "crawl.cookie-flags": "easy",
   "crawl.mixed-content": "easy",

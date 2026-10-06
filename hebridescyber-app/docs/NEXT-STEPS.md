@@ -28,7 +28,8 @@ Database migrations: files exist through **047**; the next free number is **048*
 | "Fixed" needs coverage | `diffFindings(…, { canDetect })` + `canDetectFromResults()`: a scan that couldn't have run a finding's tool (passive scan after a full scan, errored base check) no longer reports it fixed, which also stops ticket auto-close firing on it |
 | Scanner inventory | `docs/SCANNER-INVENTORY.md`: every tool, service and check family, derived from the code, with the discrepancies found against the docs |
 | Executive PDF report | `executiveReport.ts` (pure HTML: score, severity counts, top priorities, compliance snapshot incl. SOC 2/HIPAA, all findings, accepted risks, checks that did not finish; false positives left out; white label removes every "Hebrides Cyber"), rendered by `/api/generate-report`, "↓ Executive PDF" button on the scan page (`executiveReportClient.ts`). Not plan-gated yet (the route never was) |
-| Reflected-XSS confirmation | `xssConfirm.ts` + `validateExploit` (`proofOfExploit.ts`): one harmless GET probe, context-aware verdict (body / quoted attribute confirmed; encoded, comment, script, textarea, title not), optional browser check. **Not yet called from a scan**: `enrichWithProofOfExploit` has no production caller, so wiring it (opt-in) is the next step |
+| Reflected-XSS confirmation | `xssConfirm.ts` + `validateExploit` (`proofOfExploit.ts`): one harmless GET probe, context-aware verdict (body / quoted attribute confirmed; encoded, comment, script, textarea, title not), optional browser check; runs in every non-`safe` scan via `enrichWithProofOfExploit` (row above) |
+| Supabase storage + Firebase exposure | `backendExposure.ts` lists one object name from buckets the code names (`.storage.from("x")`, `backend-exposure.storage-bucket`); `firebaseExposure.ts` checks the site's own Firebase config: RTDB shallow root read (`firebase-rtdb`, key names only), Storage list (`firebase-storage`), Firestore collections the code names (`firestore`, one document name). Only config keys count (`databaseURL`/`storageBucket`/`projectId`), so a site reading a public RTDB API isn't flagged. No bench fixture: the probes go to fixed Google/Supabase hosts, so evidence is covered by unit tests on recorded response shapes |
 | Page metadata for client-component routes | `pricing/`, `contact/`, `login/` layouts (own title/description; login noindex); `/agencies` added to the sitemap |
 | commix parser from a real run | `commixOutput.ts`, `fixtures/commix/`; unfinished/unreachable runs are `error`, nothing to test is `not_applicable` |
 | Site crawler with page-level checks on every page (E-70) | `crawler.ts`, `crawlFindings.ts`, `crawl` in `ScanResults`; script inventory merges inner-page origins |
@@ -37,8 +38,8 @@ Database migrations: files exist through **047**; the next free number is **048*
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 
-Coverage floor (`vitest.config.mts`): **67 / 60 / 68 / 68** (statements /
-branches / functions / lines). Lint: 0 errors (31 known warnings).
+Coverage floor (`vitest.config.mts`): **69 / 62 / 70 / 70** (statements /
+branches / functions / lines). Lint: 0 errors (34 known warnings).
 
 ## Rules that kept biting — follow these
 

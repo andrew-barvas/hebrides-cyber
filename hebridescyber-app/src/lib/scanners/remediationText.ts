@@ -2825,6 +2825,87 @@ create policy "${name}: read own rows"
 If the data is meant to be public, say so deliberately with a narrow policy (only the columns and rows that are public, ideally through a view), rather than leaving RLS off. After the change, check it as an anonymous visitor: a request with only the anon key should return no rows. Tables created through the SQL editor have RLS **off** by default, so check every table in the \`public\` schema.`;
 }
 
+export function backendStorageBucketRemediation(bucket: string): string {
+  const name = /^[a-z0-9][a-z0-9._-]*$/.test(bucket) ? bucket : "your-bucket";
+  return `Anyone with the public \`anon\` key can list the files in the \`${name}\` storage bucket. Listing is controlled by policies on \`storage.objects\`, separately from whether the bucket is "public" (public only means a file can be downloaded by its exact URL).
+
+Remove the policy that lets \`anon\` (or everyone) select from this bucket, and allow listing only to the users who need it:
+
+\`\`\`sql
+-- Example: signed-in users can list only files in their own folder (<user id>/...).
+create policy "${name}: list own files"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = '${name}' and (storage.foldername(name))[1] = auth.uid()::text);
+\`\`\`
+
+If the files are meant to be public, keep the bucket public for downloads but drop the listing policy, so visitors can fetch a file whose URL they were given without being able to enumerate the rest. Afterwards, list the bucket with only the anon key and confirm it returns nothing.`;
+}
+
+// ---- Firebase exposure -----------------------------------------------------------
+
+export const FIREBASE_RTDB_OPEN = `Your Firebase Realtime Database answers anyone who asks: its security rules allow reads from the root without signing in, so the whole database can be downloaded with one request.
+
+Lock the root and open only the paths that need it, in *Realtime Database → Rules*:
+
+\`\`\`json
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
+\`\`\`
+
+Rules cascade: a \`.read: true\` high up the tree can't be taken back further down, so check every level. Use the Rules Playground to test an unauthenticated read of \`/\` and confirm it is denied, then check what was exposed (and for how long) before deciding whether anyone needs to be told.`;
+
+export const FIREBASE_STORAGE_OPEN = `Anyone can list the files in your Firebase Storage bucket without signing in. Listing needs only a rule that allows \`read\` (or \`list\`) at the bucket root.
+
+Tighten the rules in *Storage → Rules*:
+
+\`\`\`
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // Public assets: downloadable by exact path, never listable.
+    match /public/{file} {
+      allow get: if true;
+    }
+  }
+}
+\`\`\`
+
+\`get\` lets a visitor fetch a file whose path they already know; \`list\` lets them enumerate everything, which is rarely what you want. Test an unauthenticated list in the Rules Playground afterwards.`;
+
+export function firestoreOpenRemediation(collection: string): string {
+  const name = /^[A-Za-z][A-Za-z0-9_-]*$/.test(collection) ? collection : "yourCollection";
+  return `Anyone can read documents in the \`${name}\` Firestore collection without signing in. Firestore's security rules decide who can read what; this collection currently allows unauthenticated reads.
+
+Restrict it in *Firestore Database → Rules*:
+
+\`\`\`
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /${name}/{docId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.ownerId;
+    }
+  }
+}
+\`\`\`
+
+If the collection is meant to be public (published articles, a product catalogue), keep public reads but make sure no document holds anything private, and allow \`get\` rather than \`list\` where visitors only need single documents. Test an unauthenticated query in the Rules Playground afterwards.`;
+}
+
 // ---- GraphQL exposure ------------------------------------------------------------
 
 export const GRAPHQL_INTROSPECTION = `Turn introspection off in production unless the API is deliberately public. Anyone can currently list every type, query and mutation.
