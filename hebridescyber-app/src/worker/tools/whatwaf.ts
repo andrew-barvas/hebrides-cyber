@@ -5,10 +5,9 @@
 // extended tool does. When the binary is absent, returns
 // { status: "not_configured" } so the worker continues gracefully.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const WHATWAF_TIMEOUT_MS = 90_000;
 

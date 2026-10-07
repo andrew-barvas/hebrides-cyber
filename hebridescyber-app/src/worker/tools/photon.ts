@@ -4,14 +4,13 @@
 // files, and JavaScript endpoints. When the binary is absent, returns
 // { status: "not_configured" } so the worker continues gracefully.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const PHOTON_TIMEOUT_MS = 180_000;
 

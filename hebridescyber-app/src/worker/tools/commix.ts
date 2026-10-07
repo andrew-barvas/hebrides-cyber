@@ -12,11 +12,10 @@
 // the positive-finding wording has not been captured yet, so a run that ends
 // without a recognised closing line is an "error", never a clean result.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { parseInjections, parametersRuledOut, runProblem } from "./commixOutput";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const COMMIX_TIMEOUT_MS = 120_000;
 const COMMIX_MAX_BUFFER = 32 * 1024 * 1024;

@@ -259,34 +259,44 @@ jobs:
             || echo "cmsmap install failed — cmsmap.ts will report status: not_configured"
 
       - name: Install photon and gospider
+        # gospider never installed before: the asset name was wrong
+        # (linux_amd64 vs linux_x86_64) and the binary lives inside a folder
+        # in the zip. Correct name + SHA-256 of the downloaded asset (jaeles
+        # publishes no checksums file, so this is the hash we verified, not a
+        # publisher one). gospider.ts parses its real v1.1.6 --json output.
         env:
           GOSPIDER_VERSION: 1.1.6
+          GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
         run: |
           pip3 install --break-system-packages photon \
             || echo "photon install failed — photon.ts will report status: not_configured"
           curl -fsSL \
-            "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_amd64.zip" \
-            -o /tmp/gospider.zip \
-            || echo "gospider download failed — gospider.ts will report status: not_configured"
-          if [ -f /tmp/gospider.zip ]; then
-            sudo unzip -o /tmp/gospider.zip -d /usr/local/bin
-            sudo chmod +x /usr/local/bin/gospider
-            rm /tmp/gospider.zip
-          fi
+            "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" \
+            -o /tmp/gospider.zip
+          echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
+          unzip -o /tmp/gospider.zip -d /tmp/gospider
+          sudo install "/tmp/gospider/gospider_v${GOSPIDER_VERSION}_linux_x86_64/gospider" /usr/local/bin/gospider
+          rm -rf /tmp/gospider /tmp/gospider.zip
 
       - name: Install kiterunner and arjun
+        # kiterunner never installed before: v2.0.2 doesn't exist (latest is
+        # v1.0.2) and the wordlist was never provided. v1.0.2 binary pinned by
+        # SHA-256 (no publisher checksums file). The wordlist is our own
+        # curated route list compiled to .kite here; KITERUNNER_WORDLIST points
+        # kiterunner.ts at it (it no-ops without that env var).
         env:
-          KITERUNNER_VERSION: 2.0.2
+          KITERUNNER_VERSION: 1.0.2
+          KITERUNNER_SHA256: 6f0b70aabf747de592445a690281897eebbc45927e9264185d34ffb11637613b
         run: |
           curl -fsSL \
             "https://github.com/assetnote/kiterunner/releases/download/v${KITERUNNER_VERSION}/kiterunner_${KITERUNNER_VERSION}_linux_amd64.tar.gz" \
-            -o /tmp/kiterunner.tar.gz \
-            || echo "kiterunner download failed — kiterunner.ts will report status: not_configured"
-          if [ -f /tmp/kiterunner.tar.gz ]; then
-            sudo tar -xzf /tmp/kiterunner.tar.gz -C /usr/local/bin kr
-            sudo chmod +x /usr/local/bin/kr
-            rm /tmp/kiterunner.tar.gz
-          fi
+            -o /tmp/kiterunner.tar.gz
+          echo "${KITERUNNER_SHA256}  /tmp/kiterunner.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/kiterunner.tar.gz -C /usr/local/bin kr
+          sudo chmod +x /usr/local/bin/kr
+          rm /tmp/kiterunner.tar.gz
+          sudo mkdir -p /opt/kiterunner
+          kr kb convert src/worker/tools/wordlists/api-routes.txt /opt/kiterunner/api-routes.kite
           pip3 install --break-system-packages arjun \
             || echo "arjun install failed — arjun.ts will report status: not_configured"
 
@@ -365,6 +375,9 @@ jobs:
           ZAP_API_URL: http://localhost:8090
           ZAP_API_KEY: changeme
           TESTSSL_PATH: /opt/testssl.sh/testssl.sh
+          # Compiled by the "Install kiterunner" step above; kiterunner.ts
+          # no-ops to not_configured without it.
+          KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
           # Was missing entirely before — secretScan.ts/dependencyManifest.ts/
           # dockerBaseImage.ts (src/lib/scanExecution.ts's runExtendedTools)
           # need GitHub access to run at all, and none of these three secrets

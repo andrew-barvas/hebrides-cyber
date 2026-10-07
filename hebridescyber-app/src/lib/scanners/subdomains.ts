@@ -35,13 +35,12 @@
 // duplication ever reads as noise in a report, the crt.sh block in
 // summariseResults() is the one to drop — not this.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../execTool";
 import { Resolver } from "node:dns/promises";
 import type { Finding } from "./index";
 import { SUBDOMAINS_FOUND } from "./remediationText";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 // Our hard kill. SUBFINDER_MAX_TIME_MIN is subfinder's own internal budget and
 // is set lower so the tool exits cleanly and we still get its partial results,

@@ -15,15 +15,14 @@
 // and a run with nothing to test is "not_applicable" — never a clean result,
 // since findingLifecycle only treats "completed" as covered.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { countParametersTested, mergeInjectionPoints, parseReportedBlocks, parseResultsCsv, runProblem, type InjectionPoint } from "./sqlmapOutput";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const SQLMAP_TIMEOUT_MS = 180_000;
 // A crawl-and-test run prints thousands of lines; the default 1 MB maxBuffer
