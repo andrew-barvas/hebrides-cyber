@@ -78,7 +78,9 @@ reported as "detected" with no risk signal.
 (nightly, via GitHub Actions, where real binaries can run): nmap, nuclei
 (template set scoped to the target's actual detected technologies, not the
 entire default template library), sqlmap, commix (dedicated OS command injection
-confirmation), Subfinder subdomain takeover detection, testssl.sh deep TLS
+confirmation), Subfinder subdomain takeover detection, httpx live-host probing
+(which of the discovered subdomains actually serve a web app, and what each one
+runs), testssl.sh deep TLS
 analysis. A connected GitHub repository
 additionally unlocks Gitleaks secret scanning, real dependency-manifest
 vulnerability scanning (npm/pip/Composer, checked against OSV.dev), and
@@ -419,7 +421,8 @@ Worth stating plainly, since it shapes several design decisions above:
 
 - **No destructive payloads.** Every passive check is read-only. The
   active-tool suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's
-  curated-wordlist API-route discovery and Gospider's crawl) only runs
+  curated-wordlist API-route discovery, Gospider's crawl and httpx's
+  one-GET-per-host live-host probing) only runs
   against domains that have already passed real ownership verification,
   and none of it sends a payload intended to alter, damage or persist
   on your systems — it reads what is there. We do not run autonomous

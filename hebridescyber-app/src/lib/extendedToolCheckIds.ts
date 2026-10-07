@@ -41,6 +41,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "arjun",
   "sessionCheck",
   "cloudPosture",
+  "http-probe",
   "strix",
   "cairn",
 ] as const;

@@ -6,6 +6,7 @@
 #   /search?q=   reflects q unescaped (reflected XSS)
 #   /static/app.js  names API paths, an S3 bucket and a third-party script,
 #                   for gospider's JavaScript endpoint discovery
+#   /  carries a <title>, for httpx's live-host title/tech probing
 import sqlite3, http.server, urllib.parse
 db=sqlite3.connect(":memory:",check_same_thread=False)
 db.execute("create table items(id integer, name text)")
@@ -15,7 +16,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         u=urllib.parse.urlparse(self.path); q=urllib.parse.parse_qs(u.query)
         if u.path=="/":
-            body="<html><body><a href='/item?id=1'>item</a><form action='/search' method='get'><input name='q'><input type=submit></form><script src='/static/app.js'></script></body></html>"
+            body="<html><head><title>Test App Home</title></head><body><a href='/item?id=1'>item</a><form action='/search' method='get'><input name='q'><input type=submit></form><script src='/static/app.js'></script></body></html>"
         elif u.path=="/api/health":
             body='{"status":"ok"}'  # an API route kiterunner's wordlist can discover (200)
         elif u.path=="/api/admin":

@@ -851,6 +851,16 @@ public. This is informational, but worth an inventory pass:
   which allow subdomain takeover.
 - Confirm staging and development hosts are not publicly reachable.`;
 
+export const LIVE_HOST_DISCOVERED = `A discovered hostname is serving a live web application. This is inventory, not
+a vulnerability — but every live host is attack surface, so confirm it is one
+you mean to expose:
+
+- Is this host meant to be public? Staging, admin, and internal apps that end up
+  internet-reachable are a common breach entry point.
+- Does the detected technology need patching or hardening? Match it against the
+  version findings in this report.
+- If the host is no longer used, take it offline and remove its DNS record.`;
+
 export const TECH_DETECTED = `Informational — no action required. Knowing what a scanner can fingerprint about
 your stack is useful context when triaging the findings above.`;
 

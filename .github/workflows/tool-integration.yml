@@ -15,7 +15,9 @@ on:
       - "hebridescyber-app/src/worker/tools/nuclei*.ts"
       - "hebridescyber-app/src/worker/tools/gospider*.ts"
       - "hebridescyber-app/src/worker/tools/kiterunner*.ts"
+      - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
+      - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
       - "hebridescyber-app/tests/fixtures/test-app/**"
       - ".github/workflows/tool-integration.yml"
@@ -42,7 +44,7 @@ jobs:
       - name: Install sqlmap
         run: pip3 install --break-system-packages sqlmap
 
-      - name: Install nuclei, gospider and kiterunner (pinned)
+      - name: Install nuclei, gospider, kiterunner and httpx (pinned)
         env:
           NUCLEI_VERSION: v3.3.9
           NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
@@ -50,6 +52,8 @@ jobs:
           GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
           KITERUNNER_VERSION: 1.0.2
           KITERUNNER_SHA256: 6f0b70aabf747de592445a690281897eebbc45927e9264185d34ffb11637613b
+          HTTPX_VERSION: v1.6.10
+          HTTPX_SHA256: e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
         run: |
           # Same pins as scheduled-scans.yml, so the integration tests exercise
           # exactly what production installs.
@@ -57,6 +61,11 @@ jobs:
           echo "${NUCLEI_SHA256}  /tmp/nuclei.zip" | sha256sum -c -
           sudo unzip -o /tmp/nuclei.zip -d /usr/local/bin nuclei && sudo chmod +x /usr/local/bin/nuclei
           nuclei -update-templates -silent || true
+
+          curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip" -o /tmp/httpx.zip
+          echo "${HTTPX_SHA256}  /tmp/httpx.zip" | sha256sum -c -
+          sudo unzip -o /tmp/httpx.zip httpx -d /usr/local/bin && sudo chmod +x /usr/local/bin/httpx
+          httpx -version
 
           curl -fsSL "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" -o /tmp/gospider.zip
           echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
@@ -86,6 +95,7 @@ jobs:
           src/worker/tools/nuclei.integration.test.ts
           src/worker/tools/gospider.integration.test.ts
           src/worker/tools/kiterunner.integration.test.ts
+          src/worker/tools/httpProbe.integration.test.ts
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it

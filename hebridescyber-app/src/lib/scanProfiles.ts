@@ -36,6 +36,7 @@ export type ExtendedToolName =
   | "arjun"
   | "sessionCheck"
   | "cloudPosture"
+  | "httpx"
   | "strix"
   | "cairn"
   | "apiSpecInjection";
@@ -72,6 +73,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "arjun",
   "sessionCheck",
   "cloudPosture",
+  "httpx",
   "strix",
   "cairn",
   "apiSpecInjection",
@@ -105,6 +107,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     gospider: true,
     metadataLeak: true,
     cloudPosture: true,
+    httpx: true,
   },
   // AI-powered pentest: runs Strix alongside the full active-scan suite.
   // Strix uses LLM inference ($2-5/scan), so this profile is gated to

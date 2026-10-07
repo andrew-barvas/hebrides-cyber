@@ -172,6 +172,26 @@ jobs:
             || echo "subfinder install failed — subdomains.ts will report status: not_configured"
           rm -f /tmp/subfinder.zip
 
+      - name: Install httpx
+        # src/lib/scanners/hostProbe.ts shells out to `httpx` to probe the hosts
+        # subfinder discovered for a live HTTP service (status/title/tech/TLS).
+        # Same ProjectDiscovery release-zip pattern as subfinder/nuclei; a failed
+        # install degrades only this check (hostProbe.ts → not_configured).
+        # SHA-256 is the publisher's own httpx_1.6.10_checksums.txt line.
+        env:
+          HTTPX_VERSION: v1.6.10
+          HTTPX_SHA256: e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
+        run: |
+          curl -fsSL \
+            "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip" \
+            -o /tmp/httpx.zip \
+            && echo "${HTTPX_SHA256}  /tmp/httpx.zip" | sha256sum -c - \
+            && sudo unzip -o /tmp/httpx.zip httpx -d /usr/local/bin \
+            && sudo chmod +x /usr/local/bin/httpx \
+            && httpx -version \
+            || echo "httpx install failed — hostProbe.ts will report status: not_configured"
+          rm -f /tmp/httpx.zip
+
       - name: Install gitleaks and testssl.sh
         # secretScan.ts (Gitleaks) and deepTls.ts (testssl.sh) have always
         # degraded to status: "not_configured" on every real scheduled scan

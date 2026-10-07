@@ -20,6 +20,7 @@ import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
 import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
+import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runDeepTls, PLATFORM_TLS_TECHNOLOGIES } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
@@ -317,7 +318,22 @@ async function runExtendedTools(
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], endpointsTested: 0 as const, specSource: "none" as const }),
   ]);
 
+  // httpx runs AFTER the batch, not inside it: it probes the hostnames the
+  // subdomain step discovered, so it needs that result first. Hosts that
+  // resolved (or weren't resolution-checked) are worth a live-HTTP probe; one
+  // that definitively did not resolve is skipped. The target itself is always
+  // probed (runHttpProbe prepends it).
+  const subdomainsValue = subdomainsResult.status === "fulfilled" ? subdomainsResult.value : null;
+  const probeHosts =
+    subdomainsValue && subdomainsValue.status === "completed"
+      ? subdomainsValue.subdomains.filter((s) => s.resolves !== false).map((s) => s.host)
+      : [];
+  const httpxResult = toolConfig.httpx
+    ? await runHttpProbe(targetUrl, probeHosts)
+    : { status: "not_configured" as const, results: [] as HttpProbeRecord[] };
+
   const extended = {
+    httpx: httpxResult,
     nuclei: nucleiResult.status === "fulfilled" ? nucleiResult.value : { status: "error", findings: [], note: String(nucleiResult.reason) },
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
@@ -416,6 +432,11 @@ async function runExtendedTools(
   // fully-formed Finding[] with their own checkId namespaces, same as ZAP.
   if (extended.subdomains.status === "completed") {
     findings.push(...extended.subdomains.findings);
+  }
+  // httpx: live-host inventory for the discovered subdomains (its own findings
+  // are built here, like ZAP's, since the module returns records not Findings).
+  if (extended.httpx.status === "completed") {
+    findings.push(...buildHttpProbeFindings(targetUrl, extended.httpx.results));
   }
   if (extended.deepTls.status === "completed") {
     findings.push(...extended.deepTls.findings);
