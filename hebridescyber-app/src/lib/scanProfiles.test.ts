@@ -1,18 +1,34 @@
 import { describe, it, expect } from "vitest";
-import { resolveToolConfig, EXTENDED_TOOL_NAMES } from "./scanProfiles";
+import { resolveToolConfig, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS } from "./scanProfiles";
 
 describe("resolveToolConfig", () => {
-  it("'full' enables every extended tool except cost-gated AI tools", () => {
+  it("'full' enables every extended tool except the offensive-only suite", () => {
     const config = resolveToolConfig("full");
-    const costGated = new Set(["strix", "cairn"]);
     for (const name of EXTENDED_TOOL_NAMES) {
-      if (costGated.has(name)) {
+      if (OFFENSIVE_ONLY_TOOLS.has(name)) {
         expect(config[name]).toBe(false);
       } else {
         expect(config[name]).toBe(true);
       }
     }
     expect(Object.keys(config).length).toBe(EXTENDED_TOOL_NAMES.length);
+  });
+
+  it("'offensive' (Tier A) enables every extended tool, including the offensive-only suite", () => {
+    const config = resolveToolConfig("offensive");
+    for (const name of EXTENDED_TOOL_NAMES) {
+      expect(config[name]).toBe(true);
+    }
+    expect(Object.keys(config).length).toBe(EXTENDED_TOOL_NAMES.length);
+  });
+
+  it("offensive-only tools (brute-force / exploit) are off in every non-offensive profile", () => {
+    for (const profile of ["safe", "full", "api", "cms", "osint"] as const) {
+      const config = resolveToolConfig(profile);
+      for (const name of OFFENSIVE_ONLY_TOOLS) {
+        expect(config[name], `${name} must be off in ${profile}`).toBe(false);
+      }
+    }
   });
 
   it("'ai-pentest' enables every extended tool including cost-gated AI tools", () => {
