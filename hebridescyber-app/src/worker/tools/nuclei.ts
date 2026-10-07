@@ -24,12 +24,11 @@
 // harmless as a technology this map doesn't cover at all — never an error,
 // never a reason to fall back to the unscoped (slow, noisy) behaviour.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const NUCLEI_TIMEOUT_MS = 120_000; // 120 seconds
 

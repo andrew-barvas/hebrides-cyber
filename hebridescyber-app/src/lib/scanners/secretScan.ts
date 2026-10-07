@@ -47,8 +47,7 @@
 // function over an explicit { githubRepo } and composes once that lands — see
 // the call-site sketch at the bottom of this file.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../execTool";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -57,7 +56,7 @@ import type { Finding } from "./index";
 import { resolveGithubAuth } from "../githubApp";
 import { sanitiseGitOutput } from "../repoClone";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const githubApi = "https://api.github.com";
 

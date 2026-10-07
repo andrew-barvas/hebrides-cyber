@@ -19,15 +19,14 @@
 // riskier (running an arbitrary customer's build steps in CI) than pulling
 // a public base image by name. Image mode only ever pulls the named base
 // image (node:20-alpine, etc.), never anything the customer built.
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../execTool";
 import type { Finding } from "./index";
 import { resolveGithubAuth } from "../githubApp";
 import { withShallowClone } from "../repoClone";
 import { parseDockerfileStages, resolveBaseImages } from "./dockerBaseImage";
 import { trivyImagePackageRemediation, trivyConfigMisconfigRemediation } from "./remediationText";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 10_000;

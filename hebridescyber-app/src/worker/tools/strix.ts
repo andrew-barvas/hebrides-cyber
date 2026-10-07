@@ -14,12 +14,11 @@
 // in API fees depending on target complexity. Gate behind Agency tier
 // or higher — see scanProfiles.ts's "ai-pentest" profile.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const STRIX_TIMEOUT_MS = 300_000; // 5 minutes — LLM-backed scans are slower
 

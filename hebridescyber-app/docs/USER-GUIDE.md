@@ -417,10 +417,13 @@ the concrete needs each feature area above exists to satisfy.
 
 Worth stating plainly, since it shapes several design decisions above:
 
-- **No brute-forcing, no destructive payloads.** Every passive check is
-  read-only; the active-tool suite (nuclei/sqlmap/commix/nmap/ZAP)
-  only runs against domains that have already passed real ownership
-  verification.
+- **No destructive payloads.** Every passive check is read-only. The
+  active-tool suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's
+  curated-wordlist API-route discovery and Gospider's crawl) only runs
+  against domains that have already passed real ownership verification,
+  and none of it sends a payload intended to alter, damage or persist
+  on your systems — it reads what is there. We do not run autonomous
+  exploitation agents against your sites.
 - **No fabricated findings.** A check that can't evidence something
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms

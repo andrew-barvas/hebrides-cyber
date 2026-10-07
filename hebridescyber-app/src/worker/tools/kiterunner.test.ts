@@ -1,65 +1,73 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
 
-const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
-}));
+const { execToolMock } = vi.hoisted(() => ({ execToolMock: vi.fn() }));
+vi.mock("../../lib/execTool", () => ({ execTool: execToolMock }));
 
-vi.mock("node:child_process", () => ({
-  execFile: (...args: unknown[]) => execFileMock(...args),
-  default: { execFile: (...args: unknown[]) => execFileMock(...args) },
-}));
-vi.mock("node:util", () => ({
-  promisify: () => execFileMock,
-  default: { promisify: () => execFileMock },
-}));
+import { parseKiterunnerOutput, runKiterunner } from "./kiterunner";
 
-import { runKiterunner } from "./kiterunner";
+// Real kiterunner v1.0.2 output; see fixtures/kiterunner/README.md.
+const REAL = readFileSync(`${process.cwd()}/src/worker/tools/fixtures/kiterunner/scan-1.0.2.jsonl`, "utf8");
 
-beforeEach(() => {
-  execFileMock.mockReset();
+describe("parseKiterunnerOutput (real v1.0.2 JSON output)", () => {
+  it("reports each discovered endpoint once, with its status and length", () => {
+    expect(parseKiterunnerOutput(REAL)).toEqual([
+      { method: "GET", path: "/api/health", statusCode: 200, contentLength: 15 },
+      { method: "GET", path: "/api/admin", statusCode: 401, contentLength: 24 },
+    ]);
+  });
+
+  it("skips progress/log lines and anything that isn't a JSON object", () => {
+    const out = ['{"level":"info","message":"finished quick scan"}', "not json", "", '{"method":"GET","path":"/a","responses":[{"sc":200,"len":5}]}'].join("\n");
+    expect(parseKiterunnerOutput(out)).toEqual([{ method: "GET", path: "/a", statusCode: 200, contentLength: 5 }]);
+  });
+
+  it("ignores a route with no usable response, and defaults a missing length to 0", () => {
+    const out = [
+      '{"method":"GET","path":"/no-responses","responses":[]}',
+      '{"method":"GET","path":"/bad-sc","responses":[{"len":9}]}',
+      '{"method":"POST","path":"/ok","responses":[{"sc":201}]}',
+    ].join("\n");
+    expect(parseKiterunnerOutput(out)).toEqual([{ method: "POST", path: "/ok", statusCode: 201, contentLength: 0 }]);
+  });
 });
 
 describe("runKiterunner", () => {
-  it("returns not_configured when binary is absent", async () => {
-    const err = new Error("spawn kr ENOENT") as NodeJS.ErrnoException;
-    err.code = "ENOENT";
-    execFileMock.mockRejectedValueOnce(err);
-    const result = await runKiterunner("https://example.com");
-    expect(result).toEqual({ status: "not_configured" });
+  const WORDLIST = "/tmp/routes.kite";
+  beforeEach(() => {
+    execToolMock.mockReset();
+    process.env.KITERUNNER_WORDLIST = WORDLIST;
+  });
+  afterEach(() => {
+    delete process.env.KITERUNNER_WORDLIST;
   });
 
-  it("parses endpoint output", async () => {
-    const stdout = [
-      "GET     200  1234  /api/v1/users",
-      "POST    201  567   /api/v1/orders",
-      "# comment line",
-      "",
-      "DELETE  204  0     /api/v1/sessions",
-    ].join("\n");
+  it("no-ops with not_configured when no wordlist is set, without spawning anything", async () => {
+    delete process.env.KITERUNNER_WORDLIST;
+    expect(await runKiterunner("https://example.com")).toEqual({ status: "not_configured" });
+    expect(execToolMock).not.toHaveBeenCalled();
+  });
 
-    execFileMock.mockResolvedValueOnce({ stdout, stderr: "" });
+  it("scans with the JSON format, the configured wordlist and 404/429 filtered out", async () => {
+    execToolMock.mockResolvedValueOnce({ stdout: REAL, stderr: "" });
     const result = await runKiterunner("https://example.com");
     expect(result.status).toBe("completed");
-    if (result.status !== "completed") return;
-    expect(result.endpoints).toHaveLength(3);
-    expect(result.endpoints[0]).toEqual({
-      method: "GET",
-      path: "/api/v1/users",
-      statusCode: 200,
-      contentLength: 1234,
-    });
+    const [bin, args] = execToolMock.mock.calls[0] as [string, string[]];
+    expect(bin).toBe("kr");
+    expect(args.slice(0, 7)).toEqual(["scan", "https://example.com", "-w", WORDLIST, "-o", "json", "-q"]);
+    expect(args).toEqual(expect.arrayContaining(["--fail-status-codes", "404,429", "--kitebuilder-full-scan"]));
+    expect(args).not.toContain("--wildcard-detection"); // valueless flag defaults on; passing a value breaks kr's arg parsing
   });
 
-  it("deduplicates endpoints by method+path", async () => {
-    const stdout = "GET     200  100  /api/test\nGET     200  200  /api/test\n";
-    execFileMock.mockResolvedValueOnce({ stdout, stderr: "" });
-    const result = await runKiterunner("https://example.com");
-    if (result.status !== "completed") return;
-    expect(result.endpoints).toHaveLength(1);
+  it("returns not_configured when the binary is absent", async () => {
+    const err = new Error("spawn kr ENOENT") as NodeJS.ErrnoException;
+    err.code = "ENOENT";
+    execToolMock.mockRejectedValueOnce(err);
+    expect(await runKiterunner("https://example.com")).toEqual({ status: "not_configured" });
   });
 
   it("returns error on non-ENOENT failure", async () => {
-    execFileMock.mockRejectedValueOnce(new Error("timeout"));
+    execToolMock.mockRejectedValueOnce(new Error("timeout"));
     const result = await runKiterunner("https://example.com");
     expect(result.status).toBe("error");
     if (result.status !== "error") return;

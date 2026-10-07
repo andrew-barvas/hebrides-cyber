@@ -1,0 +1,14 @@
+{"input":"http://127.0.0.1:8098/","source":"body","type":"url","output":"http://127.0.0.1:8098/","status":200,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"body","type":"form","output":"http://127.0.0.1:8098/about","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"body","type":"javascript","output":"http://127.0.0.1:8098/static/app.js","status":0,"length":0}
+[url] - [code-200] - http://127.0.0.1:8098/static/app.js
+{"input":"http://127.0.0.1:8098/","source":"body","type":"url","output":"http://127.0.0.1:8098/about","status":200,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"body","type":"aws","output":"acme-uploads.s3.amazonaws.com","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"/api/v1/users","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"http://127.0.0.1:8098/api/v1/users","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"/api/internal/admin/export","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"http://127.0.0.1:8098/api/internal/admin/export","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"https://acme-uploads.s3.amazonaws.com/avatars/1.png","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"https://acme-uploads.s3.amazonaws.com/avatars/1.png","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"http://127.0.0.1:8098/static/app.js","type":"linkfinder","output":"https://cdn.example.org/lib.js","status":0,"length":0}
+{"input":"http://127.0.0.1:8098/","source":"javascript","type":"linkfinder","output":"https://cdn.example.org/lib.js","status":0,"length":0}

@@ -6,10 +6,9 @@
 // scheduled-scans.yml. When the binary is absent, returns
 // { status: "not_configured" } so the worker continues gracefully.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const WPSCAN_TIMEOUT_MS = 180_000;
 

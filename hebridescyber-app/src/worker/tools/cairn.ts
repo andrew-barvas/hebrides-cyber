@@ -22,12 +22,11 @@
 // When the binary is absent, returns { status: "not_configured" } so the
 // worker continues gracefully.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { readFile, writeFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const CAIRN_TIMEOUT_MS = 600_000; // 10 minutes — autonomous exploration is slow
 

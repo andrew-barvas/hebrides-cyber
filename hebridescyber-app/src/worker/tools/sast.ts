@@ -31,8 +31,7 @@
 // is listed in --help but rejected by the 1.30.0 CLI, so minified files are
 // excluded by name pattern instead, and `--no-rewrite-rule-ids` is required:
 // without it check_id is prefixed with the rules directory's path.
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -42,7 +41,7 @@ import { isValidGithubRepo, sanitiseGitOutput, withShallowClone } from "../../li
 import { extractCweIds, sastCategoryForCwes, SAST_CATEGORY_LABELS, type SastCategory } from "../../lib/scanners/sastCatalog";
 import { sastLanguageForPath, sastRemediation } from "../../lib/scanners/remediationText";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const OPENGREP_SCAN_TIMEOUT_MS = 240_000;
 const OPENGREP_PROBE_TIMEOUT_MS = 15_000;
