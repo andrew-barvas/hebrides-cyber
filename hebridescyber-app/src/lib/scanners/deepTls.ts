@@ -21,8 +21,7 @@
 // Wire-up: called from runExtendedTools() in src/lib/scanExecution.ts, which
 // only runs when executeScan() is passed { runExtendedTools: true }.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../execTool";
 import { readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -30,7 +29,7 @@ import { join } from "node:path";
 import type { Finding } from "./index";
 import * as FIX from "./remediationText";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 /**
  * Hard ceiling on the whole testssl.sh run. Sits between nmap/nuclei (120s)

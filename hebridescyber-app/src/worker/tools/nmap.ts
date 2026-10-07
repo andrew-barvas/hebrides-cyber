@@ -13,10 +13,9 @@
 // header claimed a top-1000 scan that wasn't happening. It is also a TCP
 // connect scan, not SYN: the runner doesn't run nmap as root.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const NMAP_TIMEOUT_MS = 120_000;
 

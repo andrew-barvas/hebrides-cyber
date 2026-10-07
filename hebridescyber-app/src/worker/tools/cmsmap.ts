@@ -5,12 +5,11 @@
 // When the binary is absent, returns { status: "not_configured" } so the
 // worker continues gracefully.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execTool } from "../../lib/execTool";
 import { readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execTool;
 
 const CMSMAP_TIMEOUT_MS = 150_000;
 
