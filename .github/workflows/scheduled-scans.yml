@@ -113,10 +113,14 @@ jobs:
       # "not_configured" gracefully if any of these fail to install, so a
       # broken step here fails soft (fewer findings that run), not the whole
       # job.
-      - name: Install nmap and sqlmap
+      - name: Install nmap, sqlmap and hydra
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nmap python3 python3-pip
+          # hydra backs the Tier A offensive `credentialSpray` tool; it only
+          # runs under the offensive profile and only when the owner has
+          # configured a designated test account + wordlist + form spec, so
+          # installing it does not by itself spray anything.
+          sudo apt-get install -y --no-install-recommends nmap hydra python3 python3-pip
           pip3 install --break-system-packages sqlmap
 
       - name: Install commix

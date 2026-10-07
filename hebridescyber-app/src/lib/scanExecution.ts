@@ -22,6 +22,7 @@ import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
+import { runCredentialSpray, buildCredentialSprayFindings, type SprayCredential } from "../worker/tools/credentialSpray";
 import { runDeepTls, PLATFORM_TLS_TECHNOLOGIES } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
@@ -340,9 +341,17 @@ async function runExtendedTools(
     ? await runContentDiscovery(targetUrl)
     : { status: "not_configured" as const, hits: [] as ContentDiscoveryHit[] };
 
+  // Credential spraying (hydra) — offensive-only, and additionally no-ops to
+  // not_configured unless the owner has supplied a designated test account +
+  // password list + login-form spec (see credentialSpray.ts). UNVERIFIED in CI.
+  const credentialSprayResult = toolConfig.credentialSpray
+    ? await runCredentialSpray(targetUrl)
+    : { status: "not_configured" as const, found: [] as SprayCredential[] };
+
   const extended = {
     httpx: httpxResult,
     contentDiscovery: contentDiscoveryResult,
+    credentialSpray: credentialSprayResult,
     nuclei: nucleiResult.status === "fulfilled" ? nucleiResult.value : { status: "error", findings: [], note: String(nucleiResult.reason) },
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
@@ -449,6 +458,9 @@ async function runExtendedTools(
   }
   if (extended.contentDiscovery.status === "completed") {
     findings.push(...buildContentDiscoveryFindings(extended.contentDiscovery.hits));
+  }
+  if (extended.credentialSpray.status === "completed") {
+    findings.push(...buildCredentialSprayFindings(extended.credentialSpray.found));
   }
   if (extended.deepTls.status === "completed") {
     findings.push(...extended.deepTls.findings);

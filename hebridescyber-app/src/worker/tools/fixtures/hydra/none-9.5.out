@@ -1,0 +1,1 @@
+# Hydra v9.5 run at 2026-10-07 20:33:01 on 127.0.0.1 http-get (hydra -l admin -P pass.txt -o none.out -s 8099 127.0.0.1 http-get /api/admin)
