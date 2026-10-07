@@ -37,6 +37,8 @@ export type ExtendedToolName =
   | "sessionCheck"
   | "cloudPosture"
   | "httpx"
+  | "contentDiscovery"
+  | "credentialSpray"
   | "strix"
   | "cairn"
   | "apiSpecInjection";
@@ -74,19 +76,34 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "sessionCheck",
   "cloudPosture",
   "httpx",
+  "contentDiscovery",
+  "credentialSpray",
   "strix",
   "cairn",
   "apiSpecInjection",
 ];
 
-export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "ai-pentest";
+// The opt-in offensive suite: tools that generate brute-force or real attack
+// traffic. They are gated to the Tier A `offensive` profile ONLY and are
+// deliberately excluded from `full` (and every other profile), so a normal
+// scheduled scan never runs them. strix/cairn (autonomous exploit agents),
+// contentDiscovery (directory/vhost brute-force) and credentialSpray (login
+// brute-force) all belong here. See docs/USER-GUIDE §6 and planAccess.ts.
+export const OFFENSIVE_ONLY_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
+  "contentDiscovery",
+  "credentialSpray",
+  "strix",
+  "cairn",
+]);
+
+export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "offensive" | "ai-pentest";
 
 // A reasonable starting proposal for the api/cms/osint subsets, not a
 // locked product decision — easy to adjust later since it's one config
 // table with no other code depending on the exact membership.
 const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolean>>> = {
   safe: {},
-  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => n !== "strix" && n !== "cairn").map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
+  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
   api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, apiSpecInjection: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
@@ -109,6 +126,15 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     cloudPosture: true,
     httpx: true,
   },
+  // Tier A opt-in offensive mode: the full active suite PLUS the offensive-only
+  // tools (directory/vhost brute-force, login credential spraying, and the
+  // autonomous exploit agents). Reachable ONLY by a Tier A account that has
+  // recorded a per-scan authorization for the target (offensive_scan_authorizations)
+  // against an ownership-verified domain — enforced in run-queued-scan-jobs.ts,
+  // not here. credentialSpray/strix/cairn stay not_configured until the owner
+  // supplies their inputs (a sacrificial test account / an LLM key), so enabling
+  // the profile does not by itself fire a real attack.
+  offensive: Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // AI-powered pentest: runs Strix alongside the full active-scan suite.
   // Strix uses LLM inference ($2-5/scan), so this profile is gated to
   // Agency tier or higher — see docs/SPRINT-PLAN.md Sprint 18.

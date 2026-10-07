@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkRateLimiting, postShowsCredentialHandling } from "./businessLogic";
+import { checkRateLimiting, postShowsCredentialHandling, detectCaptcha } from "./businessLogic";
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("detectCaptcha", () => {
+  it("spots reCAPTCHA, hCaptcha and Turnstile by their markers, and nothing else", () => {
+    expect(detectCaptcha('<div class="g-recaptcha" data-sitekey="x"></div>')).toBe(true);
+    expect(detectCaptcha('<script src="https://www.google.com/recaptcha/api.js"></script>')).toBe(true);
+    expect(detectCaptcha('<div class="h-captcha"></div>')).toBe(true);
+    expect(detectCaptcha('<div class="cf-turnstile"></div>')).toBe(true);
+    expect(detectCaptcha("<form><input name=password></form>")).toBe(false);
+    expect(detectCaptcha("")).toBe(false);
+  });
+});
 
 /** GET → getStatus for every path; POSTs answer from `posts` in order (last one repeats). */
 function stubSite(getStatus: (path: string) => number, posts: (path: string) => number[]) {
@@ -37,7 +48,7 @@ describe("checkRateLimiting", () => {
   it("reports nothing for a client-rendered login page that ignores POSTs", async () => {
     stubSite(() => 200, () => [200]);
     const result = await checkRateLimiting("https://example.com");
-    expect(result).toEqual({ checked: false, endpoint: null, rateLimited: false, requestsSent: 0 });
+    expect(result).toEqual({ checked: false, endpoint: null, rateLimited: false, requestsSent: 0, captcha: false });
   });
 
   it("reports nothing when no candidate accepts POST at all", async () => {
@@ -48,7 +59,7 @@ describe("checkRateLimiting", () => {
   it("flags a real credential endpoint that never throttles", async () => {
     stubSite((p) => (p === "/login" ? 200 : 404), (p) => (p === "/login" ? [401] : [404]));
     const result = await checkRateLimiting("https://example.com");
-    expect(result).toEqual({ checked: true, endpoint: "/login", rateLimited: false, requestsSent: 5 });
+    expect(result).toEqual({ checked: true, endpoint: "/login", rateLimited: false, requestsSent: 5, captcha: false });
   });
 
   it("recognises throttling on a real credential endpoint", async () => {
@@ -75,7 +86,7 @@ describe("checkRateLimiting", () => {
           : new Response(null, { status: 302, headers: { location: "/" } })
       )
     );
-    expect(await checkRateLimiting("https://example.com")).toEqual({ checked: false, endpoint: null, rateLimited: false, requestsSent: 0 });
+    expect(await checkRateLimiting("https://example.com")).toEqual({ checked: false, endpoint: null, rateLimited: false, requestsSent: 0, captcha: false });
   });
 
   it("still counts a redirect that differs from the catch-all (a login that redirects on success)", async () => {

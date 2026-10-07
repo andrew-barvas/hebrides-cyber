@@ -18,10 +18,11 @@ const CHECKOUT_UNAVAILABLE = {
   code: "checkout_unavailable",
 };
 
-const PRICE_IDS: Record<"basic" | "pro" | "agency", string | undefined> = {
+const PRICE_IDS: Record<"basic" | "pro" | "agency" | "tier_a", string | undefined> = {
   basic: process.env.STRIPE_PRICE_BASIC,
   pro: process.env.STRIPE_PRICE_PRO,
   agency: process.env.STRIPE_PRICE_AGENCY,
+  tier_a: process.env.STRIPE_PRICE_TIER_A,
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -48,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const plan = req.body?.plan as unknown;
-  if (plan !== "basic" && plan !== "pro" && plan !== "agency") {
+  if (plan !== "basic" && plan !== "pro" && plan !== "agency" && plan !== "tier_a") {
     return res.status(400).json({ error: "Unknown plan." });
   }
   const priceId = PRICE_IDS[plan];

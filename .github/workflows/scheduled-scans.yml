@@ -192,6 +192,27 @@ jobs:
             || echo "httpx install failed — hostProbe.ts will report status: not_configured"
           rm -f /tmp/httpx.zip
 
+      - name: Install ffuf (Tier A offensive content discovery)
+        # src/worker/tools/contentDiscovery.ts shells out to `ffuf` for the Tier A
+        # offensive profile's bounded directory/path discovery. Pinned release
+        # tarball + SHA-256 (publisher's own ffuf_2.1.0_checksums.txt). Only ever
+        # runs under the `offensive` profile (Tier A + per-scan authorization);
+        # a failed install degrades only that check (contentDiscovery.ts →
+        # not_configured).
+        env:
+          FFUF_VERSION: 2.1.0
+          FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
+        run: |
+          curl -fsSL \
+            "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \
+            -o /tmp/ffuf.tar.gz \
+            && echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c - \
+            && sudo tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf \
+            && sudo chmod +x /usr/local/bin/ffuf \
+            && ffuf -V \
+            || echo "ffuf install failed — contentDiscovery.ts will report status: not_configured"
+          rm -f /tmp/ffuf.tar.gz
+
       - name: Install gitleaks and testssl.sh
         # secretScan.ts (Gitleaks) and deepTls.ts (testssl.sh) have always
         # degraded to status: "not_configured" on every real scheduled scan
@@ -398,6 +419,9 @@ jobs:
           # Compiled by the "Install kiterunner" step above; kiterunner.ts
           # no-ops to not_configured without it.
           KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
+          # The curated content-discovery wordlist (ffuf, Tier A offensive
+          # profile only); contentDiscovery.ts no-ops to not_configured without it.
+          CONTENT_DISCOVERY_WORDLIST: ${{ github.workspace }}/hebridescyber-app/src/worker/tools/wordlists/content-dirs.txt
           # Was missing entirely before — secretScan.ts/dependencyManifest.ts/
           # dockerBaseImage.ts (src/lib/scanExecution.ts's runExtendedTools)
           # need GitHub access to run at all, and none of these three secrets

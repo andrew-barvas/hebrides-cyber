@@ -142,7 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const owner = session.client_reference_id;
-        const plan = (session.metadata?.plan as "basic" | "pro" | "agency") ?? "basic";
+        const plan = (session.metadata?.plan as "basic" | "pro" | "agency" | "tier_a") ?? "basic";
         if (!owner) break;
 
         let currentPeriodEnd: string | null = null;
@@ -197,7 +197,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
-        const plan = (sub.metadata?.plan as "basic" | "pro" | "agency" | undefined) ?? "basic";
+        const plan = (sub.metadata?.plan as "basic" | "pro" | "agency" | "tier_a" | undefined) ?? "basic";
         const status = sub.status === "active" ? "active"
           : sub.status === "past_due" ? "past_due"
           : sub.status === "canceled" ? "cancelled"

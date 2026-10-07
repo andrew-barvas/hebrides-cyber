@@ -419,14 +419,23 @@ the concrete needs each feature area above exists to satisfy.
 
 Worth stating plainly, since it shapes several design decisions above:
 
-- **No destructive payloads.** Every passive check is read-only. The
-  active-tool suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's
-  curated-wordlist API-route discovery, Gospider's crawl and httpx's
-  one-GET-per-host live-host probing) only runs
-  against domains that have already passed real ownership verification,
-  and none of it sends a payload intended to alter, damage or persist
-  on your systems — it reads what is there. We do not run autonomous
-  exploitation agents against your sites.
+- **No destructive payloads — outside the opt-in Tier A offensive mode.** On
+  every plan below Tier A, every passive check is read-only and the active-tool
+  suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's curated-wordlist
+  API-route discovery, Gospider's crawl and httpx's one-GET-per-host live-host
+  probing) only runs against ownership-verified domains and sends no payload
+  intended to alter, damage or persist on your systems — it reads what is there,
+  and we do not run autonomous exploitation agents.
+  **Tier A** adds an explicitly opt-in "offensive readiness" mode you turn on
+  per target, after acknowledging in writing that the platform will send **real
+  attack traffic** to that host: bounded content/path discovery (a brute-force
+  of a curated path list), credential-defence testing, and — where you enable
+  them — controlled credential-spraying (against a test account you designate)
+  and exploitation. It runs only on a Tier A plan, only against a domain you
+  have verified you own, and only while a current per-target authorization is on
+  file; every offensive scan is audited. This is for testing your own readiness
+  for these attacks, under your own authorisation — make sure your own contracts
+  and change-control cover it before enabling it.
 - **No fabricated findings.** A check that can't evidence something
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms

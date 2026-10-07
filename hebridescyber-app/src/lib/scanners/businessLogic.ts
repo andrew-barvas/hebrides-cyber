@@ -69,7 +69,24 @@ export type RateLimitData = {
   rateLimited: boolean;
   /** Total requests sent before rate limiting kicked in (or the cap, if it never did). */
   requestsSent: number;
+  /** Login page shows a CAPTCHA (reCAPTCHA / hCaptcha / Turnstile) — a
+   *  credential-stuffing defence that mitigates the absence of rate limiting. */
+  captcha: boolean;
 };
+
+/**
+ * Pure: does this login-page HTML embed a known CAPTCHA widget? Detection only
+ * (a positive defence signal) — we never solve or submit anything. Matches the
+ * three widely-deployed providers by their script origins / container classes.
+ */
+export function detectCaptcha(html: string): boolean {
+  const h = html.toLowerCase();
+  return (
+    h.includes("g-recaptcha") || h.includes("recaptcha/api.js") || h.includes("grecaptcha") ||
+    h.includes("h-captcha") || h.includes("hcaptcha.com") ||
+    h.includes("cf-turnstile") || h.includes("challenges.cloudflare.com/turnstile")
+  );
+}
 
 // ---------------------------------------------------------------------------
 // HTML parsing helpers (regex-based, matching codebase convention)
@@ -424,6 +441,10 @@ export async function checkRateLimiting(targetUrl: string): Promise<RateLimitDat
   // shows nothing about credentials: only a response that differs from this
   // baseline counts as the endpoint handling them.
   const catchAll = await probeCatchAllPost(origin);
+  // A CAPTCHA seen on any probed login page — a credential-attack defence that
+  // mitigates missing rate limiting. Read from the GET we already make, no
+  // extra request.
+  let captchaSeen = false;
 
   // Try each common login endpoint until we find one that responds.
   for (const path of LOGIN_ENDPOINTS) {
@@ -439,6 +460,14 @@ export async function checkRateLimiting(targetUrl: string): Promise<RateLimitDat
 
       // Skip endpoints that return 404 — not a login page.
       if (probe.status === 404) continue;
+
+      if (!captchaSeen) {
+        try {
+          captchaSeen = detectCaptcha(await probe.text());
+        } catch {
+          // body unreadable — leave captchaSeen as-is
+        }
+      }
 
       // Now send rapid POST requests with dummy credentials.
       let rateLimited = false;
@@ -478,14 +507,14 @@ export async function checkRateLimiting(targetUrl: string): Promise<RateLimitDat
       // finding either way. Try the next candidate.
       if (!handlesCredentials) continue;
 
-      return { checked: true, endpoint: path, rateLimited, requestsSent: sent };
+      return { checked: true, endpoint: path, rateLimited, requestsSent: sent, captcha: captchaSeen };
     } catch {
       // Endpoint not reachable — try next.
     }
   }
 
   // No credential-handling login endpoint found — cannot check rate limiting.
-  return { checked: false, endpoint: null, rateLimited: false, requestsSent: 0 };
+  return { checked: false, endpoint: null, rateLimited: false, requestsSent: 0, captcha: captchaSeen };
 }
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import { runCommix } from "../worker/tools/commix";
 import { runNmap } from "../worker/tools/nmap";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
+import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
 import { runDeepTls, PLATFORM_TLS_TECHNOLOGIES } from "./scanners/deepTls";
 import { scanRepositoryForSecrets } from "./scanners/secretScan";
 import { scanDependencyManifest } from "./scanners/dependencyManifest";
@@ -332,8 +333,16 @@ async function runExtendedTools(
     ? await runHttpProbe(targetUrl, probeHosts)
     : { status: "not_configured" as const, results: [] as HttpProbeRecord[] };
 
+  // Content discovery (ffuf) — offensive-only; the profile gate + the worker's
+  // Tier A + authorization check decide whether toolConfig.contentDiscovery is
+  // ever true. Independent of the batch (probes the target directly).
+  const contentDiscoveryResult = toolConfig.contentDiscovery
+    ? await runContentDiscovery(targetUrl)
+    : { status: "not_configured" as const, hits: [] as ContentDiscoveryHit[] };
+
   const extended = {
     httpx: httpxResult,
+    contentDiscovery: contentDiscoveryResult,
     nuclei: nucleiResult.status === "fulfilled" ? nucleiResult.value : { status: "error", findings: [], note: String(nucleiResult.reason) },
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
@@ -437,6 +446,9 @@ async function runExtendedTools(
   // are built here, like ZAP's, since the module returns records not Findings).
   if (extended.httpx.status === "completed") {
     findings.push(...buildHttpProbeFindings(targetUrl, extended.httpx.results));
+  }
+  if (extended.contentDiscovery.status === "completed") {
+    findings.push(...buildContentDiscoveryFindings(extended.contentDiscovery.hits));
   }
   if (extended.deepTls.status === "completed") {
     findings.push(...extended.deepTls.findings);
