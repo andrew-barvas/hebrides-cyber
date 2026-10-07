@@ -13,9 +13,11 @@ const base = process.env.TEST_APP_URL ?? "http://127.0.0.1:8099";
 
 describe.skipIf(process.env.RUN_TOOL_INTEGRATION !== "1")("nuclei against the local test app", () => {
   it("finishes the scan instead of being killed at the timeout", async () => {
-    const started = Date.now();
     const result = await runNuclei(`${base}/`, []);
+    // `status: "completed"` IS the regression signal: a stdin-hung nuclei is
+    // SIGTERM'd at NUCLEI_TIMEOUT_MS (120s) and returns an error, never
+    // "completed". A tight wall-clock bound on top of this only adds CI flake
+    // (a legitimately slow-but-finished run once clocked 110.06s), so it's gone.
     expect(result).toMatchObject({ status: "completed" });
-    expect(Date.now() - started).toBeLessThan(110_000);
   }, 200_000);
 });
