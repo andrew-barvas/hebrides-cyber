@@ -861,6 +861,17 @@ you mean to expose:
   version findings in this report.
 - If the host is no longer used, take it offline and remove its DNS record.`;
 
+export const CONTENT_DISCOVERY_FOUND = `A path that is not linked from the site answered a request. Content discovery
+probes a curated list of common directories and files, so a hit here is a
+reachable endpoint an attacker could also find:
+
+- Confirm this path is meant to be reachable. Admin panels, backups, config
+  files, and ".git"/".env"-style paths are the classic accidental exposures.
+- If it should not be public, remove it or put it behind authentication / an IP
+  allow-list — "unlinked" is not "hidden".
+- A 401/403 here is good (the path exists but is protected); a 200 on something
+  sensitive is the one to act on.`;
+
 export const TECH_DETECTED = `Informational — no action required. Knowing what a scanner can fingerprint about
 your stack is useful context when triaging the findings above.`;
 

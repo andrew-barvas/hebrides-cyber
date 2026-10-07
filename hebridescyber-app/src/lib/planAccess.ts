@@ -5,17 +5,27 @@
 //   was, so a gate reading `plan` alone kept paid features switched on for
 //   accounts that had stopped paying;
 // - admins are exempt, as everywhere else;
-// - Agency includes everything Pro has.
+// - the tiers nest upward: Agency includes everything Pro has, and Tier A
+//   (the top tier, which unlocks the opt-in offensive scanning suite) includes
+//   everything Agency and Pro have.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type PlanTier = "pro" | "agency";
+export type PlanTier = "pro" | "agency" | "tier_a";
 
 type SubscriptionRow = { plan?: string | null; status?: string | null } | null | undefined;
 
+// Each tier's set of satisfying `plan` values, highest-inclusive-downward. A
+// plan satisfies a required tier when it appears in that tier's set.
+const PLANS_FOR_TIER: Record<PlanTier, readonly string[]> = {
+  pro: ["pro", "agency", "tier_a"],
+  agency: ["agency", "tier_a"],
+  tier_a: ["tier_a"],
+};
+
 /** Pure: does this subscription row grant the tier? */
 export function subscriptionGrants(sub: SubscriptionRow, tier: PlanTier): boolean {
-  if (!sub || sub.status !== "active") return false;
-  return tier === "pro" ? sub.plan === "pro" || sub.plan === "agency" : sub.plan === "agency";
+  if (!sub || sub.status !== "active" || !sub.plan) return false;
+  return PLANS_FOR_TIER[tier].includes(sub.plan);
 }
 
 /**
@@ -42,4 +52,15 @@ export function hasProAccess(supabaseAdmin: SupabaseClient, ownerId: string): Pr
 
 export function hasAgencyAccess(supabaseAdmin: SupabaseClient, ownerId: string): Promise<boolean> {
   return hasPlanAccess(supabaseAdmin, ownerId, "agency");
+}
+
+/**
+ * Tier A is the top tier that unlocks the opt-in offensive scanning suite
+ * (the `offensive` scan profile). It is necessary but NOT sufficient on its
+ * own: an offensive scan also requires a current per-scan authorization record
+ * (offensive_scan_authorizations) and a verified domain — see
+ * run-queued-scan-jobs.ts. This only answers "is the owner on Tier A".
+ */
+export function hasTierAAccess(supabaseAdmin: SupabaseClient, ownerId: string): Promise<boolean> {
+  return hasPlanAccess(supabaseAdmin, ownerId, "tier_a");
 }

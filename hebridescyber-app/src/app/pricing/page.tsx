@@ -36,7 +36,7 @@ const oneOff = [
 ];
 
 const subscriptions: Array<{
-  id: "basic" | "pro" | "agency";
+  id: "basic" | "pro" | "agency" | "tier_a";
   name: string;
   price: string;
   tagline: string;
@@ -81,13 +81,26 @@ const subscriptions: Array<{
       "Priority support",
     ],
   },
+  {
+    id: "tier_a",
+    name: "Tier A",
+    price: "Contact us",
+    tagline: "Everything in Agency, plus opt-in offensive readiness testing.",
+    features: [
+      "Opt-in offensive scan mode (per-scan authorised)",
+      "Content & vhost discovery",
+      "Credential-defence (rate-limit/lockout) testing",
+      "Attack-readiness: controlled credential & exploit testing",
+      "Written authorisation required per target",
+    ],
+  },
 ];
 
 export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
-  async function subscribe(plan: "basic" | "pro" | "agency") {
+  async function subscribe(plan: "basic" | "pro" | "agency" | "tier_a") {
     setError(null);
     setLoadingPlan(plan);
     try {

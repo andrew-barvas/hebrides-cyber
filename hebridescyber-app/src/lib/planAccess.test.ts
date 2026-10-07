@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasAgencyAccess, hasPlanAccess, hasProAccess, planGate, subscriptionGrants } from "./planAccess";
+import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, subscriptionGrants } from "./planAccess";
 
 type Reply = { data: unknown; error?: { message: string } | null };
 
@@ -17,6 +17,15 @@ describe("subscriptionGrants", () => {
     expect(subscriptionGrants({ plan: "agency", status: "active" }, "agency")).toBe(true);
     expect(subscriptionGrants({ plan: "pro", status: "active" }, "agency")).toBe(false);
     expect(subscriptionGrants({ plan: "basic", status: "active" }, "pro")).toBe(false);
+  });
+
+  it("nests upward: Tier A grants agency and pro; agency/pro do not grant Tier A", () => {
+    expect(subscriptionGrants({ plan: "tier_a", status: "active" }, "tier_a")).toBe(true);
+    expect(subscriptionGrants({ plan: "tier_a", status: "active" }, "agency")).toBe(true);
+    expect(subscriptionGrants({ plan: "tier_a", status: "active" }, "pro")).toBe(true);
+    expect(subscriptionGrants({ plan: "agency", status: "active" }, "tier_a")).toBe(false);
+    expect(subscriptionGrants({ plan: "pro", status: "active" }, "tier_a")).toBe(false);
+    expect(subscriptionGrants({ plan: "tier_a", status: "cancelled" }, "tier_a")).toBe(false);
   });
 
   it("refuses a lapsed or cancelled subscription whose plan the webhook left unchanged", () => {
@@ -56,5 +65,14 @@ describe("hasProAccess / hasAgencyAccess", () => {
     expect(await hasProAccess(client(null, null), "o")).toBe(false);
     expect(await hasAgencyAccess(client({ plan: "pro", status: "active" }, null), "o")).toBe(false);
     expect(await hasPlanAccess(client({ data: null, error: { message: "down" } }, null), "o", "pro")).toBe(false);
+  });
+});
+
+describe("hasTierAAccess", () => {
+  it("allows only active Tier A and admins", async () => {
+    expect(await hasTierAAccess(client({ plan: "tier_a", status: "active" }, null), "o")).toBe(true);
+    expect(await hasTierAAccess(client(null, { is_admin: true }), "o")).toBe(true);
+    expect(await hasTierAAccess(client({ plan: "agency", status: "active" }, { is_admin: false }), "o")).toBe(false);
+    expect(await hasTierAAccess(client({ plan: "tier_a", status: "cancelled" }, null), "o")).toBe(false);
   });
 });

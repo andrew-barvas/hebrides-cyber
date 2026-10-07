@@ -914,11 +914,18 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     }
 
     if (rateLimiting.checked && !rateLimiting.rateLimited && rateLimiting.endpoint) {
+      // A CAPTCHA on the login page is a credential-stuffing defence, so the
+      // absence of rate limiting is less exposed — downgrade to low and say so,
+      // rather than claiming brute force is unthrottled when a CAPTCHA stands in
+      // the way.
+      const captchaNote = rateLimiting.captcha
+        ? " A CAPTCHA was detected on the login page, which mitigates automated credential attacks, but request throttling is still recommended as defence in depth."
+        : " No CAPTCHA was detected on the login page either, so there is no automated-attack defence in front of this endpoint.";
       findings.push({
         checkId: "business-logic.no-rate-limit",
-        severity: "medium",
+        severity: rateLimiting.captcha ? "low" : "medium",
         title: `No rate limiting detected on login endpoint (${rateLimiting.endpoint})`,
-        detail: `${rateLimiting.requestsSent} rapid POST requests to ${rateLimiting.endpoint} received no rate-limiting response (no 429 status or Retry-After header). Brute-force attacks are not throttled.`,
+        detail: `${rateLimiting.requestsSent} rapid POST requests to ${rateLimiting.endpoint} received no rate-limiting response (no 429 status or Retry-After header). Brute-force attacks are not throttled.${captchaNote}`,
         remediation: FIX.BUSINESS_LOGIC_NO_RATE_LIMIT,
       });
     }

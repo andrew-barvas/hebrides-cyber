@@ -16,6 +16,7 @@ on:
       - "hebridescyber-app/src/worker/tools/gospider*.ts"
       - "hebridescyber-app/src/worker/tools/kiterunner*.ts"
       - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
+      - "hebridescyber-app/src/worker/tools/contentDiscovery*.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
@@ -54,6 +55,8 @@ jobs:
           KITERUNNER_SHA256: 6f0b70aabf747de592445a690281897eebbc45927e9264185d34ffb11637613b
           HTTPX_VERSION: v1.6.10
           HTTPX_SHA256: e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
+          FFUF_VERSION: 2.1.0
+          FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
         run: |
           # Same pins as scheduled-scans.yml, so the integration tests exercise
           # exactly what production installs.
@@ -66,6 +69,11 @@ jobs:
           echo "${HTTPX_SHA256}  /tmp/httpx.zip" | sha256sum -c -
           sudo unzip -o /tmp/httpx.zip httpx -d /usr/local/bin && sudo chmod +x /usr/local/bin/httpx
           httpx -version
+
+          curl -fsSL "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" -o /tmp/ffuf.tar.gz
+          echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf && sudo chmod +x /usr/local/bin/ffuf
+          ffuf -V
 
           curl -fsSL "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" -o /tmp/gospider.zip
           echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
@@ -96,6 +104,7 @@ jobs:
           src/worker/tools/gospider.integration.test.ts
           src/worker/tools/kiterunner.integration.test.ts
           src/worker/tools/httpProbe.integration.test.ts
+          src/worker/tools/contentDiscovery.integration.test.ts
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it
