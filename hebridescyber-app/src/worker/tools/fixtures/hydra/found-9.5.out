@@ -1,0 +1,2 @@
+# Hydra v9.5 run at 2026-10-07 20:32:27 on 127.0.0.1 http-get (hydra -L users.txt -P pass.txt -f -o pos.out -s 8095 127.0.0.1 http-get /x)
+[8095][http-get] host: 127.0.0.1   login: admin   password: secret
