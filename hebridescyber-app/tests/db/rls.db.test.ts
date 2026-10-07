@@ -42,6 +42,7 @@ const KEY_TABLES: TableSpec[] = [
   { table: "deletion_requests", ownerCol: "owner", insert: "insert into deletion_requests (owner) values ($1)" },
   { table: "asset_inventory", ownerCol: "owner", insert: "insert into asset_inventory (owner, target_url, hostname, kind) values ($1, 'https://new.test', 'new.test', 'domain')" },
   { table: "dns_snapshots", ownerCol: "owner", insert: "insert into dns_snapshots (owner, target_host) values ($1, 'new.test')" },
+  { table: "offensive_scan_authorizations", ownerCol: "owner", insert: "insert into offensive_scan_authorizations (owner, target_host, authorized_by, scope) values ($1, 'new.test', $1, 'ack')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -49,7 +50,7 @@ const KEY_TABLES: TableSpec[] = [
 const SERVICE_WRITE_ONLY = [
   "subscriptions", "finding_lifecycle", "finding_triage", "ticket_links",
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
-  "deletion_requests", "asset_inventory", "dns_snapshots",
+  "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -87,6 +88,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into deletion_requests (owner) values ($1)", [o]);
       await q("insert into asset_inventory (owner, target_url, hostname, kind) values ($1, $2, $3, 'domain')", [o, `https://${h}`, h]);
       await q("insert into dns_snapshots (owner, target_host, ns) values ($1, $2, '{ns1.x.test}')", [o, h]);
+      await q("insert into offensive_scan_authorizations (owner, target_host, authorized_by, scope) values ($1, $2, $1, 'ack')", [o, h]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");

@@ -108,7 +108,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
       "scans", "scan_results", "subscriptions", "finding_lifecycle", "finding_triage",
       "ticket_links", "emerging_threat_alerts", "api_keys", "repo_connections",
       "monitored_targets", "audit_logs", "contact_enquiries", "verifications", "scan_jobs",
-      "asset_inventory", "dns_snapshots", "deletion_requests",
+      "asset_inventory", "dns_snapshots", "deletion_requests", "offensive_scan_authorizations",
     ]) {
       expect(have.has(t), `missing table ${t}`).toBe(true);
     }
