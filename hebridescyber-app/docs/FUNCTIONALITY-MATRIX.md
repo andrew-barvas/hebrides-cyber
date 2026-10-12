@@ -58,7 +58,7 @@ rules for all of these live in `docs/SCANNER-CONVENTIONS.md`.
 | `ports.ts` | ~30 security-relevant TCP ports, pure `node:net` | none | n/a | none | no |
 | `playwright.ts` | Load errors, mixed content, console errors, redirect chain | Chromium binary | `status: "error"` if not installed | none | no |
 | `recon.ts` | Shodan InternetDB (CVEs/ports/tags), crt.sh subdomains | none (free/keyless) | n/a | none | no |
-| `webapp.ts` | robots.txt, dangerous methods, error disclosure, WP/Joomla/Drupal deep scan, CORS reflected-origin, vulnerable JS libs, missing SRI | none | n/a | none | no |
+| `webapp.ts` | robots.txt, dangerous methods, error disclosure, WP/Joomla/Drupal/Magento/Shopify deep scan, CORS reflected-origin, vulnerable JS libs, missing SRI | none | n/a | none | no |
 | `osv.ts` | CVE enrichment for JS libs via OSV.dev | none (free/keyless) | n/a | none | no |
 | `safeBrowsing.ts` | Google Safe Browsing (malware/phishing) | `GOOGLE_SAFE_BROWSING_API_KEY` | `not_configured`, no findings | none | no |
 | `waybackDiscovery.ts` | Historical still-live endpoints via CDX | none (free/keyless) | n/a | none | no |
