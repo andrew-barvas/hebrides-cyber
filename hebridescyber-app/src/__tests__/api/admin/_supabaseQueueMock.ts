@@ -15,6 +15,7 @@ export function makeAdminSupabaseMock() {
   const inserted: Array<{ table: string; payload: unknown }> = [];
   const updated: Array<{ table: string; payload: unknown }> = [];
   const deleted: Array<{ table: string }> = [];
+  const upserted: Array<{ table: string; payload: unknown; opts?: unknown }> = [];
 
   function makeBuilder(table: string) {
     const next = () => Promise.resolve(queues[table]?.shift() ?? { data: null, error: null });
@@ -34,6 +35,10 @@ export function makeAdminSupabaseMock() {
       },
       update: (payload: unknown) => {
         updated.push({ table, payload });
+        return builder;
+      },
+      upsert: (payload: unknown, opts?: unknown) => {
+        upserted.push({ table, payload, opts });
         return builder;
       },
       delete: () => {
@@ -57,9 +62,11 @@ export function makeAdminSupabaseMock() {
       inserted.length = 0;
       updated.length = 0;
       deleted.length = 0;
+      upserted.length = 0;
     },
     inserted,
     updated,
     deleted,
+    upserted,
   };
 }
