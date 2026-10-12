@@ -121,7 +121,7 @@ Format per cell: **level — evidence — source — verified-on**.
 
 | | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | D9 | D10 | D11 | D12 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Hebrides Cyber** | 3 — compliance (CE mapping) + breach scare (score/badge) + dev hygiene (CI gate) + agency reporting (white-label) — internal, `docs/FUNCTIONALITY-MATRIX.md` — 2026-08-23 | 2 — passive suite + extended active-tool suite (scheduled only) + authenticated header/cookie recheck; no crawl-behind-login — internal — 2026-08-23 | 3 — explicit rule in `docs/SCANNER-CONVENTIONS.md` §4, baseline-diffing false-positive machinery in `httpProbe.ts` — internal — 2026-08-23 | 3 — `findingsDiff.ts` New/Fixed + `ScoreTrend.tsx` — internal — 2026-08-23 | 3 — generic → AI-tailored (`ai-fix.ts`) → ticket (`create-ticket.ts`) → merged PR (`generate-fix-pr.ts`, dependency bumps) — internal — 2026-08-23; **note**: no UI entry point for the PR step, see `docs/ENHANCEMENTS.md` E-15 | 3 — CI Action, REST API, webhooks, Slack, Teams, Jira, Linear — internal — 2026-08-23 | 3 — Cyber Essentials + OWASP Top 10 + CIS Controls v8 — internal — 2026-08-23 | 2 — multi-site + white-label; no reseller billing — internal — 2026-08-23; **note**: multi-site is client-gated only, `FUNCTIONALITY-MATRIX.md` §5 | 3 — £20/mo, per-account not per-seat, 1 free scan — `../marketing/03-pricing-page.md` — 2026-08-23 | 3 — one-click scan post-signup, domain-ownership verification required before results (real, not decorative) — internal — 2026-08-23 | 1 — no published methodology page beyond `/what-we-check`, no sample report gallery, no SOC 2/ISO, solo-operator — internal — 2026-08-23 | 1 — self-serve only, no human triage or SLA today — internal — 2026-08-23 |
+| **Hebrides Cyber** | 3 — compliance (CE mapping) + breach scare (score/badge) + dev hygiene (CI gate) + agency reporting (white-label) — internal, `docs/FUNCTIONALITY-MATRIX.md` — 2026-08-23 | 3 — passive suite + extended active-tool suite (scheduled only) + a real signed-in crawl-behind-login (`authenticatedCrawl.ts`) — internal — 2026-10-12 (score corrected, see §8) | 3 — explicit rule in `docs/SCANNER-CONVENTIONS.md` §4, baseline-diffing false-positive machinery in `httpProbe.ts` — internal — 2026-08-23 | 3 — `findingsDiff.ts` New/Fixed + `ScoreTrend.tsx` — internal — 2026-08-23 | 3 — generic → AI-tailored (`ai-fix.ts`) → ticket (`create-ticket.ts`) → merged PR (`generate-fix-pr.ts`, dependency bumps) — internal — 2026-08-23; **note**: no UI entry point for the PR step, see `docs/ENHANCEMENTS.md` E-15 | 3 — CI Action, REST API, webhooks, Slack, Teams, Jira, Linear — internal — 2026-08-23 | 3 — Cyber Essentials + OWASP Top 10 + CIS Controls v8 — internal — 2026-08-23 | 2 — multi-site + white-label; no reseller billing — internal — 2026-08-23; **note**: multi-site is client-gated only, `FUNCTIONALITY-MATRIX.md` §5 | 3 — £20/mo, per-account not per-seat, 1 free scan — `../marketing/03-pricing-page.md` — 2026-08-23 | 3 — one-click scan post-signup, domain-ownership verification required before results (real, not decorative) — internal — 2026-08-23 | 1 — no published methodology page beyond `/what-we-check`, no sample report gallery, no SOC 2/ISO, solo-operator — internal — 2026-08-23 | 1 — self-serve only, no human triage or SLA today — internal — 2026-08-23 |
 | Intruder.io | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
 | Probely | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
 | Astra Security | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* | *unverified* |
@@ -256,14 +256,18 @@ Not restated here — see that file for the itemised list, and
 
 ## 8. Enterprise features closed (Sprint 9-13 update)
 
-> **Correction (2026-09-27).** Much of this section describes library
-> modules, not shipped features. A check of importers found that
-> `ssoSaml`, `rbac`, `scimProvisioning`, `orgModel`, `mspPortal`,
-> `customScanPolicies`, `riskScoring`, `cicdSdk`, `graphqlApi`,
-> `easmDiscovery` and `proofOfExploit` have **no importers outside their
-> own tests**. No page, API route or scan step uses them. Do not cite them
-> in sales material or score them in §4 until they're wired in.
-> `ipAllowlist` (per-API-key, 2026-09-27), `complianceReport` (export
+> **Correction (2026-09-27, updated 2026-10-12).** Much of this section
+> describes library modules, not shipped features. A check of importers
+> found that `ssoSaml`, `rbac`, `scimProvisioning`, `orgModel`, `mspPortal`,
+> `customScanPolicies`, `riskScoring`, `cicdSdk`, `graphqlApi` and
+> `easmDiscovery` have **no importers outside their own tests**. No page,
+> API route or scan step uses them. Do not cite them in sales material or
+> score them in §4 until they're wired in. **Update (2026-10-12): `ssoSaml`
+> and `orgModel` are now confirmed deleted from `src/` entirely** (see
+> `FUNCTIONALITY-MATRIX.md` §5b) — don't cite them even as "unwired", they
+> don't exist. **`proofOfExploit` (and the `xssConfirm` it calls) were wired
+> into `scanExecution.ts` in PR #11** and are no longer in this unwired
+> list. `ipAllowlist` (per-API-key, 2026-09-27), `complianceReport` (export
 > endpoint + button), `slaMonitoring` (`/dashboard/sla`),
 > `siemIntegration`, `scanWindows` and `scheduledReports` are live. See
 > §12 for the full list.
@@ -278,21 +282,35 @@ Updated self-scoring for dimensions affected:
 - **D7** upgraded from 3 → **3+** — now covers 7 frameworks (ISO 27001,
   PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA)
   with per-control pass/fail reporting, not just finding-level mapping
-- **D8** upgraded from 2 → **3** — MSP portal with per-client health
-  scoring, RBAC with 4-level role hierarchy, SCIM provisioning, org/workspace
-  model, custom scan policies. Still no reseller billing, keeping at 3 not 4
-- **D2** stays 2 — scan windows and custom policies add operational
-  flexibility but don't change scan *depth* (still no crawl-behind-login)
+- **D8 correction (2026-10-12): stays 2, not 3.** The 3 above credited MSP
+  portal, RBAC, SCIM and org/workspace model — all unwired per the
+  correction box above, two of them (`ssoSaml`, `orgModel`) now deleted
+  outright. The real D8 story is narrower: the shipped, live, Agency-gated
+  Partner Portal (`PartnerPortalPanel.tsx`) plus white-labelling — multi-site
+  + white-label, no reseller billing, which is exactly a 2 on this rubric.
+- **D2 correction (2026-10-12): upgrade 2 → 3.** `authenticatedCrawl.ts`
+  now runs a real signed-in crawl (header/cookie/CSP/mixed-content/SRI
+  checks across every page it can reach while logged in, not just the
+  start page) — this is crawl-behind-login per the D2 rubric. It still
+  does not do per-user IDOR data-access testing (§9) or multi-step
+  OAuth/MFA login flows (it only replays a saved cookie/Basic credential).
 
 ### Enterprise feature inventory (for competitive positioning)
 
-| Category | Features | Code |
-|---|---|---|
-| Identity | SSO/SAML, RBAC (4-level), SCIM 2.0, IP allowlisting | `ssoSaml.ts`, `rbac.ts`, `scimProvisioning.ts`, `ipAllowlist.ts` |
-| Multi-tenancy | Org model, MSP portal, custom scan policies | `orgModel.ts`, `mspPortal.ts`, `customScanPolicies.ts` |
-| Compliance | 7-framework reporting, SLA monitoring, 5-factor risk scoring | `complianceReport.ts`, `slaMonitoring.ts`, `riskScoring.ts` |
-| Integrations | SIEM, CI/CD SDK, ServiceNow, GitHub Issues, GraphQL API | `siemIntegration.ts`, `cicdSdk.ts`, `ticketProviders.ts`, `graphqlApi.ts` |
-| Scanning | GraphQL scanning, proof-of-exploit, scan windows, scheduled reports | `graphql.ts`, `scanWindows.ts`, `scheduledReports.ts` |
+**Do not cite the "Unwired/deleted" rows below in sales material or
+competitive positioning** — they are not usable by any customer today.
+
+| Category | Features | Code | Status |
+|---|---|---|---|
+| Identity | IP allowlisting (per-API-key) | `ipAllowlist.ts` | Live |
+| Identity | SSO/SAML, RBAC (4-level), SCIM 2.0 | `ssoSaml.ts` (**deleted**), `rbac.ts`, `scimProvisioning.ts` | Unwired/deleted |
+| Multi-tenancy | Partner Portal (Agency-gated, white-label) | `PartnerPortalPanel.tsx` | Live |
+| Multi-tenancy | Org/workspace model, MSP per-client health portal, custom scan policies | `orgModel.ts` (**deleted**), `mspPortal.ts`, `customScanPolicies.ts` | Unwired/deleted |
+| Compliance | 7-framework reporting, SLA monitoring | `complianceReport.ts`, `slaMonitoring.ts` | Live |
+| Compliance | 5-factor risk scoring | `riskScoring.ts` | Unwired |
+| Integrations | SIEM, CI/CD SDK, ServiceNow, GitHub Issues | `siemIntegration.ts`, `cicdSdk.ts`, `ticketProviders.ts` | Live |
+| Integrations | Standalone GraphQL schema/query API | `graphqlApi.ts` | Unwired |
+| Scanning | GraphQL vulnerability scanning (wired PR #12), proof-of-exploit (wired PR #11), scan windows, scheduled reports | `scanners/graphql.ts`, `proofOfExploit.ts`, `scanWindows.ts`, `scheduledReports.ts` | Live |
 
 ---
 
@@ -303,15 +321,21 @@ Updated self-scoring for dimensions affected:
 Pairs with `docs/USER-GUIDE.md` §6 ("what this product deliberately does
 not do"). Some competitors' features are deliberately not worth matching:
 
-- **Full crawl-behind-login / IDOR testing** — real value, but turns this
-  from an automated scanner into a manual-pentest-adjacent liability surface
-  a solo operator can't safely support at scale (false positives on
-  business logic are expensive to get wrong, and the legal/consent surface
-  gets much larger).
-- **Brute-forcing or destructive payloads** — several competitors' "deep
-  scan" modes do this; explicitly ruled out here (`docs/USER-GUIDE.md` §6)
-  because it risks actually breaking a customer's production site, which is
-  a worse outcome than a missed finding.
+- **Deep IDOR testing (one logged-in user reaching another's specific
+  data)** — real value, but turns this from an automated scanner into a
+  manual-pentest-adjacent liability surface a solo operator can't safely
+  support at scale (false positives on business logic are expensive to get
+  wrong, and the legal/consent surface gets much larger). (A signed-in
+  crawl across the authenticated site now does exist — see
+  `docs/USER-GUIDE.md` §4.1 / §6 — this is specifically about per-user
+  data-access testing, which still isn't attempted.)
+- **Brute-forcing or destructive payloads, by default** — several
+  competitors' "deep scan" modes do this unconditionally; here it is
+  opt-in only, behind the Tier A plan, a per-target written authorisation,
+  and a verified domain (`docs/USER-GUIDE.md` §6) — never on by default,
+  because it risks actually breaking a customer's production site, which
+  is a worse outcome than a missed finding for anyone who hasn't
+  explicitly asked for it.
 - **Cloud IAM auditing (ScoutSuite/Prowler-style)** — acknowledged gap, but
   building it before a real credential-onboarding-with-consent flow exists
   would mean asking for cloud account access before the product has earned
