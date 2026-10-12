@@ -1581,11 +1581,16 @@ example as an inventory with acknowledgement.
 
 ## E-63 — Continuous EASM discovery (wire `easmDiscovery.ts`)
 
-**Status: open.** `src/lib/easmDiscovery.ts` (crt.sh, DNS brute-force,
-HTTP probing → `asset_inventory`) has no importers.
-**What**: run it from the scheduled pipeline per monitored domain, and feed
-newly discovered hosts to `takeover.ts` and the Assets page.
-**Impact/effort**: medium / medium. **Category**: code.
+**Status: done, 2026-10-12.** `runEasmDiscovery` now runs in `executeScan`
+right after `syncAssetInventory` — crt.sh + HTTP probing on every scan, DNS
+brute-force only once the scan has cleared the Tier A offensive profile's
+gate. New hosts land in `asset_inventory` and are picked up for free by
+`attackSurfaceMonitor.ts`'s existing "new hostname" alert. See CLAUDE.md
+"EASM discovery".
+**Still open**: it runs per scan, not from an independent schedule, so a
+monitored domain between scans gets no EASM-only discovery pass; feeding
+newly discovered hosts into `takeover.ts` specifically (beyond the generic
+asset inventory) was not done.
 **Source**: importer audit 2026-09-27.
 
 ## E-64 — Finding workflow state (accept risk / false positive / snooze)

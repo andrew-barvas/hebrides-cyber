@@ -21,7 +21,8 @@ vi.mock("./scanners", () => ({
   enrichFindingsWithThreatIntel: vi.fn(async () => {}),
 }));
 vi.mock("./assetInventory", () => ({ syncAssetInventory: record("syncAssetInventory") }));
-vi.mock("./attackSurfaceMonitor", () => ({ sendAttackSurfaceAlerts: attackSurfaceMock }));
+vi.mock("./attackSurfaceMonitor", async (orig) => ({ ...(await orig<typeof import("./attackSurfaceMonitor")>()), sendAttackSurfaceAlerts: attackSurfaceMock }));
+vi.mock("./easmDiscovery", () => ({ runEasmDiscovery: record("runEasmDiscovery") }));
 vi.mock("./findingLifecycle", async (orig) => ({ ...(await orig<typeof import("./findingLifecycle")>()), syncFindingLifecycle: record("syncFindingLifecycle", null) }));
 vi.mock("./slaAlerts", () => ({ sendSlaAlerts: record("sendSlaAlerts") }));
 vi.mock("./webhooks", () => ({ dispatchScanCompletedWebhooks: record("dispatchScanCompletedWebhooks") }));
@@ -75,6 +76,7 @@ describe("executeScan wiring", () => {
     expect(after).toEqual([
       "audit:scan.completed",
       "syncAssetInventory",
+      "runEasmDiscovery",
       "syncFindingLifecycle",
       "dispatchScanCompletedWebhooks",
       "sendCriticalAlertEmail",
