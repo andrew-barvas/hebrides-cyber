@@ -828,6 +828,20 @@ failed subresource, or an unhandled exception path worth checking.
 Open DevTools, reproduce, and confirm none of them leak internal URLs, tokens,
 or stack traces to the browser.`;
 
+export const DOM_XSS = `A script on this page reads data from the URL — most likely \`location.hash\` or
+\`location.search\` — and writes it into the page without sanitising it first. Unlike a
+reflected-XSS finding, this never touches your server: an attacker only needs to send
+someone a crafted link to this page.
+
+1. Find where the page reads \`location.hash\`/\`location.search\`/\`document.URL\`/
+   \`document.referrer\` and writes the result into the DOM (\`innerHTML\`, \`outerHTML\`,
+   \`document.write\`, \`insertAdjacentHTML\`, a templating call that doesn't escape its
+   input, or a router library's \`dangerouslySetInnerHTML\`-style API).
+2. Use a text-only sink (\`textContent\`, \`setAttribute\`) instead, or run the value
+   through a sanitiser (e.g. DOMPurify) before it ever reaches markup.
+3. A Content-Security-Policy without \`'unsafe-inline'\` in \`script-src\` limits what an
+   injected \`<script>\` can do, but does not fix the underlying unsanitised write.`;
+
 export const UNHEALTHY_STATUS = `The page did not return a healthy status to a headless browser. Confirm the site
 is reachable and not blocking automated clients.
 
