@@ -91,6 +91,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- Playwright ---
   "playwright.mixed-content": "easy",
+  "playwright.dom-xss": "hard", // output encoding + CSP at the client-side sink, can touch many templates
 
   // --- Ports ---
   "ports.risky-port": "easy", // firewall rule change, assuming the service doesn't need to be public

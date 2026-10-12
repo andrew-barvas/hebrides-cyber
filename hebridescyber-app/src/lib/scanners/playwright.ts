@@ -4,6 +4,7 @@
 // scriptInventory.ts: a tag manager injects most of a site's third-party
 // scripts at runtime, where a plain HTML fetch can't see them.
 import { chromium, type Page, type Request } from "playwright";
+import { confirmDomXss, type DomXssVerdict } from "./xssConfirm";
 
 export type RuntimeScripts = {
   /** Script URLs the page's main frame requested while loading (resourceType
@@ -29,6 +30,11 @@ export type PlaywrightResult =
       redirected: boolean;
       /** Optional because scans stored before this was recorded lack it. */
       scripts?: RuntimeScripts;
+      /** DOM-based XSS probe (see xssConfirm.ts's confirmDomXss) — optional
+       *  because scans stored before this existed lack it, and because a
+       *  probe failure shouldn't turn an otherwise-successful page load into
+       *  an "error" result. */
+      domXss?: DomXssVerdict;
     }
   | { status: "error"; loadedOk: false; note: string };
 
@@ -98,6 +104,21 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
       )
       .catch(() => [] as RuntimeScripts["elements"]);
 
+    // A separate page on the same browser (one extra navigation, no second
+    // Chromium launch) loaded fresh with the marker already in the URL
+    // fragment — covers a script reading location.hash on initial load,
+    // the common DOM-XSS shape (hash routers, OAuth-implicit-flow handlers,
+    // tracking snippets). Never throws: a failed probe just means untested.
+    const domXss = await confirmDomXss(targetUrl, async (probeUrl, tag) => {
+      const probePage = await browser!.newPage();
+      try {
+        await probePage.goto(probeUrl, { waitUntil: "load", timeout: 10_000 });
+        return (await probePage.locator(tag).count()) > 0;
+      } finally {
+        await probePage.close();
+      }
+    }).catch((err): DomXssVerdict => ({ status: "error", note: `DOM XSS probe failed: ${(err as Error).message}` }));
+
     return {
       status: "checked",
       loadedOk: Boolean(response?.ok()),
@@ -106,6 +127,7 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
       consoleErrors: consoleErrors.slice(0, 10),
       mixedContentUrls: [...new Set(mixedContentUrls)].slice(0, 10),
       finalUrl,
+      domXss,
       redirected,
       scripts: { requested: [...scriptUrls], elements: elements.slice(0, MAX_RUNTIME_SCRIPTS) },
     };

@@ -226,6 +226,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
 
   // --- Playwright ---
   "playwright.mixed-content": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+  "playwright.dom-xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
 
   // --- Ports ---
   "ports.risky-port": [CE_FIREWALLS, OWASP_A05, CIS_12, CIS_4, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],

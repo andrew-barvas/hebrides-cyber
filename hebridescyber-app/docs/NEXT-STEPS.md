@@ -40,9 +40,12 @@ Database migrations: files exist through **050**; the next free number is **051*
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
 | Mobile card-stack tables, PWA manifest/icons/viewport | `ScanList.tsx`/`FleetOverview.tsx`/`SlaDashboard.tsx`/`ScanReportView.tsx`'s tables stack into cards below `sm:`; `manifest.ts`, `touch-icon-180.png`/`icon-192.png`/`icon-512.png`, `viewport` export; `tests/e2e/mobile-tables.mobile.spec.ts` + a Chromium-based mobile Playwright project — see CLAUDE.md "Mobile & PWA" |
+| Item 10, part 1: remediation pack | `buildRemediationPack()` (`remediation.ts`), `GET /api/v1/scans/{id}/remediation-pack` — every actionable finding as one category-grouped Markdown download, no connected repo needed. "↓ Remediation pack" button on the report page |
+| Item 10, part 2: DOM-based XSS confirmation | `xssConfirm.ts`'s `confirmDomXss()`, wired into `playwright.ts`'s existing browser check via the URL fragment (never reaches the server) — `playwright.dom-xss` findings are confirmed by construction |
+| Item 10, part 3: login recording | `loginRecorder.ts`, `POST /api/account/record-login` — records a session by driving the target's real login form, for form/CSRF/MFA-free apps; saves the same `target_auth_credentials` row the manual-entry path does. See CLAUDE.md "Login recording" and `docs/AUTHENTICATED-CRAWL.md` for the still-owed consent-copy review |
 
-Coverage floor (`vitest.config.mts`): **71 / 64 / 72 / 72** (statements /
-branches / functions / lines). Lint: 0 errors (33 known warnings).
+Coverage floor (`vitest.config.mts`): **71 / 64 / 73 / 72** (statements /
+branches / functions / lines). Lint: 0 errors (35 known warnings).
 
 ## Rules that kept biting — follow these
 

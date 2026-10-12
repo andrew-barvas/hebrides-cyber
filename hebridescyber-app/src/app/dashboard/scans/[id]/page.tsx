@@ -215,6 +215,7 @@ type ScanResult = {
 const EXPORTS = {
   export: { suffix: "findings", label: (format: string) => `Export ${format.toUpperCase()}` },
   compliance: { suffix: "compliance", label: () => "Compliance report" },
+  "remediation-pack": { suffix: "remediation-pack", label: () => "Remediation pack" },
 } as const;
 
 function ExecutivePdfButton({ scanId, token, targetUrl }: { scanId: string; token: string | null; targetUrl: string }) {
@@ -666,6 +667,7 @@ export default function ScanDetailPage() {
                 <ReplayButton scanId={result.scan_id} token={sessionToken} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} format="csv" targetUrl={targetUrl} />
                 <ExportButton scanId={result.scan_id} token={sessionToken} kind="compliance" format="md" targetUrl={targetUrl} />
+                <ExportButton scanId={result.scan_id} token={sessionToken} kind="remediation-pack" format="md" targetUrl={targetUrl} />
                 <ExecutivePdfButton scanId={result.scan_id} token={sessionToken} targetUrl={targetUrl} />
                 <button
                   onClick={() => window.print()}

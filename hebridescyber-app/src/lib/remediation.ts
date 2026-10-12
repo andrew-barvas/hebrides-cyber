@@ -43,6 +43,98 @@ module.exports = {
   },
 };`;
 
+// Same taxonomy as ComplianceTrend.tsx's CATEGORY_LABELS (checkId's module
+// prefix, the part before the first "."): not imported from there directly
+// since that file is a "use client" UI component and this one is plain
+// library code reused by API routes — duplicating the dozen labels that
+// actually show up in a remediation pack is cheaper than that coupling.
+// Anything missing here falls back to a humanised version of the raw prefix.
+const CATEGORY_LABELS: Record<string, string> = {
+  tls: "TLS",
+  "deep-tls": "TLS (deep)",
+  headers: "Headers",
+  dns: "DNS / email",
+  exposure: "Exposed files",
+  "directory-listing": "Directory listing",
+  "cloud-misconfig": "Cloud config",
+  fingerprint: "Outdated software",
+  ports: "Open ports",
+  sqlmap: "SQL injection",
+  commix: "Command injection",
+  nmap: "Network scan",
+  secretScan: "Exposed secrets",
+  "dependency-manifest": "Dependencies",
+  "docker-base-image": "Container base image",
+  "auth-check": "Authenticated checks",
+  "crawl-auth": "Authenticated crawl",
+  crawl: "Crawl",
+  "script-inventory": "Third-party scripts",
+  graphql: "GraphQL",
+  nuclei: "Known-vulnerability templates",
+};
+
+function categoryLabelFor(checkId: string | undefined): string {
+  const category = checkId?.split(":")[0]?.split(".")[0] ?? "other";
+  return CATEGORY_LABELS[category] ?? category.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+
+const SEVERITY_ORDER: Finding["severity"][] = ["critical", "high", "medium", "low", "info"];
+
+/**
+ * A standalone, developer-facing fix bundle — every actionable finding,
+ * grouped by the part of the stack it touches (category, derived from
+ * checkId) rather than the flat severity order `buildRemediationMarkdown`
+ * uses for a PR body. Unlike that function, this doesn't assume a connected
+ * repo or an open PR: it's offered as a plain download from the report page
+ * (see src/pages/api/v1/scans/[id]/remediation-pack.ts) so a team without a
+ * connected repo — or anyone who'd rather triage fixes outside a PR — gets
+ * the same fix content.
+ */
+export function buildRemediationPack(targetUrl: string, findings: Finding[], score: number | null): string {
+  const actionable = findings.filter((f) => f.severity !== "info");
+
+  const groups = new Map<string, Finding[]>();
+  for (const finding of actionable) {
+    const label = categoryLabelFor(finding.checkId);
+    const group = groups.get(label) ?? [];
+    group.push(finding);
+    groups.set(label, group);
+  }
+
+  // Categories ordered by their most severe finding, then alphabetically —
+  // the areas needing the most urgent attention lead the document.
+  const worstSeverityIn = (group: Finding[]) => Math.min(...group.map((f) => SEVERITY_ORDER.indexOf(f.severity)));
+  const sections = [...groups.entries()]
+    .sort(([labelA, a], [labelB, b]) => worstSeverityIn(a) - worstSeverityIn(b) || labelA.localeCompare(labelB))
+    .map(([label, group]) => {
+      const items = [...group]
+        .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
+        .map((f) => `### [${f.severity.toUpperCase()}] ${f.title}\n\n${f.detail}\n\n${suggestFixSnippet(f)}`)
+        .join("\n\n");
+      return `## ${label}\n\n${items}`;
+    })
+    .join("\n\n---\n\n");
+
+  return `# Hebrides Cyber — Remediation Pack
+
+**Target:** ${targetUrl}
+**Generated:** ${new Date().toISOString()}
+${score !== null ? `**Score at time of scan:** ${score}/100\n` : ""}
+Every actionable finding from the latest scan, grouped by what part of your
+stack it touches rather than just severity — meant for handing straight to
+whoever owns that area. Informational findings aren't included; nothing
+here has been applied to your code.
+
+${sections || "No actionable findings — nice work."}
+
+---
+
+*Generated automatically from a Hebrides Cyber Security Score scan. See
+https://hebridescyber.co.uk for details, or reply to your scan email with
+questions.*
+`;
+}
+
 /** Builds the full Markdown body for the remediation PR/file. */
 export function buildRemediationMarkdown(targetUrl: string, findings: Finding[], score: number | null): string {
   const sections = findings

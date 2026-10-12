@@ -180,10 +180,14 @@ function AuthenticatedScanConfig({
   onChange: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [authType, setAuthType] = useState<"cookie" | "basic">("cookie");
+  // "login" is a form-toggle value only — recording a login always saves a
+  // "cookie" credential (see record-login.ts), it isn't a fourth stored type.
+  const [authType, setAuthType] = useState<"cookie" | "basic" | "login">("cookie");
   const [cookieValue, setCookieValue] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loginUrl, setLoginUrl] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,11 +206,14 @@ function AuthenticatedScanConfig({
     }
     setBusy(true);
     try {
+      const url = authType === "login" ? "/api/account/record-login" : "/api/account/target-auth";
       const body =
-        authType === "cookie"
-          ? { monitoredTargetId, authType, cookieValue: cookieValue.trim() }
-          : { monitoredTargetId, authType, username: username.trim(), password };
-      const res = await fetch("/api/account/target-auth", {
+        authType === "login"
+          ? { monitoredTargetId, loginUrl: loginUrl.trim(), username: username.trim(), password, acknowledged }
+          : authType === "cookie"
+            ? { monitoredTargetId, authType, cookieValue: cookieValue.trim() }
+            : { monitoredTargetId, authType, username: username.trim(), password };
+      const res = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -215,6 +222,8 @@ function AuthenticatedScanConfig({
       if (!res.ok) throw new Error(responseBody.error ?? "Could not save credential");
       setCookieValue("");
       setPassword("");
+      setLoginUrl("");
+      setAcknowledged(false);
       setOpen(false);
       await onChange();
     } catch (err) {
@@ -273,7 +282,7 @@ function AuthenticatedScanConfig({
         crawl behind login. Stored credentials never appear in this UI again once saved.
       </p>
       <div className="flex gap-2">
-        {(["cookie", "basic"] as const).map((t) => (
+        {(["cookie", "basic", "login"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -282,7 +291,7 @@ function AuthenticatedScanConfig({
               authType === t ? "bg-neon text-cyberbg border-neon" : "border-cyberborder text-cybertext/60 hover:border-neon hover:text-neon"
             }`}
           >
-            {t === "cookie" ? "Session cookie" : "Basic Auth"}
+            {t === "cookie" ? "Session cookie" : t === "basic" ? "Basic Auth" : "Recorded login"}
           </button>
         ))}
       </div>
@@ -295,7 +304,7 @@ function AuthenticatedScanConfig({
           onChange={(e) => setCookieValue(e.target.value)}
           className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
         />
-      ) : (
+      ) : authType === "basic" ? (
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             type="text"
@@ -314,13 +323,60 @@ function AuthenticatedScanConfig({
             className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
           />
         </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[11px] text-cybertext/50">
+            Logs in through the site&apos;s own login form and saves the resulting session — no need to find a
+            cookie yourself. Works for a plain username/password form only, not one with an MFA step. Use a
+            dedicated test account for this, never your own personal or admin login.
+          </p>
+          <input
+            type="url"
+            required
+            placeholder="Login page URL, e.g. https://app.example.com/login"
+            value={loginUrl}
+            onChange={(e) => setLoginUrl(e.target.value)}
+            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              required
+              placeholder="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            />
+            <input
+              type="password"
+              required
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            />
+          </div>
+          <label className="flex items-start gap-2 text-[11px] text-cybertext/60">
+            <input
+              type="checkbox"
+              required
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              I&apos;m providing credentials for a test account I&apos;m authorised to use for scanning this site —
+              not my personal login or anyone else&apos;s.
+            </span>
+          </label>
+        </div>
       )}
       <div className="flex gap-2">
         <button
           disabled={busy}
           className="rounded-md bg-neon px-3 py-1.5 text-xs font-semibold text-cyberbg hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {busy ? "Saving…" : "Save"}
+          {busy ? (authType === "login" ? "Logging in…" : "Saving…") : authType === "login" ? "Log in & save" : "Save"}
         </button>
         <button
           type="button"

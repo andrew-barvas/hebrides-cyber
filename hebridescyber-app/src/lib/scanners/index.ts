@@ -554,6 +554,28 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (results.playwright.consoleErrors.length > 0) {
       findings.push({ checkId: "playwright.console-errors", severity: "low", title: `${results.playwright.consoleErrors.length} browser console error(s)`, detail: "Review browser console output for broken scripts or failed requests.", remediation: FIX.CONSOLE_ERRORS });
     }
+    // Confirmed by construction (see confirmDomXss's header comment): the
+    // marker only ever reaches the DOM via client-side script, never the
+    // server, so there is no separate "possible" state to proofOfExploit.ts
+    // confirm later — the metadata is attached directly, here.
+    if (results.playwright.domXss?.status === "confirmed") {
+      findings.push({
+        checkId: "playwright.dom-xss",
+        severity: "critical",
+        title: "DOM-based XSS: the page writes the URL into itself unsafely",
+        detail: results.playwright.domXss.evidence,
+        remediation: FIX.DOM_XSS,
+        metadata: {
+          proofOfExploit: {
+            confirmed: true,
+            evidence: results.playwright.domXss.evidence,
+            request: `GET ${results.playwright.domXss.probeUrl}`,
+            response: "Marker element present in the live DOM after a client-side script ran",
+            validatedAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
   }
 
   // --- Ports ----------------------------------------------------------------

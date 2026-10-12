@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { classifyReflections, confirmReflectedXss, lexSpans, makeProbe, playwrightDomVerifier, probeUrlFor } from "./xssConfirm";
+import { classifyReflections, confirmDomXss, confirmReflectedXss, lexSpans, makeProbe, playwrightDomVerifier, probeUrlFor } from "./xssConfirm";
 import { validateExploit, enrichWithProofOfExploit, xssTarget } from "./proofOfExploit";
 import type { Finding } from "./index";
 
@@ -148,6 +148,38 @@ describe("playwrightDomVerifier", () => {
     expect(newPage).toHaveBeenCalledWith({ javaScriptEnabled: false });
     expect(close).toHaveBeenCalled();
     vi.doUnmock("playwright");
+  });
+});
+
+describe("confirmDomXss", () => {
+  it("probes the URL fragment, not a query parameter, and confirms when the browser load finds the marker", async () => {
+    const browserLoad = vi.fn(async (_url: string, _tag: string) => true);
+    const verdict = await confirmDomXss("https://x.test/app?x=1", browserLoad);
+    expect(verdict.status).toBe("confirmed");
+    if (verdict.status !== "confirmed") throw new Error("unreachable");
+    const probeUrl = new URL(verdict.probeUrl);
+    expect(probeUrl.search).toBe("?x=1"); // untouched — only the fragment carries the probe
+    expect(decodeURIComponent(probeUrl.hash.slice(1))).toMatch(/^hcx[0-9a-f]{8}"'<hc-xss-[0-9a-f]{8}>$/);
+    const [calledUrl, calledTag] = browserLoad.mock.calls[0];
+    expect(calledUrl).toBe(verdict.probeUrl);
+    expect(decodeURIComponent(probeUrl.hash)).toContain(calledTag);
+  });
+
+  it("is not_confirmed when the marker never reaches the DOM", async () => {
+    expect(await confirmDomXss("https://x.test/app", async () => false)).toMatchObject({ status: "not_confirmed" });
+  });
+
+  it("is an error for an invalid URL, without ever calling the browser", async () => {
+    const browserLoad = vi.fn();
+    expect(await confirmDomXss("https://[bad", browserLoad)).toMatchObject({ status: "error" });
+    expect(browserLoad).not.toHaveBeenCalled();
+  });
+
+  it("is an error when the browser check itself throws", async () => {
+    const verdict = await confirmDomXss("https://x.test/app", async () => {
+      throw new Error("Chromium crashed");
+    });
+    expect(verdict).toMatchObject({ status: "error", note: expect.stringMatching(/Chromium crashed/) });
   });
 });
 
