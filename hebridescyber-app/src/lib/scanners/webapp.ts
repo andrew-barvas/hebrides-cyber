@@ -14,13 +14,15 @@ export type WebAppResult =
       wordpress: WordPressData | null;
       joomla: JoomlaData | null;
       drupal: DrupalData | null;
+      magento: MagentoData | null;
+      shopify: ShopifyData | null;
       corsReflected: CorsReflectedData;
       jsLibraries: JsLibraryFinding[];
       unprotectedResources: UnprotectedResource[];
     }
   | { status: "error"; note: string };
 
-export type CmsFlags = { isWordPress: boolean; isJoomla: boolean; isDrupal: boolean };
+export type CmsFlags = { isWordPress: boolean; isJoomla: boolean; isDrupal: boolean; isMagento: boolean; isShopify: boolean };
 
 export type RobotsData = {
   accessible: boolean;
@@ -77,6 +79,30 @@ export type DrupalData = {
   // uid 1 is Drupal's built-in superuser account — a public profile page
   // there confirms the admin account exists and is reachable by URL.
   uid1ProfileAccessible: boolean;
+};
+
+export type MagentoData = {
+  // app/etc/env.php holds the database credentials and the crypt key used
+  // to encrypt every other stored secret — reading it is close to full
+  // compromise. Content-checked (a "'db' =>" marker), not just a 200,
+  // since a misconfigured server can 200 anything.
+  envPhpExposed: boolean;
+  // /downloader/ is Magento Connect Manager — deprecated, historically a
+  // compromise vector, meant to be disabled in production.
+  downloaderAccessible: boolean;
+  // The admin panel reachable at Magento's own default path, rather than
+  // the customised path every hardening guide recommends. Not a
+  // vulnerability by itself — matches Joomla's installFilesPresent framing.
+  defaultAdminPathAccessible: boolean;
+};
+
+export type ShopifyData = {
+  // shpat_/shpca_/shppa_-prefixed tokens are Shopify's own Admin API /
+  // custom-app / legacy-private-app formats — unlike the public,
+  // intentionally client-side Storefront API token, these should never
+  // appear in page source or a loaded script. Capped and redacted to the
+  // prefix + a few characters; the full token is never stored in a finding.
+  exposedAdminTokens: string[];
 };
 
 export type CorsReflectedData = {
@@ -408,6 +434,71 @@ async function checkDrupal(origin: string): Promise<DrupalData> {
   };
 }
 
+// ── Magento deep scan ───────────────────────────────────────────────────────────
+
+async function checkMagento(origin: string): Promise<MagentoData> {
+  const [envPhpRes, downloaderRes, adminRes] = await Promise.all([
+    fetch(`${origin}/app/etc/env.php`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    fetch(`${origin}/downloader/`, { signal: AbortSignal.timeout(6_000) }).catch(() => null),
+    fetch(`${origin}/admin`, { redirect: "manual", signal: AbortSignal.timeout(6_000) }).catch(() => null),
+  ]);
+
+  // A misconfigured server can 200 anything (a SPA catch-all, a generic
+  // error page) — only call it exposed if the body actually looks like
+  // Magento's own PHP config array, not just a successful status.
+  let envPhpExposed = false;
+  if (envPhpRes?.ok) {
+    const body = await envPhpRes.text().catch(() => "");
+    envPhpExposed = /'db'\s*=>/.test(body) && /'crypt'\s*=>/.test(body);
+  }
+
+  let downloaderAccessible = false;
+  if (downloaderRes?.ok) {
+    const body = await downloaderRes.text().catch(() => "");
+    downloaderAccessible = /Magento Connect Manager|connect\/Mage_Connect/i.test(body);
+  }
+
+  let defaultAdminPathAccessible = false;
+  if (adminRes && (adminRes.status === 200 || adminRes.status === 302)) {
+    const body = adminRes.status === 200 ? await adminRes.text().catch(() => "") : "";
+    defaultAdminPathAccessible =
+      adminRes.status === 302
+        ? /\/admin(\/|$)/i.test(adminRes.headers.get("location") ?? "")
+        : /admin\/auth\/login|Magento Admin/i.test(body);
+  }
+
+  return { envPhpExposed, downloaderAccessible, defaultAdminPathAccessible };
+}
+
+// ── Shopify leaked admin-token scan ─────────────────────────────────────────────
+
+// Shopify's own token prefixes (public docs): shpat_ (Admin API access
+// token), shpca_ (custom app), shppa_ (legacy private-app password). The
+// Storefront API token is deliberately public/client-side by Shopify's own
+// design and is never flagged here — only these admin-level formats, which
+// should never reach a browser, count as a leak.
+const SHOPIFY_ADMIN_TOKEN_RE = /\b(shpat|shpca|shppa)_[a-f0-9]{32}\b/gi;
+const MAX_SHOPIFY_TOKENS = 5;
+
+async function checkShopify(targetUrl: string): Promise<ShopifyData> {
+  try {
+    const res = await fetch(targetUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return { exposedAdminTokens: [] };
+    const html = await res.text();
+
+    const found = new Set<string>();
+    for (const match of html.matchAll(SHOPIFY_ADMIN_TOKEN_RE)) {
+      if (found.size >= MAX_SHOPIFY_TOKENS) break;
+      // Redacted to the prefix + a few characters — enough to prove a real
+      // token-shaped string was found, never enough to use it.
+      found.add(`${match[0].slice(0, 10)}…`);
+    }
+    return { exposedAdminTokens: [...found] };
+  } catch {
+    return { exposedAdminTokens: [] };
+  }
+}
+
 // ── CORS reflected-origin test ────────────────────────────────────────────────
 
 const TEST_ORIGIN = "https://evil.example.com";
@@ -680,10 +771,12 @@ export async function checkWebApp(targetUrl: string, cms: CmsFlags): Promise<Web
         checkSubresourceIntegrity(targetUrl),
       ]);
 
-    const [wordpress, joomla, drupal] = await Promise.all([
+    const [wordpress, joomla, drupal, magento, shopify] = await Promise.all([
       cms.isWordPress ? checkWordPress(origin) : Promise.resolve(null),
       cms.isJoomla ? checkJoomla(origin) : Promise.resolve(null),
       cms.isDrupal ? checkDrupal(origin) : Promise.resolve(null),
+      cms.isMagento ? checkMagento(origin) : Promise.resolve(null),
+      cms.isShopify ? checkShopify(targetUrl) : Promise.resolve(null),
     ]);
 
     return {
@@ -694,6 +787,8 @@ export async function checkWebApp(targetUrl: string, cms: CmsFlags): Promise<Web
       wordpress,
       joomla,
       drupal,
+      magento,
+      shopify,
       corsReflected,
       jsLibraries,
       unprotectedResources,

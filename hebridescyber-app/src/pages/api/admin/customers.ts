@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userIds = (users ?? []).map((u) => u.id);
 
   const [{ data: subs }, { data: scanCounts }] = await Promise.all([
-    supabaseAdmin.from("subscriptions").select("owner, plan, status").in("owner", userIds),
+    supabaseAdmin.from("subscriptions").select("owner, plan, status, source, grant_reason").in("owner", userIds),
     supabaseAdmin.from("scans").select("owner").in("owner", userIds),
   ]);
 
@@ -46,6 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       is_admin: u.is_admin ?? false,
       plan: sub?.plan ?? null,
       subscription_status: sub?.status ?? null,
+      plan_source: sub?.source ?? null,
+      grant_reason: sub?.grant_reason ?? null,
       scan_count: scanMap.get(u.id) ?? 0,
       created_at: u.created_at,
     };

@@ -777,6 +777,33 @@ information\` for the Anonymous role). Consider also renaming the uid 1
 account away from an obvious username — many Drupal hardening guides recommend
 creating a separate named admin account and disabling uid 1's direct login.`;
 
+export const MAGENTO_ENV_PHP_EXPOSED = `Treat this as an active incident, not routine hardening — the database
+credentials and crypt key are both out and should be assumed compromised.
+
+1. Rotate the database password immediately and run \`bin/magento setup:config:set\`
+   to update it, then rotate every encrypted value (payment credentials, API keys) with
+   \`bin/magento setup:rollback\` or Magento's official key-rotation tooling.
+2. Fix the web server config so \`app/etc/\` is never served directly — this usually
+   means the vhost root points at \`pub/\` rather than the store root, or an \`.htaccess\`/
+   nginx rule explicitly denies \`app/etc/\`.
+3. Review access logs for any request to this path before you found it.`;
+
+export const MAGENTO_DOWNLOADER_ACCESSIBLE = `Remove or block public access to the \`/downloader/\` directory — it is
+deprecated and not needed for a production store. Delete the directory, or add a
+server-level rule (nginx \`location\`/Apache \`<Directory>\` block) that denies it.`;
+
+export const MAGENTO_DEFAULT_ADMIN_PATH = `Move the admin panel to a custom path: set \`admin/url/custom_path\` via
+\`bin/magento config:set\`, or the Admin Base URL options in **Stores → Configuration →
+Advanced → Admin**. Pair this with 2FA on every admin account and an IP allowlist if
+your team works from fixed locations.`;
+
+export const SHOPIFY_ADMIN_TOKEN_EXPOSED = `Revoke the exposed token immediately in Shopify Admin → **Apps and sales
+channels → Develop apps** (or the custom/private app that issued it), then issue a new
+one. Find where the leaking code puts it into a page or script the browser loads —
+admin-level tokens must stay server-side (a backend proxy endpoint, or a serverless
+function) and never be embedded in theme Liquid/JS. The public Storefront API token is
+fine to expose; this format never is.`;
+
 export const CLOUD_STORAGE_PUBLIC = `Remove public list access from the bucket/container. Anyone who finds the URL
 can currently browse its full contents.
 

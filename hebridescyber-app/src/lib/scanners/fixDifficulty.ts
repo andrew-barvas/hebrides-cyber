@@ -113,6 +113,10 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "webapp.drupal-update-php": "trivial",
   "webapp.drupal-jsonapi-exposed": "moderate",
   "webapp.drupal-uid1-enumerable": "moderate",
+  "webapp.magento-env-php-exposed": "hard", // credential rotation + crypt-key rotation + server config fix
+  "webapp.magento-downloader-accessible": "easy",
+  "webapp.magento-default-admin-path": "easy",
+  "webapp.shopify-admin-token-exposed": "moderate", // revoke + find and fix the leaking template/script
   "webapp.cors-reflected-creds": "moderate",
   "webapp.cors-reflected": "easy",
   "webapp.vulnerable-js-lib": "moderate", // version bump, but can carry breaking changes

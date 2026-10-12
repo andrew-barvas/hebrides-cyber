@@ -258,6 +258,8 @@ export async function runAllChecks(
     isWordPress: cmsType === "wordpress",
     isJoomla: cmsType === "joomla",
     isDrupal: cmsType === "drupal",
+    isMagento: cmsType === "magento",
+    isShopify: cmsType === "shopify",
   };
 
   // Site crawl (E-70): page-level checks on every reachable page. Seeded with
@@ -610,7 +612,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- Web App (robots / methods / disclosure / WP / CORS / JS libs) --------
   if (results.webapp.status === "checked") {
-    const { robots, httpMethods, errorDisclosure, wordpress, joomla, drupal, corsReflected, jsLibraries, unprotectedResources } =
+    const { robots, httpMethods, errorDisclosure, wordpress, joomla, drupal, magento, shopify, corsReflected, jsLibraries, unprotectedResources } =
       results.webapp;
 
     // robots.txt interesting paths
@@ -771,6 +773,51 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           remediation: FIX.DRUPAL_UID1_ENUMERABLE,
         });
       }
+    }
+
+    // Magento findings
+    if (magento) {
+      if (magento.envPhpExposed) {
+        findings.push({
+          checkId: "webapp.magento-env-php-exposed",
+          severity: "critical",
+          title: "Magento configuration file (app/etc/env.php) is publicly readable",
+          detail:
+            "This file contains the database connection string and the crypt key used to encrypt every other secret the store has stored — reading it gives an attacker near-total access.",
+          remediation: FIX.MAGENTO_ENV_PHP_EXPOSED,
+        });
+      }
+      if (magento.downloaderAccessible) {
+        findings.push({
+          checkId: "webapp.magento-downloader-accessible",
+          severity: "medium",
+          title: "Magento Connect Manager (/downloader/) is publicly accessible",
+          detail:
+            "This deprecated component has historically been used to compromise Magento stores and should be disabled or removed in production.",
+          remediation: FIX.MAGENTO_DOWNLOADER_ACCESSIBLE,
+        });
+      }
+      if (magento.defaultAdminPathAccessible) {
+        findings.push({
+          checkId: "webapp.magento-default-admin-path",
+          severity: "info",
+          title: "Magento admin panel is reachable at its default path (/admin)",
+          detail:
+            "Not a vulnerability by itself, but every Magento hardening guide recommends moving the admin panel to a custom path so it isn't the first thing an automated attacker tries.",
+          remediation: FIX.MAGENTO_DEFAULT_ADMIN_PATH,
+        });
+      }
+    }
+
+    // Shopify findings
+    if (shopify && shopify.exposedAdminTokens.length > 0) {
+      findings.push({
+        checkId: "webapp.shopify-admin-token-exposed",
+        severity: "critical",
+        title: "A Shopify admin-level API token is exposed in the page source",
+        detail: `Found ${shopify.exposedAdminTokens.length} token-shaped string(s) matching Shopify's Admin API/custom-app/private-app formats (redacted: ${shopify.exposedAdminTokens.join(", ")}). Unlike the public Storefront API token, these grant store-management access and must never appear in anything a browser loads.`,
+        remediation: FIX.SHOPIFY_ADMIN_TOKEN_EXPOSED,
+      });
     }
 
     // CORS reflected-origin

@@ -12,9 +12,11 @@ export type QueueMap = Record<string, unknown[]>;
 
 export function makeAdminSupabaseMock() {
   let queues: QueueMap = {};
+  let rpcQueues: QueueMap = {};
   const inserted: Array<{ table: string; payload: unknown }> = [];
   const updated: Array<{ table: string; payload: unknown }> = [];
   const deleted: Array<{ table: string }> = [];
+  const upserted: Array<{ table: string; payload: unknown; opts?: unknown }> = [];
 
   function makeBuilder(table: string) {
     const next = () => Promise.resolve(queues[table]?.shift() ?? { data: null, error: null });
@@ -36,6 +38,10 @@ export function makeAdminSupabaseMock() {
         updated.push({ table, payload });
         return builder;
       },
+      upsert: (payload: unknown, opts?: unknown) => {
+        upserted.push({ table, payload, opts });
+        return builder;
+      },
       delete: () => {
         deleted.push({ table });
         return builder;
@@ -48,18 +54,27 @@ export function makeAdminSupabaseMock() {
   }
 
   return {
-    supabaseAdmin: { from: (table: string) => makeBuilder(table) },
+    supabaseAdmin: {
+      from: (table: string) => makeBuilder(table),
+      rpc: (fn: string) => Promise.resolve(rpcQueues[fn]?.shift() ?? { data: null, error: null }),
+    },
     setQueues: (next: QueueMap) => {
       queues = next;
     },
+    setRpcQueues: (next: QueueMap) => {
+      rpcQueues = next;
+    },
     reset: () => {
       queues = {};
+      rpcQueues = {};
       inserted.length = 0;
       updated.length = 0;
       deleted.length = 0;
+      upserted.length = 0;
     },
     inserted,
     updated,
     deleted,
+    upserted,
   };
 }

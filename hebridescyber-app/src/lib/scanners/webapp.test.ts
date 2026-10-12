@@ -3,7 +3,7 @@ import { checkWebApp, isVersionBelow, type WebAppResult } from "./webapp";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const NO_CMS = { isWordPress: false, isJoomla: false, isDrupal: false };
+const NO_CMS = { isWordPress: false, isJoomla: false, isDrupal: false, isMagento: false, isShopify: false };
 const ORIGIN = "https://example.com";
 
 type Site = {
@@ -261,6 +261,70 @@ describe("CMS deep scans", () => {
       jsonApiExposed: true,
       uid1ProfileAccessible: false,
     });
+  });
+
+  it("Magento: a real-looking env.php, a reachable downloader and the default admin path all count as exposed", async () => {
+    const { magento } = await scan(
+      {
+        paths: {
+          "/app/etc/env.php": { body: "<?php\nreturn array (\n  'db' => array(...),\n  'crypt' => array('key' => 'abc'),\n);" },
+          "/downloader/": { body: "<title>Magento Connect Manager</title>" },
+          "/admin": { body: "<form action=\"admin/auth/login\">Magento Admin</form>" },
+        },
+      },
+      { ...NO_CMS, isMagento: true }
+    );
+    expect(magento).toEqual({ envPhpExposed: true, downloaderAccessible: true, defaultAdminPathAccessible: true });
+  });
+
+  it("Magento: a 200 that doesn't actually look like Magento's own content is not counted as exposed", async () => {
+    const { magento } = await scan(
+      {
+        paths: {
+          "/app/etc/env.php": { body: "<html>a generic 200 catch-all page, not real PHP config</html>" },
+          "/downloader/": { body: "<html>also just the generic page</html>" },
+          "/admin": { body: "<html>also just the generic page</html>" },
+        },
+      },
+      { ...NO_CMS, isMagento: true }
+    );
+    expect(magento).toEqual({ envPhpExposed: false, downloaderAccessible: false, defaultAdminPathAccessible: false });
+  });
+
+  it("Magento: a 302 redirect from /admin to the real login path still counts as the default path", async () => {
+    serve({});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/admin")) return new Response(null, { status: 302, headers: { location: "/admin/" } });
+        return new Response("Not found", { status: 404 });
+      })
+    );
+    const result = await checkWebApp(`${ORIGIN}/`, { ...NO_CMS, isMagento: true });
+    expect(result.status === "checked" && result.magento?.defaultAdminPathAccessible).toBe(true);
+  });
+
+  it("Magento checks never run unless isMagento is set", async () => {
+    const { magento } = await scan({ paths: { "/app/etc/env.php": { body: "'db' => array(), 'crypt' => array()" } } }, NO_CMS);
+    expect(magento).toBeNull();
+  });
+
+  it("Shopify: an exposed Admin API token is found and redacted", async () => {
+    serve({ page: `<html><script>var t = "shpat_${"a1".repeat(16)}";</script></html>` });
+    const result = await checkWebApp(`${ORIGIN}/`, { ...NO_CMS, isShopify: true });
+    expect(result.status === "checked" && result.shopify).toEqual({ exposedAdminTokens: [`shpat_${"a1".repeat(2)}…`] });
+  });
+
+  it("Shopify: the public Storefront API token format is never flagged", async () => {
+    serve({ page: `<html><script>Shopify.apiKey = "${"b2".repeat(16)}";</script></html>` });
+    const result = await checkWebApp(`${ORIGIN}/`, { ...NO_CMS, isShopify: true });
+    expect(result.status === "checked" && result.shopify).toEqual({ exposedAdminTokens: [] });
+  });
+
+  it("Shopify checks never run unless isShopify is set", async () => {
+    serve({ page: `<html>shpat_${"a1".repeat(16)}</html>` });
+    const result = await checkWebApp(`${ORIGIN}/`, NO_CMS);
+    expect(result.status === "checked" && result.shopify).toBeNull();
   });
 });
 
