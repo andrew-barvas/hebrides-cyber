@@ -16,6 +16,7 @@ describe("getCmsType", () => {
     expect(getCmsType([tech("Joomla")])).toBe("joomla");
     expect(getCmsType([tech("Drupal")])).toBe("drupal");
     expect(getCmsType([tech("Magento")])).toBe("magento");
+    expect(getCmsType([tech("Shopify")])).toBe("shopify");
     expect(getCmsType([tech("Ghost")])).toBe("ghost");
   });
 

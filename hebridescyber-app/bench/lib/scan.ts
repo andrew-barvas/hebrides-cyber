@@ -43,6 +43,8 @@ export async function scanTarget(targetUrl: string): Promise<string[]> {
     isWordPress: cmsType === "wordpress",
     isJoomla: cmsType === "joomla",
     isDrupal: cmsType === "drupal",
+    isMagento: cmsType === "magento",
+    isShopify: cmsType === "shopify",
   });
 
   // Every module the benchmark does not drive reports "error", which

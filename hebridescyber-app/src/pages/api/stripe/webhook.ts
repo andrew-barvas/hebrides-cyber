@@ -162,6 +162,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             stripe_subscription_id: stripeSubscriptionId,
             plan,
             status: "active",
+            // A real checkout always supersedes a prior admin plan override.
+            source: "stripe",
             current_period_end: currentPeriodEnd,
             updated_at: new Date().toISOString(),
           },
@@ -208,6 +210,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .update({
             plan,
             status,
+            // A real subscription update always supersedes a prior admin plan override.
+            source: "stripe",
             current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           })

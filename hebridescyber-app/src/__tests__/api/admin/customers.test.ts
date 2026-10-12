@@ -57,7 +57,7 @@ describe("GET /api/admin/customers", () => {
           count: 2,
         },
       ],
-      subscriptions: [{ data: [{ owner: "u1", plan: "pro", status: "active" }] }],
+      subscriptions: [{ data: [{ owner: "u1", plan: "pro", status: "active", source: "stripe", grant_reason: null }] }],
       scans: [{ data: [{ owner: "u1" }, { owner: "u1" }, { owner: "u2" }] }],
     });
     const { req, res } = mockReqRes();
@@ -67,8 +67,8 @@ describe("GET /api/admin/customers", () => {
     expect(res._getStatusCode()).toBe(200);
     const body = res._getJSONData() as { customers: Array<Record<string, unknown>>; total: number };
     expect(body.customers).toEqual([
-      { id: "u1", email: "a@example.com", company_name: "Acme", is_admin: false, plan: "pro", subscription_status: "active", scan_count: 2, created_at: "2026-01-01" },
-      { id: "u2", email: "b@example.com", company_name: null, is_admin: false, plan: null, subscription_status: null, scan_count: 1, created_at: "2026-01-02" },
+      { id: "u1", email: "a@example.com", company_name: "Acme", is_admin: false, plan: "pro", subscription_status: "active", plan_source: "stripe", grant_reason: null, scan_count: 2, created_at: "2026-01-01" },
+      { id: "u2", email: "b@example.com", company_name: null, is_admin: false, plan: null, subscription_status: null, plan_source: null, grant_reason: null, scan_count: 1, created_at: "2026-01-02" },
     ]);
     expect(body.total).toBe(2);
   });
