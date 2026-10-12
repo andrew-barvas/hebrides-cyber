@@ -24,7 +24,7 @@ one level up, at the git root. Paths below are relative to
 - ❌ **none** — no plan check exists at any layer; available to any authenticated account regardless of tier
 - 🔒 **service-role-only** — not plan-gated because it's not customer-writable at all (admin/service paths)
 
-*As of 2026-09-14.*
+*As of 2026-10-12.*
 
 ---
 
@@ -83,14 +83,20 @@ deterministic templated fallback (no plan gate either way).
 
 ## 3. Extended active-tool suite
 
-Gated by `ExecuteScanOptions.runExtendedTools`, set **only** in
-`src/scripts/run-queued-scan-jobs.ts` (`const runExtendedTools = !scanId`) —
-i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
-`POST /api/v1/scans` never trigger this, regardless of plan.
+**Stale as of 2026-09-14 — corrected 2026-10-12.** Gating moved to named
+scan profiles (`src/lib/scanProfiles.ts`'s `ScanProfile`/`resolveToolConfig()`),
+resolved per job by `decideScanConfig()` in `run-queued-scan-jobs.ts`: an
+on-demand job (`job.scan_id` preset, from the dashboard or `POST /api/v1/scans`)
+always resolves to `"safe"` (none of this suite); a scheduled job resolves its
+profile from the target/bundle, defaulting to `"full"`. `"full"` runs every tool
+below except the Tier A offensive-only ones (`contentDiscovery`, `credentialSpray`,
+`strix`, `cairn`) — those run only under the `"offensive"` profile, itself gated
+on the Tier A plan **and** a current per-target authorization **and** a verified
+domain (`run-queued-scan-jobs.ts`; see `docs/USER-GUIDE.md` §6).
 
 | Module | What it checks | Requirement | Unconfigured behaviour | Gate | Tests |
 |---|---|---|---|---|---|
-| `src/worker/tools/nmap.ts` | SYN scan, top-1000 ports, service/OS detect | `nmap` binary | `not_configured` on ENOENT | ⚠️ path-gated, not plan-gated | no |
+| `src/worker/tools/nmap.ts` | `-sV` TCP connect + service detection on 13 fixed dangerous ports (21,22,23,25,3306,5432,6379,27017,9200,2375,2376,8500,2379); only 6 of them can produce a `nmap.dangerous-port` finding | `nmap` binary | `not_configured` on ENOENT | ⚠️ path-gated, not plan-gated | no |
 | `src/worker/tools/nuclei.ts` | Templates scoped to detected tech + baseline tags | `nuclei` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/zap.ts` | Full spider + active scan | `ZAP_API_URL` + `ZAP_API_KEY` (E-14 fixed: no default, returns `not_configured` if either is unset) | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/sqlmap.ts` | SQL injection confirmation | `sqlmap` binary | `not_configured` | ⚠️ path-gated | no |
@@ -100,13 +106,17 @@ i.e. **scheduled monitored-target jobs only**. On-demand dashboard scans and
 | `src/lib/scanners/secretScan.ts` | Gitleaks over a connected repo | connected repo + GitHub access + `git` | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
 | `src/lib/scanners/dependencyManifest.ts` (+ `dependencyLockfiles.ts`) | Lockfiles (npm/pnpm/Yarn, Poetry/Pipfile, Composer, go.sum, Gradle, Bundler, Cargo, NuGet) → every package incl. transitive, exact versions → OSV.dev querybatch + advisory details; manifest-range fallback (npm/pip/Composer/Go/Maven); full inventory → CycloneDX SBOM (E-67) | connected repo + GitHub access | `not_configured`/`not_applicable`; `error` when OSV.dev or GitHub can't be read | 🔒 requires repo connection (ungated by plan) | yes — every lockfile parser on fixtures (`dependencyLockfiles.test.ts`), scan flow with stubbed GitHub/OSV incl. fallback and error paths (`dependencyManifest.test.ts`), querybatch/pagination/ECOSYSTEM fix versions (`osv.test.ts`), SBOM (`sbomExport.test.ts`, `src/__tests__/api/v1/scans/[id]/sbom.test.ts`), legacy manifest parsers (`src/__tests__/scanners/dependencyManifest.test.ts`). Not yet run against live OSV.dev from this branch |
 | `src/lib/scanners/dockerBaseImage.ts` | Dockerfile base-image EOL via endoflife.date | connected repo + GitHub access | `not_configured`/`not_applicable` | 🔒 requires repo connection (ungated by plan) | no |
-| `src/lib/scanners/authenticatedCheck.ts` | Header/cookie recheck against an authenticated request | saved credential on a monitored target | `not_applicable` | ❌ **no plan check** despite being labelled "Optional (Agency)" on `/what-we-check` | no |
+| `src/lib/scanners/authenticatedCheck.ts` + `authenticatedCrawl.ts` | Header/cookie/CSP recheck on the start page, **plus a real signed-in crawl** (header/cookie/mixed-content/SRI across every reachable page while logged in, `crawl.auth.*` checkIds, namespaced so they never merge with anonymous findings) | saved credential on a monitored target | `not_applicable` | ✅ **server** — `account/target-auth.ts` is `planGate(…, "agency")`-gated on write (see §4); this row's old "no plan check" claim was stale | no |
 | `src/worker/tools/wpscan.ts` | WPScan WordPress enumeration | `wpscan` binary + `WPSCAN_API_TOKEN` | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/cmsmap.ts` | CMSmap CMS fingerprint/scan | `cmsmap` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/gospider.ts` | Web spidering/link extraction | `gospider` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/photon.ts` | Data extraction/OSINT | `photon` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/metadataLeak.ts` | Document metadata OSINT | none (HTTP-based) | n/a | ⚠️ path-gated | no |
-| `src/worker/tools/ajaxSpider.ts` | ZAP AJAX spider for JS-heavy SPAs | `ZAP_API_URL` | `not_configured` | ⚠️ path-gated | no |
+| `src/worker/tools/zapAjaxSpider.ts` | ZAP AJAX spider for JS-heavy SPAs | `ZAP_API_URL` | `not_configured` | ⚠️ path-gated | no |
+| `src/lib/scanners/hostProbe.ts` | httpx: live-host probing of the target + discovered subdomains (status/title/tech/TLS) | `httpx` binary | `not_configured` | ⚠️ path-gated | yes (fixture + integration) |
+| `src/worker/tools/contentDiscovery.ts` | **Tier A offensive only.** ffuf bounded directory/path discovery | `ffuf` binary + curated wordlist | `not_configured` | 🔒 Tier A + per-target authorization + verified domain (see intro above) | yes (fixture + integration) |
+| `src/worker/tools/credentialSpray.ts` | **Tier A offensive only.** hydra login credential spraying against ONE owner-designated test account | `hydra` binary + `CREDENTIAL_SPRAY_LOGIN`/`_WORDLIST`/`_FORM` | `not_configured` | 🔒 Tier A + per-target authorization + verified domain | parser only — UNVERIFIED end-to-end, no real credential target in CI |
+| `src/worker/tools/strix.ts`, `cairn.ts` | **Tier A offensive only.** Autonomous AI exploit agents | LLM API key + Docker | `not_configured` | 🔒 Tier A + per-target authorization + verified domain | no — UNVERIFIED, real-CLI wrapper rewrite still pending (see NEXT-STEPS) |
 | `src/worker/tools/whatwaf.ts` | WAF/IDS detection | `whatwaf` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/kiterunner.ts` | API endpoint brute-force discovery | `kiterunner` binary | `not_configured` | ⚠️ path-gated | no |
 | `src/worker/tools/arjun.ts` | Hidden parameter discovery | `arjun` binary | `not_configured` | ⚠️ path-gated | no |
@@ -254,18 +264,18 @@ readiness (Sprint 15+); the library layer is complete and tested.
 
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
-| SSO/SAML | SAML 2.0 assertion parsing, IdP metadata validation, SP metadata generation | `src/lib/ssoSaml.ts` | ✅ `ssoSaml.test.ts` (10 tests) |
-| RBAC | Role hierarchy (viewer→editor→admin→owner), permission checks, role assignment validation | `src/lib/rbac.ts` | ✅ `rbac.test.ts` (9 tests) |
-| SCIM 2.0 provisioning | User resource parsing/serialization, list responses, bearer token validation | `src/lib/scimProvisioning.ts` | ✅ `scimProvisioning.test.ts` (10 tests) |
+| SSO/SAML | **Deleted** (confirmed gone from `src/` as of 2026-10-12; was never wired to a route) | ~~`src/lib/ssoSaml.ts`~~ | n/a |
+| RBAC | Role hierarchy (viewer→editor→admin→owner), permission checks, role assignment validation. Unwired — no route calls it; owner-decision candidate for deletion (`docs/NEXT-STEPS.md`) | `src/lib/rbac.ts` | ✅ `rbac.test.ts` (9 tests) |
+| SCIM 2.0 provisioning | User resource parsing/serialization, list responses, bearer token validation. Unwired — owner-decision candidate for deletion | `src/lib/scimProvisioning.ts` | ✅ `scimProvisioning.test.ts` (10 tests) |
 | IP allowlisting | **Live, per API key** (IPv4 + IPv6). Enforced in `apiAuth.ts`; a refused key gets the same 401 as an unknown one, and the refusal is recorded on the key. Set via `PATCH /api/keys` and the dashboard's API keys panel. Needs migration 042; until then keys stay unrestricted and saving returns 503 | `src/lib/ipAllowlist.ts`, `src/lib/apiAuth.ts`, `src/pages/api/keys.ts`, `src/components/ApiKeys.tsx` | ✅ `ipAllowlist.test.ts`, `apiAuth.test.ts`, `__tests__/api/keys.test.ts`, `ApiKeys.test.tsx` |
 
 ### Organization & Multi-tenancy
 
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
-| Org/workspace model | Organization CRUD, membership management, workspace isolation | `src/lib/orgModel.ts` | ✅ `orgModel.test.ts` (8 tests) |
-| MSP portal | Per-client health scoring (healthy/warning/critical), cross-org dashboard aggregation | `src/lib/mspPortal.ts` | ✅ `mspPortal.test.ts` (4 tests) |
-| Custom scan policies | Policy validation, check enable/disable, finding exclusion, pass/fail evaluation | `src/lib/customScanPolicies.ts` | ✅ `customScanPolicies.test.ts` (9 tests) |
+| Org/workspace model | **Deleted** (confirmed gone from `src/` as of 2026-10-12; was never wired to a route) | ~~`src/lib/orgModel.ts`~~ | n/a |
+| MSP portal | Per-client health scoring (healthy/warning/critical), cross-org dashboard aggregation. Unwired, owner-decision candidate for deletion — **don't confuse with the shipped, live Partner Portal** (`PartnerPortalPanel.tsx`, Agency-gated, §5) | `src/lib/mspPortal.ts` | ✅ `mspPortal.test.ts` (4 tests) |
+| Custom scan policies | Policy validation, check enable/disable, finding exclusion, pass/fail evaluation. Unwired, owner-decision candidate for deletion | `src/lib/customScanPolicies.ts` | ✅ `customScanPolicies.test.ts` (9 tests) |
 
 ### Reporting & Compliance
 
@@ -275,14 +285,14 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | Multi-framework compliance reporting | Per-framework control pass/fail across 7 frameworks (ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA), overall score, markdown export | `src/lib/complianceReport.ts` | ✅ `complianceReport.test.ts` (5 tests) |
 | SLA monitoring | **Live, Agency (admins exempt).** Per-account remediation targets in days (default 15/30/90/180, critical/high per CISA BOD 19-02), open-finding deadlines across sites, median time-to-fix, one email per finding when due soon and when breached. Built on `finding_lifecycle`, synced after every scan; a scan only resolves findings whose producing check it actually ran. `/dashboard/sla`, `GET/PUT /api/account/sla`. Needs migration 043; until then tracking is a no-op and the page says so | `src/lib/slaMonitoring.ts`, `src/lib/findingLifecycle.ts`, `src/lib/slaAlerts.ts`, `src/pages/api/account/sla.ts`, `src/components/SlaDashboard.tsx` | ✅ `slaMonitoring.test.ts`, `findingLifecycle.test.ts`, `slaAlerts.test.ts`, `__tests__/api/account/sla.test.ts`, `SlaDashboard.test.tsx` |
 | Finding triage (E-64) | **Live, all plans.** Per finding per site (owner, host, checkId): accepted risk / authorised, false positive, or snoozed (7/30/90 days from the report; any expiry up to a year via the API), always with a reason; Undo. Active triage leaves the report's open list and executive-summary counts (collapsed "Triaged" group), SLA tracking and alerts, new-finding email/on-call alerts, and the GitHub Action's gate; only false positives leave future scores. `triage` field on `GET /api/v1/scans/{id}`, the webhook payload and the CSV/JSON export. `GET/PUT/DELETE /api/findings/triage` (bulk up to 200, audited `finding.triaged`/`finding.untriaged`). Needs migration 046; until then nothing is triaged and writes return 503 | `src/lib/findingTriage.ts`, `src/pages/api/findings/triage.ts`, `src/components/FindingTriage.tsx`, `src/components/ScanReportView.tsx`, `src/lib/slaMonitoring.ts`, `src/lib/scanExecution.ts`, `action/index.js` | ✅ `findingTriage.test.ts`, `__tests__/api/findings/triage.test.ts`, `FindingTriage.test.tsx`, `slaMonitoring.test.ts`, `slaAlerts.test.ts`, `__tests__/api/account/sla.test.ts`, `scanReport.test.ts`, `export.test.ts`, `scanAlerts.test.ts`, `oncallAlerts.test.ts`, `githubAction.test.ts` |
-| Risk scoring | 5-factor composite scoring (severity 0.35, exploitability 0.25, density 0.15, attack surface 0.15, compliance impact 0.10), A-F grading, trend comparison | `src/lib/riskScoring.ts` | ✅ `riskScoring.test.ts` (8 tests) |
+| Risk scoring | 5-factor composite scoring (severity 0.35, exploitability 0.25, density 0.15, attack surface 0.15, compliance impact 0.10), A-F grading, trend comparison. Unwired, owner-decision candidate for deletion | `src/lib/riskScoring.ts` | ✅ `riskScoring.test.ts` (8 tests) |
 
 ### Advanced Scanning
 
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
-| GraphQL scanning | Schema introspection detection, query depth analysis, field suggestion leak detection | `src/lib/scanners/graphql.ts` | ✅ `graphql.test.ts` (7 tests) |
-| Proof-of-exploit | Safe, verifiable proof generation for findings (metadata-enriched) | Integrated into `src/lib/scanners/index.ts` via `Finding.metadata` | ✅ covered by scanner tests |
+| GraphQL scanning | Schema introspection detection, query depth analysis, field suggestion leak detection. **Wired** (PR #12) — runs in `runAllChecks()` on every scan, not just a library module | `src/lib/scanners/graphql.ts` | ✅ `graphql.test.ts` (7 tests) |
+| Proof-of-exploit | Safe, verifiable proof generation (open redirect, CORS reflection, reflected XSS, info disclosure). **Wired** (PR #11) — `confirmExploitable()` runs in `scanExecution.ts` on every profile except `safe` | `src/lib/scanners/proofOfExploit.ts`, `xssConfirm.ts` | ✅ covered by scanner tests |
 | Scan windows | Maintenance window definition, overlap detection, scan-eligibility checks | `src/lib/scanWindows.ts` | ✅ `scanWindows.test.ts` (8 tests) |
 
 ### Integrations
@@ -293,7 +303,7 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | CI/CD SDK | Pipeline configuration generation, threshold-based gating, multi-provider support | `src/lib/cicdSdk.ts` | ✅ `cicdSdk.test.ts` (6 tests) |
 | ServiceNow tickets | Incident create/get/close/comment via Table API, Basic auth | `src/lib/ticketProviders.ts` | ✅ `ticketProviders.test.ts` (11 tests, shared with GitHub Issues) |
 | GitHub Issues tickets | Issue create/get/close/comment via REST API | `src/lib/ticketProviders.ts` | ✅ (same test file) |
-| GraphQL API | Schema definition, query parsing, operation name extraction, introspection detection, depth validation | `src/lib/graphqlApi.ts` | ✅ `graphqlApi.test.ts` (7 tests) |
+| GraphQL API | Schema definition, query parsing, operation name extraction, introspection detection, depth validation. Unwired, owner-decision candidate for deletion — **don't confuse with the shipped, wired GraphQL scanner** (`graphql.ts`, §5 above) | `src/lib/graphqlApi.ts` | ✅ `graphqlApi.test.ts` (7 tests) |
 | Audit logging (expanded) | Extended event vocabulary, org-scoped audit trails | `src/lib/audit.ts` (extended) | ✅ `audit.test.ts` |
 
 ---

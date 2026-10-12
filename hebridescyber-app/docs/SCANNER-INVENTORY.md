@@ -196,14 +196,16 @@ Counts: base suite 31 rows above (including CMS-specific rows and the no-finding
 
 ### B3. Modules present in the repo but not wired into any scan path
 
-Verified by grepping for imports and function calls outside tests.
+Verified by grepping for imports and function calls outside tests. **Corrected 2026-10-12** — this
+table was itself stale: `graphql.ts` (PR #12) and `proofOfExploit.ts`/`xssConfirm.ts` (PR #11) were
+wired in while this table still described them as dead. Only `easmDiscovery.ts` and `graphqlApi.ts`
+(a separate module from `graphql.ts` — a GraphQL schema/query-parsing library, not a scanner; see
+`FUNCTIONALITY-MATRIX.md` §"Integrations") remain genuinely unwired.
 
 | Module | Exports | Status |
 |---|---|---|
-| `src/lib/scanners/graphql.ts` | `runGraphqlChecks()`: introspection, no-auth, no depth limit on `/graphql`, `/gql`, `/api/graphql`, `/v1/graphql`, `/query`; would emit `graphql.introspection:<endpoint>`, `graphql.no-auth:<endpoint>`, `graphql.no-depth-limit:<endpoint>` | Imported by nothing. Not in `runAllChecks()`, `runExtendedTools()` or any profile. These checkIds are never produced in a real scan. |
-| `src/lib/easmDiscovery.ts` | `runEasmDiscovery()` (crt.sh plus DNS brute-force of common prefixes plus HTTP probing) | Imported by nothing. Its header claims it runs as a post-scan step in `scanExecution.ts`; it does not. Its DNS brute-force would conflict with the stated no-brute-force position if wired. |
-| `src/lib/scanners/proofOfExploit.ts` | `validateExploit()`, `enrichWithProofOfExploit()` | Not called by any scan or API route. |
-| `src/lib/scanners/xssConfirm.ts` | `confirmReflectedXss()`, `playwrightDomVerifier` | Only imported by `proofOfExploit.ts`, so also unwired. |
+| `src/lib/easmDiscovery.ts` | `runEasmDiscovery()` (crt.sh plus DNS brute-force of common prefixes plus HTTP probing) | Imported by nothing. Its header claims it runs as a post-scan step in `scanExecution.ts`; it does not. Its DNS brute-force would conflict with the base-suite no-brute-force position if wired (it could, however, be wired into the Tier A `offensive` profile instead, which now permits bounded brute-force — see Part C below). |
+| `src/lib/graphqlApi.ts` | Schema definition, query parsing, operation name extraction, introspection detection, depth validation | Imported only by its own test. Not a scanner — don't confuse with `scanners/graphql.ts` (wired, see B2 above). Owner-decision candidate for deletion. |
 
 Related notes: `checkId` families `crawl.auth.*` are produced only through `authCheck` (extended). `metadataLeak` is also listed as a profile key but only yields findings when Photon or Gospider produced URL assets in the same run.
 
@@ -213,9 +215,18 @@ Related notes: `checkId` families `crawl.auth.*` are produced only through `auth
 
 From `docs/USER-GUIDE.md` section 6 and `docs/COMPETITIVE-ANALYSIS.md` section 9, as stated policy:
 
-- No brute-forcing and no destructive payloads; active tools run only on ownership-verified domains.
+- No brute-forcing and no destructive payloads on any plan below Tier A; active tools run only
+  against ownership-verified domains. **Tier A** is an explicit, per-target opt-in exception: once
+  authorized, it sends real attack traffic — bounded content/path discovery (a brute-force of a
+  curated path list), credential-defence testing, and, where separately enabled, real credential
+  spraying against a designated test account and real exploitation. See
+  `docs/USER-GUIDE.md` §6 and `FUNCTIONALITY-MATRIX.md`'s Tier A rows for the gating detail.
 - No fabricated findings: a check that cannot evidence something reports nothing (hence `error` / `partial` / `not_applicable` states that never resolve findings as fixed).
-- No full crawl-behind-login, no IDOR testing, no multi-step auth (OAuth/MFA) handling.
+- No deep IDOR testing, no multi-step auth (OAuth/MFA) handling. Authenticated scanning (a saved
+  session cookie or Basic Auth credential) does run a real signed-in crawl across every page it can
+  reach while logged in (`authenticatedCrawl.ts`), plus a narrow check for a handful of common API
+  paths that answer without authorisation — it does not test whether one logged-in user can reach
+  another user's specific data, and it never attempts an OAuth/MFA flow itself.
 - No full code review: SAST is pattern-based, about 35 rules, JS/TS, Python, PHP.
 - No cloud account-level IAM auditing (ScoutSuite/Prowler style).
 
@@ -228,12 +239,12 @@ Code-level safety rules that are consistent across modules: GET-only crawling, f
 **Release installs checked 2026-10-06** (every asset downloaded and hashed): nuclei, subfinder and gitleaks install and are SHA-256-pinned; trivy is 0.75.0 with a checksum. **gospider, kiterunner and httpx now install and are verified**: all three are pinned by SHA-256 and their parsers built against real captured output, with `*.integration.test.ts` running the real binaries in CI (fixtures in `src/worker/tools/fixtures/` and `src/lib/scanners/fixtures/httpx/`). httpx (v1.6.10) probes the target and Subfinder's discovered hostnames for a live HTTP service — the gap where subdomains were enumerated but never probed. **A latent bug this uncovered:** every wrapper shelled out with `promisify(execFile)`, which leaves the child's stdin an open pipe; nuclei and gospider read targets from stdin and so hung until killed at their timeout — i.e. **every scheduled scan's nuclei step produced nothing**. All wrappers now use `src/lib/execTool.ts`, which closes stdin. **strix and cairn are still `not_configured`** and are handled separately (autonomous AI exploit agents needing an LLM key, Docker and a real target to verify; see NEXT-STEPS).
 
 1. `docs/FUNCTIONALITY-MATRIX.md` section 3 is stale. It describes the extended suite as gated by `runExtendedTools` set via `const runExtendedTools = !scanId`; the code uses scan profiles (`scanProfiles.ts`, `decideScanConfig()` in `run-queued-scan-jobs.ts`). It says nmap does a "SYN, top-1000 ports, service/OS detect"; the code runs a TCP connect `-sV` on 13 fixed ports (nmap's own header documents this). It names `ajaxSpider.ts`; the file is `zapAjaxSpider.ts`. It says authenticated scanning is a header/cookie recheck; the code also runs a signed-in crawl (`crawl.auth.*`).
-2. `src/app/what-we-check/page.tsx` (and `CLAUDE.md`'s `ports.ts` line) say ports are checked "using Shodan's InternetDB, no port-scanning traffic sent to your infrastructure". `ports.ts` makes direct TCP connections to 30 ports; InternetDB is used only in `recon.ts` for CVEs. (Comment in `nmap.ts` repeats the InternetDB claim for `ports.ts`.)
+2. **Fixed 2026-10-12** — `what-we-check`, `CLAUDE.md`'s `ports.ts` line and the `nmap.ts` comment all now correctly describe `ports.ts` as direct TCP connects (InternetDB stays `recon.ts`-only, for CVEs).
 3. The same page has no section for: Wayback discovery, HIBP breach search, Safe Browsing, Supabase backend exposure, site crawl, business-logic checks, API-spec checks, WPScan VDB / software CVE matches, and, in the extended tier, Gitleaks, Trivy, Subfinder, testssl.sh, cloud posture. It says authenticated scanning is "not a full crawl behind login", which no longer matches `authenticatedCrawl.ts`.
-4. `docs/USER-GUIDE.md` section 6 and `COMPETITIVE-ANALYSIS.md` section 9 said no crawl-behind-login, no IDOR testing, no brute-forcing, no destructive payloads, no cloud auditing. The code includes a signed-in crawl, `sessionCheck` IDOR indicators, Kiterunner curated-wordlist API-route discovery (now wired; User-Guide §6 reworded to describe it accurately — still no destructive payloads), a 5-request dummy-credential POST probe in the base `business-logic.no-rate-limit` check, and public-access cloud posture checks (not IAM auditing, but credentialed). Strix/Cairn (autonomous exploit agents) remain `not_configured`; if enabled, the "no destructive payloads" promise must be revisited first.
+4. **Fixed 2026-10-12** — `USER-GUIDE.md` §6 now describes the signed-in crawl accurately (not "a narrow header/cookie recheck") and carries the Tier A carve-out (the opt-in offensive mode *does* now send brute-force/real attack traffic, under Tier A + per-target authorization only — see item below). `COMPETITIVE-ANALYSIS.md` §9 has now also been checked and already carried the correct Tier A/signed-in-crawl carve-outs; its D2 score and "Enterprise feature inventory" table were separately found stale (crediting unwired/deleted modules) and corrected in the same pass — see its §8 correction notes.
 5. `ai-pentest` profile cannot currently be selected: `sql/migrations/020_scan_profiles.sql` and `021_scan_bundles.sql` constrain `scan_profile`/`base_profile` to safe/full/api/cms/osint, and `MonitoredTargets.tsx` offers no such option. No code enforces the "Agency or higher" gate that `strix.ts` and `scanProfiles.ts` mention. Also the profile enables `cairn` as well as `strix` (the comment mentions only Strix).
 6. `scanProfiles.ts` header still lists Kiterunner, Arjun, WPScan, CMSmap, Gospider, Photon and WhatWaf as "don't exist yet"; they all exist. `resolveToolConfig()` docstring says "all-14-keys"; there are 31. `executeScan()` hard-codes `BASE_CHECK_NAMES.length + 26` for the progress total, but there are 31 tool keys.
 7. `nuclei.ts` and `scheduled-scans.yml` refer to `worker.Dockerfile` pins; no such file exists in the repo. Real pins live only in `scheduled-scans.yml`. Only Opengrep is checksum-verified; nmap, sqlmap, commix, testssl.sh, whatwaf, wpscan, cmsmap, photon, arjun and the ZAP image tag are unpinned, nuclei templates update at run time, and the ZAP API key is the literal `changeme` in the workflow.
 8. In the scheduled worker, `ZAP_API_URL` is set for every job, so the base suite's `checkZap()` starts an extra ZAP spider even for `safe`-profile jobs and in addition to `runZap()` for other profiles. On-demand runs never have ZAP.
 9. nmap scans 21, 22, 23, 25, 3306, 5432 and 8500 but only six ports (2375, 2376, 6379, 9200, 27017, 2379) can ever become `nmap.dangerous-port` findings.
-10. Unwired modules (`graphql.ts`, `easmDiscovery.ts`, `proofOfExploit.ts`, `xssConfirm.ts`) are described in their headers or in `CLAUDE.md`/docs as active; GraphQL and EASM checks therefore do not run today.
+10. **Corrected 2026-10-12** — this item was itself stale: `graphql.ts` (PR #12), `proofOfExploit.ts` and `xssConfirm.ts` (PR #11) are all now wired into `runAllChecks()`/`scanExecution.ts` and run on every real scan; only `easmDiscovery.ts` is still genuinely unwired (its DNS brute-force conflicts with the no-brute-force rule — see NEXT-STEPS item 7's deletion-candidate note).
