@@ -195,9 +195,9 @@ function RemediationBody({ markdown }: { markdown: string }) {
                   const [headerRow, , ...bodyRows] = lines.map(cellsOf);
 
                   return (
-                    <div key={j} className="overflow-x-auto">
-                      <table className="w-full border-collapse text-xs">
-                        <thead>
+                    <div key={j} className="sm:overflow-x-auto print:overflow-visible">
+                      <table className="block w-full border-collapse text-xs sm:table print:table">
+                        <thead className="hidden sm:table-header-group print:table-header-group">
                           <tr className="border-b border-cyberborder text-left">
                             {headerRow.map((cell, ci) => (
                               <th key={ci} className="py-1 pr-4 font-semibold text-cybertext/80 print:text-slate-900">
@@ -206,11 +206,18 @@ function RemediationBody({ markdown }: { markdown: string }) {
                             ))}
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 print:table-row-group">
                           {bodyRows.map((row, ri) => (
-                            <tr key={ri} className="border-b border-cyberborder/40 last:border-0">
+                            <tr
+                              key={ri}
+                              className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-2 sm:table-row sm:border-0 sm:border-b sm:border-cyberborder/40 sm:bg-transparent sm:p-0 sm:last:border-0 print:table-row print:border-b print:border-slate-300 print:bg-transparent print:p-0"
+                            >
                               {row.map((cell, ci) => (
-                                <td key={ci} className="py-1 pr-4 text-cybertext/70 print:text-slate-700">
+                                <td
+                                  key={ci}
+                                  data-label={headerRow[ci]}
+                                  className="flex items-baseline justify-between gap-3 py-0.5 text-cybertext/70 before:shrink-0 before:pr-3 before:font-semibold before:text-cybertext/80 before:content-[attr(data-label)] sm:table-cell sm:py-1 sm:pr-4 sm:before:hidden print:text-slate-700 print:before:hidden"
+                                >
                                   {renderInline(cell)}
                                 </td>
                               ))}
@@ -1012,9 +1019,9 @@ export function ScriptInventorySection({ inventory }: { inventory: ScriptInvento
                 : "This page loads no scripts from third-party sources."}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead>
+            <div className="sm:overflow-x-auto print:overflow-visible">
+              <table className="block w-full border-collapse text-left text-xs sm:table print:table">
+                <thead className="hidden sm:table-header-group print:table-header-group">
                   <tr className="border-b border-cyberborder text-cybermuted print:text-slate-600">
                     <th scope="col" className="py-2 pr-4 font-semibold">Origin</th>
                     <th scope="col" className="py-2 pr-4 font-semibold">Found by</th>
@@ -1022,12 +1029,15 @@ export function ScriptInventorySection({ inventory }: { inventory: ScriptInvento
                     <th scope="col" className="py-2 font-semibold">Sample script</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 print:table-row-group">
                   {inventory.origins.map((entry) => {
                     const integrity = INTEGRITY_META[entry.integrity];
                     return (
-                      <tr key={entry.origin} className="border-b border-cyberborder/40 align-top last:border-0">
-                        <td className="py-2 pr-4">
+                      <tr
+                        key={entry.origin}
+                        className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 align-top sm:table-row sm:border-0 sm:border-b sm:border-cyberborder/40 sm:bg-transparent sm:p-0 sm:last:border-0 print:table-row print:border-b print:border-slate-300 print:bg-transparent print:p-0"
+                      >
+                        <td className="py-0.5 sm:table-cell sm:py-2 sm:pr-4 print:py-2 print:pr-4">
                           <span className="break-all font-mono text-cybertext print:text-slate-800">{entry.origin}</span>
                           {entry.paymentProvider && (
                             <span className="mt-1 block text-[10px] uppercase tracking-wide text-warning">
@@ -1035,9 +1045,19 @@ export function ScriptInventorySection({ inventory }: { inventory: ScriptInvento
                             </span>
                           )}
                         </td>
-                        <td className="whitespace-nowrap py-2 pr-4 text-cybertext/70 print:text-slate-700">{FOUND_BY_LABEL[entry.foundBy]}</td>
-                        <td className={`whitespace-nowrap py-2 pr-4 font-medium ${integrity.text}`}>{integrity.label}</td>
-                        <td className="py-2 text-cybertext/70 print:text-slate-700">
+                        <td
+                          data-label="Found by"
+                          className="flex items-baseline justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:whitespace-nowrap sm:py-2 sm:pr-4 sm:before:hidden print:text-slate-700 print:before:hidden"
+                        >
+                          {FOUND_BY_LABEL[entry.foundBy]}
+                        </td>
+                        <td
+                          data-label="Integrity"
+                          className={`flex items-baseline justify-between gap-3 py-0.5 font-medium before:font-mono before:text-[10px] before:font-normal before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:whitespace-nowrap sm:py-2 sm:pr-4 sm:before:hidden print:before:hidden ${integrity.text}`}
+                        >
+                          {integrity.label}
+                        </td>
+                        <td className="py-0.5 text-cybertext/70 sm:table-cell sm:py-2 print:py-2 print:text-slate-700">
                           <span className="break-all font-mono">{entry.sampleUrls[0]}</span>
                           {entry.scriptCount > 1 && (
                             <span className="mt-1 block text-cybermuted">+{entry.scriptCount - 1} more from this origin</span>
