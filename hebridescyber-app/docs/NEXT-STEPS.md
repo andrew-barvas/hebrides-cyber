@@ -39,6 +39,7 @@ Database migrations: files exist through **050**; the next free number is **051*
 | End-of-life detection; certificate checks (incl. subdomains); TLS now reads broken certs | `endOfLife.ts`, `subdomainCerts.ts`, `tls.ts` |
 | Fix-PR repo-ownership check; multi-repo scans; Playwright on scan runners | commit 3180aa6 |
 | Report fixes: security.txt not an "exposed file"; one compliance badge per framework | commit a91ad40 |
+| Mobile card-stack tables, PWA manifest/icons/viewport | `ScanList.tsx`/`FleetOverview.tsx`/`SlaDashboard.tsx`/`ScanReportView.tsx`'s tables stack into cards below `sm:`; `manifest.ts`, `touch-icon-180.png`/`icon-192.png`/`icon-512.png`, `viewport` export; `tests/e2e/mobile-tables.mobile.spec.ts` + a Chromium-based mobile Playwright project — see CLAUDE.md "Mobile & PWA" |
 
 Coverage floor (`vitest.config.mts`): **71 / 64 / 72 / 72** (statements /
 branches / functions / lines). Lint: 0 errors (33 known warnings).
