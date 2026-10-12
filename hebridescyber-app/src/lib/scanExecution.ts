@@ -46,7 +46,8 @@ import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
-import { sendAttackSurfaceAlerts } from "./attackSurfaceMonitor";
+import { sendAttackSurfaceAlerts, monitoredDomain } from "./attackSurfaceMonitor";
+import { runEasmDiscovery } from "./easmDiscovery";
 import type { ReconResult } from "./scanners/recon";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
@@ -1004,6 +1005,21 @@ export async function executeScan(
     // errors internally (see its header), so this can never flip a
     // completed scan back to failed.
     await syncAssetInventory(supabaseAdmin, ownerId, targetUrl, results, extended);
+
+    // EASM: independently-sourced subdomain discovery (crt.sh), beyond what
+    // this scan's own recon/subdomain enumeration found. Also swallows its
+    // own errors (see its header). Rows it inserts into asset_inventory are
+    // picked up for free by sendAttackSurfaceAlerts below — no separate
+    // alert wiring needed. DNS brute-force only runs once this scan has
+    // already cleared the Tier A offensive-profile gate (contentDiscovery
+    // is that profile's other active-discovery tool, so its having run is
+    // the signal this scan is authorized for it).
+    const domain = monitoredDomain(new URL(targetUrl).hostname);
+    if (domain) {
+      await runEasmDiscovery(supabaseAdmin, ownerId, domain, {
+        bruteForce: (extended?.contentDiscovery as { status?: string } | undefined)?.status === "completed",
+      });
+    }
   } catch (err) {
     await supabaseAdmin
       .from("scans")

@@ -262,12 +262,16 @@ Not restated here — see that file for the itemised list, and
 > `customScanPolicies`, `riskScoring`, `cicdSdk`, `graphqlApi` and
 > `easmDiscovery` have **no importers outside their own tests**. No page,
 > API route or scan step uses them. Do not cite them in sales material or
-> score them in §4 until they're wired in. **Update (2026-10-12): `ssoSaml`
-> and `orgModel` are now confirmed deleted from `src/` entirely** (see
-> `FUNCTIONALITY-MATRIX.md` §5b) — don't cite them even as "unwired", they
-> don't exist. **`proofOfExploit` (and the `xssConfirm` it calls) were wired
+> score them in §4 until they're wired in. **Update (2026-10-12): `ssoSaml`,
+> `orgModel` and `cicdSdk` are now confirmed deleted from `src/` entirely**
+> (see `FUNCTIONALITY-MATRIX.md` §5b) — don't cite them even as "unwired",
+> they don't exist. **`proofOfExploit` (and the `xssConfirm` it calls) were wired
 > into `scanExecution.ts` in PR #11** and are no longer in this unwired
-> list. `ipAllowlist` (per-API-key, 2026-09-27), `complianceReport` (export
+> list. **`easmDiscovery` was wired into `scanExecution.ts` on 2026-10-12**
+> (crt.sh on every scan, DNS brute-force gated behind the Tier A offensive
+> profile) and is also no longer in this unwired list — see
+> `docs/SCANNER-INVENTORY.md` §B3 and `CLAUDE.md` "EASM discovery".
+> `ipAllowlist` (per-API-key, 2026-09-27), `complianceReport` (export
 > endpoint + button), `slaMonitoring` (`/dashboard/sla`),
 > `siemIntegration`, `scanWindows` and `scheduledReports` are live. See
 > §12 for the full list.
@@ -381,7 +385,7 @@ The following gaps were closed in Sprint 15 alongside the SBOM/EASM work:
 | Item | Status | Notes |
 |---|---|---|
 | **SBOM generation** (CycloneDX 1.5) | ✅ done | `sbomExport.ts` + `GET /api/v1/scans/{id}/sbom` |
-| **EASM discovery** | ✅ done | `easmDiscovery.ts` — crt.sh + DNS brute-force + HTTP probing → `asset_inventory` |
+| **EASM discovery** | ✅ done (wired into `executeScan` 2026-10-12, see §8's correction note above) | `easmDiscovery.ts` — crt.sh (every scan) + HTTP probing + DNS brute-force (Tier A offensive profile only) → `asset_inventory` |
 | **Scheduled report delivery** | ✅ done | Was 80% built; `send-scheduled-reports.ts` + hourly cron now sends due reports |
 | **Scheduled reports dashboard UI** | ✅ done | `ScheduledReportsConfig` component on dashboard |
 | **CVSS badges on findings** (E-55) | ✅ already done | Data flowed through; FindingCard already rendered badges |
@@ -584,7 +588,7 @@ step uses it today, not that a library exists.
 
 | NCSC category | Status | Where |
 |---|---|---|
-| Asset discovery (domains, subdomains, IPs) | Partial | CT-log subdomains (`recon.ts`), Shodan InternetDB. `easmDiscovery.ts` exists but isn't wired into any pipeline |
+| Asset discovery (domains, subdomains, IPs) | Live | CT-log subdomains (`recon.ts`, `easmDiscovery.ts` — wired into `executeScan` 2026-10-12), Shodan InternetDB |
 | Technology identification | Live | `fingerprint.ts` (40+ technologies) |
 | Service identification | Live | `ports.ts`, Shodan; `nmap` in the scheduled suite |
 | DNS configuration | Live | `dns.ts` |
@@ -638,9 +642,9 @@ step uses it today, not that a library exists.
    (change and tamper detection). Most SME scanners have nothing here. It
    needs a decision on how a "new since last scan" finding resolves, so
    it doesn't read as "fixed" a scan later.
-3. **Wire `easmDiscovery.ts` into the scheduled pipeline**, so discovery
-   is continuous rather than per scan. It then feeds `takeover.ts` and
-   the asset inventory.
+3. ~~**Wire `easmDiscovery.ts` into the scheduled pipeline**~~ done
+   2026-10-12 — it runs per scan (`executeScan`), not yet on an independent
+   schedule; a fully schedule-decoupled version is still a possible later step.
 4. **Finding workflow state**: accept-risk, false-positive and snooze,
    each with a reason and expiry. Intruder, HostedScan and NCSC's
    checklist all expect it. Accepted findings would pause SLA clocks.

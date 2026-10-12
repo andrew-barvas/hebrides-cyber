@@ -62,6 +62,12 @@ with the evidence named.
   - riskScoring, cicdSdk, graphqlApi, easmDiscovery, proofOfExploit
 
   Sprints 9–13 recorded these as delivered. They are libraries, not features.
+  **Update**: `proofOfExploit` (PR #11) and `easmDiscovery` (2026-10-12) are
+  now actually wired in — see CLAUDE.md. `ssoSaml`/`orgModel`/`cicdSdk` are
+  since deleted from `src/` entirely (confirmed — no file, no importer).
+  The other six (`rbac`, `scimProvisioning`, `mspPortal`,
+  `customScanPolicies`, `riskScoring`, `graphqlApi`) are still unwired as
+  of this writing.
 - 22 scanner/tool modules have no tests (tracked in ENHANCEMENTS E-67).
 - Dead GitHub secrets: `DIGEST_SERVICE_TOKEN` and `NEWSLETTER_SERVICE_TOKEN` gate routes deleted in E-11. Safe to remove.
 
