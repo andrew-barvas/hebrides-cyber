@@ -198,13 +198,14 @@ Counts: base suite 31 rows above (including CMS-specific rows and the no-finding
 
 Verified by grepping for imports and function calls outside tests. **Corrected 2026-10-12** — this
 table was itself stale: `graphql.ts` (PR #12) and `proofOfExploit.ts`/`xssConfirm.ts` (PR #11) were
-wired in while this table still described them as dead. Only `easmDiscovery.ts` and `graphqlApi.ts`
-(a separate module from `graphql.ts` — a GraphQL schema/query-parsing library, not a scanner; see
-`FUNCTIONALITY-MATRIX.md` §"Integrations") remain genuinely unwired.
+wired in while this table still described them as dead. **Updated again, same day**: `easmDiscovery.ts`
+is now wired in too — crt.sh on every scan (`executeScan`, right after `syncAssetInventory`), DNS
+brute-force only once the Tier A offensive profile's gate has cleared (see CLAUDE.md "EASM discovery").
+Only `graphqlApi.ts` (a separate module from `graphql.ts` — a GraphQL schema/query-parsing library, not
+a scanner; see `FUNCTIONALITY-MATRIX.md` §"Integrations") remains genuinely unwired.
 
 | Module | Exports | Status |
 |---|---|---|
-| `src/lib/easmDiscovery.ts` | `runEasmDiscovery()` (crt.sh plus DNS brute-force of common prefixes plus HTTP probing) | Imported by nothing. Its header claims it runs as a post-scan step in `scanExecution.ts`; it does not. Its DNS brute-force would conflict with the base-suite no-brute-force position if wired (it could, however, be wired into the Tier A `offensive` profile instead, which now permits bounded brute-force — see Part C below). |
 | `src/lib/graphqlApi.ts` | Schema definition, query parsing, operation name extraction, introspection detection, depth validation | Imported only by its own test. Not a scanner — don't confuse with `scanners/graphql.ts` (wired, see B2 above). Owner-decision candidate for deletion. |
 
 Related notes: `checkId` families `crawl.auth.*` are produced only through `authCheck` (extended). `metadataLeak` is also listed as a profile key but only yields findings when Photon or Gospider produced URL assets in the same run.
@@ -247,4 +248,4 @@ Code-level safety rules that are consistent across modules: GET-only crawling, f
 7. `nuclei.ts` and `scheduled-scans.yml` refer to `worker.Dockerfile` pins; no such file exists in the repo. Real pins live only in `scheduled-scans.yml`. Only Opengrep is checksum-verified; nmap, sqlmap, commix, testssl.sh, whatwaf, wpscan, cmsmap, photon, arjun and the ZAP image tag are unpinned, nuclei templates update at run time, and the ZAP API key is the literal `changeme` in the workflow.
 8. In the scheduled worker, `ZAP_API_URL` is set for every job, so the base suite's `checkZap()` starts an extra ZAP spider even for `safe`-profile jobs and in addition to `runZap()` for other profiles. On-demand runs never have ZAP.
 9. nmap scans 21, 22, 23, 25, 3306, 5432 and 8500 but only six ports (2375, 2376, 6379, 9200, 27017, 2379) can ever become `nmap.dangerous-port` findings.
-10. **Corrected 2026-10-12** — this item was itself stale: `graphql.ts` (PR #12), `proofOfExploit.ts` and `xssConfirm.ts` (PR #11) are all now wired into `runAllChecks()`/`scanExecution.ts` and run on every real scan; only `easmDiscovery.ts` is still genuinely unwired (its DNS brute-force conflicts with the no-brute-force rule — see NEXT-STEPS item 7's deletion-candidate note).
+10. **Corrected 2026-10-12** — this item was itself stale: `graphql.ts` (PR #12), `proofOfExploit.ts` and `xssConfirm.ts` (PR #11) are all now wired into `runAllChecks()`/`scanExecution.ts` and run on every real scan. `easmDiscovery.ts` was wired in the same day (crt.sh always, DNS brute-force gated behind Tier A — see B3 above); only `graphqlApi.ts` remains genuinely unwired.

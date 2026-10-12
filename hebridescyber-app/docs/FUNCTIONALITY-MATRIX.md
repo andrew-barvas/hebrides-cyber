@@ -300,7 +300,7 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
 | SIEM integration | Syslog (RFC 5424) and webhook event forwarding, severity filtering | `src/lib/siemIntegration.ts` | ✅ `siemIntegration.test.ts` (8 tests) |
-| CI/CD SDK | Pipeline configuration generation, threshold-based gating, multi-provider support | `src/lib/cicdSdk.ts` | ✅ `cicdSdk.test.ts` (6 tests) |
+| CI/CD SDK | Pipeline configuration generation, threshold-based gating, multi-provider support | `src/lib/cicdSdk.ts` | **Deleted** — confirmed gone from `src/` entirely, same as `ssoSaml.ts`/`orgModel.ts` above. The real, live CI/CD integration is `public/ci/hebrides-scan.sh` + per-system templates + `/docs/ci` (see CLAUDE.md "CI templates") — don't confuse the two. |
 | ServiceNow tickets | Incident create/get/close/comment via Table API, Basic auth | `src/lib/ticketProviders.ts` | ✅ `ticketProviders.test.ts` (11 tests, shared with GitHub Issues) |
 | GitHub Issues tickets | Issue create/get/close/comment via REST API | `src/lib/ticketProviders.ts` | ✅ (same test file) |
 | GraphQL API | Schema definition, query parsing, operation name extraction, introspection detection, depth validation. Unwired, owner-decision candidate for deletion — **don't confuse with the shipped, wired GraphQL scanner** (`graphql.ts`, §5 above) | `src/lib/graphqlApi.ts` | ✅ `graphqlApi.test.ts` (7 tests) |
