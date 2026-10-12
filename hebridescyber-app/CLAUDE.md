@@ -97,7 +97,7 @@ section, which covers what each check does, not how it's gated.
 - `directoryListing.ts` — autoindex detection, reuses `httpProbe.ts`'s baseline/masking
 - `cloudMisconfig.ts` — public S3/Azure Blob/GCS buckets, but only ones the target's own page source references
 - `fingerprint.ts` — technology detection (WordPress etc.)
-- `ports.ts` — common open ports via Shodan InternetDB
+- `ports.ts` — direct TCP connect (2s timeout) to 30 fixed security-relevant ports; no nmap, no Shodan (that's `recon.ts`, below)
 - `recon.ts` — IP resolution, Shodan CVEs, crt.sh subdomain enumeration
 - `webapp.ts` — robots.txt, HTTP OPTIONS, error disclosure, WordPress/Joomla/Drupal deep scan, CORS reflected-origin, JS library versions (CVE-enriched via `osv.ts`), Subresource Integrity on cross-origin `<script>`/`<link rel=stylesheet>` tags (same-origin resources are never flagged — SRI protects against a compromised third party, not the site's own origin)
 - `safeBrowsing.ts` — Google Safe Browsing malware/phishing check (needs `GOOGLE_SAFE_BROWSING_API_KEY`; `not_configured` without it)

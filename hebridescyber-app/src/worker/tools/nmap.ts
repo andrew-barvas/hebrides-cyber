@@ -7,7 +7,7 @@
 //
 // Runs service/version detection (-sV) on a fixed list of known-dangerous
 // ports — databases, Docker, Elasticsearch, etcd, Consul, remote shells.
-// Broad open-port discovery is ports.ts's job (Shodan InternetDB, passive).
+// Broad open-port discovery is ports.ts's job (direct TCP connect, no nmap).
 // This used to also pass --top-ports 1000, but with -p present nmap takes
 // the top ports *from within* the -p list, so it never added anything; the
 // header claimed a top-1000 scan that wasn't happening. It is also a TCP

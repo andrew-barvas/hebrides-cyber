@@ -123,7 +123,7 @@ const categories: CheckCategory[] = [
     icon: "🔌",
     name: "Open Ports & Network Exposure",
     badge: "Runs on every scan",
-    desc: "Checks which ports are visible to the internet using Shodan's InternetDB — no port-scanning traffic sent to your infrastructure directly.",
+    desc: "Direct, read-only TCP connection attempts to the 30 most security-relevant ports (no nmap, no service fingerprinting) — plus, separately, any CVEs Shodan's InternetDB already associates with your IP from its own prior internet-wide scanning.",
     checks: [
       "Administrative and database ports that shouldn't be public (SSH, RDP, MySQL, PostgreSQL, MongoDB, Redis)",
       "Risk-rated per port with the reason it matters",
@@ -258,7 +258,7 @@ const categories: CheckCategory[] = [
     icon: "🔑",
     name: "Authenticated Scanning",
     badge: "Optional (Agency)",
-    desc: "Connect a session cookie or Basic Auth credential for a monitored site and the same header/cookie/CSP/CORS checks re-run against the authenticated page — not a full crawl behind login, and not access-control (IDOR) testing. The one thing this uncovers that nothing else in this suite can: a real session cookie with insecure flags, which is invisible until you're actually logged in.",
+    desc: "Connect a session cookie or Basic Auth credential for a monitored site and the crawler runs signed in: the same header/cookie/CSP/mixed-content/SRI checks across every page it can reach while logged in, kept in their own namespace so they never merge with the anonymous results. Still not deep access-control (IDOR) testing, and it never attempts an OAuth/MFA flow — it only ever uses a credential you've already saved. The one thing this uncovers that nothing else in this suite can: a real session cookie with insecure flags, which is invisible until you're actually logged in.",
     checks: [
       "Missing security headers on the authenticated page",
       "Session cookies missing Secure/HttpOnly/SameSite — graded more seriously than the same issue on a public page",
@@ -562,11 +562,13 @@ export default function WhatWeCheckPage() {
                 <span>
                   <strong className="text-cybertext">Deep authenticated testing</strong> — every
                   scan here is unauthenticated (black-box against the public site) by default. Connecting a
-                  session cookie or Basic Auth credential (Agency plan) re-runs header/cookie/CSP/CORS
-                  checks against the logged-in page, but that&apos;s a narrow recheck, not a crawl behind
-                  login. Access-control bugs that only show up once you&apos;re logged in as one user trying
-                  to reach another user&apos;s data (IDOR), and multi-step auth flows (OAuth, MFA), aren&apos;t
-                  covered.
+                  session cookie or Basic Auth credential (Agency plan) runs a real signed-in crawl —
+                  header/cookie/CSP/mixed-content/SRI checks across every reachable page while logged in —
+                  plus a narrow check for a handful of common API paths with no authorisation at all.
+                  Access-control bugs that only show up once you&apos;re logged in as one user trying
+                  to reach another specific user&apos;s data (classic IDOR), and multi-step auth flows
+                  (OAuth, MFA), still aren&apos;t covered — it only ever uses a credential you&apos;ve
+                  already saved, never attempts a login flow itself.
                 </span>
               </li>
               <li className="flex gap-3">

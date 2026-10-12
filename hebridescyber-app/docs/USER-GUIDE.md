@@ -62,7 +62,9 @@ certificate grading, OWASP security headers + CSP grading, DNS email
 authentication (SPF/DKIM/DMARC/MTA-STS/TLS-RPT) + CAA + DNSSEC, sensitive
 file exposure (`.env`, `.git`, config backups, debug endpoints), directory
 listing detection, cloud storage misconfiguration (S3/Azure Blob/GCS),
-technology fingerprinting, open port exposure (via Shodan InternetDB),
+technology fingerprinting, open port exposure (direct TCP connect to 30
+fixed security-relevant ports, plus any CVEs Shodan's InternetDB already
+associates with your IP),
 headless-browser page health (mixed content, console errors), Certificate
 Transparency subdomain discovery, WordPress/Joomla/Drupal deep scans once
 that CMS is fingerprinted, vulnerable JS library detection (live CVE
@@ -440,9 +442,16 @@ Worth stating plainly, since it shapes several design decisions above:
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms
   behind that rule.
-- **No full crawl-behind-login, no IDOR testing, no multi-step auth
-  (OAuth/MFA) handling** — authenticated scanning is a narrow header/
-  cookie recheck, not a penetration test.
+- **No deep IDOR testing, no multi-step auth (OAuth/MFA) handling.**
+  Authenticated scanning (a saved session cookie or Basic Auth credential)
+  does run a real signed-in crawl — the same page-level checks (headers,
+  cookies, CSP, mixed content, SRI) across every page it can reach while
+  logged in, not just the single start page — plus a narrow check for a
+  handful of common API paths that answer without authorisation at all.
+  It does not test whether one logged-in user can reach another user's
+  specific data (classic IDOR), and it never attempts an OAuth/MFA flow
+  itself — it only ever uses a credential you've already obtained and saved.
+  Not a substitute for a manual penetration test.
 - **No full code review.** Source code analysis of a connected repository
   (scheduled scans only) is pattern-based SAST: ~35 high-precision rules
   for JavaScript/TypeScript, Python and PHP that look for request data
