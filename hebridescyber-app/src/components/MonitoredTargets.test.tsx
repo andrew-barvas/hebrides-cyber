@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import MonitoredTargets from "./MonitoredTargets";
+import { getSession } from "@/lib/auth";
 
 // Mocked before importing the component so its `import { supabase } from
 // "@/lib/supabaseClient"` picks up this mock — same hoisting reason as
@@ -138,5 +139,64 @@ describe("MonitoredTargets", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("https://client-site.com")).toBeEnabled());
     expect(screen.queryByText(/sites? used/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add site" })).toBeEnabled();
+  });
+});
+
+describe("AuthenticatedScanConfig — recorded login", () => {
+  beforeEach(() => {
+    vi.mocked(getSession).mockResolvedValue({ access_token: "test-token" } as never);
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  async function openLoginTab() {
+    state.targets = [{ id: "t1", target_url: "https://example.com", created_at: "2026-01-01T00:00:00Z" }];
+    render(<MonitoredTargets />);
+    fireEvent.click(await screen.findByText("+ Add authenticated scan credential"));
+    fireEvent.click(screen.getByText("Recorded login"));
+  }
+
+  it("posts to record-login (not target-auth) with the acknowledgement, on submit", async () => {
+    await openLoginTab();
+    vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ ok: true }) } as Response);
+
+    fireEvent.change(screen.getByPlaceholderText(/Login page URL/), { target: { value: "https://example.com/login" } });
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "test-account" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "s3cret" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Log in & save" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("/api/account/record-login");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      monitoredTargetId: "t1",
+      loginUrl: "https://example.com/login",
+      username: "test-account",
+      password: "s3cret",
+      acknowledged: true,
+    });
+  });
+
+  it("the consent checkbox is required — the browser blocks submission without it", async () => {
+    await openLoginTab();
+    fireEvent.change(screen.getByPlaceholderText(/Login page URL/), { target: { value: "https://example.com/login" } });
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "test-account" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "s3cret" } });
+
+    expect(screen.getByRole("checkbox")).toBeRequired();
+  });
+
+  it("shows the server's error message and never submits again automatically on failure", async () => {
+    await openLoginTab();
+    vi.mocked(fetch).mockResolvedValue({ ok: false, json: async () => ({ error: "Login did not appear to succeed." }) } as Response);
+
+    fireEvent.change(screen.getByPlaceholderText(/Login page URL/), { target: { value: "https://example.com/login" } });
+    fireEvent.change(screen.getByPlaceholderText("Username"), { target: { value: "test-account" } });
+    fireEvent.change(screen.getByPlaceholderText("Password"), { target: { value: "wrong" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Log in & save" }));
+
+    expect(await screen.findByText("Login did not appear to succeed.")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

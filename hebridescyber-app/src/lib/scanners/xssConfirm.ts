@@ -194,6 +194,54 @@ export async function confirmReflectedXss(url: string, param: string, options: {
   };
 }
 
+export type DomXssVerdict =
+  | { status: "confirmed"; probeUrl: string; evidence: string }
+  | { status: "not_confirmed"; probeUrl: string }
+  | { status: "error"; note: string };
+
+/**
+ * DOM-based XSS: a client-side script reads something the server never sees
+ * and writes it into the page unsafely — the URL fragment (everything after
+ * "#") is the clearest case, since by the HTTP spec it is never sent in the
+ * request, so `confirmReflectedXss` above structurally cannot see it. The
+ * SAME inert marker convention is reused (an unknown custom element, never
+ * real script), navigated to directly as `url#<marker>` — a page that loads
+ * fine with the marker present but never reads location.hash will not
+ * reflect it at all, so finding the element in the live DOM here is a
+ * reliable signal that some script did read it and insert it unsanitised.
+ * `browserLoad` does the actual navigation+DOM check (production uses a
+ * fresh Playwright page so this never shares state with another check).
+ */
+export async function confirmDomXss(url: string, browserLoad: DomVerifier): Promise<DomXssVerdict> {
+  const probe = makeProbe();
+  let probeUrl: string;
+  try {
+    const u = new URL(url);
+    u.hash = probe.value;
+    probeUrl = u.href;
+  } catch {
+    return { status: "error", note: "The page URL is not valid." };
+  }
+
+  let inDom: boolean;
+  try {
+    inDom = await browserLoad(probeUrl, probe.tag);
+  } catch (err) {
+    return { status: "error", note: `Browser check failed: ${(err as Error).message}` };
+  }
+  if (!inDom) return { status: "not_confirmed", probeUrl };
+
+  return {
+    status: "confirmed",
+    probeUrl,
+    evidence:
+      "Loading the page with a harmless marker in the URL fragment (the part after \"#\", never sent to the server) " +
+      "resulted in that marker appearing in the live page. Some client-side script reads the fragment and writes it " +
+      "into the page without sanitising it first — an attacker-crafted link to this page could run arbitrary script " +
+      "in a visitor's browser.",
+  };
+}
+
 /** Browser check used in production: loads the probe URL and looks for the injected element. */
 export const playwrightDomVerifier: DomVerifier = async (probeUrl, tag) => {
   const { chromium } = await import("playwright");

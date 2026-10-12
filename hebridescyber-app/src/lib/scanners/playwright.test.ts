@@ -34,6 +34,8 @@ type Scenario = {
   status?: number;
   finalUrl?: string;
   gotoError?: Error;
+  /** The DOM-XSS probe's second page: whether the marker element is found, or a load failure. */
+  domXss?: "found" | "not-found" | Error;
 };
 
 function fakeBrowser(scenario: Scenario) {
@@ -61,9 +63,18 @@ function fakeBrowser(scenario: Scenario) {
       return scenario.elements ?? [];
     }),
   };
-  const browser = { newPage: vi.fn(async () => page), close: vi.fn(async () => undefined) };
+  const probeClose = vi.fn(async () => undefined);
+  const probePage = {
+    goto: vi.fn(async () => {
+      if (scenario.domXss instanceof Error) throw scenario.domXss;
+    }),
+    locator: () => ({ count: async () => (scenario.domXss === "found" ? 1 : 0) }),
+    close: probeClose,
+  };
+  const newPage = vi.fn().mockResolvedValueOnce(page).mockResolvedValue(probePage);
+  const browser = { newPage, close: vi.fn(async () => undefined) };
   vi.mocked(chromium.launch).mockResolvedValue(browser as never);
-  return { page, browser };
+  return { page, probePage, probeClose, browser };
 }
 
 beforeEach(() => {
@@ -142,6 +153,32 @@ describe("runtime script capture", () => {
       redirected: true,
       mixedContentUrls: ["http://cdn.x.net/insecure.js", "http://cdn.x.net/logo.png"],
     });
+  });
+});
+
+describe("DOM-based XSS probe", () => {
+  it("confirms when the marker reaches the DOM of the second (probe) page, and closes it", async () => {
+    const { probePage, probeClose } = fakeBrowser({ domXss: "found" });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.domXss).toMatchObject({ status: "confirmed" });
+    expect(probePage.goto).toHaveBeenCalled();
+    expect(probeClose).toHaveBeenCalled();
+  });
+
+  it("is not_confirmed when the marker never reaches the DOM", async () => {
+    fakeBrowser({ domXss: "not-found" });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.domXss).toMatchObject({ status: "not_confirmed" });
+  });
+
+  it("is an error, not a crash, when the probe page itself fails to load — the rest of the result still returns", async () => {
+    fakeBrowser({ domXss: new Error("probe page crashed") });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.domXss).toMatchObject({ status: "error" });
+    expect(result.loadedOk).toBe(true); // the main check still succeeded
   });
 });
 
