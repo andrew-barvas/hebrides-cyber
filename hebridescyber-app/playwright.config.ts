@@ -22,7 +22,16 @@ export default defineConfig({
     // auth checks that wait on getSession() before updating state.
     timeout: 15_000,
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // *.mobile.spec.ts is excluded here and run only by the "mobile" project
+    // below — the rest of the suite assumes desktop viewport/interactions
+    // and would need its own pass to be mobile-safe.
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /.*\.mobile\.spec\.ts$/ },
+    // "Pixel 7" rather than an iPhone preset: it's Chromium-based, and
+    // deploy.yml/scheduled-scans.yml/on-demand-scan.yml only install the
+    // chromium browser (not webkit), which an iPhone/Safari preset needs.
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /.*\.mobile\.spec\.ts$/ },
+  ],
   webServer: {
     command: "npm run build && npm run start",
     url: "http://localhost:3000",

@@ -152,9 +152,9 @@ export default function FleetOverview() {
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// fleet overview ({rows.length} sites)</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
+      <div className="sm:overflow-x-auto">
+        <table className="block w-full text-sm sm:table">
+          <thead className="hidden sm:table-header-group">
             <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
               <th className="pb-2 font-normal">Site</th>
               <th className="pb-2 font-normal">Score</th>
@@ -163,24 +163,39 @@ export default function FleetOverview() {
               <th className="pb-2 font-normal">Last scanned</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-cyberborder">
+          <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 sm:divide-y sm:divide-cyberborder">
             {rows.map((row) => (
-              <tr key={row.targetId}>
-                <td className="py-2.5 pr-3 font-mono text-xs text-cybertext/80 break-all max-w-[180px]">{row.targetUrl}</td>
-                <td className="py-2.5 pr-3">
+              <tr
+                key={row.targetId}
+                className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 sm:table-row sm:border-0 sm:bg-transparent sm:p-0"
+              >
+                <td className="py-0.5 font-mono text-xs text-cybertext/80 break-all sm:table-cell sm:max-w-[180px] sm:py-2.5 sm:pr-3">{row.targetUrl}</td>
+                <td
+                  data-label="Score"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                >
                   {row.latestScore !== null ? (
                     <span className={`font-semibold ${scoreColor(row.latestScore)}`}>{row.latestScore}/100</span>
                   ) : (
                     <span className="text-cybertext/30">—</span>
                   )}
                 </td>
-                <td className="py-2.5 pr-3">
+                <td
+                  data-label="Trend"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                >
                   <MiniSparkline points={row.scoreHistory} />
                 </td>
-                <td className="py-2.5 pr-3 text-cybertext/70">
+                <td
+                  data-label="Open findings"
+                  className="flex items-center justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                >
                   {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybertext/30">—</span>}
                 </td>
-                <td className="py-2.5">
+                <td
+                  data-label="Last scanned"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden"
+                >
                   {row.lastScannedAt ? (
                     row.latestScanId ? (
                       <Link href={`/dashboard/scans/${row.latestScanId}`} className="text-neon hover:underline">

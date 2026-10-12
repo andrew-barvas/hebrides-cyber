@@ -228,10 +228,10 @@ export default function SlaDashboard({ token }: { token: string | null }) {
             }
           />
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+          <div className="mt-4 sm:overflow-x-auto">
+            <table className="block w-full text-left text-sm sm:table sm:min-w-[640px]">
               <caption className="sr-only">Open findings and their remediation deadlines</caption>
-              <thead>
+              <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-cyberborder font-mono text-[11px] uppercase tracking-wider text-cybermuted">
                   <th scope="col" className="py-2 pr-4 font-medium">Finding</th>
                   <th scope="col" className="py-2 pr-4 font-medium">Site</th>
@@ -240,17 +240,43 @@ export default function SlaDashboard({ token }: { token: string | null }) {
                   <th scope="col" className="py-2 font-medium">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-cyberborder">
+              <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 sm:divide-y sm:divide-cyberborder">
                 {items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="py-2.5 pr-4">
+                  <tr
+                    key={item.id}
+                    className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 sm:table-row sm:border-0 sm:bg-transparent sm:p-0"
+                  >
+                    <td className="py-0.5 sm:table-cell sm:py-2.5 sm:pr-4">
                       <span className="mr-2 font-mono text-[11px] uppercase text-cybermuted">{item.severity}</span>
                       <span className="text-cybertext">{item.title}</span>
                     </td>
-                    <td className="py-2.5 pr-4 text-cybermuted">{item.host}</td>
-                    <td className="py-2.5 pr-4 tabular-nums text-cybermuted">{formatDate(item.firstSeenAt)}</td>
-                    <td className="py-2.5 pr-4 tabular-nums text-cybermuted">{formatDate(item.dueAt)}</td>
-                    <td className={cn("py-2.5 font-medium tabular-nums", STATE_CLASS[item.state])}>{remainingText(item)}</td>
+                    <td
+                      data-label="Site"
+                      className="flex items-baseline justify-between gap-3 py-0.5 text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-4 sm:before:hidden"
+                    >
+                      {item.host}
+                    </td>
+                    <td
+                      data-label="First seen"
+                      className="flex items-baseline justify-between gap-3 py-0.5 tabular-nums text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-4 sm:before:hidden"
+                    >
+                      {formatDate(item.firstSeenAt)}
+                    </td>
+                    <td
+                      data-label="Due"
+                      className="flex items-baseline justify-between gap-3 py-0.5 tabular-nums text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-4 sm:before:hidden"
+                    >
+                      {formatDate(item.dueAt)}
+                    </td>
+                    <td
+                      data-label="Status"
+                      className={cn(
+                        "flex items-baseline justify-between gap-3 py-0.5 font-medium tabular-nums before:shrink-0 before:font-mono before:text-[10px] before:font-normal before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden",
+                        STATE_CLASS[item.state],
+                      )}
+                    >
+                      {remainingText(item)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -284,8 +310,8 @@ export default function SlaDashboard({ token }: { token: string | null }) {
         <Card>
           <CardTitle>time to fix</CardTitle>
           <CardDescription className="mt-1">Findings resolved in the last {data.resolvedWindowDays ?? 90} days.</CardDescription>
-          <table className="mt-3 w-full text-left text-sm">
-            <thead>
+          <table className="mt-3 block w-full text-left text-sm sm:table">
+            <thead className="hidden sm:table-header-group">
               <tr className="border-b border-cyberborder font-mono text-[11px] uppercase tracking-wider text-cybermuted">
                 <th scope="col" className="py-2 pr-3 font-medium">Severity</th>
                 <th scope="col" className="py-2 pr-3 font-medium">Target</th>
@@ -294,16 +320,39 @@ export default function SlaDashboard({ token }: { token: string | null }) {
                 <th scope="col" className="py-2 font-medium">In SLA</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-cyberborder tabular-nums">
+            <tbody className="block space-y-2 tabular-nums sm:table-row-group sm:space-y-0 sm:divide-y sm:divide-cyberborder">
               {SLA_SEVERITIES.map((s) => {
                 const r = summary.resolved[s];
                 return (
-                  <tr key={s}>
-                    <th scope="row" className="py-2 pr-3 font-medium text-cybertext">{SEVERITY_LABEL[s]}</th>
-                    <td className="py-2 pr-3 text-cybermuted">{policy.days[s]}d</td>
-                    <td className="py-2 pr-3 text-cybermuted">{r.count}</td>
-                    <td className="py-2 pr-3 text-cybermuted">{r.medianDaysToFix === null ? "—" : `${Math.round(r.medianDaysToFix * 10) / 10}d`}</td>
-                    <td className="py-2 text-cybermuted">{r.count === 0 ? "—" : `${Math.round((r.withinSla / r.count) * 100)}%`}</td>
+                  <tr
+                    key={s}
+                    className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 sm:table-row sm:border-0 sm:bg-transparent sm:p-0"
+                  >
+                    <th scope="row" className="block pb-1 text-left font-medium text-cybertext sm:table-cell sm:py-2 sm:pr-3">{SEVERITY_LABEL[s]}</th>
+                    <td
+                      data-label="Target"
+                      className="flex items-baseline justify-between gap-3 py-0.5 text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2 sm:pr-3 sm:before:hidden"
+                    >
+                      {policy.days[s]}d
+                    </td>
+                    <td
+                      data-label="Fixed"
+                      className="flex items-baseline justify-between gap-3 py-0.5 text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2 sm:pr-3 sm:before:hidden"
+                    >
+                      {r.count}
+                    </td>
+                    <td
+                      data-label="Median"
+                      className="flex items-baseline justify-between gap-3 py-0.5 text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2 sm:pr-3 sm:before:hidden"
+                    >
+                      {r.medianDaysToFix === null ? "—" : `${Math.round(r.medianDaysToFix * 10) / 10}d`}
+                    </td>
+                    <td
+                      data-label="In SLA"
+                      className="flex items-baseline justify-between gap-3 py-0.5 text-cybermuted before:shrink-0 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted/60 before:content-[attr(data-label)] sm:table-cell sm:py-2 sm:before:hidden"
+                    >
+                      {r.count === 0 ? "—" : `${Math.round((r.withinSla / r.count) * 100)}%`}
+                    </td>
                   </tr>
                 );
               })}

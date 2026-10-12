@@ -56,9 +56,9 @@ export default function ScanList({ scans, onDelete }: Props) {
         <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent scans</h2>
         {deleteError && <p className="mt-1.5 text-xs text-red-400">{deleteError}</p>}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
+      <div className="sm:overflow-x-auto">
+        <table className="block w-full border-collapse text-sm sm:table">
+          <thead className="hidden sm:table-header-group">
             <tr className="border-b border-cyberborder text-left bg-cyberbg/50">
               <th className="px-5 py-2.5 text-xs font-medium text-cybertext/40">Target</th>
               <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Score</th>
@@ -67,15 +67,18 @@ export default function ScanList({ scans, onDelete }: Props) {
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block divide-y divide-cyberborder/50 sm:table-row-group sm:divide-y-0">
             {scans.map((scan) => (
-              <tr key={scan.id} className="border-b border-cyberborder/50 last:border-0 hover:bg-cyberbg/30 transition-colors">
+              <tr
+                key={scan.id}
+                className="block px-5 py-3 transition-colors last:border-0 hover:bg-cyberbg/30 sm:table-row sm:border-b sm:border-cyberborder/50 sm:px-0 sm:py-0"
+              >
                 {/* Wraps rather than truncating — the full URL is the row's
                     primary identifier, and two scans of the same site often
                     differ only in the path. break-all so a long URL with no
                     natural break points still wraps instead of forcing the
                     table wider than its container. */}
-                <td className="px-5 py-3 font-mono text-xs text-neon/80 break-all min-w-[140px]">
+                <td className="block py-1 font-mono text-xs text-neon/80 break-all sm:table-cell sm:min-w-[140px] sm:px-5 sm:py-3">
                   {scan.target_url}
                   {scan.sharedByEmail && (
                     <span className="mt-0.5 block font-sans text-[10px] font-normal text-cybertext/40">
@@ -83,25 +86,36 @@ export default function ScanList({ scans, onDelete }: Props) {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td
+                  data-label="Score"
+                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
+                >
                   {scan.score != null ? (
                     <ScoreBadge score={scan.score} />
                   ) : (
                     <span className="text-xs text-cybertext/20">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td
+                  data-label="Status"
+                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
+                >
                   <StatusBadge status={scan.status} neverStarted={isNeverStarted(scan)} />
                 </td>
-                <td className="px-4 py-3 text-xs text-cybertext/40 whitespace-nowrap">
-                  {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  {(scan.status === "queued" || scan.status === "running") && (
-                    <span className="block text-[10px] text-cybertext/30 mt-0.5">
-                      {formatElapsed(scan.created_at)} ago
-                    </span>
-                  )}
+                <td
+                  data-label="Date"
+                  className="flex items-center justify-between gap-3 py-1 text-xs text-cybertext/40 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-3 sm:before:hidden"
+                >
+                  <span>
+                    {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {(scan.status === "queued" || scan.status === "running") && (
+                      <span className="block text-[10px] text-cybertext/30 mt-0.5">
+                        {formatElapsed(scan.created_at)} ago
+                      </span>
+                    )}
+                  </span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="block py-2 sm:table-cell sm:px-4 sm:py-3">
                   <div className="flex items-center justify-end gap-3">
                     {scan.status === "completed" ? (
                       <Link

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -28,11 +28,28 @@ export const metadata: Metadata = {
     "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in Stornoway, Isle of Lewis, Scotland.",
   icons: {
     icon: "/favicon.svg",
+    // Not named "apple-icon.png" — that exact filename is a reserved Next.js
+    // metadata-route convention name even under public/, and 404s instead of
+    // being served as a plain static file when there's no app/apple-icon.*
+    // to back it (verified: icon-192.png/icon-512.png, which aren't reserved
+    // names, serve fine from the same directory).
+    apple: "/touch-icon-180.png",
   },
   openGraph: {
     siteName: "Hebrides Cyber",
     type: "website",
   },
+  manifest: "/manifest.webmanifest",
+};
+
+// themeColor/colorScheme moved out of `metadata` into their own export in
+// Next 14+ — matches the dark theme ThemeScript below defaults to (and
+// src/app/manifest.ts's background_color/theme_color).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#070B14",
+  colorScheme: "dark",
 };
 
 // Runs before React hydrates — reads saved preference from localStorage and
