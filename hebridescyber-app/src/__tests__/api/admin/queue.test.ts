@@ -3,30 +3,44 @@ import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { makeAdminSupabaseMock } from "./_supabaseQueueMock";
 
-const { requireAdminMock } = vi.hoisted(() => ({ requireAdminMock: vi.fn() }));
+const { requireAdminMock, logAuditEventMock } = vi.hoisted(() => ({
+  requireAdminMock: vi.fn(),
+  logAuditEventMock: vi.fn(),
+}));
 const mock = makeAdminSupabaseMock();
 
 vi.mock("@/lib/adminAuth", () => ({
   requireAdmin: requireAdminMock,
-  supabaseAdmin: { from: (table: string) => mock.supabaseAdmin.from(table) },
+  supabaseAdmin: { from: (table: string) => mock.supabaseAdmin.from(table), rpc: (fn: string) => mock.supabaseAdmin.rpc(fn) },
 }));
+
+vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
 
 import handler from "@/pages/api/admin/queue";
 
-function mockReqRes() {
-  return createMocks<NextApiRequest, NextApiResponse>({ method: "GET", headers: { authorization: "Bearer t" } });
+function mockReqRes(overrides: Partial<Parameters<typeof createMocks>[0]> = {}) {
+  return createMocks<NextApiRequest, NextApiResponse>({ method: "GET", headers: { authorization: "Bearer t" }, ...overrides });
 }
 
 describe("GET /api/admin/queue", () => {
   beforeEach(() => {
     mock.reset();
     requireAdminMock.mockReset();
+    logAuditEventMock.mockReset().mockResolvedValue(undefined);
   });
 
-  it("rejects non-GET methods with 405", async () => {
-    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "POST" });
+  it("rejects other methods with 405", async () => {
+    requireAdminMock.mockResolvedValue("admin-1");
+    const { req, res } = mockReqRes({ method: "DELETE" });
     await handler(req, res);
     expect(res._getStatusCode()).toBe(405);
+  });
+
+  it("returns 403 before checking the method when the caller is not an admin", async () => {
+    requireAdminMock.mockResolvedValue(null);
+    const { req, res } = mockReqRes({ method: "DELETE" });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(403);
   });
 
   it("returns 403 when the caller is not an admin", async () => {
@@ -89,6 +103,41 @@ describe("GET /api/admin/queue", () => {
       completed: 0,
       failed: 0,
       delayed: 0,
+    });
+  });
+
+  describe("PATCH — recover stuck jobs", () => {
+    it("returns 500 when the RPC errors", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setRpcQueues({ reset_stale_scan_jobs: [{ data: null, error: { message: "db down" } }] });
+      const { req, res } = mockReqRes({ method: "PATCH" });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(500);
+    });
+
+    it("recovers stale jobs and logs an audit event with the count", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setRpcQueues({ reset_stale_scan_jobs: [{ data: 3, error: null }] });
+      const { req, res } = mockReqRes({ method: "PATCH" });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getJSONData()).toEqual({ ok: true, resetCount: 3 });
+      expect(logAuditEventMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ actorId: "admin-1", action: "admin.stale_jobs_recovered", metadata: { count: 3 } })
+      );
+    });
+
+    it("reports zero when nothing was stuck", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setRpcQueues({ reset_stale_scan_jobs: [{ data: 0, error: null }] });
+      const { req, res } = mockReqRes({ method: "PATCH" });
+
+      await handler(req, res);
+
+      expect(res._getJSONData()).toEqual({ ok: true, resetCount: 0 });
     });
   });
 });

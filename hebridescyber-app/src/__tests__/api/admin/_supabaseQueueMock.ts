@@ -12,6 +12,7 @@ export type QueueMap = Record<string, unknown[]>;
 
 export function makeAdminSupabaseMock() {
   let queues: QueueMap = {};
+  let rpcQueues: QueueMap = {};
   const inserted: Array<{ table: string; payload: unknown }> = [];
   const updated: Array<{ table: string; payload: unknown }> = [];
   const deleted: Array<{ table: string }> = [];
@@ -53,12 +54,19 @@ export function makeAdminSupabaseMock() {
   }
 
   return {
-    supabaseAdmin: { from: (table: string) => makeBuilder(table) },
+    supabaseAdmin: {
+      from: (table: string) => makeBuilder(table),
+      rpc: (fn: string) => Promise.resolve(rpcQueues[fn]?.shift() ?? { data: null, error: null }),
+    },
     setQueues: (next: QueueMap) => {
       queues = next;
     },
+    setRpcQueues: (next: QueueMap) => {
+      rpcQueues = next;
+    },
     reset: () => {
       queues = {};
+      rpcQueues = {};
       inserted.length = 0;
       updated.length = 0;
       deleted.length = 0;

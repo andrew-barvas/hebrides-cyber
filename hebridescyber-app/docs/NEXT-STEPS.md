@@ -46,6 +46,7 @@ Database migrations: files exist through **050**; the next free number is **051*
 | EASM discovery wired in (was dead code) | `easmDiscovery.ts`'s `runEasmDiscovery` now runs in `executeScan` after `syncAssetInventory` — crt.sh on every scan, DNS brute-force only once the Tier A offensive gate has cleared. See CLAUDE.md "EASM discovery" |
 | Magento/Shopify deep scanning | `webapp.ts`'s `checkMagento`/`checkShopify`, gated on `fingerprint.ts`'s CMS detection like WordPress/Joomla/Drupal — `env.php`/downloader/default-admin-path exposure (content-signature validated) and leaked Shopify Admin API tokens (never the intentionally-public Storefront token) |
 | Admin: customer plan override + read-only customer detail | `POST /api/admin/subscription` upserts `subscriptions` tagged `source='admin'` (migration 052 also fixes `tier_a` never having been added to the plan CHECK constraint); `GET /api/admin/customers/[id]` is a read-only profile+subscription+recent-scans view reached from the Customers tab's "View" button, logged as `admin.customer_viewed`. Not session impersonation — see the file header on why |
+| Admin: stuck/failed queue job retry | Queue tab's "Retry" button on a failed job reuses the existing scans-tab retry path; new "Recover stuck jobs" button runs `reset_stale_scan_jobs()` on demand via `PATCH /api/admin/queue` instead of waiting for the next scheduled worker run |
 
 Coverage floor (`vitest.config.mts`): **71 / 64 / 73 / 72** (statements /
 branches / functions / lines). Lint: 0 errors (36 known warnings).

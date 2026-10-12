@@ -72,7 +72,7 @@ type QueueData = {
 
 type QueueJob = {
   id: string;
-  scanId: string;
+  scanId: string | null;
   targetUrl: string;
   addedAt: number;
   startedAt: number | null;
@@ -671,6 +671,9 @@ function ScansTab({ token }: { token: string }) {
 
 function QueueTab({ token }: { token: string }) {
   const [data, setData] = useState<QueueData | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverMsg, setRecoverMsg] = useState<string | null>(null);
+  const [retryingScanId, setRetryingScanId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     apiFetch<QueueData>("/api/admin/queue", token).then(setData).catch(() => {});
@@ -681,6 +684,31 @@ function QueueTab({ token }: { token: string }) {
     const iv = setInterval(load, 5_000);
     return () => clearInterval(iv);
   }, [load]);
+
+  const recoverStale = async () => {
+    setRecovering(true);
+    setRecoverMsg(null);
+    try {
+      const result = await apiFetch<{ resetCount: number }>("/api/admin/queue", token, { method: "PATCH" });
+      setRecoverMsg(result.resetCount > 0 ? `Recovered ${result.resetCount} stuck job(s).` : "No stuck jobs found.");
+      load();
+    } catch (e) {
+      setRecoverMsg((e as Error).message);
+    } finally {
+      setRecovering(false);
+    }
+  };
+
+  const retryJob = async (scanId: string | null) => {
+    if (!scanId) return;
+    setRetryingScanId(scanId);
+    try {
+      await apiFetch("/api/admin/scans", token, { method: "PATCH", body: JSON.stringify({ scanId, action: "retry" }) });
+      load();
+    } catch { /* no-op */ } finally {
+      setRetryingScanId(null);
+    }
+  };
 
   if (!data) return <p className="font-mono text-sm text-cybertext/30">// loading…</p>;
 
@@ -697,7 +725,20 @@ function QueueTab({ token }: { token: string }) {
 
   return (
     <div className="space-y-6">
-      <p className="font-mono text-xs text-cybertext/30">// auto-refreshes every 5 s</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-xs text-cybertext/30">// auto-refreshes every 5 s</p>
+        <div className="flex items-center gap-2">
+          {recoverMsg && <span className="text-xs text-cybertext/50">{recoverMsg}</span>}
+          <button
+            onClick={recoverStale}
+            disabled={recovering}
+            className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-40 transition-colors"
+            title="Reset jobs stuck 'running' for longer than any live scan can take (390 minutes) back to pending, without waiting for the next scheduled worker run."
+          >
+            {recovering ? "Recovering…" : "Recover stuck jobs"}
+          </button>
+        </div>
+      </div>
 
       {stats && (
         <div className="grid grid-cols-5 gap-3">
@@ -735,8 +776,17 @@ function QueueTab({ token }: { token: string }) {
                       </div>
                     )}
                     <p className="text-xs text-cybertext/30 whitespace-nowrap">
-                      {j.addedAt ? reltime(j.addedAt) : ""}
+                      {state === "active" && j.startedAt ? `claimed ${reltime(j.startedAt)}` : j.addedAt ? reltime(j.addedAt) : ""}
                     </p>
+                    {state === "failed" && j.scanId && (
+                      <button
+                        onClick={() => retryJob(j.scanId)}
+                        disabled={retryingScanId === j.scanId}
+                        className="rounded bg-seafoam/10 px-2 py-0.5 text-xs text-seafoam hover:bg-seafoam/20 disabled:opacity-40 transition-colors"
+                      >
+                        {retryingScanId === j.scanId ? "Retrying…" : "Retry"}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

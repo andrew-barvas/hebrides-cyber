@@ -5,13 +5,31 @@
 // as a result).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { logAuditEvent } from "@/lib/audit";
 
 const RECENT_LIMIT = 20;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).end();
   const adminId = await requireAdmin(req);
   if (!adminId) return res.status(403).json({ error: "Admin access required" });
+
+  // PATCH /api/admin/queue — recover jobs stuck "running" past the worker's
+  // own recovery threshold (390 minutes, see reset_stale_scan_jobs() /
+  // 041_reset_stale_scan_jobs.sql), without waiting for the next scheduled
+  // worker run to do it automatically.
+  if (req.method === "PATCH") {
+    const { data: resetCount, error } = await supabaseAdmin.rpc("reset_stale_scan_jobs");
+    if (error) return res.status(500).json({ error: error.message });
+    await logAuditEvent(supabaseAdmin, {
+      actorId: adminId,
+      action: "admin.stale_jobs_recovered",
+      resourceType: "scan_jobs",
+      metadata: { count: resetCount ?? 0 },
+    });
+    return res.status(200).json({ ok: true, resetCount: resetCount ?? 0 });
+  }
+
+  if (req.method !== "GET") return res.status(405).end();
 
   const [pendingCount, runningCount, completedCount, failedCount, recentRes] = await Promise.all([
     countByStatus("pending"),
