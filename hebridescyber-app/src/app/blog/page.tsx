@@ -64,6 +64,12 @@ export default async function BlogIndexPage({ searchParams }: Props) {
       </section>
 
       <div className="mx-auto max-w-3xl px-6 pb-20">
+        <div className="flex justify-end pt-6">
+          <a href="/feed.xml" className="font-mono text-xs text-cybertext/60 hover:text-neon" aria-label="RSS feed for Security Weekly">
+            RSS feed
+          </a>
+        </div>
+
         {/* Tag filter pills */}
         {allTags.length > 0 && (
           <div className="mb-8 flex flex-wrap gap-2 pt-10">
