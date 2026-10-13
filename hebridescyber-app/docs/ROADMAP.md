@@ -173,7 +173,7 @@ into sprints yet — they depend on Live criteria being green first.
 | SCALE-1 | **SBOM generation** (CycloneDX/SPDX export) | EU Cyber Resilience Act will mandate this for software vendors; low effort since `dependencyManifest.ts` already has the data, just needs standards-compliant output formatting | Low — format existing data |
 | SCALE-2 | **External Attack Surface Management (EASM)** | Continuous autonomous asset discovery (shadow IT, forgotten subdomains, cloud assets). Biggest genuine gap vs Detectify/Rapid7/Qualys. Extends existing `recon.ts`/`subdomains.ts` into a scheduled discovery pipeline | Medium — new scanning paradigm |
 | SCALE-3 | **Cloud Security Posture Management (CSPM)** | AWS/Azure/GCP IAM, storage, network config checks. Already scoped as E-32. Credential onboarding is the hard design problem, not the scanning logic | Medium — credential UX is the constraint |
-| SCALE-4 | **AI/ML vulnerability prioritization** | Move risk scoring from rule-based (`riskScoring.ts`) to ML-informed exploit-likelihood prediction. Requires training data from real scan results | High — needs data + model |
+| SCALE-4 | **AI/ML vulnerability prioritization** | Move risk scoring from rule-based (`scoreFromFindings`, `scanners/index.ts`) to ML-informed exploit-likelihood prediction. Requires training data from real scan results | High — needs data + model |
 | SCALE-5 | **Container runtime scanning** | Beyond Trivy's static image analysis to runtime monitoring. Kubernetes-native | High — new infrastructure |
 
 **Scale non-goals** (explicitly not worth building for the SME segment):

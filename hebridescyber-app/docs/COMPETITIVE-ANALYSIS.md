@@ -307,13 +307,14 @@ competitive positioning** — they are not usable by any customer today.
 | Category | Features | Code | Status |
 |---|---|---|---|
 | Identity | IP allowlisting (per-API-key) | `ipAllowlist.ts` | Live |
-| Identity | SSO/SAML, RBAC (4-level), SCIM 2.0 | `ssoSaml.ts` (**deleted**), `rbac.ts`, `scimProvisioning.ts` | Unwired/deleted |
+| Identity | SSO/SAML, RBAC (4-level), SCIM 2.0 | `ssoSaml.ts`, `rbac.ts`, `scimProvisioning.ts` (all **deleted**) | Deleted |
 | Multi-tenancy | Partner Portal (Agency-gated, white-label) | `PartnerPortalPanel.tsx` | Live |
-| Multi-tenancy | Org/workspace model, MSP per-client health portal, custom scan policies | `orgModel.ts` (**deleted**), `mspPortal.ts`, `customScanPolicies.ts` | Unwired/deleted |
+| Multi-tenancy | Org/workspace model, MSP per-client health portal, custom scan policies | `orgModel.ts`, `mspPortal.ts`, `customScanPolicies.ts` (all **deleted**) | Deleted |
 | Compliance | 7-framework reporting, SLA monitoring | `complianceReport.ts`, `slaMonitoring.ts` | Live |
-| Compliance | 5-factor risk scoring | `riskScoring.ts` | Unwired |
-| Integrations | SIEM, CI/CD SDK, ServiceNow, GitHub Issues | `siemIntegration.ts`, `cicdSdk.ts`, `ticketProviders.ts` | Live |
-| Integrations | Standalone GraphQL schema/query API | `graphqlApi.ts` | Unwired |
+| Compliance | 5-factor risk scoring | `riskScoring.ts` (**deleted**) | Deleted |
+| Integrations | SIEM, ServiceNow, GitHub Issues | `siemIntegration.ts`, `ticketProviders.ts` | Live |
+| Integrations | CI/CD SDK | `cicdSdk.ts` (**deleted** — the real, live CI/CD integration is `public/ci/hebrides-scan.sh`, see CLAUDE.md "CI templates") | Deleted |
+| Integrations | Standalone GraphQL schema/query API | `graphqlApi.ts` (**deleted**) | Deleted |
 | Scanning | GraphQL vulnerability scanning (wired PR #12), proof-of-exploit (wired PR #11), scan windows, scheduled reports | `scanners/graphql.ts`, `proofOfExploit.ts`, `scanWindows.ts`, `scheduledReports.ts` | Live |
 
 ---
@@ -366,7 +367,7 @@ Scored by relevance to the SME segment this product actually serves.
 | # | Gap | Who has it | Notes |
 |---|---|---|---|
 | 4 | **Container runtime scanning** | Qualys, Rapid7, Sysdig | Beyond `trivyScan.ts`'s static image analysis to runtime monitoring. Requires Kubernetes access; niche for SMEs |
-| 5 | **AI/ML vulnerability prioritization** | Qualys TruRisk, Rapid7 InsightVM | ML-trained exploit-likelihood scoring vs `riskScoring.ts`'s rule-based approach. Requires training data from real scan results |
+| 5 | **AI/ML vulnerability prioritization** | Qualys TruRisk, Rapid7 InsightVM | ML-trained exploit-likelihood scoring vs the live rule-based severity scoring (`scoreFromFindings`, `scanners/index.ts`). Requires training data from real scan results |
 | 6 | **Dark web / threat intel monitoring** | Detectify, Intruder enterprise, Recorded Future | Credential leak monitoring beyond HIBP. High value but needs data partnerships |
 
 ### Low priority (enterprise-only, not worth building for SME segment)
@@ -605,8 +606,8 @@ step uses it today, not that a library exists.
 | Reports and raw exports | Live | PDF, CSV/JSON, per-framework compliance export |
 | SIEM / ticketing integrations | Live | SIEM forwarding; Jira, Linear, ServiceNow, GitHub Issues |
 | Cloud / asset-database connectors | Partial | cloud storage posture (AWS/Azure/GCP) |
-| Configurable risk prioritisation | Partial | per-account SLA targets; `riskScoring.ts` not wired |
-| Hierarchical access control | Partial | team members; `rbac.ts` not wired |
+| Configurable risk prioritisation | Partial | per-account SLA targets; no ML/5-factor scoring beyond the live severity scoring |
+| Hierarchical access control | Partial | team members (`teamAccess.ts`); no formal RBAC permission matrix |
 
 ### Built in this refresh
 
