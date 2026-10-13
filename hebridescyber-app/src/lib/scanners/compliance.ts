@@ -167,6 +167,12 @@ const WORKFLOW_SECURITY_CATEGORY_REFS: Record<WorkflowSecurityCategory, Complian
 const CURATED_MAP: Record<string, ComplianceRef[]> = {
   ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_REFS[category]])),
   ...Object.fromEntries(Object.entries(WORKFLOW_SECURITY_IDENT_CATEGORIES).map(([ident, category]) => [`workflow-security.${ident}`, WORKFLOW_SECURITY_CATEGORY_REFS[category]])),
+  // --- JWT security (src/worker/tools/jwtAnalysis.ts) ---
+  "jwt-analysis.none-algorithm": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "jwt-analysis.weak-secret": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "jwt-analysis.no-expiration": [OWASP_A07, CE_ACCESS, CIS_16, ISO_A9],
+  "jwt-analysis.sent-over-http": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+  "jwt-analysis.exposed-in-url": [CE_SECURE_CONFIG, OWASP_A02, CIS_16, ISO_A9],
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
