@@ -26,6 +26,11 @@ export const metadata: Metadata = {
   title: "Hebrides Cyber — Security Scanning & Penetration Testing, Stornoway, Scotland",
   description:
     "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in Stornoway, Isle of Lewis, Scotland.",
+  alternates: {
+    types: {
+      "application/rss+xml": `${SITE_URL}/feed.xml`,
+    },
+  },
   icons: {
     icon: "/favicon.svg",
     // Not named "apple-icon.png" — that exact filename is a reserved Next.js
