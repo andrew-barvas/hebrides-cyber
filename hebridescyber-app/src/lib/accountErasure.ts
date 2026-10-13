@@ -76,6 +76,41 @@ export function deadlineWording(dueAt: string, now: Date): string {
   return days < 1 ? "due today" : `due in ${n(Math.floor(days))}`;
 }
 
+export type QueuedDeletionRequest = {
+  id: string;
+  owner: string;
+  requestedAt: string;
+  dueAt: string;
+  overdue: boolean;
+  wording: string;
+};
+
+/**
+ * Shapes pending deletion requests for the admin GDPR queue view: every
+ * pending row, soonest deadline first, each tagged overdue/with wording, plus
+ * the overdue count. Pure and fed `now` by the caller, like the other
+ * deletion helpers; the admin route does the Supabase read and email join.
+ * Non-pending rows (completed/withdrawn) are ignored — the queue is work
+ * still owed.
+ */
+export function summarizeDeletionQueue(
+  rows: DeletionRequestRow[],
+  now: Date
+): { overdueCount: number; pending: QueuedDeletionRequest[] } {
+  const pending = rows
+    .filter((r) => r.status === "pending")
+    .sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at))
+    .map((r) => ({
+      id: r.id,
+      owner: r.owner,
+      requestedAt: r.requested_at,
+      dueAt: r.due_at,
+      overdue: Date.parse(r.due_at) < now.getTime(),
+      wording: deadlineWording(r.due_at, now),
+    }));
+  return { overdueCount: pending.filter((r) => r.overdue).length, pending };
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type Account = { id: string; email: string | null; fullName: string | null };
