@@ -59,6 +59,19 @@ describe("GET /api/admin/audit", () => {
     expect(res._getJSONData()).toEqual({ logs: [{ id: "1", action: "scan.started" }], total: 1, page: 1, pageSize: 50 });
   });
 
+  it("accepts the structured category and date-range filters without erroring", async () => {
+    requireAdminMock.mockResolvedValue("admin-1");
+    mock.setQueues({
+      audit_logs: [{ data: [{ id: "1", action: "stripe.checkout.completed" }], error: null, count: 1 }],
+    });
+    const { req, res } = mockReqRes({ category: "stripe", from: "2026-06-01", to: "2026-06-30" });
+
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(res._getJSONData()).toMatchObject({ total: 1, page: 1 });
+  });
+
   it("returns 500 when the query errors", async () => {
     requireAdminMock.mockResolvedValue("admin-1");
     mock.setQueues({ audit_logs: [{ data: null, error: { message: "db down" }, count: null }] });
