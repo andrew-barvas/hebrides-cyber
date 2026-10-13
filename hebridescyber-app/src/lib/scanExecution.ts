@@ -41,7 +41,8 @@ import { runMetadataLeakCheck } from "../worker/tools/metadataLeak";
 import { runKiterunner } from "../worker/tools/kiterunner";
 import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -188,6 +189,7 @@ async function runExtendedTools(
     kiterunnerResult,
     arjunResult,
     sessionCheckResult,
+    jwtAnalysisResult,
     strixResult,
     cairnResult,
     apiSpecInjectionResult,
@@ -319,6 +321,9 @@ async function runExtendedTools(
     toolConfig.sessionCheck
       ? runSessionCheck(targetUrl)
       : Promise.resolve({ status: "not_configured" as const }),
+    toolConfig.jwtAnalysis
+      ? runJwtAnalysis(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const }),
     toolConfig.strix
       ? runStrix(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
@@ -389,6 +394,7 @@ async function runExtendedTools(
     kiterunner: kiterunnerResult.status === "fulfilled" ? kiterunnerResult.value : { status: "error" as const, note: String(kiterunnerResult.reason) },
     arjun: arjunResult.status === "fulfilled" ? arjunResult.value : { status: "error" as const, note: String(arjunResult.reason) },
     sessionCheck: sessionCheckResult.status === "fulfilled" ? sessionCheckResult.value : { status: "error" as const, note: String(sessionCheckResult.reason) },
+    jwtAnalysis: jwtAnalysisResult.status === "fulfilled" ? jwtAnalysisResult.value : { status: "error" as const, note: String(jwtAnalysisResult.reason) },
     strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
     cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
     apiSpecInjection: apiSpecInjectionResult.status === "fulfilled" ? apiSpecInjectionResult.value : { status: "error", findings: [], note: String(apiSpecInjectionResult.reason) },
@@ -723,6 +729,41 @@ async function runExtendedTools(
         title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
         detail: f.detail,
         remediation: remediationMap[f.type],
+      });
+    }
+  }
+
+  // JWT security analysis — decoding only, never a forged/replayed token.
+  if (extended.jwtAnalysis.status === "completed" && "findings" in extended.jwtAnalysis) {
+    const jwtFindings = (extended.jwtAnalysis as { status: "completed"; findings: Array<{ type: string; detail: string; url: string }> }).findings;
+    const jwtRemediationMap: Record<string, string> = {
+      "none-algorithm": JWT_NONE_ALGORITHM,
+      "no-expiration": JWT_NO_EXPIRATION,
+      "weak-secret": JWT_WEAK_SECRET,
+      "sent-over-http": JWT_SENT_OVER_HTTP,
+      "exposed-in-url": JWT_EXPOSED_IN_URL,
+    };
+    const jwtSeverityMap: Record<string, Finding["severity"]> = {
+      "none-algorithm": "critical",
+      "weak-secret": "critical",
+      "no-expiration": "high",
+      "sent-over-http": "high",
+      "exposed-in-url": "medium",
+    };
+    const jwtTitleMap: Record<string, string> = {
+      "none-algorithm": "JWT accepts the 'none' algorithm (unsigned token)",
+      "no-expiration": "JWT has no expiration claim",
+      "weak-secret": "JWT signed with a known weak secret",
+      "sent-over-http": "JWT transmitted over plain HTTP",
+      "exposed-in-url": "JWT exposed in a URL",
+    };
+    for (const f of jwtFindings) {
+      findings.push({
+        checkId: `jwt-analysis.${f.type}:${f.url}`,
+        severity: jwtSeverityMap[f.type] ?? "medium",
+        title: `[JWT] ${jwtTitleMap[f.type] ?? f.type}`,
+        detail: f.detail,
+        remediation: jwtRemediationMap[f.type],
       });
     }
   }

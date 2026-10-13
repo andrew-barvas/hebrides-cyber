@@ -1987,6 +1987,45 @@ other users' data by changing the ID parameter. Implement proper
 authentication and authorization checks on all data-access endpoints.
 Use non-sequential identifiers (UUIDs) where possible.`;
 
+// --- JWT security (src/worker/tools/jwtAnalysis.ts) ---
+
+export const JWT_NONE_ALGORITHM = `A JWT issued by this site uses the "none" algorithm, or has no
+signature at all. Any library that honours "none" (or fails to check
+that a signature is present) will accept a token whose claims have
+been edited by anyone who sees it — including role/permission claims.
+Configure your JWT library to accept only the specific signing
+algorithm you use (e.g. HS256 or RS256), and reject "none" and any
+algorithm you did not explicitly allow.`;
+
+export const JWT_NO_EXPIRATION = `A JWT issued by this site has no "exp" (expiration) claim, so once
+issued it remains valid forever. A token that leaks — in a log, a
+browser history entry, or a compromised device — stays usable
+indefinitely. Set a short, explicit expiration on every token you
+issue, and use a refresh-token flow for long-lived sessions instead
+of a single never-expiring access token.`;
+
+export const JWT_WEAK_SECRET = `A JWT issued by this site is signed with a secret from a short list of
+publicly known, commonly used default or example secrets. Anyone who
+finds this secret can forge a valid token for any user, including an
+administrator. Generate a new, long, random secret (at least 32 bytes
+from a cryptographically secure source) and rotate it — every token
+signed with the old secret must be treated as compromised.`;
+
+export const JWT_SENT_OVER_HTTP = `A JWT was observed on a plain HTTP response. Without TLS, a token in
+transit can be read or captured by anyone on the network path between
+the client and your server — a coffee-shop Wi-Fi network, a
+compromised router, or an intermediate proxy. Serve the entire
+application over HTTPS and redirect HTTP requests, so no credential
+ever travels in clear text.`;
+
+export const JWT_EXPOSED_IN_URL = `A JWT appears in a URL (a query string or path segment) rather than
+only in a header or cookie. URLs are written to server access logs,
+proxy logs, browser history, and the Referer header sent to any
+third-party resource the page loads — so a token placed in a URL can
+leak well after the original request completes. Send tokens only in
+an Authorization header or an HttpOnly cookie, never as a URL
+parameter.`;
+
 // --- Cloud posture (E-32) ---
 
 export const AWS_PUBLIC_S3_BUCKET = `This S3 bucket is missing one or more PublicAccessBlock settings, or
