@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { teamSizeLabel, budgetRangeLabel } from "@/lib/contactOptions";
+import { capStatus } from "@/lib/usageCapStatus";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,11 @@ type CustomerDetail = {
   } | null;
   scans: { id: string; targetUrl: string; status: string; score: number | null; createdAt: string }[];
   scanCount: number;
+  usage: {
+    monitoredTargets: { count: number; cap: number | null };
+    teamMembers: { count: number; cap: number } | null;
+    freeScans: { count: number; allowed: number } | null;
+  };
 };
 
 type ScanRow = {
@@ -174,6 +180,26 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
       <p className="mt-0.5 text-sm font-medium text-cybertext/70">{label}</p>
       {sub && <p className="mt-1 text-xs text-cybertext/40">{sub}</p>}
     </div>
+  );
+}
+
+const CAP_STATUS_STYLE: Record<string, string> = {
+  ok: "text-cybertext/50",
+  near: "text-amber-400",
+  at: "text-red-400",
+  unknown: "text-cybertext/30",
+};
+
+/** One "N of cap used" line, flagged amber/red once a real plan ceiling is close or reached. */
+function UsageRow({ label, count, cap }: { label: string; count: number; cap: number | null }) {
+  const status = capStatus(count, cap);
+  return (
+    <p className={`text-xs ${CAP_STATUS_STYLE[status]}`}>
+      {label}: {count}
+      {cap !== null && ` of ${cap}`} used
+      {status === "at" && " — at cap"}
+      {status === "near" && " — near cap"}
+    </p>
   );
 }
 
@@ -453,7 +479,7 @@ function CustomerDetailPanel({
   if (error) return <p className="text-sm text-red-400">{error}</p>;
   if (!detail) return <p className="font-mono text-sm text-cybertext/40">// loading…</p>;
 
-  const { user, subscription, scans, scanCount } = detail;
+  const { user, subscription, scans, scanCount, usage } = detail;
 
   return (
     <div className="space-y-6">
@@ -514,6 +540,17 @@ function CustomerDetailPanel({
             </button>
           </div>
           {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+        <h3 className="mb-2 font-mono text-xs uppercase tracking-wide text-cybertext/40">// usage vs plan limits</h3>
+        <div className="space-y-1">
+          <UsageRow label="Monitored sites" count={usage.monitoredTargets.count} cap={usage.monitoredTargets.cap} />
+          {usage.teamMembers && <UsageRow label="Team members" count={usage.teamMembers.count} cap={usage.teamMembers.cap} />}
+          {usage.freeScans && (
+            <UsageRow label="Free-tier scans (no active plan)" count={usage.freeScans.count} cap={usage.freeScans.allowed} />
+          )}
         </div>
       </div>
 

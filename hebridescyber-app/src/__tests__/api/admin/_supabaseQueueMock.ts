@@ -23,6 +23,7 @@ export function makeAdminSupabaseMock() {
     const builder: Record<string, unknown> = {
       select: () => builder,
       eq: () => builder,
+      neq: () => builder,
       gte: () => builder,
       in: () => builder,
       or: () => builder,
