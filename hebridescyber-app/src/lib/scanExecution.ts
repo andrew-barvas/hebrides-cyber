@@ -46,6 +46,7 @@ import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousP
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
+import { parseDisabledTools, applyKillSwitch, type KillSwitchRow } from "./toolKillSwitch";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
 import { sendAttackSurfaceAlerts, monitoredDomain } from "./attackSurfaceMonitor";
@@ -934,7 +935,19 @@ export async function executeScan(
       // nuclei's entire default template set at every target.
       const detectedTechnologies = results.fingerprint.status === "checked" ? results.fingerprint.technologies.map((t) => t.name) : [];
 
-      const toolConfig = resolveToolConfig(profile, options.toolOverrides);
+      // Admin per-tool kill switch (migration 055): a tool an admin has
+      // globally disabled is forced off here, after the profile resolves, so
+      // a flapping or abusive tool stops running on every scan without a
+      // deploy. Best-effort — a read error or a missing table (pre-055)
+      // means "nothing disabled", never a failed scan.
+      let disabledTools = new Set<ExtendedToolName>();
+      try {
+        const { data: killRows } = await supabaseAdmin.from("tool_kill_switches").select("tool_name, disabled");
+        disabledTools = parseDisabledTools((killRows as KillSwitchRow[] | null) ?? []);
+      } catch (err) {
+        console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
+      }
+      const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
       const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
