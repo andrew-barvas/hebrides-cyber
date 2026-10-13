@@ -17,6 +17,17 @@ type Metrics = {
   scansByStatus: Record<string, number>;
   planBreakdown: { plan: string; count: number }[];
   mrrUsd: number;
+  revenue: {
+    payingMrrGbp: number;
+    payingCount: number;
+    compedCount: number;
+    bespokeCount: number;
+    byPlan: { plan: string; count: number; mrrGbp: number }[];
+    pastDueCount: number;
+    newSubs30d: number;
+    cancellations30d: number;
+    churnRatePct: number | null;
+  };
   recentSignups: { id: string; email: string; company_name: string | null; created_at: string }[];
 };
 
@@ -251,12 +262,49 @@ function OverviewTab({ token }: { token: string }) {
         <StatCard label="Customers" value={metrics.totalCustomers} />
         <StatCard label="Active subscriptions" value={metrics.activeSubscriptions} />
         <StatCard label="Total scans" value={metrics.totalScans} sub={`${metrics.scansLast30d} last 30 days`} />
-        {/* mrrUsd is a legacy field name from before pricing was set in
-            GBP — the API's real prices (£20/£35/£75, see admin/metrics.ts)
-            were already correct; this caption was the one place still
-            showing the old $19/$49/$99 figures and the wrong currency
-            symbol, silently contradicting its own API response. */}
-        <StatCard label="Est. MRR" value={`£${metrics.mrrUsd.toLocaleString()}`} sub="basic £20 · pro £35 · agency £75" />
+        {/* Paying MRR: real Stripe subscriptions × this product's published
+            prices, excluding admin comps and bespoke Tier A (see
+            revenueMetrics.ts). Detail is in the Revenue panel below. */}
+        <StatCard
+          label="Paying MRR"
+          value={`£${metrics.revenue.payingMrrGbp.toLocaleString()}`}
+          sub={`${metrics.revenue.payingCount} paying · basic £20 · pro £35 · agency £75`}
+        />
+      </div>
+
+      <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
+        <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// revenue &amp; churn</h3>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <div>
+            <p className="text-xl font-bold text-neon">£{metrics.revenue.payingMrrGbp.toLocaleString()}</p>
+            <p className="text-xs text-cybertext/50">Paying MRR · {metrics.revenue.payingCount} subs</p>
+          </div>
+          <div>
+            <p className="text-xl font-bold text-cybertext">
+              {metrics.revenue.churnRatePct === null ? "—" : `${metrics.revenue.churnRatePct.toFixed(1)}%`}
+            </p>
+            <p className="text-xs text-cybertext/50">Monthly churn</p>
+          </div>
+          <div>
+            <p className="text-xl font-bold text-seafoam">+{metrics.revenue.newSubs30d}</p>
+            <p className="text-xs text-cybertext/50">New (30d)</p>
+          </div>
+          <div>
+            <p className={`text-xl font-bold ${metrics.revenue.cancellations30d > 0 ? "text-red-400" : "text-cybertext"}`}>
+              −{metrics.revenue.cancellations30d}
+            </p>
+            <p className="text-xs text-cybertext/50">Cancelled (30d)</p>
+          </div>
+        </div>
+        {(metrics.revenue.compedCount > 0 || metrics.revenue.bespokeCount > 0 || metrics.revenue.pastDueCount > 0) && (
+          <p className="mt-3 border-t border-cyberborder/50 pt-3 text-xs text-cybertext/40">
+            {metrics.revenue.pastDueCount > 0 && <span className="text-amber-400">{metrics.revenue.pastDueCount} past-due (at risk)</span>}
+            {metrics.revenue.pastDueCount > 0 && (metrics.revenue.compedCount > 0 || metrics.revenue.bespokeCount > 0) && " · "}
+            {metrics.revenue.compedCount > 0 && `${metrics.revenue.compedCount} admin-comped (£0)`}
+            {metrics.revenue.compedCount > 0 && metrics.revenue.bespokeCount > 0 && " · "}
+            {metrics.revenue.bespokeCount > 0 && `${metrics.revenue.bespokeCount} Tier A (bespoke, not in MRR)`}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
