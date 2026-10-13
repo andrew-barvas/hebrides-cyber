@@ -1,0 +1,45 @@
+name: Publish scheduled blog posts
+
+# An admin can save a blog post with status "scheduled" and a future
+# published_at (migration 054 widens blog_posts' status CHECK constraint
+# to allow it). This flips it to "published" once published_at is due —
+# the logic is in hebridescyber-app/src/lib/blogSchedule.ts
+# (publishDuePosts). Same pattern as deletion-requests.yml: the script
+# runs on the runner directly against Supabase, no HTTP hop.
+#
+# Runs hourly so a post scheduled for e.g. 09:00 goes live within the hour,
+# matching the granularity scheduled-scans.yml already uses for its own
+# cron work.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+
+on:
+  schedule:
+    # Every hour, 12 minutes past.
+    - cron: "12 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Publish due scheduled posts
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run blog:publish-scheduled

@@ -106,6 +106,31 @@ describe("/api/admin/blog/[slug]", () => {
       expect(payload.published_at).toBeUndefined();
     });
 
+    it("returns 400 when scheduling without a future published_at", async () => {
+      const { req, res } = mockReqRes({ method: "PATCH", body: { status: "scheduled" } });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+    });
+
+    it("returns 400 when scheduling with a past published_at", async () => {
+      const { req, res } = mockReqRes({ method: "PATCH", body: { status: "scheduled", published_at: "2020-01-01T00:00:00Z" } });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+    });
+
+    it("sets published_at to the given future date when scheduling", async () => {
+      mock.setQueues({ blog_posts: [{ data: { id: "p1", slug: "hello-world", status: "scheduled", updated_at: "now" }, error: null }] });
+      const futureDate = new Date(Date.now() + 86_400_000).toISOString();
+      const { req, res } = mockReqRes({ method: "PATCH", body: { status: "scheduled", published_at: futureDate } });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      const payload = mock.updated[0].payload as { status: string; published_at: string };
+      expect(payload.status).toBe("scheduled");
+      expect(payload.published_at).toBe(new Date(futureDate).toISOString());
+    });
+
     it("clears published_at when moved back to draft", async () => {
       mock.setQueues({ blog_posts: [{ data: { id: "p1", slug: "hello-world", status: "draft", updated_at: "now" }, error: null }] });
       const { req, res } = mockReqRes({ method: "PATCH", body: { status: "draft" } });
