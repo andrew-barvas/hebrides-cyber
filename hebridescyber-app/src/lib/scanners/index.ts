@@ -438,6 +438,10 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (infoIssues.length > 0) {
       findings.push({ checkId: "headers.info-disclosure", severity: "low", title: "Headers reveal server technology details", detail: infoIssues.join("; "), remediation: FIX.INFO_DISCLOSURE });
     }
+    const smugglingIssues = results.headers.smugglingSurface.issues;
+    if (smugglingIssues.length > 0) {
+      findings.push({ checkId: "headers.smuggling-surface", severity: "medium", title: "Possible HTTP request smuggling surface", detail: smugglingIssues.join("; "), remediation: FIX.SMUGGLING_SURFACE });
+    }
   }
 
   // --- DNS ------------------------------------------------------------------
