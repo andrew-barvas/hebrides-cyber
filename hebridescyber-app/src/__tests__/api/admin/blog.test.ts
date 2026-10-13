@@ -81,6 +81,34 @@ describe("/api/admin/blog", () => {
       expect(payload.published_at).not.toBeNull();
     });
 
+    it("returns 400 when status is scheduled but published_at is missing", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      const { req, res } = mockReqRes({ method: "POST", body: { title: "Future", slug: "future", status: "scheduled" } });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+    });
+
+    it("returns 400 when status is scheduled but published_at is in the past", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      const { req, res } = mockReqRes({ method: "POST", body: { title: "Past", slug: "past", status: "scheduled", published_at: "2020-01-01T00:00:00Z" } });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+    });
+
+    it("creates a scheduled post with the given future published_at", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setQueues({ blog_posts: [{ data: { id: "p4", slug: "future-post" }, error: null }] });
+      const futureDate = new Date(Date.now() + 86_400_000).toISOString();
+      const { req, res } = mockReqRes({ method: "POST", body: { title: "Future Post", slug: "future-post", status: "scheduled", published_at: futureDate } });
+
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(201);
+      const payload = mock.inserted[0].payload as { status: string; published_at: string };
+      expect(payload.status).toBe("scheduled");
+      expect(payload.published_at).toBe(new Date(futureDate).toISOString());
+    });
+
     it("returns 400 when the insert fails (e.g. duplicate slug)", async () => {
       requireAdminMock.mockResolvedValue("admin-1");
       mock.setQueues({ blog_posts: [{ data: null, error: { message: "duplicate key value" } }] });
