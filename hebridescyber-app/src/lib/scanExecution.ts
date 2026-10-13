@@ -29,6 +29,7 @@ import { scanDependencyManifest } from "./scanners/dependencyManifest";
 import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { runSast } from "../worker/tools/sast";
+import { runWorkflowSecurity } from "../worker/tools/workflowSecurity";
 import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
 import { runWhatWaf } from "../worker/tools/whatwaf";
 import { runWpScanCli } from "../worker/tools/wpscan";
@@ -176,6 +177,7 @@ async function runExtendedTools(
     trivyImageResult,
     trivyConfigResult,
     sastResult,
+    workflowSecurityResult,
     authCheckResult,
     whatwafResult,
     wpscanResult,
@@ -274,6 +276,16 @@ async function runExtendedTools(
           findings: [] as Finding[],
           note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
         }),
+    // GitHub Actions workflow security — zizmor, a real third-party tool
+    // (see src/worker/tools/workflowSecurity.ts).
+    toolConfig.workflowSecurity && githubRepo
+      ? runWorkflowSecurity({ githubRepo })
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
     // place that needs to know where the credential comes from.
@@ -366,6 +378,7 @@ async function runExtendedTools(
     trivyImage: trivyImageResult.status === "fulfilled" ? trivyImageResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyImageResult.reason) },
     trivyConfig: trivyConfigResult.status === "fulfilled" ? trivyConfigResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyConfigResult.reason) },
     sast: sastResult.status === "fulfilled" ? sastResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(sastResult.reason) },
+    workflowSecurity: workflowSecurityResult.status === "fulfilled" ? workflowSecurityResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(workflowSecurityResult.reason) },
     authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
     whatwaf: whatwafResult.status === "fulfilled" ? whatwafResult.value : { status: "error" as const, note: String(whatwafResult.reason) },
     wpscan: wpscanResult.status === "fulfilled" ? wpscanResult.value : { status: "error" as const, findings: [], note: String(wpscanResult.reason) },
@@ -484,6 +497,10 @@ async function runExtendedTools(
   // sast.ts already builds full Finding[] (checkId, severity, remediation).
   if (extended.sast.status === "completed") {
     findings.push(...extended.sast.findings);
+  }
+  // workflowSecurity.ts (zizmor) already builds full Finding[] too.
+  if (extended.workflowSecurity.status === "completed") {
+    findings.push(...extended.workflowSecurity.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 

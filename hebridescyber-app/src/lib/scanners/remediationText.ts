@@ -1,4 +1,5 @@
 import type { SastCategory } from "./sastCatalog";
+import type { WorkflowSecurityCategory } from "./workflowSecurityCatalog";
 
 // Copy-pasteable fix guidance attached to findings at the point they are
 // created (see summariseResults in ./index.ts), where the full check result is
@@ -2777,6 +2778,88 @@ export function sastRemediation(category: SastCategory | null, language: SastLan
 somewhere the analyser can't see), add a \`nosemgrep\` comment on that line so
 future scans skip it.`;
   return [entry.intro, example, suppress].filter(Boolean).join("\n\n");
+}
+
+// ---- GitHub Actions workflow security (src/worker/tools/workflowSecurity.ts) -
+//
+// One block per category (WorkflowSecurityCategory in
+// workflowSecurityCatalog.ts), plus a link to zizmor's own documentation for
+// the specific ident so the customer can read the exact rule's rationale.
+
+const WORKFLOW_SECURITY_FIX_BY_CATEGORY: Record<WorkflowSecurityCategory, string> = {
+  injection: `An expression like \${{ github.event.issue.title }} or \${{ github.event.pull_request.title }}
+is attacker-controlled text, expanded directly into the step before the shell
+ever runs — so a crafted title or comment becomes shell code, not just a
+string argument. Never interpolate an untrusted \${{ ... }} expression
+straight into a \`run:\` block. Pass it through an environment variable
+instead, which the shell receives as data:
+
+\`\`\`yaml
+- name: Greet
+  env:
+    ISSUE_TITLE: \${{ github.event.issue.title }}
+  run: echo "Hello $ISSUE_TITLE"
+\`\`\`
+
+The same applies to writes into \`$GITHUB_ENV\`/\`$GITHUB_PATH\` and to
+\`ACTIONS_ALLOW_UNSECURE_COMMANDS\` — both let one step's untrusted input
+control what a later step executes.`,
+
+  "dangerous-triggers": `\`pull_request_target\` and \`workflow_run\` run with the BASE repository's
+permissions and secrets, but can be configured to check out and execute code
+from the PR's HEAD — attacker-controlled. If the workflow needs to build or
+test the PR's code, use the plain \`pull_request\` trigger instead (no
+secrets, read-only \`GITHUB_TOKEN\`); if it genuinely needs repository
+permissions (e.g. to post a PR comment), keep \`pull_request_target\` but
+never check out, build, or run anything from \`github.event.pull_request.head\`
+inside it.`,
+
+  "excessive-permissions": `Set an explicit, minimal \`permissions:\` block at the workflow or job level —
+the GitHub default for a classic token is broad read/write across many
+scopes, and \`permissions: write-all\` grants everything. Most workflows need
+only \`contents: read\`; add \`write\` scopes one at a time, only for the job
+that needs them. \`secrets: inherit\` on a called reusable workflow passes
+every one of the caller's secrets to code you may not control — pass only
+the specific secrets that workflow actually needs instead.`,
+
+  "supply-chain-integrity": `Pin every third-party action to a full commit SHA, not a tag or branch
+(\`uses: actions/checkout@v4\` → \`uses: actions/checkout@<40-char-sha> # v4\`)
+— a tag can be moved to point at different code after you've reviewed it,
+but a commit SHA cannot. Pin Docker images by digest
+(\`image@sha256:...\`) for the same reason. Double-check the owner/repo name
+against the action you intend to use — a typosquatted name
+(\`actions/checkout\` vs a lookalike) runs whatever code its author pushes.`,
+
+  "credential-exposure": `\`actions/checkout\` persists the \`GITHUB_TOKEN\` in the local git config by
+default so later steps can push; a step that then uploads the full checkout
+as a build artifact leaks that token to anyone who can download it. Add
+\`persist-credentials: false\` to the checkout step unless a later step
+genuinely needs to push. Never place a \`\${{ secrets.X }}\` expression
+directly in a \`run:\` command or a \`with:\` input where it can appear in
+process arguments or be echoed to the log — assign it to an \`env:\` variable
+first, which GitHub Actions automatically redacts from log output.`,
+
+  "unsound-logic": `A conditional written to gate a step on a condition it doesn't actually test
+— an \`if:\` that's always true, a \`contains()\` substring check that a
+crafted string can defeat, or a ternary-style expression with an inverted
+branch — can silently skip a security check or run a privileged step when it
+shouldn't. Rewrite the condition to test the exact value you mean, and add
+a comment stating the intent so the next person doesn't reintroduce the bug.`,
+
+  hygiene: `This is a best-practice or maintainability finding rather than a direct
+vulnerability — add a \`concurrency:\` group to avoid overlapping runs
+racing each other, document why a non-default permission is needed, remove
+actions that duplicate another step's effect, and avoid defining a composite
+action anonymously inline where a named, reviewable one would do.`,
+};
+
+/** zizmor's own documentation page for the specific audit ident. */
+export function workflowSecurityDocsUrl(ident: string): string {
+  return `https://docs.zizmor.sh/audits/#${ident}`;
+}
+
+export function workflowSecurityRemediation(category: WorkflowSecurityCategory, ident: string): string {
+  return [WORKFLOW_SECURITY_FIX_BY_CATEGORY[category], `Rule documentation: ${workflowSecurityDocsUrl(ident)}`].join("\n\n");
 }
 
 // ---- Third-party script inventory (scriptInventory.ts) ------------------------

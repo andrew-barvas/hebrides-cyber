@@ -294,6 +294,20 @@ jobs:
             || echo "opengrep install failed — sast.ts will report status: not_configured"
           rm -f /tmp/opengrep
 
+      - name: Install zizmor
+        # GitHub Actions workflow security scanning of the connected repo
+        # (src/worker/tools/workflowSecurity.ts). zizmor (MIT) ships on PyPI
+        # as version-pinned source/wheels, not a single downloadable binary
+        # asset — pip verifies the installed files against the hashes in
+        # PyPI's own package index for the exact pinned version, which is the
+        # equivalent guarantee a separate SHA-256 check gives the binaries
+        # downloaded above. A failed install only degrades this check:
+        # workflowSecurity.ts reports status not_configured.
+        run: |
+          pip3 install --break-system-packages zizmor==1.30.1 \
+            && zizmor --version \
+            || echo "zizmor install failed — workflowSecurity.ts will report status: not_configured"
+
       - name: Install whatwaf, wpscan, and cmsmap
         run: |
           pip3 install --break-system-packages whatwaf \

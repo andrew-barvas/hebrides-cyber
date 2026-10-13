@@ -27,6 +27,7 @@
 // ":" is its own base.
 
 import { SAST_RULE_CATEGORIES, type SastCategory } from "./sastCatalog";
+import { WORKFLOW_SECURITY_IDENT_CATEGORIES, type WorkflowSecurityCategory } from "./workflowSecurityCatalog";
 
 export type ComplianceFramework =
   | "cyber-essentials"
@@ -149,8 +150,23 @@ const SAST_CATEGORY_REFS: Record<SastCategory, ComplianceRef[]> = {
   "jwt-verification": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
 };
 
+// GitHub Actions workflow security (src/worker/tools/workflowSecurity.ts):
+// one entry per zizmor audit ident ("workflow-security.<ident>"), derived
+// from the ident's category so a new audit zizmor adds can't silently go
+// uncategorised (workflowSecurityCategoryForIdent() falls back to "hygiene").
+const WORKFLOW_SECURITY_CATEGORY_REFS: Record<WorkflowSecurityCategory, ComplianceRef[]> = {
+  injection: [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "dangerous-triggers": [OWASP_A08, OWASP_A05, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "excessive-permissions": [OWASP_A01, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "supply-chain-integrity": [OWASP_A08, OWASP_A06, CE_PATCHING, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "credential-exposure": [OWASP_A02, OWASP_A07, CE_ACCESS, CIS_16, PCI_REQ8, ISO_A9],
+  "unsound-logic": [OWASP_A05, CE_SECURE_CONFIG, CIS_16, ISO_A12],
+  hygiene: [CE_SECURE_CONFIG, CIS_16],
+};
+
 const CURATED_MAP: Record<string, ComplianceRef[]> = {
   ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_REFS[category]])),
+  ...Object.fromEntries(Object.entries(WORKFLOW_SECURITY_IDENT_CATEGORIES).map(([ident, category]) => [`workflow-security.${ident}`, WORKFLOW_SECURITY_CATEGORY_REFS[category]])),
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
