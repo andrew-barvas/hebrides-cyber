@@ -49,6 +49,7 @@ import {
 import { dependencyVulnerableRemediation, type DependencyEcosystemSlug } from "./remediationText";
 import { LOCKFILES, packageKey, type LockfilePackage, type OsvEcosystem } from "./dependencyLockfiles";
 import { resolveGithubAuth } from "../githubApp";
+import { assessTyposquatCandidates, buildTyposquatFinding, findTyposquatCandidates } from "./typosquatRisk";
 
 const githubApi = "https://api.github.com";
 const GITHUB_API_TIMEOUT_MS = 15_000;
@@ -849,6 +850,14 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
       };
     }
 
+    // Typosquat risk is independent of the OSV vulnerability lookup above —
+    // it only needs the package names already collected. Run it once OSV
+    // has succeeded so a failed lookup there still means "no verdict at
+    // all" (above), never a partial result with only the heuristic signal.
+    const typosquatCandidates = findTyposquatCandidates(collected.packages);
+    const typosquatAssessment = typosquatCandidates.length > 0 ? await assessTyposquatCandidates(typosquatCandidates) : { findings: [], checked: 0, notes: [] };
+    notes.push(...typosquatAssessment.notes);
+
     const scanned = collected.files.map((f) => f.file);
     return {
       status: "completed",
@@ -857,7 +866,7 @@ export async function scanDependencyManifest(options: DependencyManifestOptions)
       lockfilesScanned: collected.files.filter((f) => f.kind === "lockfile").map((f) => f.file),
       dependenciesDeclared: collected.declared,
       dependenciesChecked: evaluated.checked,
-      findings: evaluated.findings,
+      findings: [...evaluated.findings, ...typosquatAssessment.findings.map(buildTyposquatFinding)],
       inventory: evaluated.inventory,
       ...(notes.length ? { note: notes.join(" ") } : {}),
     };

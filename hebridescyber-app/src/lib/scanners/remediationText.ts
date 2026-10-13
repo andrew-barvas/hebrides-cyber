@@ -1371,6 +1371,21 @@ After upgrading, run your test suite and re-scan to confirm the finding
 clears.`;
 }
 
+/**
+ * Typosquat/supply-chain risk (src/lib/scanners/typosquatRisk.ts) — the
+ * fix is not "upgrade a version", it's "confirm whether this dependency
+ * was ever intended" and, if not, treat it as a possible compromise.
+ */
+export function typosquatRiskRemediation(ecosystemLabel: string, packageName: string, resembles: string): string {
+  return `**${packageName}** is one character away from the well-known ${ecosystemLabel} package **${resembles}**, and has far fewer releases than a real, actively-maintained package of that name — the pattern a typosquat (a malicious package published under a name a developer might mistype or misread) uses.
+
+1. Check whether \`${packageName}\` was ever meant to be a dependency. Search your lockfile/manifest history (\`git log -p -- package-lock.json\` or the equivalent for your ecosystem) for when and how it was added — a manual edit, a copy-pasted install command with a typo, or a dependency someone else introduced.
+2. If it was a typo: remove \`${packageName}\`, install \`${resembles}\` instead, and re-run your test suite. Before trusting the environment it ran in, review anything the package could have executed on install (npm \`postinstall\`/\`preinstall\` scripts, a PyPI \`setup.py\`) and rotate any credentials that environment had access to if you can't rule out it ran.
+3. If \`${packageName}\` really is what you intended (an unrelated, legitimately small package that happens to be one character off), no action is needed beyond double-checking it is the package you expect at https://www.npmjs.com/package/${packageName} or https://pypi.org/project/${packageName}/.
+
+This is a heuristic signal from name similarity plus registry release history, not a confirmed-malicious verdict — it will not catch every typosquat, and a small number of genuinely unrelated packages may be flagged. If this package is in fact malicious, consider reporting it to the registry's security team (npm: security@npmjs.com; PyPI: https://pypi.org/security/).`;
+}
+
 // ---------------------------------------------------------------------------
 // Google Safe Browsing (src/lib/scanners/safeBrowsing.ts) — the site itself
 // is currently on Google's malware/phishing/unwanted-software threat list.
