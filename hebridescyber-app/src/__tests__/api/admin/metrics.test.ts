@@ -86,6 +86,53 @@ describe("GET /api/admin/metrics", () => {
     expect(body.activeSubscriptions).toBe(1);
   });
 
+  it("excludes admin-comped and bespoke Tier A subs from paying MRR and surfaces them separately", async () => {
+    requireAdminMock.mockResolvedValue("admin-1");
+    mock.setQueues({
+      users: [{ count: 4 }, { data: [] }],
+      subscriptions: [
+        {
+          data: [
+            { plan: "pro", status: "active", source: "stripe" },
+            { plan: "agency", status: "active", source: "admin" }, // comp — £0 cash
+            { plan: "tier_a", status: "active", source: "stripe" }, // bespoke — no fixed price
+            { plan: "basic", status: "past_due", source: "stripe" }, // at-risk, not active
+          ],
+        },
+      ],
+      scans: scansQueue({}, 0),
+      // newSubs30d then cancellations30d, in that order
+      audit_logs: [{ count: 2 }, { count: 1 }],
+    });
+    const { req, res } = mockReqRes();
+
+    await handler(req, res);
+
+    const body = res._getJSONData() as {
+      mrrUsd: number;
+      revenue: {
+        payingMrrGbp: number;
+        payingCount: number;
+        compedCount: number;
+        bespokeCount: number;
+        pastDueCount: number;
+        newSubs30d: number;
+        cancellations30d: number;
+        churnRatePct: number | null;
+      };
+    };
+    expect(body.mrrUsd).toBe(35); // only the paying pro sub
+    expect(body.revenue.payingMrrGbp).toBe(35);
+    expect(body.revenue.payingCount).toBe(1);
+    expect(body.revenue.compedCount).toBe(1);
+    expect(body.revenue.bespokeCount).toBe(1);
+    expect(body.revenue.pastDueCount).toBe(1);
+    expect(body.revenue.newSubs30d).toBe(2);
+    expect(body.revenue.cancellations30d).toBe(1);
+    // active=3 (pro, agency-comp, tier_a), start = 3 - 2 + 1 = 2 → 1/2 = 50%
+    expect(body.revenue.churnRatePct).toBe(50);
+  });
+
   it("counts scans in the last 30 days separately from the total, using exact counts not a sampled fetch", async () => {
     requireAdminMock.mockResolvedValue("admin-1");
     mock.setQueues({

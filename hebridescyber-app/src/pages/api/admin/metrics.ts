@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { computeMrr, churnRatePct } from "@/lib/revenueMetrics";
 
 // scans.status's check constraint (sql/migrations/001_init.sql) — used to
 // get an exact per-status count via 4 small head queries instead of the
@@ -21,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const [{ count: totalCustomers }, { data: subscriptions }, { data: recentSignups }] = await Promise.all([
     supabaseAdmin.from("users").select("*", { count: "exact", head: true }),
-    supabaseAdmin.from("subscriptions").select("plan, status"),
+    supabaseAdmin.from("subscriptions").select("plan, status, source"),
     supabaseAdmin
       .from("users")
       .select("id, email, company_name, created_at")
@@ -44,22 +45,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .select("id", { count: "exact", head: true })
     .gte("created_at", thirtyDaysAgo);
 
-  const activeSubscriptions = (subscriptions ?? []).filter((s) => s.status === "active");
+  const allSubs = subscriptions ?? [];
+  const activeSubscriptions = allSubs.filter((s) => s.status === "active");
+  const pastDueCount = allSubs.filter((s) => s.status === "past_due").length;
   const planBreakdown: Record<string, number> = {};
   for (const s of activeSubscriptions) {
     planBreakdown[s.plan] = (planBreakdown[s.plan] ?? 0) + 1;
   }
 
+  // New subscriptions and cancellations over the window come from the
+  // webhook-synced audit log (the Stripe webhook writes one row per lifecycle
+  // event — see src/pages/api/stripe/webhook.ts), the only historical record
+  // we keep: the subscriptions table is one upserted row per owner with no
+  // history of its own.
+  const { count: newSubs30d } = await supabaseAdmin
+    .from("audit_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("action", "stripe.checkout.completed")
+    .gte("created_at", thirtyDaysAgo);
+  const { count: cancellations30d } = await supabaseAdmin
+    .from("audit_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("action", "stripe.subscription.deleted")
+    .gte("created_at", thirtyDaysAgo);
+
   // Only include statuses that actually occur, matching the previous
   // behaviour of building this object incrementally from real rows.
   const scansByStatus = Object.fromEntries(scanStatusCounts.filter(([, count]) => count > 0));
 
-  // Rough MRR estimate based on plan counts × hardcoded prices. Must match
-  // the real prices in src/app/dashboard/page.tsx's PLAN_LABELS (and
-  // /pricing) — these had drifted out of sync (19/49/99 here vs the real
-  // 20/35/75), silently understating MRR on every load.
-  const PLAN_PRICE: Record<string, number> = { basic: 20, pro: 35, agency: 75 };
-  const mrr = activeSubscriptions.reduce((sum, s) => sum + (PLAN_PRICE[s.plan] ?? 0), 0);
+  // MRR from the real subscription rows and this product's own published
+  // prices (revenueMetrics.ts) — paying Stripe subs only, so admin-granted
+  // comps and bespoke Tier A no longer inflate the figure the way a flat
+  // "every active sub × its plan price" sum did.
+  const mrr = computeMrr(allSubs);
+
+  // Churn over the window: cancellations / active at the window's start.
+  // Approximate the starting base from the current active count adjusted by
+  // the window's own gains and losses (no per-day history is kept).
+  const newCount = newSubs30d ?? 0;
+  const cancelCount = cancellations30d ?? 0;
+  const activeAtWindowStart = activeSubscriptions.length - newCount + cancelCount;
 
   return res.status(200).json({
     totalCustomers: totalCustomers ?? 0,
@@ -68,7 +93,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     scansLast30d: scansLast30d ?? 0,
     scansByStatus,
     planBreakdown: Object.entries(planBreakdown).map(([plan, count]) => ({ plan, count })),
-    mrrUsd: mrr,
+    // mrrUsd is a legacy field name (the value is GBP) kept for the top-line
+    // StatCard; it now carries real paying MRR, not the old inflated sum.
+    mrrUsd: mrr.payingMrrGbp,
+    revenue: {
+      payingMrrGbp: mrr.payingMrrGbp,
+      payingCount: mrr.payingCount,
+      compedCount: mrr.compedCount,
+      bespokeCount: mrr.bespokeCount,
+      byPlan: mrr.byPlan,
+      pastDueCount,
+      newSubs30d: newCount,
+      cancellations30d: cancelCount,
+      churnRatePct: churnRatePct(cancelCount, activeAtWindowStart),
+    },
     recentSignups: recentSignups ?? [],
   });
 }
