@@ -16,13 +16,32 @@
 // Now scoped by the technologies fingerprint.ts already detected
 // (TECH_TAG_MAP below), plus a fixed baseline of high-value generic tags
 // that apply regardless of any specific software (cve/exposure/misconfig/
-// default-login/takeover) — so a target with zero detectable/mappable
-// technology still gets a real, useful nuclei pass, never zero effective
-// tags. TECH_TAG_MAP is a best-effort mapping to nuclei's own
+// default-login/takeover/ssrf/oast) — so a target with zero detectable/
+// mappable technology still gets a real, useful nuclei pass, never zero
+// effective tags. TECH_TAG_MAP is a best-effort mapping to nuclei's own
 // community-maintained tag vocabulary: an entry that doesn't match any real
 // template just contributes nothing to -tags' OR-match, exactly as
 // harmless as a technology this map doesn't cover at all — never an error,
 // never a reason to fall back to the unscoped (slow, noisy) behaviour.
+//
+// SSRF out-of-band testing (ssrf/oast tags). nuclei's SSRF templates
+// (confirmed against the real nuclei-templates repo: 215 tagged "ssrf",
+// 601 using the `{{interactsh-url}}` out-of-band placeholder) inject that
+// placeholder into a request and match only on `interactsh_protocol` — a
+// real callback the target's server made to it, never a response-body
+// guess. nuclei resolves `{{interactsh-url}}` against a server it polls
+// itself: by default the free public interactsh collaborator pool
+// (confirmed via `nuclei -help`: `-iserver` defaults to
+// "oast.pro,oast.live,oast.site,oast.online,oast.fun,oast.me", the same
+// ProjectDiscovery-run infrastructure as nuclei/subfinder/httpx
+// themselves, already trusted elsewhere in this pipeline) — no server to
+// host, no flag needed, nothing new to configure. This isn't a new
+// capability so much as un-excluding one: before the Sprint 5 tag
+// curation above, nuclei ran unscoped and already fired every OAST
+// template; "ssrf"/"oast" simply weren't on the curated allow-list.
+// Confirming a real outbound request, never guessing from a response
+// body, keeps this a detection, not an attack — no different in kind
+// from any other nuclei CVE template already in BASELINE_TAGS.
 
 import { execTool } from "../../lib/execTool";
 import { readFile, unlink } from "node:fs/promises";
@@ -62,9 +81,9 @@ const TECH_TAG_MAP: Record<string, string[]> = {
 // (exposed panels/files, generic misconfigurations, default credentials,
 // subdomain takeovers, CVE-tagged templates that match on product
 // signatures nuclei detects itself rather than needing our own hint).
-const BASELINE_TAGS = ["cve", "exposure", "misconfig", "default-login", "takeover"];
+const BASELINE_TAGS = ["cve", "exposure", "misconfig", "default-login", "takeover", "ssrf", "oast"];
 
-function buildTagArgument(detectedTechnologies: string[]): string {
+export function buildTagArgument(detectedTechnologies: string[]): string {
   const mapped = detectedTechnologies.flatMap((name) => TECH_TAG_MAP[name] ?? []);
   return [...new Set([...BASELINE_TAGS, ...mapped])].join(",");
 }
