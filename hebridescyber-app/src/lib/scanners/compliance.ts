@@ -195,6 +195,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "headers.csp-weak": [OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
   "headers.cors-wildcard": [OWASP_A05, OWASP_A01, CIS_4, PCI_REQ6, ISO_A9],
   "headers.info-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
+  "headers.smuggling-surface": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_16, ISO_A12],
 
   // --- Supabase / Firebase backend exposure: data readable without access control ---
   "backend-exposure.service-key": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, CIS_4, PCI_REQ8, ISO_A9, NIS2_ART21],

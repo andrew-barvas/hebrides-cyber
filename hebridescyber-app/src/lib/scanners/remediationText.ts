@@ -659,6 +659,28 @@ more_clear_headers "X-Powered-By";
 **PHP:** \`expose_php = Off\` in \`php.ini\`
 **Next.js:** \`poweredByHeader: false\` in \`next.config.js\``;
 
+export const SMUGGLING_SURFACE = `A response should carry exactly one of Content-Length or Transfer-Encoding,
+never both — RFC 7230 §3.3.3. When a front-end proxy/load balancer and the
+back-end server it forwards to disagree on which one to trust, an attacker
+can craft a request whose framing is read differently by each hop, splitting
+one connection's traffic to smuggle a second, hidden request past the
+front-end's security controls (request smuggling, CL.TE/TE.CL/TE.TE desync).
+
+This finding does not prove a desync is exploitable — it means the response
+shape that makes that class of attack possible exists somewhere in your
+stack. Fix it at the source:
+- Configure your back-end application/framework to send only one of the two
+  headers (chunked transfer OR a precomputed Content-Length, never both).
+- If a proxy, CDN or load balancer sits in front, check its own
+  request-smuggling mitigations (most major providers — Cloudflare, AWS
+  ALB/CloudFront, nginx 1.21+ — reject or normalise ambiguous framing by
+  default; confirm this is actually enabled).
+- For a thorough audit beyond this read-only check, use a dedicated tool
+  designed for it (e.g. Burp Suite's HTTP Request Smuggler) against
+  infrastructure you fully control end-to-end, coordinated with your CDN/
+  proxy operator — a naive probe can corrupt a connection shared with other
+  tenants of the same front end.`;
+
 export const WP_XMLRPC = `Disable XML-RPC unless a plugin needs it. It allows hundreds of password guesses
 in a single request via \`system.multicall\`.
 
