@@ -309,6 +309,10 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "dependency-manifest.cargo": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "dependency-manifest.nuget": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "dependency-manifest.additional-vulnerable": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+  // Typosquat/supply-chain risk (typosquatRisk.ts) is a different failure
+  // mode from an outdated-but-legitimate package — same refs as zizmor's
+  // "supply-chain-integrity" category above.
+  "dependency-manifest.typosquat-risk": [OWASP_A08, OWASP_A06, CE_PATCHING, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   // Unsupported software on the site itself (endOfLife.ts). Not
