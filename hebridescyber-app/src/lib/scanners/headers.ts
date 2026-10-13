@@ -11,6 +11,7 @@ export type HeadersResult =
       cookies: CookieAnalysis[];
       cors: CorsAnalysis;
       infoDisclosure: InfoDisclosureAnalysis;
+      smugglingSurface: SmugglingSurfaceAnalysis;
     }
   | { status: "error"; note: string };
 
@@ -180,6 +181,41 @@ function analyseInfoDisclosure(headers: Headers): InfoDisclosureAnalysis {
   return { serverHeader: server, poweredByHeader: poweredBy, generatorHeader: generator, issues };
 }
 
+// ---- HTTP request smuggling surface ----------------------------------------
+//
+// Passive signal only — never a raw/malformed request. RFC 7230 §3.3.3 says
+// a response (or request) carrying BOTH Content-Length and Transfer-Encoding
+// is itself a framing ambiguity a compliant recipient must resolve by
+// rejecting the message or ignoring Content-Length; in practice this is
+// exactly the condition a front-end/back-end pair disagreeing on message
+// length (CL.TE/TE.CL request smuggling) needs to exist somewhere in the
+// chain. This observes the single response this module already fetches —
+// it proves risk surface, never exploitability, and genuinely probing for a
+// real desync would mean sending deliberately ambiguous framing bytes that
+// can corrupt a shared front-end/back-end connection pool serving other,
+// non-consenting tenants of the same infrastructure — out of scope for any
+// profile this product offers (see docs/USER-GUIDE.md §6).
+
+type SmugglingSurfaceAnalysis = {
+  contentLength: string | null;
+  transferEncoding: string | null;
+  issues: string[];
+};
+
+function analyseSmugglingSurface(headers: Headers): SmugglingSurfaceAnalysis {
+  const contentLength = headers.get("content-length");
+  const transferEncoding = headers.get("transfer-encoding");
+  const issues: string[] = [];
+
+  if (contentLength !== null && transferEncoding !== null) {
+    issues.push(
+      `Response carries both Content-Length (${contentLength}) and Transfer-Encoding (${transferEncoding}) — RFC 7230 §3.3.3 treats this as a framing ambiguity, the condition request smuggling (CL.TE/TE.CL) exploits when a front-end and back-end disagree on which header to trust.`
+    );
+  }
+
+  return { contentLength, transferEncoding, issues };
+}
+
 // ---- Main ------------------------------------------------------------------
 
 /**
@@ -198,6 +234,7 @@ export type HeaderAnalysisBundle = {
   cookies: CookieAnalysis[];
   cors: CorsAnalysis;
   infoDisclosure: InfoDisclosureAnalysis;
+  smugglingSurface: SmugglingSurfaceAnalysis;
 };
 
 export function buildHeaderAnalysis(res: Response): HeaderAnalysisBundle {
@@ -222,6 +259,7 @@ export function buildHeaderAnalysis(res: Response): HeaderAnalysisBundle {
     cookies: analyseCookies(setCookieHeaders),
     cors: analyseCors(res.headers.get("access-control-allow-origin"), res.headers.get("access-control-allow-credentials")),
     infoDisclosure: analyseInfoDisclosure(res.headers),
+    smugglingSurface: analyseSmugglingSurface(res.headers),
   };
 }
 
