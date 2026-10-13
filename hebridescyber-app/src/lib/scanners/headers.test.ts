@@ -161,6 +161,34 @@ describe("buildHeaderAnalysis", () => {
     const result = buildHeaderAnalysis(makeResponse({}, 403));
     expect(result.httpStatus).toBe(403);
   });
+
+  describe("request smuggling surface", () => {
+    it("flags a response carrying both Content-Length and Transfer-Encoding", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "content-length": "42", "transfer-encoding": "chunked" }));
+      expect(result.smugglingSurface.issues).toHaveLength(1);
+      expect(result.smugglingSurface.issues[0]).toContain("Content-Length (42)");
+      expect(result.smugglingSurface.issues[0]).toContain("Transfer-Encoding (chunked)");
+      expect(result.smugglingSurface.contentLength).toBe("42");
+      expect(result.smugglingSurface.transferEncoding).toBe("chunked");
+    });
+
+    it("does not flag a response with only Content-Length", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "content-length": "42" }));
+      expect(result.smugglingSurface.issues).toEqual([]);
+    });
+
+    it("does not flag a response with only Transfer-Encoding", () => {
+      const result = buildHeaderAnalysis(makeResponse({ "transfer-encoding": "chunked" }));
+      expect(result.smugglingSurface.issues).toEqual([]);
+    });
+
+    it("does not flag a response with neither header", () => {
+      const result = buildHeaderAnalysis(makeResponse({}));
+      expect(result.smugglingSurface.issues).toEqual([]);
+      expect(result.smugglingSurface.contentLength).toBeNull();
+      expect(result.smugglingSurface.transferEncoding).toBeNull();
+    });
+  });
 });
 
 describe("checkHeaders", () => {
