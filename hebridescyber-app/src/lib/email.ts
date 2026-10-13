@@ -20,14 +20,39 @@ export type SendEmailResult = { ok: boolean; error?: string };
 const DEFAULT_FROM = "Hebrides Cyber <noreply@hebridescyber.co.uk>";
 
 /**
+ * Best-effort deliverability recording (migration 056). Only runs when the
+ * service-role env is present (so it no-ops in tests and local dev), lazily
+ * acquires the client, and swallows everything — a monitoring write must
+ * never affect whether the email counts as sent.
+ */
+async function recordOutcome(to: string | string[], subject: string, result: SendEmailResult): Promise<void> {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const { getSupabaseAdmin } = await import("./supabaseAdmin");
+    const { recordEmailOutcome } = await import("./emailEvents");
+    await recordEmailOutcome(getSupabaseAdmin(), {
+      to,
+      subject,
+      status: result.ok ? "sent" : "failed",
+      error: result.error,
+    });
+  } catch {
+    // strictly best-effort
+  }
+}
+
+/**
  * Sends one email via Resend (https://resend.com). Set RESEND_API_KEY to
  * enable — resolves to { ok: false } (not a throw) when unset, matching
  * how contact.ts previously skipped sending silently when unconfigured.
  */
 export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: SendEmailInput): Promise<SendEmailResult> {
   const resendKey = process.env.RESEND_API_KEY;
+  // Not a real attempt (no provider configured) — don't record it as a
+  // deliverability failure, that would drown real bounces in noise.
   if (!resendKey) return { ok: false, error: "RESEND_API_KEY not configured" };
 
+  let result: SendEmailResult;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -46,12 +71,16 @@ export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: Send
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return { ok: false, error: `Resend responded ${res.status}: ${text}` };
+      result = { ok: false, error: `Resend responded ${res.status}: ${text}` };
+    } else {
+      result = { ok: true };
     }
-    return { ok: true };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    result = { ok: false, error: (err as Error).message };
   }
+
+  await recordOutcome(to, subject, result);
+  return result;
 }
 
 /** HTML-escaping helper, matching the inline version that lived in contact.ts. */
