@@ -50,6 +50,7 @@ import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
 import { sendAttackSurfaceAlerts, monitoredDomain } from "./attackSurfaceMonitor";
 import { runEasmDiscovery } from "./easmDiscovery";
+import { sendLookalikeDomainAlerts } from "./lookalikeDomainMonitor";
 import type { ReconResult } from "./scanners/recon";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
@@ -1158,6 +1159,10 @@ export async function executeScan(
     // what syncAssetInventory recorded in Phase 1. Never throws, and last, so
     // its DNS lookups can't hold up the alerts above.
     await sendAttackSurfaceAlerts(supabaseAdmin, ownerId, scanId, targetUrl, baseResults?.recon as ReconResult | undefined);
+    // Lookalike-domain / phishing monitoring: mostly a no-op (it only runs a
+    // full candidate sweep once every SWEEP_INTERVAL_DAYS per domain), so it
+    // costs nothing on the scans in between. Never throws.
+    await sendLookalikeDomainAlerts(supabaseAdmin, ownerId, targetUrl);
   } catch (err) {
     console.error(`[scanExecution] post-completion notifications failed for scan ${scanId}:`, (err as Error).message);
   }
