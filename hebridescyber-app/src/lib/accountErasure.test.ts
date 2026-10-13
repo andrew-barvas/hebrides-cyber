@@ -8,6 +8,7 @@ import {
   recordDeletionRequest,
   runDeletionReminder,
   selectRequestsToRemind,
+  summarizeDeletionQueue,
   type DeletionRequestRow,
   type ErasurePlan,
 } from "./accountErasure";
@@ -240,5 +241,33 @@ describe("runDeletionReminder", () => {
     await expect(runDeletionReminder(fakeDb({ deletion_requests: [{ error: { code: "08006", message: "down" } }] }).db, send, NOW)).rejects.toThrow("down");
     await expect(runDeletionReminder(fakeDb({ deletion_requests: [{ data: [row("a", "2026-10-15T00:00:00Z")] }, { error: { message: "stamp failed" } }] }).db, send, NOW)).rejects.toThrow("stamp failed");
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("summarizeDeletionQueue", () => {
+  const now = new Date("2026-06-15T12:00:00Z");
+  const row = (over: Partial<DeletionRequestRow>): DeletionRequestRow => ({
+    id: "r", owner: "o", status: "pending", requested_at: "2026-06-01T00:00:00Z",
+    due_at: "2026-07-01T00:00:00Z", reminded_at: null, ...over,
+  });
+
+  it("returns only pending rows, soonest deadline first, with overdue flags and wording", () => {
+    const { overdueCount, pending } = summarizeDeletionQueue(
+      [
+        row({ id: "future", due_at: "2026-06-20T00:00:00Z" }),
+        row({ id: "overdue", due_at: "2026-06-10T00:00:00Z" }),
+        row({ id: "done", status: "completed", due_at: "2026-06-05T00:00:00Z" }),
+        row({ id: "gone", status: "withdrawn", due_at: "2026-06-01T00:00:00Z" }),
+      ],
+      now
+    );
+    expect(pending.map((p) => p.id)).toEqual(["overdue", "future"]);
+    expect(pending[0]).toMatchObject({ overdue: true, wording: "5 days overdue" });
+    expect(pending[1]).toMatchObject({ overdue: false, wording: "due in 4 days" });
+    expect(overdueCount).toBe(1);
+  });
+
+  it("is empty with zero overdue when nothing is pending", () => {
+    expect(summarizeDeletionQueue([row({ status: "completed" })], now)).toEqual({ overdueCount: 0, pending: [] });
   });
 });
