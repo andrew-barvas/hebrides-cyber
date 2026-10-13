@@ -11,7 +11,10 @@ const mock = makeAdminSupabaseMock();
 
 vi.mock("@/lib/adminAuth", () => ({
   requireAdmin: requireAdminMock,
-  supabaseAdmin: { from: (table: string) => mock.supabaseAdmin.from(table) },
+  supabaseAdmin: {
+    from: (table: string) => mock.supabaseAdmin.from(table),
+    rpc: (fn: string) => mock.supabaseAdmin.rpc(fn),
+  },
 }));
 
 vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
@@ -71,7 +74,7 @@ describe("/api/admin/customers/[id]", () => {
     expect(res._getStatusCode()).toBe(500);
   });
 
-  it("returns profile, subscription and flattened recent scans, and logs an audit event", async () => {
+  it("returns profile, subscription, flattened recent scans and usage, and logs an audit event", async () => {
     requireAdminMock.mockResolvedValue("admin-1");
     mock.setQueues({
       users: [{ data: { id: "owner-1", email: "a@example.com", company_name: "Acme", is_admin: false, created_at: "2026-01-01" }, error: null }],
@@ -79,8 +82,13 @@ describe("/api/admin/customers/[id]", () => {
       scans: [
         { data: [{ id: "s1", target_url: "https://example.com", status: "completed", created_at: "2026-01-03", scan_results: [{ score: 91 }] }], error: null },
         { count: 7, error: null },
+        { count: 6, error: null },
       ],
+      monitored_targets: [{ count: 2, error: null }],
+      teams: [{ data: { id: "team-1" }, error: null }],
+      team_members: [{ count: 4, error: null }],
     });
+    mock.setRpcQueues({ monitored_targets_cap: [{ data: 3, error: null }] });
     const { req, res } = mockReqRes();
 
     await handler(req, res);
@@ -91,29 +99,66 @@ describe("/api/admin/customers/[id]", () => {
       subscription: { plan: string };
       scans: Array<{ id: string; score: number | null }>;
       scanCount: number;
+      usage: {
+        monitoredTargets: { count: number; cap: number | null };
+        teamMembers: { count: number; cap: number } | null;
+        freeScans: { count: number; allowed: number } | null;
+      };
     };
     expect(body.user.email).toBe("a@example.com");
     expect(body.subscription.plan).toBe("pro");
     expect(body.scans[0]).toMatchObject({ id: "s1", score: 91 });
     expect(body.scanCount).toBe(7);
+    // An active subscription means the free-tier cap no longer applies.
+    expect(body.usage).toEqual({
+      monitoredTargets: { count: 2, cap: 3 },
+      teamMembers: { count: 4, cap: 25 },
+      freeScans: null,
+    });
     expect(logAuditEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ actorId: "admin-1", action: "admin.customer_viewed", resourceType: "user", resourceId: "owner-1" })
     );
   });
 
-  it("returns null subscription when the customer has none", async () => {
+  it("returns null subscription when the customer has none, and reports free-tier usage", async () => {
     requireAdminMock.mockResolvedValue("admin-1");
     mock.setQueues({
       users: [{ data: { id: "owner-1", email: "a@example.com", company_name: null, is_admin: false, created_at: "2026-01-01" }, error: null }],
       subscriptions: [{ data: null, error: null }],
-      scans: [{ data: [], error: null }, { count: 0, error: null }],
+      scans: [{ data: [], error: null }, { count: 1, error: null }, { count: 1, error: null }],
+      monitored_targets: [{ count: 0, error: null }],
+      teams: [{ data: null, error: null }],
     });
+    mock.setRpcQueues({ monitored_targets_cap: [{ data: 0, error: null }] });
     const { req, res } = mockReqRes();
 
     await handler(req, res);
 
-    const body = res._getJSONData() as { subscription: null };
+    const body = res._getJSONData() as {
+      subscription: null;
+      usage: { teamMembers: null; freeScans: { count: number; allowed: number } | null };
+    };
     expect(body.subscription).toBeNull();
+    expect(body.usage.teamMembers).toBeNull();
+    expect(body.usage.freeScans).toEqual({ count: 1, allowed: 1 });
+  });
+
+  it("never reports free-tier usage for an admin account, even with no subscription", async () => {
+    requireAdminMock.mockResolvedValue("admin-1");
+    mock.setQueues({
+      users: [{ data: { id: "owner-1", email: "admin@example.com", company_name: null, is_admin: true, created_at: "2026-01-01" }, error: null }],
+      subscriptions: [{ data: null, error: null }],
+      scans: [{ data: [], error: null }, { count: 0, error: null }, { count: 0, error: null }],
+      monitored_targets: [{ count: 0, error: null }],
+      teams: [{ data: null, error: null }],
+    });
+    mock.setRpcQueues({ monitored_targets_cap: [{ data: 0, error: null }] });
+    const { req, res } = mockReqRes();
+
+    await handler(req, res);
+
+    const body = res._getJSONData() as { usage: { freeScans: null } };
+    expect(body.usage.freeScans).toBeNull();
   });
 });
