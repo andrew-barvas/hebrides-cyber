@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { teamSizeLabel, budgetRangeLabel } from "@/lib/contactOptions";
 import { capStatus } from "@/lib/usageCapStatus";
+import { AUDIT_CATEGORIES } from "@/lib/auditFilters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1317,20 +1318,29 @@ function AuditTab({ token }: { token: string }) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState("");
   const [actor, setActor] = useState("");
+  const [category, setCategory] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const PAGE_SIZE = 50;
 
-  const load = useCallback(async (q: string, a: string, p: number) => {
-    const params = new URLSearchParams({ page: String(p) });
-    if (q) params.set("search", q);
-    if (a) params.set("actor", a);
-    apiFetch<{ logs: AuditLog[]; total: number }>(`/api/admin/audit?${params}`, token)
-      .then((d) => { setLogs(d.logs); setTotal(d.total); })
-      .catch(() => {});
-  }, [token]);
+  const load = useCallback(
+    async (q: string, a: string, cat: string, f: string, t: string, p: number) => {
+      const params = new URLSearchParams({ page: String(p) });
+      if (q) params.set("search", q);
+      if (a) params.set("actor", a);
+      if (cat) params.set("category", cat);
+      if (f) params.set("from", f);
+      if (t) params.set("to", t);
+      apiFetch<{ logs: AuditLog[]; total: number }>(`/api/admin/audit?${params}`, token)
+        .then((d) => { setLogs(d.logs); setTotal(d.total); })
+        .catch(() => {});
+    },
+    [token]
+  );
 
-  useEffect(() => { load(search, actor, page); }, [search, actor, page, load]);
+  useEffect(() => { load(search, actor, category, from, to, page); }, [search, actor, category, from, to, page, load]);
 
   return (
     <div className="space-y-4">
@@ -1349,6 +1359,18 @@ function AuditTab({ token }: { token: string }) {
           value={actor}
           onChange={(e) => { setActor(e.target.value); setPage(1); }}
         />
+        <AdminSelect value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
+          <option value="">All categories</option>
+          {AUDIT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </AdminSelect>
+        <label className="flex items-center gap-1 text-xs text-cybertext/40">
+          From
+          <AdminInput type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
+        </label>
+        <label className="flex items-center gap-1 text-xs text-cybertext/40">
+          To
+          <AdminInput type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+        </label>
         <span className="font-mono text-xs text-cybertext/40">{total} events</span>
       </div>
 

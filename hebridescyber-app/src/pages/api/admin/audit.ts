@@ -1,5 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { categoryLikePattern, dateRangeBounds } from "@/lib/auditFilters";
+
+function str(v: NextApiRequest["query"][string]): string {
+  return typeof v === "string" ? v.trim() : "";
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).end();
@@ -9,8 +14,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const page = Math.max(1, parseInt(typeof req.query.page === "string" ? req.query.page : "1", 10));
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
-  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const actor = typeof req.query.actor === "string" ? req.query.actor.trim() : "";
+  const search = str(req.query.search);
+  const actor = str(req.query.actor);
+  const categoryPattern = categoryLikePattern(str(req.query.category));
+  const { gte, lte } = dateRangeBounds(str(req.query.from), str(req.query.to));
 
   let query = supabaseAdmin
     .from("audit_logs")
@@ -20,6 +27,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (search) query = query.ilike("action", `%${search}%`);
   if (actor) query = query.ilike("actor_email", `%${actor}%`);
+  if (categoryPattern) query = query.like("action", categoryPattern);
+  if (gte) query = query.gte("created_at", gte);
+  if (lte) query = query.lte("created_at", lte);
 
   const { data, error, count } = await query;
   if (error) return res.status(500).json({ error: error.message });
