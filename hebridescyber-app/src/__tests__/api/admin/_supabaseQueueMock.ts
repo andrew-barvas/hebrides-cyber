@@ -25,6 +25,8 @@ export function makeAdminSupabaseMock() {
       eq: () => builder,
       neq: () => builder,
       gte: () => builder,
+      lte: () => builder,
+      like: () => builder,
       in: () => builder,
       or: () => builder,
       ilike: () => builder,
