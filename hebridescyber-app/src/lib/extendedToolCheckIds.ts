@@ -29,6 +29,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "trivy-image",
   "trivy-config",
   "sast",
+  "workflow-security",
   "auth-check",
   "whatwaf",
   "wpscan",

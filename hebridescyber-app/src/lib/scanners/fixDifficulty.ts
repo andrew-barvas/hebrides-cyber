@@ -11,6 +11,7 @@
 // convention as compliance.ts.
 
 import { SAST_RULE_CATEGORIES, type SastCategory } from "./sastCatalog";
+import { WORKFLOW_SECURITY_IDENT_CATEGORIES, type WorkflowSecurityCategory } from "./workflowSecurityCatalog";
 
 export type FixDifficulty = "trivial" | "easy" | "moderate" | "hard";
 
@@ -28,8 +29,21 @@ const SAST_CATEGORY_DIFFICULTY: Record<SastCategory, FixDifficulty> = {
   "jwt-verification": "easy",
 };
 
+// Workflow findings also point at an exact file and line (a .github/workflows/
+// YAML file), so most fixes are a local, same-file edit.
+const WORKFLOW_SECURITY_CATEGORY_DIFFICULTY: Record<WorkflowSecurityCategory, FixDifficulty> = {
+  injection: "easy", // move the expression into an env: var
+  "dangerous-triggers": "moderate", // may need the workflow's trigger/permission model rethought
+  "excessive-permissions": "easy",
+  "supply-chain-integrity": "easy", // swap a tag for its current commit SHA
+  "credential-exposure": "easy",
+  "unsound-logic": "moderate", // requires understanding what the condition was meant to test
+  hygiene: "trivial",
+};
+
 const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_DIFFICULTY[category]])),
+  ...Object.fromEntries(Object.entries(WORKFLOW_SECURITY_IDENT_CATEGORIES).map(([ident, category]) => [`workflow-security.${ident}`, WORKFLOW_SECURITY_CATEGORY_DIFFICULTY[category]])),
   // --- TLS: config-only changes on an existing cert/server ---
   "tls.hsts-missing": "trivial",
   "tls.hsts-short": "trivial",

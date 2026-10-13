@@ -79,6 +79,8 @@ describe("resolveToolConfig", () => {
     expect(config.secretScan).toBe(true);
     expect(config.trivyImage).toBe(true);
     expect(config.trivyConfig).toBe(true);
+    expect(config.sast).toBe(true);
+    expect(config.workflowSecurity).toBe(true);
     expect(config.sqlmap).toBe(false);
     expect(config.commix).toBe(false);
     expect(config.zap).toBe(false);

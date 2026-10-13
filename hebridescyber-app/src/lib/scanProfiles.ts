@@ -24,6 +24,7 @@ export type ExtendedToolName =
   | "trivyImage"
   | "trivyConfig"
   | "sast"
+  | "workflowSecurity"
   | "authCheck"
   | "whatwaf"
   | "wpscan"
@@ -63,6 +64,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "trivyImage",
   "trivyConfig",
   "sast",
+  "workflowSecurity",
   "authCheck",
   "whatwaf",
   "wpscan",
@@ -120,6 +122,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     trivyImage: true,
     trivyConfig: true,
     sast: true,
+    workflowSecurity: true,
     photon: true,
     gospider: true,
     metadataLeak: true,
