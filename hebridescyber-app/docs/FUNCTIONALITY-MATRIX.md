@@ -265,8 +265,8 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
 | SSO/SAML | **Deleted** (confirmed gone from `src/` as of 2026-10-12; was never wired to a route) | ~~`src/lib/ssoSaml.ts`~~ | n/a |
-| RBAC | Role hierarchy (viewer→editor→admin→owner), permission checks, role assignment validation. Unwired — no route calls it; owner-decision candidate for deletion (`docs/NEXT-STEPS.md`) | `src/lib/rbac.ts` | ✅ `rbac.test.ts` (9 tests) |
-| SCIM 2.0 provisioning | User resource parsing/serialization, list responses, bearer token validation. Unwired — owner-decision candidate for deletion | `src/lib/scimProvisioning.ts` | ✅ `scimProvisioning.test.ts` (10 tests) |
+| RBAC | **Deleted** (2026-10-13; was unwired — no route ever called it) | ~~`src/lib/rbac.ts`~~ | n/a |
+| SCIM 2.0 provisioning | **Deleted** (2026-10-13; was unwired) | ~~`src/lib/scimProvisioning.ts`~~ | n/a |
 | IP allowlisting | **Live, per API key** (IPv4 + IPv6). Enforced in `apiAuth.ts`; a refused key gets the same 401 as an unknown one, and the refusal is recorded on the key. Set via `PATCH /api/keys` and the dashboard's API keys panel. Needs migration 042; until then keys stay unrestricted and saving returns 503 | `src/lib/ipAllowlist.ts`, `src/lib/apiAuth.ts`, `src/pages/api/keys.ts`, `src/components/ApiKeys.tsx` | ✅ `ipAllowlist.test.ts`, `apiAuth.test.ts`, `__tests__/api/keys.test.ts`, `ApiKeys.test.tsx` |
 
 ### Organization & Multi-tenancy
@@ -274,8 +274,8 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | Module | What it does | Code path | Tests |
 |---|---|---|---|
 | Org/workspace model | **Deleted** (confirmed gone from `src/` as of 2026-10-12; was never wired to a route) | ~~`src/lib/orgModel.ts`~~ | n/a |
-| MSP portal | Per-client health scoring (healthy/warning/critical), cross-org dashboard aggregation. Unwired, owner-decision candidate for deletion — **don't confuse with the shipped, live Partner Portal** (`PartnerPortalPanel.tsx`, Agency-gated, §5) | `src/lib/mspPortal.ts` | ✅ `mspPortal.test.ts` (4 tests) |
-| Custom scan policies | Policy validation, check enable/disable, finding exclusion, pass/fail evaluation. Unwired, owner-decision candidate for deletion | `src/lib/customScanPolicies.ts` | ✅ `customScanPolicies.test.ts` (9 tests) |
+| MSP portal | **Deleted** (2026-10-13; was unwired) — **don't confuse with the shipped, live Partner Portal** (`PartnerPortalPanel.tsx`, Agency-gated, §5), which is unrelated and unaffected | ~~`src/lib/mspPortal.ts`~~ | n/a |
+| Custom scan policies | **Deleted** (2026-10-13; was unwired, no backing table) | ~~`src/lib/customScanPolicies.ts`~~ | n/a |
 
 ### Reporting & Compliance
 
@@ -285,7 +285,7 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | Multi-framework compliance reporting | Per-framework control pass/fail across 7 frameworks (ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8, NIS2, DORA), overall score, markdown export | `src/lib/complianceReport.ts` | ✅ `complianceReport.test.ts` (5 tests) |
 | SLA monitoring | **Live, Agency (admins exempt).** Per-account remediation targets in days (default 15/30/90/180, critical/high per CISA BOD 19-02), open-finding deadlines across sites, median time-to-fix, one email per finding when due soon and when breached. Built on `finding_lifecycle`, synced after every scan; a scan only resolves findings whose producing check it actually ran. `/dashboard/sla`, `GET/PUT /api/account/sla`. Needs migration 043; until then tracking is a no-op and the page says so | `src/lib/slaMonitoring.ts`, `src/lib/findingLifecycle.ts`, `src/lib/slaAlerts.ts`, `src/pages/api/account/sla.ts`, `src/components/SlaDashboard.tsx` | ✅ `slaMonitoring.test.ts`, `findingLifecycle.test.ts`, `slaAlerts.test.ts`, `__tests__/api/account/sla.test.ts`, `SlaDashboard.test.tsx` |
 | Finding triage (E-64) | **Live, all plans.** Per finding per site (owner, host, checkId): accepted risk / authorised, false positive, or snoozed (7/30/90 days from the report; any expiry up to a year via the API), always with a reason; Undo. Active triage leaves the report's open list and executive-summary counts (collapsed "Triaged" group), SLA tracking and alerts, new-finding email/on-call alerts, and the GitHub Action's gate; only false positives leave future scores. `triage` field on `GET /api/v1/scans/{id}`, the webhook payload and the CSV/JSON export. `GET/PUT/DELETE /api/findings/triage` (bulk up to 200, audited `finding.triaged`/`finding.untriaged`). Needs migration 046; until then nothing is triaged and writes return 503 | `src/lib/findingTriage.ts`, `src/pages/api/findings/triage.ts`, `src/components/FindingTriage.tsx`, `src/components/ScanReportView.tsx`, `src/lib/slaMonitoring.ts`, `src/lib/scanExecution.ts`, `action/index.js` | ✅ `findingTriage.test.ts`, `__tests__/api/findings/triage.test.ts`, `FindingTriage.test.tsx`, `slaMonitoring.test.ts`, `slaAlerts.test.ts`, `__tests__/api/account/sla.test.ts`, `scanReport.test.ts`, `export.test.ts`, `scanAlerts.test.ts`, `oncallAlerts.test.ts`, `githubAction.test.ts` |
-| Risk scoring | 5-factor composite scoring (severity 0.35, exploitability 0.25, density 0.15, attack surface 0.15, compliance impact 0.10), A-F grading, trend comparison. Unwired, owner-decision candidate for deletion | `src/lib/riskScoring.ts` | ✅ `riskScoring.test.ts` (8 tests) |
+| Risk scoring | **Deleted** (2026-10-13; was unwired — the live scoring path is `scoreFromFindings` in `scanners/index.ts`, not this module) | ~~`src/lib/riskScoring.ts`~~ | n/a |
 
 ### Advanced Scanning
 
@@ -303,7 +303,7 @@ readiness (Sprint 15+); the library layer is complete and tested.
 | CI/CD SDK | Pipeline configuration generation, threshold-based gating, multi-provider support | `src/lib/cicdSdk.ts` | **Deleted** — confirmed gone from `src/` entirely, same as `ssoSaml.ts`/`orgModel.ts` above. The real, live CI/CD integration is `public/ci/hebrides-scan.sh` + per-system templates + `/docs/ci` (see CLAUDE.md "CI templates") — don't confuse the two. |
 | ServiceNow tickets | Incident create/get/close/comment via Table API, Basic auth | `src/lib/ticketProviders.ts` | ✅ `ticketProviders.test.ts` (11 tests, shared with GitHub Issues) |
 | GitHub Issues tickets | Issue create/get/close/comment via REST API | `src/lib/ticketProviders.ts` | ✅ (same test file) |
-| GraphQL API | Schema definition, query parsing, operation name extraction, introspection detection, depth validation. Unwired, owner-decision candidate for deletion — **don't confuse with the shipped, wired GraphQL scanner** (`graphql.ts`, §5 above) | `src/lib/graphqlApi.ts` | ✅ `graphqlApi.test.ts` (7 tests) |
+| GraphQL API | **Deleted** (2026-10-13; was unwired) — **don't confuse with the shipped, wired GraphQL scanner** (`graphql.ts`, §5 above), which is unrelated and unaffected | ~~`src/lib/graphqlApi.ts`~~ | n/a |
 | Audit logging (expanded) | Extended event vocabulary, org-scoped audit trails | `src/lib/audit.ts` (extended) | ✅ `audit.test.ts` |
 
 ---
