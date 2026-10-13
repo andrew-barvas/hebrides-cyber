@@ -85,7 +85,7 @@ type BlogPost = {
   slug: string;
   title: string;
   excerpt: string;
-  status: "draft" | "published";
+  status: "draft" | "published" | "scheduled";
   published_at: string | null;
   updated_at: string;
   tags: string[];
@@ -132,6 +132,7 @@ function statusBadge(status: string) {
     pending:   "bg-amber-400/20 text-amber-400",
     failed:    "bg-red-400/20 text-red-400",
     published: "bg-neon/20 text-neon",
+    scheduled: "bg-seafoam/20 text-seafoam",
     draft:     "bg-cyberborder text-cybertext/60",
     active:    "bg-seafoam/20 text-seafoam",
     waiting:   "bg-amber-400/20 text-amber-400",
@@ -858,6 +859,7 @@ function BlogTab({ token }: { token: string }) {
         >
           <option value="">All</option>
           <option value="draft">Drafts</option>
+          <option value="scheduled">Scheduled</option>
           <option value="published">Published</option>
         </AdminSelect>
         <button
@@ -886,6 +888,12 @@ function BlogTab({ token }: { token: string }) {
                   <span>/{p.slug}</span>
                   <span>·</span>
                   <span>Updated {reltime(p.updated_at)}</span>
+                  {p.status === "scheduled" && p.published_at && (
+                    <>
+                      <span>·</span>
+                      <span className="text-seafoam">Publishes {new Date(p.published_at).toLocaleString()}</span>
+                    </>
+                  )}
                   {p.tags.length > 0 && (
                     <>
                       <span>·</span>
@@ -921,7 +929,16 @@ function BlogEditor({
   const [excerpt, setExcerpt] = useState(post?.excerpt ?? "");
   const [body, setBody] = useState(post?.body ?? "");
   const [tags, setTags] = useState((post?.tags ?? []).join(", "));
-  const [status, setStatus] = useState<"draft" | "published">(post?.status ?? "draft");
+  const [status, setStatus] = useState<"draft" | "published" | "scheduled">(post?.status ?? "draft");
+  // datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not an ISO string.
+  const toLocalInput = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [publishAt, setPublishAt] = useState(post?.status === "scheduled" ? toLocalInput(post.published_at) : "");
   const [coverImageUrl, setCoverImageUrl] = useState(post?.cover_image_url ?? "");
   const [metaDescription, setMetaDescription] = useState(post?.meta_description ?? "");
   const [ogImage, setOgImage] = useState(post?.og_image ?? "");
@@ -988,6 +1005,10 @@ function BlogEditor({
 
   const save = async () => {
     if (slugError) { setError("Fix the slug conflict before saving."); return; }
+    if (status === "scheduled" && (!publishAt || new Date(publishAt).getTime() <= Date.now())) {
+      setError("Pick a future date/time to schedule this post.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -995,6 +1016,7 @@ function BlogEditor({
         title, slug, excerpt, body,
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         status,
+        ...(status === "scheduled" ? { published_at: new Date(publishAt).toISOString() } : {}),
         cover_image_url: coverImageUrl || null,
         meta_description: metaDescription || null,
         og_image: ogImage || null,
@@ -1041,11 +1063,22 @@ function BlogEditor({
           </button>
           <AdminSelect
             value={status}
-            onChange={(e) => { setStatus(e.target.value as "draft" | "published"); markDirty(); }}
+            onChange={(e) => { setStatus(e.target.value as "draft" | "published" | "scheduled"); markDirty(); }}
           >
             <option value="draft">Draft</option>
+            <option value="scheduled">Schedule</option>
             <option value="published">Publish</option>
           </AdminSelect>
+          {status === "scheduled" && (
+            <input
+              type="datetime-local"
+              value={publishAt}
+              min={toLocalInput(new Date().toISOString())}
+              onChange={(e) => { setPublishAt(e.target.value); markDirty(); }}
+              className="rounded border border-cyberborder bg-cyberbg px-2 py-1.5 text-sm text-cybertext"
+              aria-label="Publish at"
+            />
+          )}
           <button
             onClick={save}
             disabled={saving || !!slugError}

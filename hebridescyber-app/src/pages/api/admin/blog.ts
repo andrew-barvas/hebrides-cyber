@@ -3,15 +3,28 @@ import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 import { parseBody } from "@/lib/validate";
 
-const createPostSchema = z.object({
-  title: z.string().min(1, "title is required"),
-  slug: z.string().min(1, "slug is required"),
-  excerpt: z.string().optional(),
-  body: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  status: z.enum(["draft", "published"]).optional(),
-  cover_image_url: z.string().url().nullish(),
-});
+const createPostSchema = z
+  .object({
+    title: z.string().min(1, "title is required"),
+    slug: z.string().min(1, "slug is required"),
+    excerpt: z.string().optional(),
+    body: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    status: z.enum(["draft", "published", "scheduled"]).optional(),
+    // Only meaningful (and required) when status is "scheduled" — see the refine below.
+    published_at: z.string().optional(),
+    cover_image_url: z.string().url().nullish(),
+  })
+  .refine((data) => data.status !== "scheduled" || isFutureDate(data.published_at), {
+    message: 'must be a valid future date when status is "scheduled"',
+    path: ["published_at"],
+  });
+
+function isFutureDate(value: string | undefined): boolean {
+  if (!value) return false;
+  const t = Date.parse(value);
+  return Number.isFinite(t) && t > Date.now();
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const adminId = await requireAdmin(req);
@@ -44,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     const parsed = parseBody(createPostSchema, req.body, res);
     if (!parsed) return;
-    const { title, slug, excerpt, body, tags, status, cover_image_url } = parsed;
+    const { title, slug, excerpt, body, tags, status, published_at, cover_image_url } = parsed;
 
     const { data, error } = await supabaseAdmin
       .from("blog_posts")
@@ -57,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: status ?? "draft",
         cover_image_url: cover_image_url ?? null,
         author_id: adminId,
-        published_at: status === "published" ? new Date().toISOString() : null,
+        published_at: status === "published" ? new Date().toISOString() : status === "scheduled" ? new Date(published_at!).toISOString() : null,
       })
       .select("id, slug")
       .single();
