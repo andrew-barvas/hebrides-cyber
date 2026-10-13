@@ -41,6 +41,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "kiterunner",
   "arjun",
   "sessionCheck",
+  "jwt-analysis",
   "cloudPosture",
   "http-probe",
   "content-discovery",
