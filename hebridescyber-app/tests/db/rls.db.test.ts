@@ -97,6 +97,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
+    await q("insert into tool_kill_switches (tool_name, disabled) values ('nuclei', true)");
     // M is a member of A's team (read-only access to A's scans/targets).
     await q("insert into teams (id, name, owner_id) values ('dddddddd-0000-0000-0000-000000000004', 'A team', $1)", [A]);
     await q("insert into team_members (team_id, user_id) values ('dddddddd-0000-0000-0000-000000000004', $1)", [M]);
@@ -180,6 +181,17 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       const anonR = await asActor(db, anon, (c) => attempt(c, ins, [table === "audit_logs" ? A : "m"]));
       expect(anonR.ok).toBe(false);
       expect(await count(service, `select 1 from ${table}`)).toBeGreaterThan(0);
+    });
+  });
+
+  describe("tool_kill_switches", () => {
+    it("is service-role-only: owners and anon can neither read nor write it", async () => {
+      expect(await count(asA, "select 1 from tool_kill_switches")).toBe(0);
+      expect(await count(anon, "select 1 from tool_kill_switches")).toBe(0);
+      const ins = "insert into tool_kill_switches (tool_name, disabled) values ('zap', true)";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
+      expect(await count(service, "select 1 from tool_kill_switches")).toBeGreaterThan(0);
     });
   });
 
