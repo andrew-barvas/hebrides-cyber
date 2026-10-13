@@ -44,6 +44,13 @@ const WORKFLOW_SECURITY_CATEGORY_DIFFICULTY: Record<WorkflowSecurityCategory, Fi
 const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   ...Object.fromEntries(Object.entries(SAST_RULE_CATEGORIES).map(([ruleId, category]) => [`sast.${ruleId}`, SAST_CATEGORY_DIFFICULTY[category]])),
   ...Object.fromEntries(Object.entries(WORKFLOW_SECURITY_IDENT_CATEGORIES).map(([ident, category]) => [`workflow-security.${ident}`, WORKFLOW_SECURITY_CATEGORY_DIFFICULTY[category]])),
+  // --- JWT security: library/config changes, no architecture change ---
+  "jwt-analysis.none-algorithm": "easy", // configure the library's allowed algorithms
+  "jwt-analysis.weak-secret": "easy", // rotate the signing secret
+  "jwt-analysis.no-expiration": "easy", // add an exp claim when issuing
+  "jwt-analysis.sent-over-http": "moderate", // same as tls.no-https
+  "jwt-analysis.exposed-in-url": "moderate", // move the token into a header/cookie across every caller
+
   // --- TLS: config-only changes on an existing cert/server ---
   "tls.hsts-missing": "trivial",
   "tls.hsts-short": "trivial",

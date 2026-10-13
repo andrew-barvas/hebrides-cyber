@@ -36,6 +36,7 @@ export type ExtendedToolName =
   | "kiterunner"
   | "arjun"
   | "sessionCheck"
+  | "jwtAnalysis"
   | "cloudPosture"
   | "httpx"
   | "contentDiscovery"
@@ -76,6 +77,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "kiterunner",
   "arjun",
   "sessionCheck",
+  "jwtAnalysis",
   "cloudPosture",
   "httpx",
   "contentDiscovery",
@@ -107,7 +109,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
   safe: {},
   full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
-  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, apiSpecInjection: true },
+  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
   // active scan + XSS are the classic CMS admin/comment-form vectors.
   cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true },
