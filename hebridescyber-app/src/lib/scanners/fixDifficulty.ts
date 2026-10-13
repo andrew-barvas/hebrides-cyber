@@ -169,6 +169,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dependency-manifest.cargo": "easy",
   "dependency-manifest.nuget": "easy",
   "dependency-manifest.additional-vulnerable": "easy",
+  "dependency-manifest.typosquat-risk": "moderate", // removing the package is quick; confirming nothing it ran was harmful is not
   "docker-base-image.unpinned-tag": "trivial",
   "docker-base-image.outdated-base": "moderate",
   "eol.unsupported": "moderate", // a major-version upgrade, usually
