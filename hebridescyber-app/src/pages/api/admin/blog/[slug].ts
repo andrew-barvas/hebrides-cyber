@@ -40,6 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } else if (updates.status === "draft") {
       updates.published_at = null;
+    } else if (updates.status === "scheduled") {
+      const publishedAt = typeof req.body.published_at === "string" ? req.body.published_at : null;
+      const t = publishedAt ? Date.parse(publishedAt) : NaN;
+      if (!Number.isFinite(t) || t <= Date.now()) {
+        return res.status(400).json({ error: 'published_at must be a valid future date when status is "scheduled"' });
+      }
+      updates.published_at = new Date(t).toISOString();
     }
     updates["updated_at" as Field] = new Date().toISOString();
 
