@@ -107,17 +107,18 @@ site secure" but they've never had tooling to back that claim.
 2. **Fleet overview** (`FleetOverview.tsx`) shows every client's score,
    last scan date, and open finding count in one dashboard — no clicking
    through 10 separate reports.
-3. **MSP portal** (`mspPortal.ts`) provides per-client health scoring
-   (healthy/warning/critical) and cross-client aggregation sorted by risk.
+3. **Portfolio report** (`portfolioReport.ts`, Agency) rolls all 10
+   client sites into one PDF — scores, open criticals, SLA breaches —
+   for a single monthly client-facing summary.
 4. **White-label PDF reports** (`generate-report.ts` with Agency branding)
    go to clients at monthly review meetings — the agency's logo, not
    Hebrides Cyber's.
 5. **SLA monitoring** (`slaMonitoring.ts`) tracks remediation deadlines
    per severity — critical findings get 24h, high gets 72h. The agency
    can show clients they're meeting response commitments.
-6. **Custom scan policies** (`customScanPolicies.ts`) let the agency
-   define different check profiles per client — an e-commerce site gets
-   deeper payment-flow checks, a brochure site gets a lighter profile.
+6. Each client site picks its own scan profile (`safe`/`full`/`api`/`cms`,
+   `scanProfiles.ts`) — an e-commerce site runs the deeper profile, a
+   brochure site the lighter one.
 7. When a client's WordPress plugin has a CVE, the agency auto-creates a
    ticket and tracks it through to resolution with dedupe and auto-close
    (`ticketLinks.ts`, `ticketAutoClose.ts`).
@@ -139,9 +140,8 @@ contract, insurance requirement, or supply-chain obligation.
    'Secure Configuration' fails because of these 3 specific issues."
 2. Subscribes to Basic or Pro for ongoing monitoring. Scheduled reports
    (`scheduledReports.ts`) track CE compliance percentage weekly.
-3. Risk scoring (`riskScoring.ts`) prioritises which findings to fix
-   first — a 5-factor composite score weighing severity, exploitability,
-   density, attack surface, and compliance impact.
+3. Findings are prioritised by severity (`scoreFromFindings`,
+   `scanners/index.ts`), so the most urgent issues surface first.
 4. As fixes land, the New/Fixed diff shows progress. The compliance
    percentage climbs from 62% to 94% over 4 weeks.
 5. Before the formal CE assessment, exports the latest compliance report

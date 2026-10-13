@@ -203,12 +203,10 @@ table was itself stale: `graphql.ts` (PR #12) and `proofOfExploit.ts`/`xssConfir
 wired in while this table still described them as dead. **Updated again, same day**: `easmDiscovery.ts`
 is now wired in too — crt.sh on every scan (`executeScan`, right after `syncAssetInventory`), DNS
 brute-force only once the Tier A offensive profile's gate has cleared (see CLAUDE.md "EASM discovery").
-Only `graphqlApi.ts` (a separate module from `graphql.ts` — a GraphQL schema/query-parsing library, not
-a scanner; see `FUNCTIONALITY-MATRIX.md` §"Integrations") remains genuinely unwired.
-
-| Module | Exports | Status |
-|---|---|---|
-| `src/lib/graphqlApi.ts` | Schema definition, query parsing, operation name extraction, introspection detection, depth validation | Imported only by its own test. Not a scanner — don't confuse with `scanners/graphql.ts` (wired, see B2 above). Owner-decision candidate for deletion. |
+**2026-10-13**: `graphqlApi.ts` and five other confirmed-dead library modules (`rbac.ts`,
+`scimProvisioning.ts`, `mspPortal.ts`, `riskScoring.ts`, `customScanPolicies.ts`) deleted from `src/`
+entirely — see `FUNCTIONALITY-MATRIX.md`'s "Identity & Access"/"Organization & Multi-tenancy"/
+"Reporting & Compliance"/"Integrations" sections. Nothing in this table remains unwired.
 
 Related notes: `checkId` families `crawl.auth.*` are produced only through `authCheck` (extended). `metadataLeak` is also listed as a profile key but only yields findings when Photon or Gospider produced URL assets in the same run.
 
