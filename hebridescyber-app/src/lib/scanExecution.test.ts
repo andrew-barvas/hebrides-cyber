@@ -3,11 +3,12 @@
 // that nothing after completion can turn a completed scan into a failure.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, attackSurfaceMock, record } = vi.hoisted(() => {
+const { calls, attackSurfaceMock, lookalikeMock, record } = vi.hoisted(() => {
   const calls: string[] = [];
   return {
     calls,
     attackSurfaceMock: vi.fn(),
+    lookalikeMock: vi.fn(),
     record: (name: string, value: unknown = undefined) => vi.fn(async () => (calls.push(name), value)),
   };
 });
@@ -22,6 +23,7 @@ vi.mock("./scanners", () => ({
 }));
 vi.mock("./assetInventory", () => ({ syncAssetInventory: record("syncAssetInventory") }));
 vi.mock("./attackSurfaceMonitor", async (orig) => ({ ...(await orig<typeof import("./attackSurfaceMonitor")>()), sendAttackSurfaceAlerts: attackSurfaceMock }));
+vi.mock("./lookalikeDomainMonitor", async (orig) => ({ ...(await orig<typeof import("./lookalikeDomainMonitor")>()), sendLookalikeDomainAlerts: lookalikeMock }));
 vi.mock("./easmDiscovery", () => ({ runEasmDiscovery: record("runEasmDiscovery") }));
 vi.mock("./findingLifecycle", async (orig) => ({ ...(await orig<typeof import("./findingLifecycle")>()), syncFindingLifecycle: record("syncFindingLifecycle", null) }));
 vi.mock("./slaAlerts", () => ({ sendSlaAlerts: record("sendSlaAlerts") }));
@@ -61,6 +63,10 @@ beforeEach(() => {
   attackSurfaceMock.mockImplementation(async () => {
     calls.push("sendAttackSurfaceAlerts");
   });
+  lookalikeMock.mockReset();
+  lookalikeMock.mockImplementation(async () => {
+    calls.push("sendLookalikeDomainAlerts");
+  });
 });
 
 describe("executeScan wiring", () => {
@@ -86,6 +92,7 @@ describe("executeScan wiring", () => {
       "resolveOncallAlerts",
       "forwardToSiem",
       "sendAttackSurfaceAlerts",
+      "sendLookalikeDomainAlerts",
     ]);
   });
 
@@ -113,6 +120,7 @@ describe("executeScan wiring", () => {
     expect(result).toEqual({ ok: false, error: "checks crashed" });
     expect(scanUpdates.some((u) => u.status === "failed")).toBe(true);
     expect(attackSurfaceMock).not.toHaveBeenCalled();
+    expect(lookalikeMock).not.toHaveBeenCalled();
     expect(calls).not.toContain("syncAssetInventory");
   });
 });
