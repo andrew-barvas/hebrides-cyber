@@ -16,6 +16,7 @@
 // dependency, just fetch + Node's crypto.
 import { createHmac, createHash, createSign } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { decryptCredentials } from "../credentialEncryption";
 import type { Finding } from "./index";
 import {
   AWS_PUBLIC_S3_BUCKET,
@@ -532,7 +533,14 @@ export async function runCloudPostureChecks(
     const allFindings: Finding[] = [];
 
     for (const cred of creds) {
-      const credentials = cred.credentials_encrypted as Record<string, string>;
+      let credentials: Record<string, string>;
+      try {
+        credentials = decryptCredentials(cred.credentials_encrypted);
+      } catch {
+        // Can't decrypt (CREDENTIALS_ENC_KEY missing or rotated) — skip this
+        // credential rather than failing the whole scan or exposing anything.
+        continue;
+      }
       if (cred.provider === "aws" && credentials.accessKeyId) {
         const awsCreds = credentials as Parameters<typeof checkAwsPublicBuckets>[0];
         const [bucketFindings, accountFindings] = await Promise.all([

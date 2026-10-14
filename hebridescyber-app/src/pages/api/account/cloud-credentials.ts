@@ -1,6 +1,7 @@
 // GET/POST/DELETE /api/account/cloud-credentials — manages stored cloud
 // provider credentials for E-32 cloud posture scanning. Credentials are
-// stored as JSONB in cloud_credentials.credentials_encrypted (see
+// encrypted with AES-256-GCM before storage (src/lib/credentialEncryption.ts)
+// and written to cloud_credentials.credentials_encrypted (see
 // sql/migrations/030_cloud_credentials.sql). Agency-plan only for writes.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
@@ -8,6 +9,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
+import { encryptCredentials, isCredentialEncryptionConfigured } from "@/lib/credentialEncryption";
 
 const awsSchema = z.object({
   provider: z.literal("aws"),
@@ -106,12 +108,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const parsed = parseBody(postBodySchema, req.body, res);
   if (!parsed) return;
 
+  // Fail closed: never store cloud credentials in plaintext (finding S-1). If
+  // the encryption key isn't configured, refuse the write rather than fall back.
+  if (!isCredentialEncryptionConfigured()) {
+    return res.status(503).json({
+      error:
+        "Secure credential storage isn't configured on this deployment yet, so cloud credentials can't be saved. Set CREDENTIALS_ENC_KEY and try again.",
+    });
+  }
+
   const { error } = await supabaseAdmin.from("cloud_credentials").upsert(
     {
       owner: caller.ownerId,
       provider: parsed.provider,
       label: parsed.label,
-      credentials_encrypted: parsed.credentials,
+      credentials_encrypted: encryptCredentials(parsed.credentials),
     },
     { onConflict: "owner,provider,label" }
   );

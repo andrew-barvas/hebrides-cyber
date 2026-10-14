@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -37,9 +37,16 @@ function mockReqRes(method: RequestMethod, body: Record<string, unknown> = {}) {
 }
 
 describe("GET/POST/DELETE /api/account/cloud-credentials — E-32", () => {
+  const originalEncKey = process.env.CREDENTIALS_ENC_KEY;
   beforeEach(() => {
     queues = {};
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: OWNER_ID, via: "session" });
+    // Secure storage configured for the happy-path tests (fail-closed otherwise).
+    process.env.CREDENTIALS_ENC_KEY = Buffer.alloc(32, 7).toString("base64");
+  });
+  afterEach(() => {
+    if (originalEncKey === undefined) delete process.env.CREDENTIALS_ENC_KEY;
+    else process.env.CREDENTIALS_ENC_KEY = originalEncKey;
   });
 
   it("GET returns stored credentials", async () => {
@@ -123,6 +130,22 @@ describe("GET/POST/DELETE /api/account/cloud-credentials — E-32", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
+  });
+
+  it("POST fails closed with 503 when CREDENTIALS_ENC_KEY is unset (never stores plaintext)", async () => {
+    delete process.env.CREDENTIALS_ENC_KEY;
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
+    queues.users = [{ data: { is_admin: false }, error: null }];
+
+    const { req, res } = mockReqRes("POST", {
+      provider: "aws",
+      label: "prod",
+      credentials: { accessKeyId: "AKIAABCDEFGHIJKLMNOP", secretAccessKey: "secret" },
+    });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(503);
+    expect(JSON.parse(res._getData()).error).toMatch(/CREDENTIALS_ENC_KEY/);
   });
 
   it("POST returns 503 (not 500) when migration 030 hasn't been applied", async () => {

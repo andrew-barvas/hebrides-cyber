@@ -14,6 +14,12 @@ const createPostSchema = z
     // Only meaningful (and required) when status is "scheduled" — see the refine below.
     published_at: z.string().optional(),
     cover_image_url: z.string().url().nullish(),
+    // SEO fields: the editor collects these and the public page + RSS feed read
+    // them (blog/[slug]/page.tsx generateMetadata, feed.xml). They were being
+    // silently dropped here before — kept permissive (not .url()) so an empty
+    // string or a relative og:image path doesn't 400 the whole save.
+    meta_description: z.string().optional(),
+    og_image: z.string().optional(),
   })
   .refine((data) => data.status !== "scheduled" || isFutureDate(data.published_at), {
     message: 'must be a valid future date when status is "scheduled"',
@@ -57,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     const parsed = parseBody(createPostSchema, req.body, res);
     if (!parsed) return;
-    const { title, slug, excerpt, body, tags, status, published_at, cover_image_url } = parsed;
+    const { title, slug, excerpt, body, tags, status, published_at, cover_image_url, meta_description, og_image } = parsed;
 
     const { data, error } = await supabaseAdmin
       .from("blog_posts")
@@ -69,6 +75,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         tags: tags ?? [],
         status: status ?? "draft",
         cover_image_url: cover_image_url ?? null,
+        meta_description: meta_description ?? null,
+        og_image: og_image ?? null,
         author_id: adminId,
         published_at: status === "published" ? new Date().toISOString() : status === "scheduled" ? new Date(published_at!).toISOString() : null,
       })
