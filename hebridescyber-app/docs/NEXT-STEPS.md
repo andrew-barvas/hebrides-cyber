@@ -67,6 +67,8 @@ Database migrations: files exist through **059**; the next free number is **060*
 Coverage floor (`vitest.config.mts`): **73 / 65 / 74 / 74** (statements /
 branches / functions / lines). Lint: 0 errors (36 known warnings).
 
+**Dependency scanning of this repo (2026-10-14).** `npm audit` found 18 vulnerabilities, including a critical in Next.js 16.3.1 (three RCE advisories — Windows servers, the image-optimizer with AVIF, `next/og` — plus an image-optimizer SSRF and cache-poisoning issues; we don't call `next/og` or `next/image`, but Next serves `/_next/image` regardless, so it was treated as exposed). `npm audit fix` took production dependencies to **0** (Next 16.4.1; build, 3127 unit tests and 35 e2e tests pass on it). New `.github/workflows/dependency-audit.yml` fails on high/critical in production dependencies (on PRs that touch the lockfile, pushes to master, and a weekly run for newly published advisories) and lists dev-dependency advisories in the job summary without failing; it is separate from `deploy.yml` so a new advisory can't block unrelated PRs or the deploy of its own fix. Dependabot now covers npm as well as Actions (weekly, minor/patch grouped, majors held back). The 10 advisories left are build-time only (`tailwindcss`, `@tailwindcss/typography`, `eslint-config-next` and their glob/chokidar chains — ReDoS-type issues that need attacker-controlled input to a build tool) and need major bumps, notably Tailwind 3 → 4, which is a deliberate migration rather than a drive-by; npm's own suggested `eslint-config-next@14` is a downgrade and should be ignored.
+
 ## Rules that kept biting — follow these
 
 1. **Gate = four commands, check exit codes, not summary lines.** From
