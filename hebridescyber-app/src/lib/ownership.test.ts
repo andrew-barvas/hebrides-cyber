@@ -11,7 +11,7 @@ vi.mock("node:dns/promises", () => {
   return { ...mod, default: mod };
 });
 
-import { checkDnsTxt, checkFileVerification, inspectDnsTxt, inspectFile, verificationHints, verifyDomain } from "./ownership";
+import { checkDnsTxt, checkFileVerification, inspectDnsTxt, inspectFile, verificationHints, verifyDomain, validateNoSsrf, mappedIpv4, hostnameFromUrl } from "./ownership";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const FILE_URL = "https://example.com/.well-known/hebridescyber-verify.txt";
@@ -110,5 +110,71 @@ describe("verificationHints", () => {
     }
     expect(verificationHints("example.com", TOKEN, { dns: "no_txt" })).toHaveLength(1);
     expect(verificationHints("example.com", TOKEN, { dns: "match", file: "match" })).toEqual([]);
+  });
+});
+
+// SSRF guard. These inputs are all rejected by the bare-IP checks *before* any
+// DNS resolution, so the mocked resolver above is never reached for them.
+describe("validateNoSsrf — blocked ranges", () => {
+  it.each([
+    "http://127.0.0.1",
+    "http://10.0.0.1",
+    "http://172.16.5.4",
+    "http://192.168.1.1",
+    "http://169.254.169.254", // cloud metadata service
+    "http://100.64.0.1", // RFC 6598 shared space
+    "http://0.0.0.0",
+  ])("rejects private/reserved IPv4 %s", async (url) => {
+    await expect(validateNoSsrf(url)).rejects.toThrow(/restricted/i);
+  });
+
+  it.each([
+    "http://[::1]", // loopback
+    "http://[fe80::1]", // link-local (already caught)
+    "http://[fe9f::1]", // link-local — PREVIOUSLY LEAKED (only fe8 was blocked)
+    "http://[fea0::dead]", // link-local — previously leaked
+    "http://[febf::1]", // link-local — previously leaked
+    "http://[fc00::1]", // unique-local
+    "http://[fd12:3456::1]", // unique-local
+  ])("rejects private/reserved IPv6 %s", async (url) => {
+    await expect(validateNoSsrf(url)).rejects.toThrow(/restricted/i);
+  });
+
+  it.each([
+    "http://[::ffff:127.0.0.1]", // IPv4-mapped loopback — PREVIOUSLY LEAKED
+    "http://[::ffff:169.254.169.254]", // IPv4-mapped metadata — PREVIOUSLY LEAKED
+    "http://[::ffff:10.0.0.1]",
+  ])("rejects IPv4-mapped IPv6 %s", async (url) => {
+    await expect(validateNoSsrf(url)).rejects.toThrow(/restricted/i);
+  });
+
+  it("normalises alternate IPv4 encodings before blocking", async () => {
+    await expect(validateNoSsrf("http://2130706433")).rejects.toThrow(/restricted/i); // decimal 127.0.0.1
+    await expect(validateNoSsrf("http://0x7f000001")).rejects.toThrow(/restricted/i); // hex 127.0.0.1
+  });
+
+  it("rejects non-http(s) schemes and malformed URLs", async () => {
+    await expect(validateNoSsrf("ftp://example.com")).rejects.toThrow(/permitted/i);
+    await expect(validateNoSsrf("file:///etc/passwd")).rejects.toThrow(/permitted/i);
+    await expect(validateNoSsrf("not a url")).rejects.toThrow(/Invalid URL/i);
+  });
+});
+
+describe("mappedIpv4", () => {
+  it("extracts dotted and hex-compressed IPv4-mapped addresses", () => {
+    expect(mappedIpv4("::ffff:127.0.0.1")).toBe("127.0.0.1");
+    expect(mappedIpv4("::ffff:7f00:1")).toBe("127.0.0.1");
+    expect(mappedIpv4("::ffff:a9fe:a9fe")).toBe("169.254.169.254");
+  });
+  it("returns null for ordinary IPv6", () => {
+    expect(mappedIpv4("::1")).toBeNull();
+    expect(mappedIpv4("fe80::1")).toBeNull();
+    expect(mappedIpv4("2001:db8::1")).toBeNull();
+  });
+});
+
+describe("hostnameFromUrl", () => {
+  it("extracts the hostname", () => {
+    expect(hostnameFromUrl("https://example.com/path?q=1")).toBe("example.com");
   });
 });

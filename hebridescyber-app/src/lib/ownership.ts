@@ -39,10 +39,40 @@ function isBlockedIpv4(ip: string): boolean {
   return BLOCKED_IPV4_CIDRS.some(({ network, mask }) => (n & mask) === network);
 }
 
+/**
+ * Extracts the IPv4 address embedded in an IPv4-mapped/compatible IPv6 address,
+ * e.g. `::ffff:127.0.0.1` or its hex-compressed form `::ffff:7f00:1` (which is
+ * how the WHATWG URL parser serialises the former) → "127.0.0.1". Returns null
+ * when there is no embedded IPv4. Without this, `::ffff:127.0.0.1` slipped past
+ * both the IPv6 and IPv4 checks and reached loopback/metadata.
+ */
+export function mappedIpv4(ipv6: string): string | null {
+  const lower = ipv6.toLowerCase().replace(/^\[|\]$/g, "");
+  const embedsV4 = lower.includes("::ffff:") || lower.startsWith("::");
+  if (!embedsV4) return null;
+  const dotted = lower.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return dotted[1];
+  const hex = lower.match(/::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join(".");
+  }
+  return null;
+}
+
 function isBlockedIpv6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  // ::1 loopback, fc00::/7 unique-local, fe80::/10 link-local, :: unspecified
-  return lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe8") || lower === "::";
+  const lower = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  // IPv4-mapped / -compatible: judge by the embedded IPv4 so loopback/metadata
+  // reached via `::ffff:127.0.0.1` / `::ffff:169.254.169.254` is still blocked.
+  const v4 = mappedIpv4(lower);
+  if (v4) return isBlockedIpv4(v4);
+  if (lower === "::" || lower === "::1") return true; // unspecified, loopback
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // fc00::/7 unique-local
+  // fe80::/10 link-local spans fe80–febf — second hextet digit is 8, 9, a or b.
+  // (The old check only matched `fe8`, leaking fe9/fea/feb incl. metadata.)
+  if (/^fe[89ab]/.test(lower)) return true;
+  return false;
 }
 
 /**
@@ -64,7 +94,10 @@ export async function validateNoSsrf(targetUrl: string): Promise<string> {
 
   const hostname = parsed.hostname;
 
-  // Reject bare IPs without DNS resolution — common SSRF shortcut.
+  // Reject bare IPs without DNS resolution — common SSRF shortcut. `new URL()`
+  // already normalises alternate IPv4 encodings (decimal 2130706433, octal
+  // 0177.0.0.1, hex 0x7f.0.0.1) to canonical dotted-decimal before we see them,
+  // so this check sees "127.0.0.1" and blocks it.
   if (/^[\d.]+$/.test(hostname)) {
     if (isBlockedIpv4(hostname)) throw new Error(`Target IP ${hostname} is in a restricted private range`);
   }

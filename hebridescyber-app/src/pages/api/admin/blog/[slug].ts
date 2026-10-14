@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // PATCH /api/admin/blog/[slug] — update post fields
   if (req.method === "PATCH") {
-    const allowed = ["title", "slug", "excerpt", "body", "tags", "status", "cover_image_url"] as const;
+    const allowed = ["title", "slug", "excerpt", "body", "tags", "status", "cover_image_url", "meta_description", "og_image"] as const;
     type Field = (typeof allowed)[number];
     const updates: Partial<Record<Field, unknown>> & { published_at?: string | null } = {};
 
