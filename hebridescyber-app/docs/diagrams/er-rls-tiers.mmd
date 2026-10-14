@@ -1,0 +1,27 @@
+%% RLS / tenant-isolation tiers — how each table is protected
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TB
+    classDef t1 fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef t2 fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef t3 fill:#5a189a,stroke:#3c096c,color:#fff
+    classDef t4 fill:#6a040f,stroke:#370617,color:#fff
+
+    subgraph T1[Tier 1 - owner read + owner write via RLS]
+        A[scans, monitored_targets, verifications,<br/>repo_connections, api_keys, webhooks,<br/>subscriptions.webhook URLs]:::t1
+    end
+    subgraph T2[Tier 2 - owner read, SERVICE-ROLE write only]
+        B[scan_results, scan_jobs, finding_lifecycle,<br/>finding_triage, asset_inventory, dns_snapshots,<br/>emerging_threat_alerts, lookalike_domains,<br/>ticket_links, deletion_requests]:::t2
+    end
+    subgraph T3[Tier 3 - validate-before-save, service-role write]
+        C[ticket_integrations, oncall, siem_integrations,<br/>cloud_credentials, target_auth_credentials]:::t3
+    end
+    subgraph T4[Tier 4 - no client policy at all]
+        D[audit_logs, contact_enquiries, report_shares<br/>no public SELECT - token-match route only]:::t4
+    end
+
+    NOTE1["Secrets at rest: Tier-3 tokens, keys and cookies are PLAINTEXT.<br/>cloud_credentials column is named credentials_encrypted but is NOT encrypted - FINDING S-1"]:::t4
+    NOTE2["Hardened in migrations: 017 blocks is_admin self-grant;<br/>024 blocks self-set plan; 047 fixes recursive policies.<br/>Verified by tests/db/rls.db.test.ts on real Postgres."]:::t1
+
+    C -.-> NOTE1
+    A -.-> NOTE2
+    DEAD[organizations / org_members / rbac / sso_providers<br/>migrations 034-036 - schema only, ZERO code importers]:::t4

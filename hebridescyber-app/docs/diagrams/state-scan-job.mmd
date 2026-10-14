@@ -1,0 +1,18 @@
+%% State — scan_jobs lifecycle
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+stateDiagram-v2
+    [*] --> pending: /api/run-scan step 1 (scans row)
+    pending --> queued: ownership verified, scan_jobs enqueued
+    queued --> running: worker claims via claim_scan_job()
+    running --> completed: results written + score
+    running --> failed: unhandled error (status only, no error_detail column)
+    running --> stale: worker died mid-run
+    stale --> queued: reset_stale_scan_jobs() (cron or admin "Recover")
+    completed --> [*]
+    failed --> queued: admin "Retry"
+    completed --> completed: replay returns cached result
+
+    note right of failed
+        Observability gap: no error_detail,
+        Sentry has no DSN in prod -> cause unknown
+    end note

@@ -36,3 +36,7 @@ azure/terraform/.terraform.lock.hcl
 
 # Accuracy benchmark run output (bench/baseline.json is committed)
 bench/reports/
+
+# Diagram render helper (machine-specific browser path; regenerated each run).
+# The committed exports/*.svg and *.png are kept; only this local config is ignored.
+docs/diagrams/exports/.puppeteer.json

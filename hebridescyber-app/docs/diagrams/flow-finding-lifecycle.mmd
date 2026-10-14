@@ -1,0 +1,23 @@
+%% Flow — finding lifecycle: diff, triage, SLA, ticketing
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TD
+    classDef state fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef triage fill:#9d4edd,stroke:#7b2cbf,color:#fff
+    classDef action fill:#e85d04,stroke:#9a3b00,color:#fff
+
+    S([Scan completes]) --> DIFF[findingsDiff vs previous scan<br/>keyed on checkId + host]
+    DIFF --> NEW{New finding?}
+    NEW -->|yes| OPEN[Open in finding_lifecycle<br/>first_seen_at set]:::state
+    NEW -->|reappears under 7d| REOPEN[Reopen, keep original first_seen_at]:::state
+    DIFF --> FIXED[Fixed = gone AND its producing check ran<br/>passive scan cannot 'fix' active findings]:::state
+
+    OPEN --> TRIAGE{Owner triage?}
+    TRIAGE -->|accept risk / authorised| T1[Leaves open list, SLA, alerts<br/>deadline NOT extended]:::triage
+    TRIAGE -->|false positive| T2[Also leaves the score]:::triage
+    TRIAGE -->|snooze 7/30/90d| T3[Returns on expiry vs original first_seen]:::triage
+    TRIAGE -->|none| SLA[slaMonitoring: due-soon / breached<br/>per-account targets, Agency]:::state
+
+    SLA --> ALERT[slaAlerts email once per finding per stage]:::action
+    OPEN --> TKT{Ticket integration?}
+    TKT -->|yes| DEDUPE[decideTicketAction: create / reuse / blocked<br/>keyed on checkId + host]:::action
+    FIXED --> CLOSE[ticketAutoClose - opt-in, before comment]:::action

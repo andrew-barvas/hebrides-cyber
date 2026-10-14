@@ -6,6 +6,83 @@ editing which file), see this same folder's `CLAUDE.md` (not the git
 root — this repo has two roots; see `docs/README.md`); this doc is the
 higher-level picture.
 
+## System diagrams
+
+Diagrams render inline on GitHub. The canonical sources are the Mermaid files in
+[`diagrams/`](diagrams/) (`npm run docs:diagrams` exports SVG/PNG to
+`diagrams/exports/` for slide decks). Full index: [`diagrams/README.md`](diagrams/README.md).
+Every box follows the folder's standing rule — it marks `STUB`/`GAP`/`FINDING`
+where that is the truth, per `FUNCTIONALITY-MATRIX.md`.
+
+### C4 — system context
+
+```mermaid
+flowchart TB
+    classDef person fill:#08427b,stroke:#052e56,color:#fff
+    classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef ext fill:#999,stroke:#6b6b6b,color:#fff
+    classDef feed fill:#2d6a4f,stroke:#1b4332,color:#fff
+
+    subgraph Users
+        U1([SMB / site owner]):::person
+        U2([Developer / CI]):::person
+        U3([Agency / consultant]):::person
+        U4([Operator / admin]):::person
+    end
+    HC[["Hebrides Cyber<br/>Automated web-security scanning SaaS<br/>(single Next.js surface)"]]:::system
+    U1 & U2 & U3 & U4 --> HC
+    subgraph Platform_services[Platform services]
+        SB[(Supabase<br/>Postgres + Auth + Storage, RLS)]:::ext
+        AZ[Azure Static Web Apps<br/>+ Blob Storage]:::ext
+        GH[GitHub Actions runners<br/>+ GitHub App/PAT]:::ext
+        ST[Stripe<br/>billing - NOT configured in prod]:::ext
+    end
+    subgraph Intel[Threat-intel & scan feeds - free/keyless]
+        F1[OSV.dev / NVD / CISA KEV / FIRST EPSS]:::feed
+        F2[crt.sh / Shodan InternetDB / Cloudflare DoH]:::feed
+        F3[endoflife.date / Wayback / Safe Browsing opt / HIBP opt]:::feed
+    end
+    HC --> SB & AZ & GH & ST
+    GH -->|executeScan runs here| F1 & F2 & F3
+```
+
+### C4 — containers
+
+```mermaid
+flowchart TB
+    classDef app fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef store fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef worker fill:#6a040f,stroke:#370617,color:#fff
+    classDef ext fill:#999,stroke:#6b6b6b,color:#fff
+    Browser([Browser]):::ext
+    subgraph SWA[Azure Static Web Apps - one deployed surface]
+        Pages[App Router pages src/app/*]:::app
+        API[API routes managed Functions src/pages/api/*]:::app
+        MW[middleware.ts auth gate]:::app
+    end
+    subgraph Data[Supabase]
+        PG[(Postgres + RLS)]:::store
+        AUTH[Auth: magic link + password + TOTP]:::store
+    end
+    JOBS[(scan_jobs queue - claim_scan_job SKIP LOCKED)]:::store
+    subgraph Workers[GitHub Actions runners - NOT Azure]
+        WON[on-demand-scan.yml - passive]:::worker
+        WSCHED[scheduled-scans.yml - active tools]:::worker
+        EXE[[executeScan - one implementation]]:::worker
+    end
+    Browser -->|anon key, RLS| Pages
+    Browser --> MW --> Pages --> API
+    API -->|service role, bypasses RLS| PG
+    API --> AUTH
+    API -->|enqueue 202| JOBS
+    API -->|dispatch| WON
+    JOBS <--> WON & WSCHED
+    WON & WSCHED --> EXE -->|service-role writes| PG
+```
+
+For the scan-pipeline component view, see
+[`diagrams/c4-component-scanner.mmd`](diagrams/c4-component-scanner.mmd).
+
 ## One deployed surface
 
 The entire app — marketing site, client dashboard, and every API route —
@@ -37,6 +114,37 @@ deployable, and was fully consolidated into this single surface.
    still gets picked up by the next scheduled cron as a fallback.
 5. The dashboard polls step 2 again to see `queued` → `running` →
    `completed`/`failed`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User (dashboard)
+    participant API as /api/run-scan
+    participant DB as Supabase
+    participant GH as on-demand-scan.yml
+    participant W as Worker (executeScan, passive)
+    U->>API: POST { targetUrl }
+    API->>DB: free-tier cap? rate limit? SSRF ok? INSERT scans (pending)
+    API-->>U: { scanId, proofToken }
+    Note over U: add DNS TXT or /.well-known file
+    U->>API: POST { scanId }
+    API->>API: verify ownership + SSRF re-check
+    API->>DB: INSERT scan_jobs (queued)
+    API->>GH: dispatch workflow
+    API-->>U: 202 { queued }
+    GH->>DB: claim_scan_job() SKIP LOCKED
+    GH->>W: run (profile forced "safe")
+    W->>DB: write scan_results, status=completed, diff + notifiers
+    loop poll
+        U->>API: POST { scanId }
+        API-->>U: queued -> running -> completed
+    end
+```
+
+Scheduled scans share the same queue but run the full/active tool suite — see
+[`diagrams/seq-scheduled-scan.mmd`](diagrams/seq-scheduled-scan.mmd) and the
+profile/offensive-gate flow in
+[`diagrams/flow-scan-profile-gating.mmd`](diagrams/flow-scan-profile-gating.mmd).
 
 ## Data flow: the queue worker (shared by on-demand and scheduled scans)
 
@@ -170,3 +278,33 @@ read the distinction below carefully before treating this as solved.
 - PDF report generation via Playwright is CPU/memory-heavy; if it becomes
   a bottleneck, move it to a dedicated container job rather than running
   it inline in a Function.
+
+## Deployment & CI topology
+
+```mermaid
+flowchart TB
+    classDef live fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef ext fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef warn fill:#e85d04,stroke:#9a3b00,color:#fff
+    USER([Users]) --> CDN[Azure SWA CDN - hebridescyber.co.uk]:::live
+    CDN --> NEXT[Managed Next.js server - pages + API Functions<br/>security headers in next.config.mjs]:::live
+    NEXT --> SUPA[(Supabase)]:::ext
+    NEXT --> BLOB[(Azure Blob)]:::ext
+    NEXT --> STRIPE[Stripe - price IDs UNSET in prod]:::warn
+    subgraph GHA[GitHub Actions - only place scans run]
+        DEPLOY[deploy.yml: lint->tsc->unit->e2e->migrate->deploy->health]:::live
+        SCANWF[scheduled-scans + on-demand-scan]:::live
+        CONTENT[blog / newsletter / threats / reports / retention / deletion]:::live
+    end
+    DEPLOY --> CDN
+    SCANWF --> SUPA
+    CONTENT --> SUPA
+    SUPPLY[Supply-chain gap: 'uses:' pinned to mutable tags, not SHAs - FINDING I-4]:::warn
+```
+
+Full CI gate detail: [`diagrams/cicd-pipeline.mmd`](diagrams/cicd-pipeline.mmd).
+Deployment detail incl. the unapplied Container Apps path:
+[`diagrams/deploy-topology.mmd`](diagrams/deploy-topology.mmd). Data model and RLS
+tiers: [`DATA-MODEL.md`](DATA-MODEL.md). Auth, MFA and plan-gating:
+[`diagrams/flow-auth.mmd`](diagrams/flow-auth.mmd),
+[`diagrams/map-plan-gating.mmd`](diagrams/map-plan-gating.mmd).

@@ -1,0 +1,50 @@
+%% C4-style System Context — Hebrides Cyber
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+%% Reality note: boxes marked (opt) initialise to a no-op until their env/API key is set.
+flowchart TB
+    classDef person fill:#08427b,stroke:#052e56,color:#fff
+    classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef ext fill:#999,stroke:#6b6b6b,color:#fff
+    classDef feed fill:#2d6a4f,stroke:#1b4332,color:#fff
+
+    subgraph Users
+        U1([SMB / site owner]):::person
+        U2([Developer / CI]):::person
+        U3([Agency / consultant]):::person
+        U4([Operator / admin]):::person
+    end
+
+    HC[["Hebrides Cyber<br/>Automated web-security scanning SaaS<br/>(single Next.js surface)"]]:::system
+
+    U1 & U2 & U3 & U4 --> HC
+
+    subgraph Platform_services[Platform services]
+        SB[(Supabase<br/>Postgres + Auth + Storage, RLS)]:::ext
+        AZ[Azure Static Web Apps<br/>+ Blob Storage]:::ext
+        GH[GitHub Actions runners<br/>+ GitHub App/PAT]:::ext
+        ST[Stripe<br/>billing - NOT configured in prod]:::ext
+    end
+
+    subgraph Delivery[Notifications & workflow - opt]
+        NO[Slack / Teams / Jira / Linear<br/>ServiceNow / GitHub Issues<br/>PagerDuty / Opsgenie / SIEM / Resend]:::ext
+        AI[Azure OpenAI<br/>AI remediation - opt]:::ext
+        OB[Sentry - opt / Upstash Redis - opt]:::ext
+    end
+
+    subgraph Intel[Threat-intel & scan feeds - free/keyless]
+        F1[OSV.dev]:::feed
+        F2[NVD / CISA KEV / FIRST EPSS]:::feed
+        F3[crt.sh CT logs]:::feed
+        F4[Shodan InternetDB / Cloudflare DoH]:::feed
+        F5[endoflife.date / Wayback CDX]:::feed
+        F6[Google Safe Browsing - opt / HIBP - opt / WPScan - opt]:::feed
+    end
+
+    HC --> SB
+    HC --> AZ
+    HC --> GH
+    HC --> ST
+    HC --> NO
+    HC --> AI
+    HC --> OB
+    GH -->|executeScan runs scans here| F1 & F2 & F3 & F4 & F5 & F6

@@ -1,0 +1,48 @@
+%% C4-style Container view — Hebrides Cyber
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TB
+    classDef app fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef store fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef worker fill:#6a040f,stroke:#370617,color:#fff
+    classDef ext fill:#999,stroke:#6b6b6b,color:#fff
+
+    Browser([Browser: dashboard, marketing site, public share links]):::ext
+
+    subgraph SWA[Azure Static Web Apps - one deployed surface]
+        direction TB
+        Pages[Next.js App Router pages<br/>src/app/*]:::app
+        API[Next.js API routes managed Functions<br/>src/pages/api/*]:::app
+        MW[middleware.ts - auth gate]:::app
+    end
+
+    subgraph Data[Supabase]
+        PG[(Postgres + RLS<br/>56 migrations)]:::store
+        AUTH[Supabase Auth<br/>magic link + password + TOTP MFA]:::store
+        STG[(Supabase + Azure Blob<br/>report PDFs, images)]:::store
+    end
+
+    subgraph Queue[Job queue - Postgres, no Redis]
+        JOBS[(scan_jobs<br/>claim_scan_job SKIP LOCKED)]:::store
+    end
+
+    subgraph Workers[GitHub Actions runners - NOT Azure]
+        direction TB
+        WON[on-demand-scan.yml<br/>passive only]:::worker
+        WSCHED[scheduled-scans.yml<br/>installs nmap/nuclei/sqlmap/ZAP...]:::worker
+        EXE[[executeScan - single scan implementation<br/>src/lib/scanExecution.ts]]:::worker
+    end
+
+    Browser -->|anon key, RLS| Pages
+    Browser --> MW --> Pages
+    Pages -->|fetch| API
+    API -->|service-role key, bypasses RLS| PG
+    API --> AUTH
+    API --> STG
+    API -->|enqueue 202| JOBS
+    API -->|dispatch workflow| WON
+    JOBS <-->|claim| WON
+    JOBS <-->|claim| WSCHED
+    WON --> EXE
+    WSCHED --> EXE
+    EXE -->|service-role writes results| PG
+    EXE -->|post-scan notifiers| Browser

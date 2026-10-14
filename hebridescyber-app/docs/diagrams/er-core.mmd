@@ -1,0 +1,72 @@
+%% Entity-relationship — core data model (key tables of 56 migrations)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+%% RLS tiers are annotated in docs/DATA-MODEL.md and diagram er-rls-tiers.mmd
+erDiagram
+    users ||--o| subscriptions : has
+    users ||--o{ scans : owns
+    users ||--o{ monitored_targets : owns
+    users ||--o{ verifications : owns
+    users ||--o{ repo_connections : owns
+    users ||--o{ api_keys : owns
+    users ||--o{ webhooks : owns
+    users ||--o{ teams : owns
+    users ||--o{ cloud_credentials : owns
+    users ||--o{ ticket_integrations : owns
+    users ||--o{ finding_lifecycle : owns
+    users ||--o{ finding_triage : owns
+    users ||--o{ asset_inventory : owns
+    users ||--o{ deletion_requests : requests
+
+    scans ||--|| scan_results : produces
+    scans ||--o{ scan_jobs : queued_as
+    scans ||--o{ report_shares : shared_via
+
+    monitored_targets ||--o| target_auth_credentials : "authed scan cred"
+    monitored_targets ||--o{ scan_jobs : scheduled_as
+
+    teams ||--o{ team_members : contains
+    users }o--o{ team_members : "member of"
+
+    ticket_integrations ||--o{ ticket_links : "finding->issue ledger"
+    finding_lifecycle ||--o| sla_policies : "measured against"
+
+    users {
+        uuid id PK "= auth.users.id"
+        bool is_admin "locked by migration 017"
+    }
+    subscriptions {
+        uuid owner FK
+        text plan "basic|pro|agency|tier_a"
+        text status "active|past_due|cancelled"
+        text source "stripe|admin"
+    }
+    scans {
+        uuid id PK
+        uuid owner FK
+        text target_url
+        text status
+        int score "flat tally, floors at 0"
+    }
+    scan_jobs {
+        uuid id PK
+        uuid scan_id FK "null => scheduled"
+        text scan_profile "safe|full|offensive"
+        text status
+    }
+    cloud_credentials {
+        uuid owner FK
+        text provider "aws|azure|gcp"
+        jsonb credentials_encrypted "PLAINTEXT - FINDING S-1"
+    }
+    target_auth_credentials {
+        text cookie_value "PLAINTEXT - FINDING S-2"
+    }
+    finding_triage {
+        text check_id
+        text state "accepted|false_positive|snoozed"
+    }
+    blog_posts {
+        text slug
+        text status "draft|published|scheduled"
+        text meta_description "collected but NOT persisted - CMS bug"
+    }

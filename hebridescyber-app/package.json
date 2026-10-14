@@ -30,7 +30,8 @@
     "account:deletion-reminders": "tsx src/scripts/check-deletion-requests.ts",
     "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",
     "reports:send": "tsx src/scripts/send-scheduled-reports.ts",
-    "threats:check": "tsx src/scripts/check-emerging-threats.ts"
+    "threats:check": "tsx src/scripts/check-emerging-threats.ts",
+    "docs:diagrams": "tsx src/scripts/render-diagrams.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.24.0",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
+    "@mermaid-js/mermaid-cli": "^11.4.2",
     "@playwright/test": "^1.46.0",
     "@tailwindcss/typography": "^0.5.13",
     "@testing-library/jest-dom": "^6.9.1",
