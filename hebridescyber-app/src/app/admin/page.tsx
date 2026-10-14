@@ -340,6 +340,7 @@ function OverviewTab({ token }: { token: string }) {
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
         <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent signups</h3>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
@@ -358,6 +359,7 @@ function OverviewTab({ token }: { token: string }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -609,6 +611,7 @@ function CustomerDetailPanel({
         {scans.length === 0 ? (
           <p className="text-sm text-cybertext/30">No scans yet</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
@@ -631,6 +634,7 @@ function CustomerDetailPanel({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
@@ -1873,13 +1877,15 @@ export default function AdminPage() {
           <Link href="/dashboard" className="font-mono text-sm text-cybertext/40 hover:text-neon transition-colors">← Dashboard</Link>
         </div>
 
-        {/* Tabs */}
-        <nav className="mb-6 flex gap-1 border-b border-cyberborder">
+        {/* Tabs — horizontally scrollable on narrow screens so the 10 tabs
+            never widen the page past the viewport (the row scrolls within the
+            screen edges via the -mx-4 px-4 bleed). */}
+        <nav className="mb-6 -mx-4 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-cyberborder px-4">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`shrink-0 px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === t.key
                   ? "border-b-2 border-neon text-neon"
                   : "text-cybertext/40 hover:text-cybertext"
