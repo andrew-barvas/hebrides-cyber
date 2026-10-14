@@ -69,9 +69,10 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
   beforeAll(async () => {
     db = await createTestDb();
     const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
+    // Migration 059's handle_new_user() trigger creates the matching
+    // public.users row automatically on this insert.
     for (const [id, email] of [[A, "a@x.test"], [B, "b@x.test"], [M, "m@x.test"]]) {
       await q("insert into auth.users (id, email) values ($1, $2)", [id, email]);
-      await q("insert into public.users (id, email) values ($1, $2)", [id, email]);
     }
     await q("insert into scans (id, owner, target_url) values ($1, $2, 'https://a.test')", [SCAN_A, A]);
     await q("insert into scans (id, owner, target_url) values ($1, $2, 'https://b.test')", [SCAN_B, B]);

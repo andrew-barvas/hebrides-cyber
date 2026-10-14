@@ -53,6 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: s.status,
         score: result?.score ?? null,
         summary: result?.summary ?? null,
+        errorDetail: s.error_detail ?? null,
         ownerVerified: s.owner_verified,
         jobId: s.job_id ?? null,
         createdAt: s.created_at,

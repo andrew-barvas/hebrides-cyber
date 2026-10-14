@@ -72,6 +72,7 @@ type ScanRow = {
   status: string;
   score: number | null;
   summary: string | null;
+  errorDetail: string | null;
   jobId: string | null;
   createdAt: string;
 };
@@ -711,8 +712,11 @@ function ScansTab({ token }: { token: string }) {
             ) : (
               scans.map((s) => (
                 <tr key={s.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
-                  <td className="px-4 py-2.5 font-mono text-xs max-w-48 truncate">
-                    <a href={`/dashboard/scans/${s.id}`} className="text-neon hover:underline">{s.targetUrl}</a>
+                  <td className="px-4 py-2.5 font-mono text-xs max-w-48">
+                    <a href={`/dashboard/scans/${s.id}`} className="block truncate text-neon hover:underline">{s.targetUrl}</a>
+                    {s.status === "failed" && s.errorDetail && (
+                      <p className="mt-0.5 truncate text-[11px] text-red-400/80" title={s.errorDetail}>{s.errorDetail}</p>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-cybertext/50 max-w-36 truncate">{s.ownerEmail}</td>
                   <td className="px-4 py-2.5">{statusBadge(s.status)}</td>

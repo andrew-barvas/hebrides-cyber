@@ -70,9 +70,14 @@ export async function getUser(): Promise<User | null> {
 // without a dedicated security team managing password policy/breach
 // monitoring. Google OAuth (below) is offered as a faster alternative for
 // users who'd rather not check email.
-export async function signInWithMagicLink(email: string) {
+// `metadata` lands in auth.users.raw_user_meta_data for a brand-new user —
+// migration 059's handle_new_user() trigger reads company_name out of it to
+// populate the public.users profile row it creates automatically. Existing
+// users are unaffected (Supabase only applies this on the INSERT, not on a
+// returning user's sign-in).
+export async function signInWithMagicLink(email: string, metadata?: Record<string, string>) {
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
-  return supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+  return supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, data: metadata } });
 }
 
 // Password sign-in — kept as a secondary option (magic link is the
@@ -94,6 +99,25 @@ export async function signInWithGoogle() {
 
 export async function signOut() {
   return supabase.auth.signOut();
+}
+
+// ---- Password reset --------------------------------------------------------
+// The passwordless magic-link flow above is the default, but password
+// sign-in (signInWithPassword) is a supported secondary path (seeded demo
+// accounts, and any customer who sets one via this flow), so it needs its
+// own recovery path. The reset link reuses the same server-side code
+// exchange as the magic link (src/app/auth/callback/route.ts) — `next`
+// routes the resulting session to /reset-password to set a new password.
+
+export async function requestPasswordReset(email: string) {
+  const redirectTo =
+    typeof window !== "undefined" ? `${window.location.origin}/auth/callback?next=/reset-password` : undefined;
+  return supabase.auth.resetPasswordForEmail(email, { redirectTo });
+}
+
+/** Must be called with an active session established from a reset-password email link. */
+export async function updatePassword(password: string) {
+  return supabase.auth.updateUser({ password });
 }
 
 // ---- MFA (TOTP) -----------------------------------------------------------

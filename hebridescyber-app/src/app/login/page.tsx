@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
 
@@ -112,8 +113,21 @@ function LoginForm() {
             >
               {usePassword ? "Use a magic link instead" : "Have a password? Sign in with it"}
             </button>
+            {usePassword && (
+              <Link
+                href="/forgot-password"
+                className="block w-full text-center text-xs text-cybertext/40 hover:text-cybertext/70 underline"
+              >
+                Forgot your password?
+              </Link>
+            )}
           </form>
         )}
+
+        <p className="mt-6 text-center text-xs text-cybertext/40">
+          New here?{" "}
+          <Link href="/signup" className="text-neon hover:underline">Create an account</Link>
+        </p>
 
         <p className="mt-10 text-center text-xs text-cybertext/30">
           Demo accounts: run <code className="text-neon">npm run seed:users</code> then sign in with the
