@@ -156,7 +156,8 @@ async function runOne(
     console.error(`[job ${job.id}] failed: ${message}`);
     await supabaseAdmin.from("scan_jobs").update({ status: "failed", last_error: message }).eq("id", job.id);
     if (job.scan_id) {
-      await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", job.scan_id);
+      // Mirror the reason onto the scan the owner/admin see (migration 058).
+      await supabaseAdmin.from("scans").update({ status: "failed", error_detail: message.slice(0, 2000) }).eq("id", job.scan_id);
     }
   }
 
