@@ -54,8 +54,9 @@ describe.skipIf(!enabled)("attack-surface alerts against real PostgREST + Postgr
 
   beforeAll(async () => {
     db = await createTestDb();
+    // Migration 059's handle_new_user() trigger creates the matching
+    // public.users row automatically on this insert.
     await q("insert into auth.users (id, email) values ($1, 'owner@example.com')", [OWNER]);
-    await q("insert into public.users (id, email) values ($1, 'owner@example.com')", [OWNER]);
     await q("insert into subscriptions (owner, plan, status) values ($1, 'pro', 'active')", [OWNER]);
     await q("insert into scans (id, owner, target_url, status) values ($1, $2, $3, 'completed')", [SCAN, OWNER, TARGET]);
     // An earlier scan of this exact host, plus look-alikes the host pattern must not mistake for it.

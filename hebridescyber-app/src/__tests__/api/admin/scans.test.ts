@@ -62,6 +62,7 @@ describe("/api/admin/scans", () => {
                 created_at: "2026-01-01",
                 owner_verified: true,
                 job_id: "j1",
+                error_detail: null,
                 scan_results: [{ score: 87, summary: { findingsCount: 3 } }],
               },
             ],
@@ -88,7 +89,7 @@ describe("/api/admin/scans", () => {
     it("falls back to the raw owner id when no matching user profile is found", async () => {
       requireAdminMock.mockResolvedValue("admin-1");
       mock.setQueues({
-        scans: [{ data: [{ id: "s1", owner: "orphan-owner", target_url: "https://x.com", status: "failed", created_at: "2026-01-01", owner_verified: false, job_id: null, scan_results: [] }], error: null }],
+        scans: [{ data: [{ id: "s1", owner: "orphan-owner", target_url: "https://x.com", status: "failed", created_at: "2026-01-01", owner_verified: false, job_id: null, error_detail: null, scan_results: [] }], error: null }],
         users: [{ data: [] }],
       });
       const { req, res } = mockReqRes();
@@ -98,6 +99,51 @@ describe("/api/admin/scans", () => {
       const body = res._getJSONData() as { scans: Array<{ ownerEmail: string; score: number | null }> };
       expect(body.scans[0].ownerEmail).toBe("orphan-owner");
       expect(body.scans[0].score).toBeNull();
+    });
+
+    it("surfaces error_detail for a failed scan so admins can see why it failed", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setQueues({
+        scans: [
+          {
+            data: [
+              {
+                id: "s1",
+                owner: "u1",
+                target_url: "https://example.com",
+                status: "failed",
+                created_at: "2026-01-01",
+                owner_verified: true,
+                job_id: null,
+                error_detail: "nuclei timed out after 120000ms",
+                scan_results: [],
+              },
+            ],
+            error: null,
+          },
+        ],
+        users: [{ data: [{ id: "u1", email: "a@example.com", company_name: null }] }],
+      });
+      const { req, res } = mockReqRes();
+
+      await handler(req, res);
+
+      const body = res._getJSONData() as { scans: Array<{ errorDetail: string | null }> };
+      expect(body.scans[0].errorDetail).toBe("nuclei timed out after 120000ms");
+    });
+
+    it("reports a null errorDetail when the column is null", async () => {
+      requireAdminMock.mockResolvedValue("admin-1");
+      mock.setQueues({
+        scans: [{ data: [{ id: "s1", owner: "u1", target_url: "https://x.com", status: "completed", created_at: "2026-01-01", owner_verified: true, job_id: null, error_detail: null, scan_results: [] }], error: null }],
+        users: [{ data: [{ id: "u1", email: "a@example.com", company_name: null }] }],
+      });
+      const { req, res } = mockReqRes();
+
+      await handler(req, res);
+
+      const body = res._getJSONData() as { scans: Array<{ errorDetail: string | null }> };
+      expect(body.scans[0].errorDetail).toBeNull();
     });
   });
 

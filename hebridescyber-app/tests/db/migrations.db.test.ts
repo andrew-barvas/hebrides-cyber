@@ -124,4 +124,34 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
     );
     expect(rows.map((r) => r.proname)).toEqual([]);
   });
+
+  // Migration 059: a new auth.users row must get a matching public.users
+  // row automatically — before this, nothing but the seed script ever
+  // inserted one, so a real customer's first sign-in left company_name/
+  // is_admin reads coming back null.
+  it("auto-creates a public.users profile row when a new auth.users row is inserted (migration 059)", async () => {
+    const id = "eeeeeeee-0000-0000-0000-000000000001";
+    await db.pool.query(
+      "insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)",
+      [id, "newsignup@example.test", { company_name: "Acme Ltd" }]
+    );
+
+    const { rows } = await db.pool.query<{ email: string; company_name: string | null }>(
+      "select email, company_name from public.users where id = $1",
+      [id]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ email: "newsignup@example.test", company_name: "Acme Ltd" });
+  });
+
+  it("leaves company_name null when no metadata was supplied at sign-up", async () => {
+    const id = "eeeeeeee-0000-0000-0000-000000000002";
+    await db.pool.query("insert into auth.users (id, email) values ($1, $2)", [id, "plain@example.test"]);
+
+    const { rows } = await db.pool.query<{ company_name: string | null }>(
+      "select company_name from public.users where id = $1",
+      [id]
+    );
+    expect(rows[0].company_name).toBeNull();
+  });
 });
