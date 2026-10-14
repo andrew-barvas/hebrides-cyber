@@ -11,3 +11,23 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+
+  # The app's own npm dependencies. Before this, only the pinned Actions were
+  # watched, so a vulnerable Next.js sat in the lockfile unnoticed (the CI install
+  # log was printing "1 critical" on every run). Minor/patch bumps are grouped
+  # into one weekly PR to keep the noise down; a security update still opens its
+  # own PR straight away. Major bumps are left for a deliberate decision (the
+  # Tailwind 3->4 move is one).
+  - package-ecosystem: "npm"
+    directory: "/hebridescyber-app"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
