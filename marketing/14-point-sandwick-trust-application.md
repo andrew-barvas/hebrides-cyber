@@ -74,10 +74,10 @@ activities, not on the commercial business itself.
 
 The founder lives in Stornoway and has 15+ years of cybersecurity
 experience at Lockheed Martin and Leidos, plus Scottish public-sector
-digital transformation delivery. The product is live, with 914 automated
-tests and 20 enterprise security features — the same technology that
-large companies pay thousands for, offered free to local community
-organisations.
+digital transformation delivery. The product is live, with a comprehensive
+automated test suite and an enterprise-grade feature set — much the same
+technology that large companies pay thousands for, offered free to local
+community organisations.
 
 This isn't a mainland company claiming island connections — it's a
 genuine Lewis-based business giving back to the local community.

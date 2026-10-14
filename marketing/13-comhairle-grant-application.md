@@ -11,8 +11,11 @@ with Comhairle before submission.**
 
 Hebrides Cyber is a Stornoway-based cybersecurity business offering
 automated website security scanning to UK small businesses. The product
-is live and deployed, with 914 automated tests and 20 enterprise-grade
-features. This application requests funding to support the business's
+is live and deployed, with a comprehensive automated test suite and an
+enterprise-grade feature set in the product today — multi-framework
+compliance reporting, SIEM and ticketing integrations, automated
+remediation, and white-label reporting for agencies. This application
+requests funding to support the business's
 launch phase, with a direct focus on digital resilience for Western
 Isles businesses.
 

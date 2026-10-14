@@ -44,17 +44,21 @@ and delivers results in plain English with step-by-step fix instructions.
 The product is **live, deployed, and functional**:
 
 - Deployed on Microsoft Azure, accessible via the web
-- 914 automated tests ensuring reliability
-- 20 enterprise-grade security features implemented:
-  - **Identity & access**: Single Sign-On (SAML), role-based access control,
-    SCIM user provisioning, IP allowlisting
-  - **Multi-tenancy**: Organisation model, MSP portal for agencies managing
-    multiple clients, custom scan policies
-  - **Compliance**: Automated reporting across 7 international frameworks
+- A comprehensive automated test suite (3,000+ tests), including a
+  real-database row-level-security suite, enforced as a CI quality gate
+- A broad, enterprise-grade feature set, live in the product today:
+  - **Identity & access**: two-factor authentication (TOTP) and per-API-key
+    IP allow-listing
+  - **Agencies / multi-site**: monitor multiple sites from one account, with
+    white-label PDF reports and a portfolio view
+  - **Compliance**: automated reporting across 7 international frameworks
     (ISO 27001, PCI DSS, Cyber Essentials, OWASP Top 10, CIS Controls v8,
     NIS2, DORA)
   - **Integrations**: ServiceNow, Jira, Linear, GitHub Issues, Slack,
-    Microsoft Teams, SIEM systems, CI/CD pipelines, GraphQL API
+    Microsoft Teams, SIEM forwarding, a public REST API, a packaged CI/CD
+    scan gate, and GraphQL endpoint scanning
+  - **Remediation**: AI-tailored fixes, automated pull requests, and ticket
+    creation with de-duplication
 - Continuous Integration/Continuous Deployment pipeline with automated
   quality gates (lint, type checking, unit tests, end-to-end tests)
 - Pricing: £20/month (Basic), £35/month (Pro), £75/month (Agency) — 
