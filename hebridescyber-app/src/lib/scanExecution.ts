@@ -30,7 +30,7 @@ import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { runSast } from "../worker/tools/sast";
 import { runWorkflowSecurity } from "../worker/tools/workflowSecurity";
-import { checkAuthenticated, buildAuthenticatedFindings, type AuthCredential } from "./scanners/authenticatedCheck";
+import { checkAuthenticated, buildAuthenticatedFindings, resolveAuthCredential, type AuthCredential } from "./scanners/authenticatedCheck";
 import { runWhatWaf } from "../worker/tools/whatwaf";
 import { runWpScanCli } from "../worker/tools/wpscan";
 import { runCmsMap } from "../worker/tools/cmsmap";
@@ -923,11 +923,13 @@ export async function executeScan(
           .select("auth_type, cookie_value, basic_username, basic_password")
           .eq("monitored_target_id", monitoredTarget.id)
           .maybeSingle();
-        if (credRow?.auth_type === "cookie" && credRow.cookie_value) {
-          authCredential = { type: "cookie", cookieValue: credRow.cookie_value };
-        } else if (credRow?.auth_type === "basic" && credRow.basic_username && credRow.basic_password) {
-          authCredential = { type: "basic", username: credRow.basic_username, password: credRow.basic_password };
-        }
+        // Cookie and password are stored encrypted (legacy plaintext passes
+        // through). One that can't be decrypted — key missing or rotated —
+        // skips the authenticated checks for this scan; ciphertext is never
+        // used as the credential.
+        const resolved = resolveAuthCredential(credRow);
+        authCredential = resolved.credential;
+        if (!resolved.decrypted) console.error(`[scanExecution] Could not decrypt the authenticated-scan credential for ${targetUrl}; skipping authenticated checks.`);
       }
 
       // Feeds nuclei's technology-scoped -tags filter (Sprint 5) — see

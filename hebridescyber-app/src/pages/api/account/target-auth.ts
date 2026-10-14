@@ -16,6 +16,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
+import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
 
 
 const deleteBodySchema = z.object({
@@ -101,9 +102,15 @@ async function handleTargetAuth(
 
   if (!body) return res.status(400).json({ error: "authType is required" });
 
+  // Cookies and passwords are stored encrypted; never fall back to plaintext.
+  if (!isCredentialEncryptionConfigured()) return res.status(503).json({ error: ENCRYPTION_NOT_CONFIGURED_MESSAGE });
+
   if (body.authType === "cookie") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
-      { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: body.cookieValue, basic_username: null, basic_password: null },
+      sealSecrets(
+        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: body.cookieValue, basic_username: null, basic_password: null },
+        ["cookie_value"]
+      ),
       { onConflict: "monitored_target_id" }
     );
     if (error) return res.status(500).json({ error: error.message });
@@ -112,7 +119,10 @@ async function handleTargetAuth(
 
   if (body.authType === "basic") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
-      { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "basic", basic_username: body.username, basic_password: body.password, cookie_value: null },
+      sealSecrets(
+        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "basic", basic_username: body.username, basic_password: body.password, cookie_value: null },
+        ["basic_password"]
+      ),
       { onConflict: "monitored_target_id" }
     );
     if (error) return res.status(500).json({ error: error.message });
