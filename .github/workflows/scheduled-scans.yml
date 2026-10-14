@@ -25,6 +25,7 @@ name: Scheduled Scans
 #   SUPABASE_URL                 - to query/enqueue/claim scan_jobs
 #   SUPABASE_SERVICE_ROLE_KEY    - server-side only, never exposed to logs
 #   RESEND_API_KEY               - post-scan emails (alerts, scan complete)
+#   CREDENTIALS_ENC_KEY          - decrypts stored customer credentials (same value as the app's)
 
 on:
   schedule:
@@ -430,6 +431,12 @@ jobs:
           # src/lib/email.ts, which skips sending without this key. It was
           # never passed to the workers, so none of those emails ever went.
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Decrypts the customer credentials stored encrypted at rest (cloud
+          # posture keys, authenticated-scan cookies/passwords, ticket and
+          # on-call tokens; src/lib/credentialEncryption.ts). Without it every
+          # one of them is skipped as undecryptable. Must be the same value as
+          # the app's CREDENTIALS_ENC_KEY.
+          CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
           ZAP_API_KEY: changeme

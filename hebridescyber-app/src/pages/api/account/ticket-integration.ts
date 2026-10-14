@@ -22,6 +22,7 @@ import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 import { findTicketIntegration, summariseTicketIntegration } from "@/lib/ticketLinks";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { parseBody } from "@/lib/validate";
+import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
 
 const patchSchema = z.object({
   provider: z.enum(TICKET_PROVIDERS),
@@ -124,13 +125,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const body = parseBody(postSchema, req.body, res);
   if (!body) return;
 
+  // Tokens and passwords are stored encrypted (credentialEncryption.ts). Refuse
+  // before contacting the customer's tracker rather than ever fall back to
+  // saving a plaintext credential.
+  if (!isCredentialEncryptionConfigured()) return res.status(503).json({ error: ENCRYPTION_NOT_CONFIGURED_MESSAGE });
+
   if (body.provider === "jira") {
     const { baseUrl, email, apiToken, projectKey } = body;
     const check = await validateJiraCredentials({ baseUrl, email, apiToken });
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-      { owner: caller.ownerId, provider: "jira", jira_base_url: baseUrl, jira_email: email, jira_api_token: apiToken, jira_project_key: projectKey },
+      sealSecrets(
+        { owner: caller.ownerId, provider: "jira", jira_base_url: baseUrl, jira_email: email, jira_api_token: apiToken, jira_project_key: projectKey },
+        ["jira_api_token"]
+      ),
       { onConflict: "owner,provider" }
     );
     if (error) return res.status(500).json({ error: error.message });
@@ -143,7 +152,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-      { owner: caller.ownerId, provider: "linear", linear_api_key: apiKey, linear_team_id: teamId },
+      sealSecrets({ owner: caller.ownerId, provider: "linear", linear_api_key: apiKey, linear_team_id: teamId }, ["linear_api_key"]),
       { onConflict: "owner,provider" }
     );
     if (error) return res.status(500).json({ error: error.message });
@@ -157,7 +166,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-      { owner: caller.ownerId, provider: "servicenow", servicenow_instance_url: instanceUrl, servicenow_username: username, servicenow_password: password },
+      sealSecrets(
+        { owner: caller.ownerId, provider: "servicenow", servicenow_instance_url: instanceUrl, servicenow_username: username, servicenow_password: password },
+        ["servicenow_password"]
+      ),
       { onConflict: "owner,provider" }
     );
     if (error) return res.status(notEnabledYet(error) ? 503 : 500).json({ error: notEnabledYet(error) ? NOT_ENABLED_MESSAGE : error.message });
@@ -170,7 +182,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-      { owner: caller.ownerId, provider: "github", github_owner: owner, github_repo: repo, github_token: token },
+      sealSecrets({ owner: caller.ownerId, provider: "github", github_owner: owner, github_repo: repo, github_token: token }, ["github_token"]),
       { onConflict: "owner,provider" }
     );
     if (error) return res.status(notEnabledYet(error) ? 503 : 500).json({ error: notEnabledYet(error) ? NOT_ENABLED_MESSAGE : error.message });

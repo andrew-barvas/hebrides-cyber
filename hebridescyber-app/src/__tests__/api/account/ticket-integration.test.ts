@@ -39,6 +39,10 @@ vi.mock("@/lib/apiAuth", () => ({
 }));
 
 import handler from "@/pages/api/account/ticket-integration";
+import { decryptSecret, isEncryptedSecret } from "@/lib/credentialEncryption";
+
+// 32 bytes, base64 — a throwaway test key, not a real secret.
+const TEST_KEY = Buffer.alloc(32, 7).toString("base64");
 
 function call(method: string, body?: unknown) {
   const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: method as "GET", body: body as Record<string, unknown> });
@@ -46,6 +50,7 @@ function call(method: string, body?: unknown) {
 }
 
 beforeEach(() => {
+  process.env.CREDENTIALS_ENC_KEY = TEST_KEY;
   authMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
   for (const v of Object.values(validators)) v.mockReset().mockResolvedValue({ ok: true });
   upsertMock.mockReset().mockResolvedValue({ error: null });
@@ -79,10 +84,13 @@ describe("POST — ServiceNow", () => {
     const res = await call("POST", valid);
     expect(res._getStatusCode()).toBe(200);
     expect(validators.validateServiceNowCredentials).toHaveBeenCalledWith({ instanceUrl: "https://acme.service-now.com", username: "svc", password: "pw" });
-    expect(upsertMock).toHaveBeenCalledWith(
-      { owner: "owner-1", provider: "servicenow", servicenow_instance_url: "https://acme.service-now.com", servicenow_username: "svc", servicenow_password: "pw" },
-      { onConflict: "owner,provider" }
-    );
+    const [row, opts] = upsertMock.mock.calls[0] as [Record<string, string>, unknown];
+    expect(opts).toEqual({ onConflict: "owner,provider" });
+    expect(row).toMatchObject({ owner: "owner-1", provider: "servicenow", servicenow_instance_url: "https://acme.service-now.com", servicenow_username: "svc" });
+    // The password is stored encrypted, and round-trips.
+    expect(row.servicenow_password).not.toBe("pw");
+    expect(isEncryptedSecret(row.servicenow_password)).toBe(true);
+    expect(decryptSecret(row.servicenow_password)).toBe("pw");
   });
 
   // SSRF: a customer-supplied URL the server fetches must never reach an
@@ -118,10 +126,10 @@ describe("POST — GitHub Issues", () => {
     const res = await call("POST", { provider: "github", owner: "acme", repo: "web.app-2", token: "github_pat_x" });
     expect(res._getStatusCode()).toBe(200);
     expect(validators.validateGitHubIssuesCredentials).toHaveBeenCalledWith({ owner: "acme", repo: "web.app-2", token: "github_pat_x" });
-    expect(upsertMock).toHaveBeenCalledWith(
-      { owner: "owner-1", provider: "github", github_owner: "acme", github_repo: "web.app-2", github_token: "github_pat_x" },
-      { onConflict: "owner,provider" }
-    );
+    const [row] = upsertMock.mock.calls[0] as [Record<string, string>];
+    expect(row).toMatchObject({ owner: "owner-1", provider: "github", github_owner: "acme", github_repo: "web.app-2" });
+    expect(row.github_token).not.toBe("github_pat_x");
+    expect(decryptSecret(row.github_token)).toBe("github_pat_x");
   });
 
   // owner/repo are interpolated into API paths.
@@ -134,6 +142,39 @@ describe("POST — GitHub Issues", () => {
     const res = await call("POST", { provider: "github", token: "t", ...names });
     expect(res._getStatusCode()).toBe(400);
     expect(validators.validateGitHubIssuesCredentials).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST — secrets are never stored in plaintext", () => {
+  const bodies = [
+    { provider: "jira", baseUrl: "https://acme.atlassian.net", email: "a@acme.test", apiToken: "jira-secret", projectKey: "SEC" },
+    { provider: "linear", apiKey: "lin_api_secret", teamId: "team-1" },
+    { provider: "servicenow", instanceUrl: "https://acme.service-now.com", username: "svc", password: "sn-secret" },
+    { provider: "github", owner: "acme", repo: "webapp", token: "github_pat_secret" },
+  ];
+
+  it.each(bodies)("encrypts the $provider credential before saving", async (body) => {
+    const res = await call("POST", body);
+    expect(res._getStatusCode()).toBe(200);
+    const [row] = upsertMock.mock.calls[0] as [Record<string, string>];
+    const secretField = { jira: "jira_api_token", linear: "linear_api_key", servicenow: "servicenow_password", github: "github_token" }[body.provider]!;
+    expect(isEncryptedSecret(row[secretField])).toBe(true);
+    expect(JSON.stringify(row)).not.toMatch(/jira-secret|lin_api_secret|sn-secret|github_pat_secret/);
+  });
+
+  it.each(bodies)("refuses a $provider save with 503 when no key is configured, without contacting the tracker", async (body) => {
+    delete process.env.CREDENTIALS_ENC_KEY;
+    const res = await call("POST", body);
+    expect(res._getStatusCode()).toBe(503);
+    for (const v of Object.values(validators)) expect(v).not.toHaveBeenCalled();
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("still lets a customer disconnect or toggle auto-close with no key configured", async () => {
+    delete process.env.CREDENTIALS_ENC_KEY;
+    integrationRow.current = { provider: "github" };
+    expect((await call("DELETE", { provider: "github" }))._getStatusCode()).toBe(200);
+    expect((await call("PATCH", { provider: "github", autoCloseEnabled: true }))._getStatusCode()).toBe(200);
   });
 });
 
