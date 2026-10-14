@@ -30,9 +30,10 @@ describe.skipIf(!enabled)("loadFindingsView against real PostgREST + Postgres", 
   beforeAll(async () => {
     db = await createTestDb();
     const q = (sql: string, params: unknown[] = []) => db.pool.query(sql, params);
+    // Migration 059's handle_new_user() trigger creates the matching
+    // public.users row automatically on this insert.
     for (const [id, email] of [[A, "a@x.test"], [B, "b@x.test"]]) {
       await q("insert into auth.users (id, email) values ($1, $2)", [id, email]);
-      await q("insert into public.users (id, email) values ($1, $2)", [id, email]);
     }
     await q("insert into subscriptions (owner, plan, status) values ($1, 'agency', 'active')", [A]);
 

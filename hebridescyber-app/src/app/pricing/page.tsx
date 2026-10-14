@@ -246,7 +246,11 @@ export default function PricingPage() {
           <Link href="/login" className="text-neon hover:underline">
             Sign in
           </Link>{" "}
-          first, then come back to subscribe.
+          or{" "}
+          <Link href="/signup" className="text-neon hover:underline">
+            create an account
+          </Link>
+          , then come back to subscribe.
         </p>
       </div>
     </div>
