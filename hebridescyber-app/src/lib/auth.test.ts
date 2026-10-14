@@ -5,10 +5,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // client (which would otherwise warn about missing env vars). vi.mock is
 // hoisted above these declarations, so the mock fns themselves must be
 // created via vi.hoisted() to be visible inside the factory.
-const { getSessionMock, getUserMock, getAuthenticatorAssuranceLevelMock } = vi.hoisted(() => ({
+const {
+  getSessionMock,
+  getUserMock,
+  getAuthenticatorAssuranceLevelMock,
+  signInWithOtpMock,
+  resetPasswordForEmailMock,
+  updateUserMock,
+} = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
   getUserMock: vi.fn(),
   getAuthenticatorAssuranceLevelMock: vi.fn(),
+  signInWithOtpMock: vi.fn(),
+  resetPasswordForEmailMock: vi.fn(),
+  updateUserMock: vi.fn(),
 }));
 
 vi.mock("./supabaseClient", () => ({
@@ -17,11 +27,14 @@ vi.mock("./supabaseClient", () => ({
       getSession: getSessionMock,
       getUser: getUserMock,
       mfa: { getAuthenticatorAssuranceLevel: getAuthenticatorAssuranceLevelMock },
+      signInWithOtp: signInWithOtpMock,
+      resetPasswordForEmail: resetPasswordForEmailMock,
+      updateUser: updateUserMock,
     },
   },
 }));
 
-import { getSession, getUser, getMfaAssuranceLevel } from "./auth";
+import { getSession, getUser, getMfaAssuranceLevel, signInWithMagicLink, requestPasswordReset, updatePassword } from "./auth";
 
 describe("auth.ts timeout wrapper", () => {
   beforeEach(() => {
@@ -98,5 +111,47 @@ describe("auth.ts timeout wrapper", () => {
     // here anyway since the promise already settled — this asserts no
     // stray timer throws/console noise when fake timers are torn down.
     await vi.advanceTimersByTimeAsync(8_000);
+  });
+});
+
+describe("signInWithMagicLink", () => {
+  beforeEach(() => {
+    signInWithOtpMock.mockReset().mockResolvedValue({ error: null });
+  });
+
+  it("passes no metadata by default (a returning user's sign-in)", async () => {
+    await signInWithMagicLink("a@example.com");
+    expect(signInWithOtpMock).toHaveBeenCalledWith({
+      email: "a@example.com",
+      options: expect.objectContaining({ data: undefined }),
+    });
+  });
+
+  // Regression test: metadata passed here must reach raw_user_meta_data so
+  // migration 059's handle_new_user() trigger can read company_name out of
+  // it when creating a brand-new public.users profile row.
+  it("forwards metadata (e.g. company_name) for the sign-up flow to pick up", async () => {
+    await signInWithMagicLink("a@example.com", { company_name: "Acme" });
+    expect(signInWithOtpMock).toHaveBeenCalledWith({
+      email: "a@example.com",
+      options: expect.objectContaining({ data: { company_name: "Acme" } }),
+    });
+  });
+});
+
+describe("requestPasswordReset / updatePassword", () => {
+  it("requests a reset email that redirects through the auth callback to /reset-password", async () => {
+    resetPasswordForEmailMock.mockResolvedValue({ error: null });
+    await requestPasswordReset("a@example.com");
+    expect(resetPasswordForEmailMock).toHaveBeenCalledWith(
+      "a@example.com",
+      expect.objectContaining({ redirectTo: expect.stringContaining("/auth/callback?next=/reset-password") })
+    );
+  });
+
+  it("updates the password via supabase.auth.updateUser", async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+    await updatePassword("new-password-123");
+    expect(updateUserMock).toHaveBeenCalledWith({ password: "new-password-123" });
   });
 });
