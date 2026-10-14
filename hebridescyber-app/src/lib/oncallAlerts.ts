@@ -34,6 +34,7 @@ import crypto from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createOpsgenieAlert, createPagerDutyIncident, resolveOpsgenieAlert, resolvePagerDutyIncident } from "./oncallIntegrations";
 import { ticketHostOf } from "./ticketLinks";
+import { revealSecrets } from "./credentialEncryption";
 import type { ScanReport } from "./scanReport";
 
 type OncallIntegrationRow = {
@@ -61,7 +62,16 @@ async function fetchOncallIntegrations(supabaseAdmin: SupabaseClient, ownerId: s
     .select("provider, pagerduty_routing_key, opsgenie_api_key, region")
     .eq("owner", ownerId)
     .in("provider", ["pagerduty", "opsgenie"]);
-  return (data as OncallIntegrationRow[] | null) ?? [];
+  // Keys are stored encrypted (legacy plaintext passes through). One that can't
+  // be decrypted — key missing or rotated — is skipped, never sent as-is.
+  const rows = (data as OncallIntegrationRow[] | null) ?? [];
+  const usable: OncallIntegrationRow[] = [];
+  for (const row of rows) {
+    const revealed = revealSecrets(row, ["pagerduty_routing_key", "opsgenie_api_key"]);
+    if (revealed) usable.push(revealed);
+    else console.error(`[oncallAlerts] Could not decrypt the ${row.provider} key for owner ${ownerId}; skipping it.`);
+  }
+  return usable;
 }
 
 function siteUrl(): string {

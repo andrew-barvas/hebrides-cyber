@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ScanReport } from "./scanReport";
 
@@ -17,6 +17,7 @@ vi.mock("./oncallIntegrations", () => ({
 }));
 
 import { computeOncallDedupKey, triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
+import { sealSecrets } from "./credentialEncryption";
 
 let integrationRows: Array<Record<string, unknown>> = [];
 
@@ -216,5 +217,62 @@ describe("resolveOncallAlerts", () => {
     resolvePagerDutyIncidentMock.mockRejectedValue(new Error("network exploded"));
     const r = report({ fixed_findings: [{ check_id: "tls.weak-protocol", severity: "critical", title: "Weak TLS" }] });
     await expect(resolveOncallAlerts(makeSupabase(), "owner-1", r)).resolves.toBeUndefined();
+  });
+});
+
+describe("on-call keys stored encrypted", () => {
+  const original = process.env.CREDENTIALS_ENC_KEY;
+  const TEST_KEY = Buffer.alloc(32, 7).toString("base64");
+  const critical = report({
+    findings: [{ check_id: "tls.weak-protocol", severity: "critical", title: "Weak TLS", detail: "d", remediation: null, status: "new" }],
+  });
+
+  beforeEach(() => {
+    process.env.CREDENTIALS_ENC_KEY = TEST_KEY;
+    integrationRows = [];
+    createPagerDutyIncidentMock.mockReset().mockResolvedValue({ ok: true, alertId: "dk", url: "https://app.pagerduty.com" });
+    createOpsgenieAlertMock.mockReset().mockResolvedValue({ ok: true, alertId: "a", url: "https://app.opsgenie.com/alert/detail/a" });
+    resolvePagerDutyIncidentMock.mockReset().mockResolvedValue(true);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (original === undefined) delete process.env.CREDENTIALS_ENC_KEY;
+    else process.env.CREDENTIALS_ENC_KEY = original;
+  });
+
+  it("pages with the decrypted PagerDuty and Opsgenie keys, never the ciphertext", async () => {
+    integrationRows = [
+      sealSecrets({ provider: "pagerduty", pagerduty_routing_key: "pd-PLAIN", opsgenie_api_key: null, region: null }, ["pagerduty_routing_key"]),
+      sealSecrets({ provider: "opsgenie", pagerduty_routing_key: null, opsgenie_api_key: "og-PLAIN", region: "eu" }, ["opsgenie_api_key"]),
+    ];
+    await triggerOncallAlerts(makeSupabase(), "owner-1", critical);
+    expect(createPagerDutyIncidentMock).toHaveBeenCalledWith("pd-PLAIN", expect.anything());
+    expect(createOpsgenieAlertMock).toHaveBeenCalledWith("og-PLAIN", "eu", expect.anything());
+  });
+
+  it("resolves with the decrypted key too", async () => {
+    integrationRows = [sealSecrets({ provider: "pagerduty", pagerduty_routing_key: "pd-PLAIN", opsgenie_api_key: null, region: null }, ["pagerduty_routing_key"])];
+    await resolveOncallAlerts(makeSupabase(), "owner-1", {
+      ...critical,
+      findings: [],
+      fixed_findings: [{ check_id: "tls.weak-protocol", severity: "critical", title: "Weak TLS" }],
+    } as never);
+    expect(resolvePagerDutyIncidentMock).toHaveBeenCalledWith("pd-PLAIN", expect.any(String));
+  });
+
+  it("still pages with a legacy plaintext key that hasn't been re-saved", async () => {
+    integrationRows = [{ provider: "pagerduty", pagerduty_routing_key: "legacy-key", opsgenie_api_key: null, region: null }];
+    await triggerOncallAlerts(makeSupabase(), "owner-1", critical);
+    expect(createPagerDutyIncidentMock).toHaveBeenCalledWith("legacy-key", expect.anything());
+  });
+
+  it("skips a key it cannot decrypt, logging it, and never sends ciphertext", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sealed = sealSecrets({ provider: "pagerduty", pagerduty_routing_key: "pd-PLAIN", opsgenie_api_key: null, region: null }, ["pagerduty_routing_key"]);
+    process.env.CREDENTIALS_ENC_KEY = Buffer.alloc(32, 9).toString("base64");
+    integrationRows = [sealed];
+    await triggerOncallAlerts(makeSupabase(), "owner-1", critical);
+    expect(createPagerDutyIncidentMock).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Could not decrypt the pagerduty key"));
   });
 });

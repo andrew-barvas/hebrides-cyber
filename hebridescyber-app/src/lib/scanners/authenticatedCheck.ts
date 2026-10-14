@@ -29,10 +29,39 @@ import { buildAuthenticatedCrawlFindings, checkAuthenticatedCrawl } from "./auth
 import type { CrawlResult } from "./crawler";
 import type { Finding } from "./index";
 import * as FIX from "./remediationText";
+import { revealSecrets } from "../credentialEncryption";
 
 export type AuthCredential =
   | { type: "cookie"; cookieValue: string }
   | { type: "basic"; username: string; password: string };
+
+/** A target_auth_credentials row, as stored: the cookie and password are encrypted at rest. */
+export type StoredAuthCredential = {
+  auth_type: string | null;
+  cookie_value: string | null;
+  basic_username: string | null;
+  basic_password: string | null;
+};
+
+/**
+ * Turns a stored credential row into the credential the checks use, or null
+ * when there's nothing usable. `decrypted: false` means the row has a secret
+ * that can't be decrypted right now (key missing or rotated): the caller skips
+ * authenticated checks for the scan and logs it — ciphertext is never used as
+ * the credential.
+ */
+export function resolveAuthCredential(row: StoredAuthCredential | null): { credential: AuthCredential | null; decrypted: boolean } {
+  if (!row) return { credential: null, decrypted: true };
+  const revealed = revealSecrets(row, ["cookie_value", "basic_password"]);
+  if (!revealed) return { credential: null, decrypted: false };
+  if (revealed.auth_type === "cookie" && revealed.cookie_value) {
+    return { credential: { type: "cookie", cookieValue: revealed.cookie_value }, decrypted: true };
+  }
+  if (revealed.auth_type === "basic" && revealed.basic_username && revealed.basic_password) {
+    return { credential: { type: "basic", username: revealed.basic_username, password: revealed.basic_password }, decrypted: true };
+  }
+  return { credential: null, decrypted: true };
+}
 
 export type AuthenticatedCheckResult =
   | ({ status: "checked"; /** Signed-in crawl of the site; its own status says whether it ran. */ crawl?: CrawlResult } & HeaderAnalysisBundle)

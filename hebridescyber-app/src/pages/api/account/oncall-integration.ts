@@ -28,6 +28,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { validatePagerDutyKey, validateOpsgenieKey } from "@/lib/oncallIntegrations";
 import { parseBody } from "@/lib/validate";
+import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
 
 const deleteSchema = z.object({
   provider: z.enum(["pagerduty", "opsgenie"]),
@@ -68,13 +69,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const body = parseBody(postSchema, req.body, res);
   if (!body) return;
 
+  // Keys are stored encrypted (credentialEncryption.ts); never fall back to plaintext.
+  if (!isCredentialEncryptionConfigured()) return res.status(503).json({ error: ENCRYPTION_NOT_CONFIGURED_MESSAGE });
+
   if (body.provider === "pagerduty") {
     const { routingKey } = body;
     const check = await validatePagerDutyKey(routingKey);
     if (!check.ok) return res.status(400).json({ error: check.error });
 
     const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-      { owner: caller.ownerId, provider: "pagerduty", pagerduty_routing_key: routingKey },
+      sealSecrets({ owner: caller.ownerId, provider: "pagerduty", pagerduty_routing_key: routingKey }, ["pagerduty_routing_key"]),
       { onConflict: "owner,provider" }
     );
     if (error) return res.status(500).json({ error: error.message });
@@ -86,7 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!check.ok) return res.status(400).json({ error: check.error });
 
   const { error } = await supabaseAdmin.from("ticket_integrations").upsert(
-    { owner: caller.ownerId, provider: "opsgenie", opsgenie_api_key: apiKey, region },
+    sealSecrets({ owner: caller.ownerId, provider: "opsgenie", opsgenie_api_key: apiKey, region }, ["opsgenie_api_key"]),
     { onConflict: "owner,provider" }
   );
   if (error) return res.status(500).json({ error: error.message });

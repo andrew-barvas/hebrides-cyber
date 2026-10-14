@@ -49,7 +49,7 @@ erDiagram
     }
     scans {
         text status
-        int score "flat severity tally, floors at 0"
+        int score "severity penalties weighted by CVSS/KEV/EPSS, floors at 0"
     }
     scan_jobs {
         uuid scan_id FK "null => scheduled"
