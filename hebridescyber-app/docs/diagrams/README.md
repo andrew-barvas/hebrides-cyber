@@ -33,9 +33,14 @@ aspirational box as if it shipped. Where this disagrees with marketing copy,
 
 ```bash
 cd hebridescyber-app
-npm install          # once, pulls @mermaid-js/mermaid-cli (uses the Chromium Playwright already installs)
-npm run docs:diagrams   # renders every *.mmd -> exports/*.svg and exports/*.png
+npm run docs:diagrams   # renders every *.mmd -> exports/*.svg and *.png
 ```
 
+The script fetches `@mermaid-js/mermaid-cli` on demand via `npx` (so it is **not**
+a committed dependency — it drags in a heavy puppeteer tree this lean repo keeps
+out of its lockfile). The first run needs network; it drives a headless Chromium,
+auto-detecting a system Chrome/Edge (or `PUPPETEER_EXECUTABLE_PATH`) if mermaid's
+bundled one isn't present.
+
 `exports/` is derived output. If you change a `.mmd`, re-run the script and commit
-both. CI (`docs-diagrams.yml`, optional) can fail the build when exports are stale.
+both.
