@@ -5,11 +5,15 @@
  *
  * Usage: npm run docs:diagrams
  *
- * Requires @mermaid-js/mermaid-cli (devDependency). It drives a headless
- * Chromium — the same browser Playwright installs for this repo's e2e/page-health
- * checks — so no extra binary download is needed once `npx playwright install
- * chromium` has run. Cross-platform (no shell globbing); matches the repo's
- * tsx-script convention.
+ * Fetches @mermaid-js/mermaid-cli on demand via `npx --yes` rather than carrying
+ * it as a committed devDependency — it drags in a heavy puppeteer tree that this
+ * deliberately-lean repo doesn't want in its lockfile, and diagrams only need
+ * regenerating occasionally. Requires network for the first `npx` fetch.
+ *
+ * It drives a headless Chromium. If mermaid-cli's bundled Chromium isn't present
+ * (offline / allowScripts policy), the renderer points it at a system Chrome/Edge
+ * (findBrowser below) or whatever PUPPETEER_EXECUTABLE_PATH is set to.
+ * Cross-platform (no shell globbing); matches the repo's tsx-script convention.
  */
 import { readdirSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
@@ -63,7 +67,9 @@ function run(): void {
     process.exit(1);
   }
 
-  const mmdc = process.platform === "win32" ? "mmdc.cmd" : "mmdc";
+  // Invoke via npx so no devDependency is committed (see header).
+  const runner = process.platform === "win32" ? "npx.cmd" : "npx";
+  const mmdcArgs = ["--yes", "@mermaid-js/mermaid-cli"];
   let failed = 0;
   for (const src of sources) {
     const name = basename(src, ".mmd");
@@ -71,8 +77,9 @@ function run(): void {
       const out = join(exportsDir, `${name}.${ext}`);
       try {
         execFileSync(
-          mmdc,
+          runner,
           [
+            ...mmdcArgs,
             "--input", join(diagramsDir, src),
             "--output", out,
             "--backgroundColor", "transparent",
