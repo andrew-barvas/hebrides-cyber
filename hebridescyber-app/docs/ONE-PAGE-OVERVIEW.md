@@ -53,8 +53,8 @@ Full diagram set: [`diagrams/`](diagrams/) · architecture narrative:
 ## Honest limitations (as of 2026-10)
 - **Paid signup is not live** — Stripe price IDs unset in production (E-07).
 - **No true multi-org / MSP tenancy** (org/RBAC/SSO schema is unwired dead code).
-- **No self-service sign-up page or password reset**; Google OAuth is a stub.
-- **Risk score is a flat severity tally**, not CVSS-weighted.
+- **Google OAuth is a stub** (the code exists; the provider isn't enabled in Supabase and
+  there is no button on `/login`). Sign-up (`/signup`) and password reset are live.
 - **Offensive "AI pen-test" tier is not usable** (Strix/Cairn never run).
 - **No DMARC aggregate-report processing**, no continuous standalone EASM, no
   dark-web monitoring beyond HIBP domain lookups.

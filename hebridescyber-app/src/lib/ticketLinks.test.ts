@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { decideTicketAction, ticketHostOf, buildProviderClient, type TicketLink } from "./ticketLinks";
+import { sealSecrets } from "./credentialEncryption";
 
 function link(overrides: Partial<TicketLink> = {}): TicketLink {
   return {
@@ -117,5 +118,46 @@ describe("buildProviderClient", () => {
     // scan's post-completion phase, where an exception would surface as a
     // failure of a scan that already succeeded.
     expect(buildProviderClient(row)).toBeNull();
+  });
+});
+
+describe("buildProviderClient — secrets stored encrypted", () => {
+  const original = process.env.CREDENTIALS_ENC_KEY;
+  const TEST_KEY = Buffer.alloc(32, 7).toString("base64");
+  const githubRow = { provider: "github" as const, github_owner: "acme", github_repo: "web", github_token: "github_pat_PLAIN" };
+
+  beforeEach(() => {
+    process.env.CREDENTIALS_ENC_KEY = TEST_KEY;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (original === undefined) delete process.env.CREDENTIALS_ENC_KEY;
+    else process.env.CREDENTIALS_ENC_KEY = original;
+  });
+
+  async function headersSentBy(row: Parameters<typeof buildProviderClient>[0]): Promise<string> {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ state: "open" }), { status: 200 }));
+    await buildProviderClient(row)!.getIssue("1");
+    return JSON.stringify(fetchSpy.mock.calls[0][1]?.headers);
+  }
+
+  it("sends the decrypted token to the tracker, never the ciphertext", async () => {
+    const sealed = sealSecrets(githubRow, ["github_token"]);
+    expect(sealed.github_token).not.toBe("github_pat_PLAIN");
+    const headers = await headersSentBy(sealed);
+    expect(headers).toContain("github_pat_PLAIN");
+    expect(headers).not.toContain("enc:v1:");
+  });
+
+  it("still uses a legacy plaintext token that hasn't been re-saved yet", async () => {
+    expect(await headersSentBy(githubRow)).toContain("github_pat_PLAIN");
+  });
+
+  it("returns null, not a client holding ciphertext, when the key is missing or rotated", () => {
+    const sealed = sealSecrets(githubRow, ["github_token"]);
+    delete process.env.CREDENTIALS_ENC_KEY;
+    expect(buildProviderClient(sealed)).toBeNull();
+    process.env.CREDENTIALS_ENC_KEY = Buffer.alloc(32, 9).toString("base64");
+    expect(buildProviderClient(sealed)).toBeNull();
   });
 });

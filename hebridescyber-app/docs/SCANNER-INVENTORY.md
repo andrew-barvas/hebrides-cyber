@@ -17,7 +17,7 @@ Final passes (all in `executeScan()` / `summariseResults()`), in order:
 4. Cross-tool consolidation (`findingConsolidation.ts`): extended-tool duplicates are folded into one canonical finding with `corroboratedBy`. Own base checks always win; only extended-tool findings are dropped.
 5. CVSS v3.1 enrichment from NVD (`cvssEnrich.ts`), best-effort.
 6. Threat intel (`threatIntel.ts`): CISA KEV membership/ransomware flag and FIRST EPSS, best-effort; absent = unknown.
-7. False-positive triage exclusion, then AI summary (Azure OpenAI if configured, else templated), then `scoreFromFindings()`: 100 minus critical 30 / high 15 / medium 7 / low 2 / info 0, floored at 0.
+7. False-positive triage exclusion, then AI summary (Azure OpenAI if configured, else templated), then `scoreFromFindings()`: 100 minus each finding's penalty (`scanners/riskScore.ts`) — critical 30 / high 15 / medium 7 / low 2 / info 0, raised for CVSS band, CISA KEV and high EPSS where the finding carries them, capped at 45 per finding, floored at 0.
 8. After completion: finding lifecycle, asset inventory sync, alerts and webhooks (not scanner checks).
 
 Scan profiles (`src/lib/scanProfiles.ts`, 28 extended tool keys):

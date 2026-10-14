@@ -26,8 +26,12 @@ import {
   getServiceNowIncident,
 } from "./ticketProviders";
 import { TICKET_PROVIDERS, type TicketProvider } from "./ticketProviderList";
+import { revealSecrets } from "./credentialEncryption";
 
 export { TICKET_PROVIDERS, type TicketProvider };
+
+/** The ticket_integrations columns that hold a live secret, stored encrypted. */
+const TICKET_SECRET_FIELDS = ["jira_api_token", "linear_api_key", "servicenow_password", "github_token"] as const;
 
 /** The columns every ticket code path selects out of ticket_integrations. */
 export type TicketIntegrationRow = {
@@ -145,7 +149,12 @@ export type TicketProviderClient = {
  * provider needs — a half-written integration must not throw at call time
  * deep inside a scan's notification phase.
  */
-export function buildProviderClient(integration: TicketIntegrationRow): TicketProviderClient | null {
+export function buildProviderClient(stored: TicketIntegrationRow): TicketProviderClient | null {
+  // Tokens and passwords are stored encrypted (legacy plaintext passes through).
+  // One that can't be decrypted — key missing or rotated — makes the
+  // integration unusable, not an error and never a plaintext fallback.
+  const integration = revealSecrets(stored, TICKET_SECRET_FIELDS);
+  if (!integration) return null;
   switch (integration.provider) {
     case "jira": {
       const { jira_base_url: baseUrl, jira_email: email, jira_api_token: apiToken, jira_project_key: projectKey } = integration;

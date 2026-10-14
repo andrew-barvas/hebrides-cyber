@@ -32,6 +32,7 @@ import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
 export { enrichFindingsWithThreatIntel } from "./threatIntel";
+import { scoreFromPenalties } from "./riskScore";
 import * as FIX from "./remediationText";
 
 export type {
@@ -1276,9 +1277,10 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   return { summary, findings };
 }
 
+// Severity penalty, weighted by CVSS / CISA KEV / EPSS where a finding carries
+// them — see riskScore.ts. Findings with no such intel cost their flat penalty.
 export function scoreFromFindings(findings: Finding[]): number {
-  const penalties: Record<Finding["severity"], number> = { critical: 30, high: 15, medium: 7, low: 2, info: 0 };
-  return Math.max(0, 100 - findings.reduce((sum, f) => sum + penalties[f.severity], 0));
+  return scoreFromPenalties(findings);
 }
 
 export async function generateAiSummary(results: ScanResults, findings: Finding[]): Promise<string> {

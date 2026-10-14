@@ -1,8 +1,9 @@
-// Application-layer envelope encryption for stored third-party secrets —
-// specifically the cloud-provider credentials in `cloud_credentials`
-// (AWS/Azure/GCP keys into a customer's own accounts). Migration 030 named the
-// column `credentials_encrypted` and claimed "pgcrypto column-level
-// encryption", but nothing ever encrypted it — the values were plaintext JSONB
+// Application-layer envelope encryption for stored third-party secrets: the
+// cloud-provider credentials in `cloud_credentials` (AWS/Azure/GCP keys into a
+// customer's own accounts) and, in string form below, every other stored token,
+// password and session cookie. Migration 030 named the column
+// `credentials_encrypted` and claimed "pgcrypto column-level encryption", but
+// nothing ever encrypted it — the values were plaintext JSONB
 // (review finding S-1). This provides the real thing: AES-256-GCM with a
 // server-only key, authenticated so tampering is detected.
 //
@@ -69,4 +70,76 @@ export function decryptCredentials(stored: unknown): Record<string, string> {
   decipher.setAuthTag(Buffer.from(stored.tag, "base64"));
   const out = Buffer.concat([decipher.update(Buffer.from(stored.data, "base64")), decipher.final()]);
   return JSON.parse(out.toString("utf8")) as Record<string, string>;
+}
+
+// ---- Single-string secrets (API tokens, passwords, session cookies) ---------
+//
+// The object API above fits cloud_credentials' JSONB column. Everything else
+// that stores a live secret (ticket-tracker and on-call tokens, authenticated-
+// scan cookies and Basic Auth passwords) keeps it in a plain `text` column, so
+// the same AES-256-GCM envelope is stored as one string:
+//   enc:v1:<iv>:<tag>:<data>   (each part base64, which never contains ':')
+// A value without the prefix is a legacy plaintext secret written before this
+// existed: it still decrypts (unchanged) until the row is re-saved or the
+// one-off `npm run secrets:encrypt-existing` rewrites it.
+
+const SECRET_PREFIX = "enc:v1:";
+
+/** Shown to the customer when a write is refused because no key is configured. */
+export const ENCRYPTION_NOT_CONFIGURED_MESSAGE =
+  "Secure credential storage isn't configured on this deployment yet, so this credential can't be saved. Please try again shortly.";
+
+/** True when `value` was produced by {@link encryptSecret}. */
+export function isEncryptedSecret(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith(SECRET_PREFIX);
+}
+
+/** Encrypts one secret string. Throws if no key is configured. */
+export function encryptSecret(plain: string): string {
+  const blob = encryptCredentials({ s: plain });
+  return `${SECRET_PREFIX}${blob.iv}:${blob.tag}:${blob.data}`;
+}
+
+/**
+ * Decrypts a stored secret. Legacy plaintext is returned unchanged. Throws if
+ * an encrypted value can't be decrypted (key missing or rotated, or the
+ * ciphertext was tampered with).
+ */
+export function decryptSecret(stored: string): string {
+  if (!isEncryptedSecret(stored)) return stored;
+  const [iv, tag, data] = stored.slice(SECRET_PREFIX.length).split(":");
+  if (!iv || !tag || !data) throw new Error("Malformed encrypted secret");
+  return decryptCredentials({ v: 1, iv, tag, data }).s;
+}
+
+/**
+ * A copy of `row` with the named string fields encrypted (null/empty fields are
+ * left alone). Throws if no key is configured — callers check
+ * {@link isCredentialEncryptionConfigured} first and answer 503.
+ */
+export function sealSecrets<T extends Record<string, unknown>>(row: T, fields: readonly (keyof T & string)[]): T {
+  const out: Record<string, unknown> = { ...row };
+  for (const f of fields) {
+    const v = out[f];
+    if (typeof v === "string" && v !== "") out[f] = encryptSecret(v);
+  }
+  return out as T;
+}
+
+/**
+ * A copy of `row` with the named fields decrypted, or null if any of them can't
+ * be (key missing or rotated, tampered value). Callers treat null as "this
+ * credential is unusable right now" and skip it — never as plaintext.
+ */
+export function revealSecrets<T extends Record<string, unknown>>(row: T, fields: readonly (keyof T & string)[]): T | null {
+  const out: Record<string, unknown> = { ...row };
+  try {
+    for (const f of fields) {
+      const v = out[f];
+      if (typeof v === "string" && v !== "") out[f] = decryptSecret(v);
+    }
+  } catch {
+    return null;
+  }
+  return out as T;
 }

@@ -22,6 +22,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
 import { logAuditEvent } from "@/lib/audit";
 import { recordLogin, playwrightLoginRun } from "@/lib/scanners/loginRecorder";
+import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
 
 const bodySchema = z.object({
   monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
@@ -53,6 +54,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
   if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
   if (gate === "denied") return res.status(403).json({ error: "Authenticated scanning is an Agency-plan feature." });
+
+  // The recorded session cookie is stored encrypted; refuse before driving a
+  // browser through the customer's login rather than save it in plaintext.
+  if (!isCredentialEncryptionConfigured()) return res.status(503).json({ error: ENCRYPTION_NOT_CONFIGURED_MESSAGE });
 
   const limit = await checkRateLimit(caller.ownerId, "record-login");
   if (!limit.allowed) {
@@ -93,7 +98,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (result.status === "error") return res.status(422).json({ error: result.note });
 
   const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
-    { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: result.cookieValue, basic_username: null, basic_password: null },
+    sealSecrets(
+      { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: result.cookieValue, basic_username: null, basic_password: null },
+      ["cookie_value"]
+    ),
     { onConflict: "monitored_target_id" }
   );
   if (error) return res.status(500).json({ error: error.message });

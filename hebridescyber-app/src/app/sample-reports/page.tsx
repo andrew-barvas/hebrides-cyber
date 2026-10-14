@@ -368,8 +368,13 @@ export default function SampleReportsPage() {
           </div>
           <p className="mt-4 text-sm text-cybertext/60">
             Score starts at 100 and each finding deducts the penalty for its severity. The floor is 0.
-            Scoring is transparent and deterministic — the same site always produces the same score, so
-            you can track improvement over time.
+            Where a finding is tied to a known vulnerability, the penalty also reflects the real-world
+            evidence: it costs more if the flaw is on CISA&rsquo;s Known Exploited Vulnerabilities list
+            (or used in ransomware) or has a high exploitation probability (EPSS), and at least the
+            penalty for its CVSS band. A flaw with a negligible measured exploitation probability costs
+            less. One finding never costs more than 45 points. Scoring is transparent and
+            deterministic — the same evidence always produces the same score, so you can track
+            improvement over time.
           </p>
         </div>
       </div>

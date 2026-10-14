@@ -35,6 +35,7 @@ name: On-Demand Scan
 #   GOOGLE_SAFE_BROWSING_API_KEY              - optional, malware/phishing check
 #   HIBP_API_KEY                              - optional, breach exposure check
 #   RESEND_API_KEY                            - post-scan emails (alerts, scan complete)
+#   CREDENTIALS_ENC_KEY                       - decrypts stored customer credentials (same value as the app's)
 # Every one of the optional secrets degrades to its own "not_configured"
 # result when unset — never blocks or fails the job.
 
@@ -87,6 +88,8 @@ jobs:
           # The post-scan emails (critical findings, scan complete, SLA, new
           # hostnames and DNS changes) need it; see scheduled-scans.yml.
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Decrypts stored customer credentials; see scheduled-scans.yml.
+          CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
           WORKER_ID: gha-ondemand-${{ github.run_id }}
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}

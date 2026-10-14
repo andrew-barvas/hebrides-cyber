@@ -9,6 +9,10 @@ const { authenticateApiRequestMock, checkRateLimitMock, logAuditEventMock, recor
   recordLoginMock: vi.fn(),
 }));
 
+// 32 bytes, base64 — a throwaway test key, not a real secret.
+const TEST_KEY = Buffer.alloc(32, 7).toString("base64");
+let upserts: Array<Record<string, unknown>> = [];
+
 type QueueMap = Record<string, unknown[]>;
 let queues: QueueMap = {};
 
@@ -17,7 +21,10 @@ function makeBuilder(table: string) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
-    upsert: () => next(),
+    upsert: (row: Record<string, unknown>) => {
+      upserts.push(row);
+      return next();
+    },
     maybeSingle: next,
   };
   return builder;
@@ -32,6 +39,7 @@ vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
 vi.mock("@/lib/scanners/loginRecorder", () => ({ recordLogin: recordLoginMock, playwrightLoginRun: vi.fn() }));
 
 import handler from "@/pages/api/account/record-login";
+import { decryptSecret, isEncryptedSecret } from "@/lib/credentialEncryption";
 
 const TARGET_ID = "11111111-1111-1111-1111-111111111111";
 const OWNER_ID = "22222222-2222-2222-2222-222222222222";
@@ -53,6 +61,8 @@ function validBody(over: Record<string, unknown> = {}) {
 
 describe("POST /api/account/record-login", () => {
   beforeEach(() => {
+    process.env.CREDENTIALS_ENC_KEY = TEST_KEY;
+    upserts = [];
     queues = {};
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: OWNER_ID, via: "session" });
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true });
@@ -159,5 +169,21 @@ describe("POST /api/account/record-login", () => {
     await handler(req, res);
     expect(res._getStatusCode()).toBe(200);
     expect(logAuditEventMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "login_recorder.succeeded" }));
+    // The session cookie is stored encrypted, and decrypts back to what was recorded.
+    expect(upserts).toHaveLength(1);
+    expect(isEncryptedSecret(upserts[0].cookie_value)).toBe(true);
+    expect(upserts[0].cookie_value).not.toContain("abc123");
+    expect(decryptSecret(upserts[0].cookie_value as string)).toBe("session=abc123");
+  });
+
+  it("503s without running the browser when no encryption key is configured", async () => {
+    delete process.env.CREDENTIALS_ENC_KEY;
+    queues.monitored_targets = [{ data: { id: TARGET_ID, owner: OWNER_ID, target_url: "https://app.example.com" }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
+    const { req, res } = mockReqRes("POST", validBody());
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(503);
+    expect(recordLoginMock).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(0);
   });
 });
