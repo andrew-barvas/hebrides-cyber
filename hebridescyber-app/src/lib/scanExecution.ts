@@ -1095,7 +1095,7 @@ export async function executeScan(
   } catch (err) {
     await supabaseAdmin
       .from("scans")
-      .update({ status: "failed" })
+      .update({ status: "failed", error_detail: (err as Error)?.message?.slice(0, 2000) ?? "unknown error" })
       .eq("id", scanId)
       .then(
         () => {},

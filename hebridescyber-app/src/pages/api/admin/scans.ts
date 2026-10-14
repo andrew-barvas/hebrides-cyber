@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let query = supabaseAdmin
       .from("scans")
-      .select("id, owner, target_url, status, created_at, owner_verified, job_id, scan_results(score, summary)")
+      .select("id, owner, target_url, status, error_detail, created_at, owner_verified, job_id, scan_results(score, summary)")
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
 
