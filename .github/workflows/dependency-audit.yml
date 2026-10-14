@@ -1,0 +1,63 @@
+name: Dependency audit
+
+# Scans this product's own npm dependencies for known vulnerabilities (the
+# scanner flags this on customers' repos; it should hold itself to the same).
+#
+# Kept apart from deploy.yml on purpose: a newly published advisory must not
+# block unrelated PRs or a deploy (including the deploy of its own fix). Instead
+#   - a PR that changes dependencies is checked, so it can't introduce one;
+#   - master is re-checked on every push; and
+#   - a weekly run catches advisories published against what is already there,
+#     going red where it's visible.
+#
+# Production dependencies (what ships) FAIL the run at high or critical.
+# Dev/build-time dependencies are reported in the job summary but don't fail it:
+# they never run on the server, and several fixes there need a major version
+# change (Tailwind 3 -> 4) that deserves its own decision. See docs/NEXT-STEPS.md.
+
+on:
+  pull_request:
+    paths:
+      - "hebridescyber-app/package.json"
+      - "hebridescyber-app/package-lock.json"
+      - ".github/workflows/dependency-audit.yml"
+  push:
+    branches: [master]
+    paths:
+      - "hebridescyber-app/package.json"
+      - "hebridescyber-app/package-lock.json"
+  schedule:
+    # Mondays 06:23 UTC.
+    - cron: "23 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      # Reads package-lock.json only, so no install is needed.
+      - name: Production dependencies (fails on high or critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Dev and build-time dependencies (reported, does not fail)
+        if: always()
+        run: |
+          {
+            echo "### Dev / build-time dependency advisories"
+            echo
+            echo '```'
+            npm audit --include=dev --audit-level=none || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
