@@ -6,6 +6,8 @@ flowchart TD
     classDef gate fill:#1168bd,stroke:#0b4884,color:#fff
 
     V([Visitor]) --> L[/login - src/app/login/page.tsx/]
+    V --> SU[/signup - src/app/signup/page.tsx<br/>magic link, optional company name/]:::ok
+    SU --> ML
     L --> M{Method}
     M -->|magic link - primary| ML[Supabase OTP email]:::ok
     M -->|password - optional toggle| PW[signInWithPassword]:::ok
@@ -21,5 +23,6 @@ flowchart TD
     AAL -->|yes, not satisfied| CH[/login/mfa-challenge - TOTP/]:::ok
     AAL -->|ok| APP([Dashboard])
 
-    NOGAP1[No self-service sign-up page<br/>accounts created implicitly by magic link - GAP]:::gap
-    NOGAP2[No password reset / change-password flow - GAP]:::gap
+    FP[/forgot-password/]:::ok --> RP[/reset-password - session from<br/>/auth/callback?next=/reset-password/]:::ok
+    PW -.->|forgot?| FP
+    ML -.->|first sign-in| TRG[DB trigger handle_new_user<br/>creates public.users row - migration 059]:::ok

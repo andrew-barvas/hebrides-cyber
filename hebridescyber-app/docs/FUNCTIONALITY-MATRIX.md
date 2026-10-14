@@ -75,8 +75,13 @@ rules for all of these live in `docs/SCANNER-CONVENTIONS.md`.
 | `compliance.ts` | Maps `checkId` → Cyber Essentials / OWASP Top 10 / CIS Controls v8 | none | n/a (deliberately non-exhaustive) | none | ✅ `compliance.test.ts` |
 | `remediationText.ts` | Static fix prose attached per finding | none | n/a | none | ✅ `remediationText.test.ts` |
 
-Scoring: `scoreFromFindings()` — 100 minus `{critical:30, high:15, medium:7,
-low:2, info:0}`, floored at 0. Summary: Azure OpenAI if configured, else a
+Scoring: `scoreFromFindings()` — 100 minus each finding's `findingPenalty()`
+(`scanners/riskScore.ts`), floored at 0. The base is `{critical:30, high:15,
+medium:7, low:2, info:0}`; a CVE-backed finding is raised to at least its CVSS
+band's penalty, multiplied 1.5x if in CISA KEV (2x if used in ransomware) or 1.4x/1.2x for
+EPSS ≥ 0.5/≥ 0.1, reduced 0.75x for a measured EPSS < 0.01 when not in KEV, and
+capped at 45 per finding. A finding with no CVSS or threat intel costs exactly
+its flat penalty. Summary: Azure OpenAI if configured, else a
 deterministic templated fallback (no plan gate either way).
 
 ---

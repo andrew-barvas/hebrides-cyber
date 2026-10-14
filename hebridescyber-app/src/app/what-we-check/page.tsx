@@ -382,7 +382,7 @@ export default function WhatWeCheckPage() {
                 desc: "Every finding is rated critical, high, medium, low, or info, and rolled up into a single score out of 100 so you can track improvement over time.",
                 checks: [
                   "Critical/high/medium/low/info severity on every finding",
-                  "0–100 score with weighted penalties per severity",
+                  "0–100 score with weighted penalties per severity, raised for known-exploited (CISA KEV) and high-EPSS vulnerabilities and floored at the finding's CVSS band",
                   "Score trend chart across every past scan of the same target",
                 ],
               }}
