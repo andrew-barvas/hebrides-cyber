@@ -6,15 +6,13 @@
 
 do $$
 begin
-  if not exists (select from pg_roles where rolname = 'anon') then
-    create role anon nologin noinherit;
-  end if;
-  if not exists (select from pg_roles where rolname = 'authenticated') then
-    create role authenticated nologin noinherit;
-  end if;
-  if not exists (select from pg_roles where rolname = 'service_role') then
-    create role service_role nologin noinherit bypassrls;
-  end if;
+  -- Postgres roles are cluster-global, so two test databases created in
+  -- parallel race between an `if not exists` check and the create and the
+  -- loser hits a raw unique_violation on pg_authid (not always the friendly
+  -- duplicate_object). Create optimistically and swallow "already there".
+  begin create role anon nologin noinherit; exception when duplicate_object or unique_violation then null; end;
+  begin create role authenticated nologin noinherit; exception when duplicate_object or unique_violation then null; end;
+  begin create role service_role nologin noinherit bypassrls; exception when duplicate_object or unique_violation then null; end;
 end $$;
 
 create schema if not exists auth;
