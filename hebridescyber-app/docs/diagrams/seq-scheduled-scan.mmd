@@ -1,0 +1,31 @@
+%% Sequence — scheduled scan (cron, full/active profile)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+sequenceDiagram
+    autonumber
+    participant CRON as scheduled-scans.yml (daily cron)
+    participant ENQ as enqueue-scheduled-scans.ts
+    participant DB as Supabase
+    participant M as Worker matrix (shards)
+    participant TOOLS as Real tool binaries + ZAP daemon
+    participant FEEDS as OSV / NVD / KEV / EPSS / crt.sh
+    participant N as Notifiers
+
+    CRON->>ENQ: run enqueue step
+    ENQ->>DB: for each verified target, isScanDue(plan)?
+    Note right of ENQ: Basic weekly, Pro/Agency daily
+    ENQ->>DB: INSERT one scan_jobs row per due target
+
+    CRON->>M: start worker shard matrix
+    CRON->>TOOLS: install nmap/nuclei/sqlmap/commix/testssl/gitleaks/trivy/opengrep + ZAP
+    loop until queue drained or time budget (MAX_JOBS_PER_RUN)
+        M->>DB: claim_scan_job() SKIP LOCKED
+        M->>M: decideScanConfig() -> profile (default "full")
+        M->>TOOLS: base passive + extended active tools
+        TOOLS->>FEEDS: CVE / exploit / CT lookups
+        M->>DB: write results, status=completed
+        M->>DB: finding_lifecycle + SLA sync, New/Fixed diff
+        M->>N: webhooks, Slack/Teams, email, on-call, SIEM
+        M->>N: attack-surface + emerging-threat + lookalike alerts
+        M->>N: ticket dedupe + auto-close
+    end
+    Note over M,DB: leftover jobs roll over to the next cron run

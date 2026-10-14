@@ -1,0 +1,28 @@
+%% Flow — scan profile resolution & the Tier A offensive gate (decideScanConfig)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TD
+    classDef safe fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef full fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef off fill:#6a040f,stroke:#370617,color:#fff
+    classDef refuse fill:#e85d04,stroke:#9a3b00,color:#fff
+
+    J([scan_jobs row claimed]) --> Q{On-demand job?<br/>scan_id pre-set}
+    Q -->|yes| SAFE[Profile = safe<br/>base passive suite only]:::safe
+    Q -->|no scheduled| P{job.scan_profile set?}
+    P -->|yes| USE[Use that profile]
+    P -->|no| B{scan bundle / target profile?}
+    B -->|yes| USE
+    B -->|no| DEF[Default = full]:::full
+
+    USE --> OFFQ{Profile = offensive?}
+    DEF --> RUNFULL[Run base + all extended tools<br/>except OFFENSIVE_ONLY_TOOLS]:::full
+    OFFQ -->|no| RUNFULL
+    OFFQ -->|yes| GATE{Tier A plan?<br/>AND offensive_scan_authorizations row?<br/>AND domain verified?}
+
+    GATE -->|all true| RUNOFF[Run offensive tools:<br/>ffuf live; credentialSpray/strix/cairn not_configured<br/>audit offensive_scan.ran]:::off
+    GATE -->|any false| DOWN[Downgrade to safe<br/>audit offensive_scan.refused]:::refuse
+
+    SAFE --> END([execute])
+    RUNFULL --> END
+    RUNOFF --> END
+    DOWN --> END

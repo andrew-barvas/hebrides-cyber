@@ -1,0 +1,32 @@
+%% CI/CD pipeline & quality gates (17 workflows)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TD
+    classDef gate fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef deploy fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef sched fill:#5a189a,stroke:#3c096c,color:#fff
+    classDef warn fill:#e85d04,stroke:#9a3b00,color:#fff
+
+    PR([Push / PR to master]) --> G1[lint - eslint]:::gate
+    G1 --> G2[type check - tsc --noEmit]:::gate
+    G2 --> G3[unit + coverage floor 71/64/72/72]:::gate
+    G3 --> G4[e2e - Playwright hermetic]:::gate
+    G4 --> G5[apply migrations + drift check]:::gate
+    G5 --> DEP[deploy.yml -> Azure SWA]:::deploy
+    DEP --> HC[health check /api/health]:::deploy
+
+    subgraph OTHER[Other CI workflows]
+        W1[db-tests.yml - real Postgres RLS tests]:::gate
+        W2[benchmark.yml - precision/recall, weekly]:::gate
+        W3[sast-rules.yml - opengrep validate/test]:::gate
+        W4[terraform-security-scan.yml - Checkov]:::gate
+        W5[tool-integration.yml - real scanner binaries]:::gate
+    end
+
+    subgraph SCHEDULES[Scheduled runners]
+        S1[scheduled-scans.yml / on-demand-scan.yml]:::sched
+        S2[daily-blog / weekly-newsletter / monthly-digest]:::sched
+        S3[emerging-threats 6h / scheduled-reports / publish-scheduled-posts]:::sched
+        S4[data-retention-cleanup / deletion-requests]:::sched
+    end
+
+    SUPPLY[Supply-chain gap: all 'uses:' pinned to mutable tags, NOT SHAs - FINDING I-4<br/>No self-dependency CVE scan - the product flags this on customers but not itself]:::warn

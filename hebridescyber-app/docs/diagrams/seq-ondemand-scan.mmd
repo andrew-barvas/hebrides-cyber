@@ -1,0 +1,38 @@
+%% Sequence — on-demand scan (two-step ownership proof, queue-backed)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+sequenceDiagram
+    autonumber
+    actor U as User (dashboard)
+    participant API as /api/run-scan (session only)
+    participant SSRF as validateNoSsrf + ownership
+    participant DB as Supabase (service role)
+    participant GH as on-demand-scan.yml (GitHub Actions)
+    participant W as Worker (executeScan, passive)
+
+    U->>API: POST { targetUrl }
+    API->>DB: free-tier cap? rate limit 10/hr? SSRF ok?
+    API->>DB: INSERT scans (status=pending)
+    API-->>U: { scanId, proofToken }
+
+    Note over U: User adds DNS TXT or /.well-known file
+
+    U->>API: POST { scanId }
+    API->>SSRF: verify domain ownership (DNS/file)
+    alt not verified
+        API-->>U: 403 ownership_required
+    else verified
+        API->>DB: INSERT scan_jobs (queued), SSRF re-check
+        API->>GH: dispatch workflow (needs GITHUB_PAT)
+        API-->>U: 202 { status: queued }
+    end
+
+    GH->>DB: claim_scan_job() FOR UPDATE SKIP LOCKED
+    GH->>W: run job (profile forced to "safe")
+    W->>W: base passive suite + enrichment + score
+    W->>DB: write scan_results, update status=completed
+    W->>DB: diff vs previous, lifecycle sync, fire notifiers
+
+    loop poll every few seconds
+        U->>API: POST { scanId }
+        API-->>U: queued -> running -> completed (cached result)
+    end

@@ -1,0 +1,22 @@
+%% Plan tiers, nesting, and feature gating map (planAccess.ts + FUNCTIONALITY-MATRIX)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart LR
+    classDef tier fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef feat fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef open fill:#e85d04,stroke:#9a3b00,color:#fff
+
+    subgraph Tiers[Tiers nest upward - only status=active grants, admins exempt]
+        FREE[Free - 1 scan ever]:::tier --> BASIC[Basic 20/mo<br/>weekly scans, 1 site]:::tier
+        BASIC --> PRO[Pro 35/mo<br/>daily scans, 3 sites, Slack/Teams]:::tier
+        PRO --> AGENCY[Agency 75/mo<br/>15 sites, white-label, auth scanning, teams]:::tier
+        AGENCY --> TIERA[Tier A - custom<br/>offensive readiness]:::tier
+    end
+
+    PRO --> F1[connect-repo POST, dependency/CI scanning]:::feat
+    AGENCY --> F2[white-label branding + PDF]:::feat
+    AGENCY --> F3[target-auth / authenticated crawl]:::feat
+    AGENCY --> F4[team create/invite, SLA dashboard]:::feat
+    AGENCY --> F5[Partner Portal - informational only, client-gated]:::feat
+    TIERA --> F6[offensive profile - per-target authorisation + verified domain]:::feat
+
+    OPEN[Ungated on free tier - no plan check:<br/>API keys, webhooks, share links, CSV/JSON export,<br/>AI fix, create-ticket, 2FA, scan replay]:::open

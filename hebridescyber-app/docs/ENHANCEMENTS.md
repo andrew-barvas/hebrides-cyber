@@ -7,6 +7,17 @@ ID is assigned here it's referenced from other docs by that ID — **never
 renumber an existing item**; if one is dropped, mark it `WITHDRAWN` and
 leave the number retired rather than reusing it.
 
+> **Status is not tracked in this file — don't read a listed `E-nn` as
+> "unbuilt."** This is the idea backlog; whether an item has shipped lives in
+> [`FUNCTIONALITY-MATRIX.md`](FUNCTIONALITY-MATRIX.md) (the arbiter of what
+> exists and how it's gated) and the "Shipped" table in
+> [`NEXT-STEPS.md`](NEXT-STEPS.md). Several items here (e.g. **E-70–E-74**:
+> crawler, PR dependency checks, sqlmap fix, benchmark, cross-site findings) are
+> **already shipped** per those files. When in doubt, FUNCTIONALITY-MATRIX wins.
+> *(This note added by the 2026-10 documentation pass to stop the "backlog =
+> not done" misread that propagated stale capability claims into external copy —
+> see `PRODUCT-REVIEW-2026-10.md` Phase 2.)*
+
 **Category** (from `docs/COMPETITIVE-ANALYSIS.md` §6's framing, applied
 product-wide, not just to competitive gaps):
 - **code** — fixable by a contained code change

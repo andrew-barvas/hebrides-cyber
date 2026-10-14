@@ -1,0 +1,54 @@
+%% Component view — the scan pipeline (executeScan)
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+%% STUB = wraps a binary that is not installed / never run (see FUNCTIONALITY-MATRIX + SCANNER-INVENTORY)
+flowchart LR
+    classDef base fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef ext fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef repo fill:#5a189a,stroke:#3c096c,color:#fff
+    classDef enrich fill:#9d4edd,stroke:#7b2cbf,color:#fff
+    classDef stub fill:#6a040f,stroke:#370617,color:#fff
+    classDef notify fill:#e85d04,stroke:#9a3b00,color:#fff
+
+    START([scan_jobs row claimed]) --> BASE
+
+    subgraph BASE[Base passive suite - every scan, every plan]
+        direction TB
+        B1[tls / headers / dns + email-auth]:::base
+        B2[exposure / directoryListing / cloudMisconfig]:::base
+        B3[fingerprint / ports / recon Shodan+crt.sh]:::base
+        B4[webapp + CMS deep scan / osv / endOfLife]:::base
+        B5[takeover / subdomainCerts / domainRegistration]:::base
+        B6[scriptInventory / crawler / graphql / backendExposure]:::base
+        B7[playwright page-health + DOM-XSS]:::base
+    end
+
+    BASE --> EXT
+
+    subgraph EXT[Extended active tools - scheduled jobs only, by profile]
+        direction TB
+        E1[nmap / nuclei+interactsh OOB / sqlmap / commix / ZAP]:::ext
+        E2[subfinder / httpx / testssl / whatwaf / wpscan / cmsmap]:::ext
+        E3[repo: gitleaks / dependency+SBOM / trivy / opengrep SAST / zizmor]:::repo
+        E4[authenticated check + crawl / jwt decode / sessionCheck]:::ext
+        E5[OFFENSIVE Tier A: ffuf live / credentialSpray UNVERIFIED / strix+cairn STUB]:::stub
+    end
+
+    EXT --> ENR
+
+    subgraph ENR[Enrichment & scoring passes]
+        direction TB
+        R1[consolidateFindings dedupe]:::enrich
+        R2[compliance map - 7 frameworks + CE]:::enrich
+        R3[cvssEnrich NVD / threatIntel KEV+EPSS]:::enrich
+        R4[scoreFromFindings - flat severity tally, floors at 0]:::enrich
+    end
+
+    ENR --> POST
+
+    subgraph POST[Phase 2 notifiers - never throw]
+        direction TB
+        P1[findingsDiff New/Fixed + lifecycle/SLA sync]:::notify
+        P2[webhooks / Slack / Teams / email / on-call / SIEM]:::notify
+        P3[attack-surface + emerging-threat + lookalike alerts]:::notify
+        P4[ticket dedupe + auto-close]:::notify
+    end

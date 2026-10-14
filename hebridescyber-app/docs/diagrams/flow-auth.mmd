@@ -1,0 +1,25 @@
+%% Flow — authentication & MFA step-up
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TD
+    classDef ok fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef gap fill:#e85d04,stroke:#9a3b00,color:#fff
+    classDef gate fill:#1168bd,stroke:#0b4884,color:#fff
+
+    V([Visitor]) --> L[/login - src/app/login/page.tsx/]
+    L --> M{Method}
+    M -->|magic link - primary| ML[Supabase OTP email]:::ok
+    M -->|password - optional toggle| PW[signInWithPassword]:::ok
+    M -->|Google OAuth| GOOG[signInWithGoogle exists<br/>NO UI button, provider disabled - STUB]:::gap
+
+    ML --> CB[/auth/callback - exchangeCodeForSession/]:::ok
+    PW --> SESS
+    CB --> SESS[Session cookie - @supabase/ssr]:::ok
+
+    SESS --> MW[middleware.ts validates session server-side<br/>on /dashboard /admin /account]:::gate
+    MW --> SHELL[AppShell: load session + subscription]:::gate
+    SHELL --> AAL{AAL2 MFA enrolled?}
+    AAL -->|yes, not satisfied| CH[/login/mfa-challenge - TOTP/]:::ok
+    AAL -->|ok| APP([Dashboard])
+
+    NOGAP1[No self-service sign-up page<br/>accounts created implicitly by magic link - GAP]:::gap
+    NOGAP2[No password reset / change-password flow - GAP]:::gap

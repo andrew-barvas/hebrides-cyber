@@ -24,6 +24,10 @@ entry).
 | ...get this running locally, deploy it, or set GitHub Secrets | [`../README.md`](../README.md) |
 | ...understand what the product does, who it's for, and see user stories | [`USER-GUIDE.md`](USER-GUIDE.md) |
 | ...see the high-level system picture / data flow | [`architecture.md`](architecture.md) |
+| ...see architecture / workflow / data-model **diagrams** (Mermaid, renderable to SVG/PNG) | [`diagrams/`](diagrams/README.md) |
+| ...see the data model, ER diagram and RLS/tenant-isolation tiers | [`DATA-MODEL.md`](DATA-MODEL.md) |
+| ...hand a funder/buyer a one-page, claim-verified overview | [`ONE-PAGE-OVERVIEW.md`](ONE-PAGE-OVERVIEW.md) |
+| ...read the independent critical product/security/UX review (dated) | [`PRODUCT-REVIEW-2026-10.md`](PRODUCT-REVIEW-2026-10.md) |
 | ...understand the security model, threat handling, retention | [`security.md`](security.md) |
 | ...use the public REST API or the packaged GitHub Action | [`API.md`](API.md) |
 | ...know exactly what exists, how it's triggered, and how it's *actually*

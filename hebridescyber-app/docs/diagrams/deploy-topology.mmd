@@ -1,0 +1,31 @@
+%% Deployment topology — Azure SWA hybrid + GitHub Actions workers + Supabase
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+flowchart TB
+    classDef live fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef ext fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef alt fill:#999,stroke:#6b6b6b,color:#fff
+
+    USER([Users]) --> CDN[Azure Static Web Apps CDN<br/>hebridescyber.co.uk]:::live
+
+    subgraph SWALIVE[LIVE PATH - Azure Static Web Apps hybrid]
+        NEXT[Managed Next.js server Oryx<br/>App Router pages + API Functions]:::live
+        HDR[Security headers set in next.config.mjs<br/>NOT staticwebapp.config.json globalHeaders]:::live
+    end
+    CDN --> NEXT --> HDR
+
+    NEXT --> SUPA[(Supabase<br/>Postgres+Auth+Storage)]:::ext
+    NEXT --> BLOB[(Azure Blob<br/>report PDFs / blog images)]:::ext
+    NEXT --> STRIPE[Stripe - price IDs UNSET in prod]:::ext
+
+    subgraph GHA[GitHub Actions - the only place scans run]
+        DEPLOY[deploy.yml - push to master]:::live
+        SCHED[scheduled-scans.yml + on-demand-scan.yml<br/>install tool binaries, drain scan_jobs]:::live
+        CONTENT[daily-blog / weekly-newsletter / monthly-digest<br/>emerging-threats / scheduled-reports / deletion / retention]:::live
+    end
+    DEPLOY --> CDN
+    SCHED --> SUPA
+    CONTENT --> SUPA
+
+    subgraph ALTP[ALT PATH - not applied]
+        ACA[Azure Container Apps + ACR<br/>deploy-containerapp.yml - workflow_dispatch only<br/>Terraform does NOT match prod - FINDING I-1]:::alt
+    end
