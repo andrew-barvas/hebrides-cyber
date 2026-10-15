@@ -356,7 +356,14 @@ jobs:
           sudo chmod +x /usr/local/bin/kr
           rm /tmp/kiterunner.tar.gz
           sudo mkdir -p /opt/kiterunner
-          kr kb convert src/worker/tools/wordlists/api-routes.txt /opt/kiterunner/api-routes.kite
+          # The wordlist lives under hebridescyber-app/ (two-root repo layout) and
+          # this step runs from the repo root, so the path must include that prefix
+          # — the bare src/worker/... path failed every scheduled run with
+          # "no such file or directory". Guard it like every other tool install so a
+          # convert failure makes kiterunner.ts report not_configured instead of
+          # failing the whole scan shard (it no-ops without KITERUNNER_WORDLIST).
+          kr kb convert hebridescyber-app/src/worker/tools/wordlists/api-routes.txt /opt/kiterunner/api-routes.kite \
+            || echo "kiterunner wordlist convert failed — kiterunner.ts will report status: not_configured"
           pip3 install --break-system-packages arjun \
             || echo "arjun install failed — arjun.ts will report status: not_configured"
 
