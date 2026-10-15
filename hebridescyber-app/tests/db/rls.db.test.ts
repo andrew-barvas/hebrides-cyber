@@ -45,6 +45,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "offensive_scan_authorizations", ownerCol: "owner", insert: "insert into offensive_scan_authorizations (owner, target_host, authorized_by, scope) values ($1, 'new.test', $1, 'ack')" },
   { table: "lookalike_domain_sweeps", ownerCol: "owner", insert: "insert into lookalike_domain_sweeps (owner, target_domain) values ($1, 'new.test')" },
   { table: "lookalike_domains", ownerCol: "owner", insert: "insert into lookalike_domains (owner, target_domain, candidate_domain, technique) values ($1, 'new.test', 'new-x.test', 'omission')" },
+  { table: "cloud_credentials", ownerCol: "owner", insert: "insert into cloud_credentials (owner, provider, label, credentials_encrypted) values ($1, 'aws', 'new', '{}'::jsonb)" },
+  { table: "sla_policies", ownerCol: "owner", insert: "insert into sla_policies (owner) values ($1)" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -53,7 +55,7 @@ const SERVICE_WRITE_ONLY = [
   "subscriptions", "finding_lifecycle", "finding_triage", "ticket_links",
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
-  "lookalike_domain_sweeps", "lookalike_domains",
+  "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -95,6 +97,8 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into offensive_scan_authorizations (owner, target_host, authorized_by, scope) values ($1, $2, $1, 'ack')", [o, h]);
       await q("insert into lookalike_domain_sweeps (owner, target_domain) values ($1, $2)", [o, h]);
       await q("insert into lookalike_domains (owner, target_domain, candidate_domain, technique) values ($1, $2, $3, 'omission')", [o, h, `x-${h}`]);
+      await q("insert into cloud_credentials (owner, provider, label, credentials_encrypted) values ($1, 'aws', $2, '{}'::jsonb)", [o, `cred-${h}`]);
+      await q("insert into sla_policies (owner) values ($1)", [o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
