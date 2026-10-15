@@ -28,6 +28,9 @@ import {
   GCP_PUBLIC_ACCESS_PREVENTION,
   GCP_UNIFORM_ACCESS,
   GCP_PUBLIC_BUCKET,
+  AWS_IAM_PASSWORD_POLICY,
+  AWS_IAM_WEAK_PASSWORD_POLICY,
+  AZURE_STORAGE_INFRA_ENCRYPTION,
 } from "./remediationText";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -269,6 +272,64 @@ export async function checkAwsAccountPublicAccess(credentials: {
   return findings;
 }
 
+// ---- AWS IAM account password policy (SCALE-3) -----------------------------
+//
+// Reuses awsSignedFetch exactly as the s3-control check does (global IAM
+// endpoint, signed us-east-1/iam, GET query API). GetAccountPasswordPolicy
+// returns 404 (NoSuchEntity) when no policy exists at all. Evidence discipline:
+// a finding is pushed only on a positive 404 ("no policy") or a parsed policy
+// that is genuinely weak; any other/failed response stays silent.
+export async function checkAwsPasswordPolicy(credentials: {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region?: string;
+}): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  try {
+    const res = await awsSignedFetch(
+      "https://iam.amazonaws.com/?Action=GetAccountPasswordPolicy&Version=2010-05-08",
+      { ...credentials },
+      "us-east-1",
+      "iam",
+    );
+
+    if (res.status === 404) {
+      findings.push({
+        severity: "medium",
+        title: "AWS account has no IAM password policy",
+        detail: "No IAM account password policy is set, so console users can choose weak passwords with no length, complexity, expiry or reuse requirements.",
+        checkId: "cloudPosture.awsIamPasswordPolicy",
+        remediation: AWS_IAM_PASSWORD_POLICY,
+      });
+      return findings;
+    }
+    if (!res.ok) return findings;
+
+    const xml = await res.text();
+    const minLen = Number(extractXmlValues(xml, "MinimumPasswordLength")[0] ?? "0");
+    const maxAge = extractXmlBool(xml, "ExpirePasswords");
+    const reusePrevention = extractXmlValues(xml, "PasswordReusePrevention")[0];
+
+    const weaknesses: string[] = [];
+    if (minLen > 0 && minLen < 14) weaknesses.push(`minimum length is ${minLen} (recommend ≥14)`);
+    if (maxAge === false) weaknesses.push("passwords never expire");
+    if (!reusePrevention) weaknesses.push("no password-reuse prevention");
+
+    if (weaknesses.length > 0) {
+      findings.push({
+        severity: "low",
+        title: "AWS IAM password policy is weaker than recommended",
+        detail: `The IAM account password policy exists but: ${weaknesses.join("; ")}.`,
+        checkId: "cloudPosture.awsIamPasswordPolicy",
+        remediation: AWS_IAM_WEAK_PASSWORD_POLICY,
+      });
+    }
+  } catch {
+    // IAM not reachable or creds lack iam:GetAccountPasswordPolicy — stay silent.
+  }
+  return findings;
+}
+
 // ---- Azure storage public access check -------------------------------------
 
 export async function checkAzurePublicStorage(credentials: {
@@ -311,6 +372,7 @@ export async function checkAzurePublicStorage(credentials: {
           allowBlobPublicAccess?: boolean;
           minimumTlsVersion?: string;
           supportsHttpsTrafficOnly?: boolean;
+          encryption?: { requireInfrastructureEncryption?: boolean };
         };
       }>;
     };
@@ -344,6 +406,19 @@ export async function checkAzurePublicStorage(credentials: {
           detail: `Storage account "${acct.name}" allows TLS version ${tls}. Minimum should be TLS 1.2.`,
           checkId: `cloudPosture.azureWeakTls:${acct.name}`,
           remediation: AZURE_WEAK_TLS,
+        });
+      }
+
+      // Infrastructure (double) encryption at rest. Only flag an explicit
+      // `false` — an absent field means the API view didn't include it, which
+      // is not evidence either way (stay silent).
+      if (acct.properties?.encryption?.requireInfrastructureEncryption === false) {
+        findings.push({
+          severity: "low",
+          title: `Azure Storage account lacks infrastructure encryption: ${acct.name}`,
+          detail: `Storage account "${acct.name}" is encrypted at rest with a single layer only; infrastructure (double) encryption is not enabled. Regulated workloads often require the second layer.`,
+          checkId: `cloudPosture.azureInfraEncryption:${acct.name}`,
+          remediation: AZURE_STORAGE_INFRA_ENCRYPTION,
         });
       }
     }
@@ -543,11 +618,12 @@ export async function runCloudPostureChecks(
       }
       if (cred.provider === "aws" && credentials.accessKeyId) {
         const awsCreds = credentials as Parameters<typeof checkAwsPublicBuckets>[0];
-        const [bucketFindings, accountFindings] = await Promise.all([
+        const [bucketFindings, accountFindings, passwordPolicyFindings] = await Promise.all([
           checkAwsPublicBuckets(awsCreds),
           checkAwsAccountPublicAccess(awsCreds),
+          checkAwsPasswordPolicy(awsCreds),
         ]);
-        allFindings.push(...bucketFindings, ...accountFindings);
+        allFindings.push(...bucketFindings, ...accountFindings, ...passwordPolicyFindings);
       } else if (cred.provider === "azure" && credentials.tenantId) {
         const f = await checkAzurePublicStorage(credentials as Parameters<typeof checkAzurePublicStorage>[0]);
         allFindings.push(...f);

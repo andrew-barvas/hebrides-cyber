@@ -246,6 +246,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "cloudPosture.gcpPublicAccessPrevention": "easy",
   "cloudPosture.gcpUniformAccess": "moderate", // may require re-issuing signed URLs for anything relying on legacy ACLs
   "cloudPosture.gcpPublicBucket": "moderate", // also warrants reviewing what was exposed
+  "cloudPosture.awsIamPasswordPolicy": "easy", // one update-account-password-policy call
+  "cloudPosture.azureInfraEncryption": "hard", // only settable at account creation — needs a recreate/migrate
 
   // --- Business logic (passive) ---
   "business-logic.csrf-missing": "moderate", // needs per-form token integration
