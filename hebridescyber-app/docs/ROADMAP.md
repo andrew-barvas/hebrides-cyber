@@ -199,7 +199,7 @@ into sprints yet — they depend on Live criteria being green first.
 | SCALE-3 | **Cloud Security Posture Management (CSPM)** | AWS/Azure/GCP storage/config checks | **Partial** — `cloudPosture.ts` covers storage public-access + TLS/HTTPS config for all three clouds (E-32), credentials now encrypted at rest. **Still open:** IAM/network/encryption-at-rest depth |
 | SCALE-4 | **AI/ML vulnerability prioritization** | Move beyond rule-based risk scoring to ML exploit-likelihood | **Open** — note the score is no longer a flat tally: `scanners/riskScore.ts` now weights by CVSS band, CISA KEV (×1.5/×2) and FIRST EPSS. ML prediction still needs real training data |
 | SCALE-5 | **Container runtime scanning** | Beyond Trivy's static image analysis to runtime monitoring | **Open** — High effort, Kubernetes-native; `trivyScan.ts` covers static image + IaC today |
-| E-66 | **DMARC aggregate-report processing** | The one NCSC Mail Check function `dns.ts` doesn't replace (inbound RUA mailbox + parser) | **Open** — the clearest remaining "Web Check replacement" gap |
+| E-66 | **DMARC aggregate-report processing** | The one NCSC Mail Check function `dns.ts` doesn't replace | **Done (2026-10-15)** — `dmarcAggregate.ts` parses RFC 7489 RUA XML (hand-rolled, namespace-tolerant); `POST /api/dmarc/ingest` (per-owner token, gunzip, rate-limited) stores a per-source summary in `dmarc_reports` (migration 060); `GET /api/dmarc/reports` + per-owner ingest-token management surface it. SCALE-2 (standalone EASM) and SCALE-3 (IAM/encryption CSPM) also shipped this session |
 
 **Scale non-goals** (explicitly not worth building for the SME segment):
 IAST/RASP (requires application instrumentation), attack path analysis

@@ -47,6 +47,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "lookalike_domains", ownerCol: "owner", insert: "insert into lookalike_domains (owner, target_domain, candidate_domain, technique) values ($1, 'new.test', 'new-x.test', 'omission')" },
   { table: "cloud_credentials", ownerCol: "owner", insert: "insert into cloud_credentials (owner, provider, label, credentials_encrypted) values ($1, 'aws', 'new', '{}'::jsonb)" },
   { table: "sla_policies", ownerCol: "owner", insert: "insert into sla_policies (owner) values ($1)" },
+  { table: "dmarc_reports", ownerCol: "owner", insert: "insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, 'new.test', 'google.com', 'rpt-new')" },
+  { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -56,6 +58,7 @@ const SERVICE_WRITE_ONLY = [
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
+  "dmarc_reports", "dmarc_ingest_tokens",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -99,6 +102,8 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into lookalike_domains (owner, target_domain, candidate_domain, technique) values ($1, $2, $3, 'omission')", [o, h, `x-${h}`]);
       await q("insert into cloud_credentials (owner, provider, label, credentials_encrypted) values ($1, 'aws', $2, '{}'::jsonb)", [o, `cred-${h}`]);
       await q("insert into sla_policies (owner) values ($1)", [o]);
+      await q("insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, $2, 'google.com', $3)", [o, h, `rpt-${h}`]);
+      await q("insert into dmarc_ingest_tokens (owner, token) values ($1, $2)", [o, `tok-${h}-0123456789abcdef`]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
