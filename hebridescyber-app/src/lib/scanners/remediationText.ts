@@ -2197,6 +2197,48 @@ gcloud storage buckets remove-iam-policy-binding gs://BUCKET \\
 If the bucket genuinely needs to serve public content, prefer a signed URL
 or Cloud CDN in front of it over a fully public, listable bucket.`;
 
+// --- Cloud posture: IAM / encryption (SCALE-3) ---
+
+export const AWS_IAM_PASSWORD_POLICY = `This AWS account has no IAM account
+password policy, so console users can set weak passwords. Set one that meets
+Cyber Essentials / CIS expectations:
+
+\`\`\`
+aws iam update-account-password-policy \\
+  --minimum-password-length 14 \\
+  --require-symbols --require-numbers \\
+  --require-uppercase-characters --require-lowercase-characters \\
+  --max-password-age 90 --password-reuse-prevention 24
+\`\`\`
+
+Better still, use IAM Identity Center (SSO) / federation and reserve long-lived
+console passwords for break-glass accounts only, each with hardware MFA.`;
+
+export const AWS_IAM_WEAK_PASSWORD_POLICY = `This AWS account has an IAM
+password policy, but it is weaker than recommended (minimum length under 14,
+no expiry, or no reuse-prevention). Strengthen it:
+
+\`\`\`
+aws iam update-account-password-policy \\
+  --minimum-password-length 14 \\
+  --require-symbols --require-numbers \\
+  --require-uppercase-characters --require-lowercase-characters \\
+  --max-password-age 90 --password-reuse-prevention 24
+\`\`\``;
+
+export const AZURE_STORAGE_INFRA_ENCRYPTION = `This Azure Storage account does
+not have infrastructure (double) encryption enabled. Data at rest is encrypted
+once by default, but regulated workloads often require a second,
+infrastructure-level layer. It can only be set at account creation:
+
+\`\`\`
+az storage account create --name NAME --resource-group RG \\
+  --require-infrastructure-encryption true ...
+\`\`\`
+
+Recreate the account with the flag, or confirm single-layer encryption is
+acceptable for your compliance scope and accept this finding.`;
+
 // --- Strix AI pentest (Sprint 18) ---
 
 export function strixRemediation(vulnClass: string): string {

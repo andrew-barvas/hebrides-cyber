@@ -374,6 +374,10 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "cloudPosture.gcpPublicAccessPrevention": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
   "cloudPosture.gcpUniformAccess": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
 
+  // --- Cloud posture: IAM / encryption (SCALE-3) ---
+  "cloudPosture.awsIamPasswordPolicy": [CE_ACCESS, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "cloudPosture.azureInfraEncryption": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
+
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
 
