@@ -177,6 +177,32 @@ authenticated by session or API key. A packaged GitHub Action wraps the API
 for CI, gating a build on newly introduced findings above a configurable
 severity.
 
+### 3.6a Continuous attack-surface monitoring
+
+Three capabilities that watch your external surface between scans, not just
+during them:
+
+- **Standalone EASM discovery** (SCALE-2) — a sweep runs every ~6 hours,
+  independent of your scan cadence, finding new subdomains for every verified
+  monitored domain via Certificate Transparency. A subdomain that gets its
+  first certificate shows up in your discovered-assets inventory within hours
+  rather than at your next full scan, and the next scheduled scan alerts you to
+  it. It never brute-forces (that stays behind the Tier A offensive profile);
+  it only populates the inventory.
+- **DMARC aggregate (RUA) reports** (E-66) — the half of the retired NCSC Mail
+  Check a DNS lookup can't give you. A DNS check only tells you a DMARC record
+  exists and its policy; the daily aggregate reports mailbox providers send to
+  your record's `rua=` address tell you *who is actually sending mail as your
+  domain and how much of it passes SPF/DKIM*. On the Assets page, generate a
+  private ingest URL and point a mailbox/forwarding provider at it; incoming
+  reports are parsed and summarised per sending source, with an alignment
+  percentage per report. See `docs/API.md`'s `/api/dmarc/ingest`.
+- **Cloud posture — IAM & encryption** (SCALE-3) — in addition to the public-
+  storage checks, a connected cloud credential (Agency) now also flags a
+  missing/weak AWS IAM account password policy and Azure Storage accounts
+  without infrastructure (double) encryption at rest. Read-only, same stored
+  credential; findings are mapped to the usual compliance frameworks.
+
 ### 3.7 Billing and plans
 
 Free (one scan, ever), Basic (weekly automated scans), Pro (daily scans,
@@ -461,6 +487,8 @@ Worth stating plainly, since it shapes several design decisions above:
   business logic or access control, or tell whether a route is reachable,
   and a clean result is not proof the code is secure. Test folders,
   dependencies and build output are skipped.
-- **No cloud account-level IAM auditing yet** (ScoutSuite/Prowler-style) —
-  a real, acknowledged gap, out of scope until a credential-onboarding
-  flow with real customer consent is built for it specifically.
+- **No full cloud IAM auditing** (ScoutSuite/Prowler-style role/policy graph) —
+  a real, acknowledged gap. Cloud posture now covers public storage, storage
+  TLS/HTTPS/encryption config, and the AWS IAM account password policy
+  (§3.6a), but not a comprehensive role/permission audit; that stays out of
+  scope until a broader credential-onboarding flow justifies it.
