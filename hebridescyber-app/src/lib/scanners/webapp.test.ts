@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkWebApp, isVersionBelow, type WebAppResult } from "./webapp";
+import { checkWebApp, extractWpPluginSlugs, isVersionBelow, type WebAppResult } from "./webapp";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -215,6 +215,43 @@ describe("CMS deep scans", () => {
       debugLogAccessible: false,
       plugins: [{ slug: "elementor", name: "Elementor", version: "3.5.0" }],
     });
+  });
+
+  it("extractWpPluginSlugs reads plugin slugs from asset URLs, de-duplicated, ignoring themes and junk", () => {
+    const html = [
+      '<link href="/wp-content/plugins/Elementor/css/a.css?ver=3.5.0">',
+      '<script src="https://example.com/wp-content/plugins/elementor/js/b.js"></script>',
+      '<script src="/wp-content/plugins/some-booking_plugin/x.js"></script>',
+      '<link href="/wp-content/themes/twentytwentyfour/style.css">',
+      '<img src="/wp-content/uploads/2026/photo.jpg">',
+      '<a href="/wp-content/plugins/../../etc/passwd/">x</a>',
+    ].join("\n");
+    expect(extractWpPluginSlugs(html)).toEqual(["elementor", "some-booking_plugin"]);
+  });
+
+  it("extractWpPluginSlugs caps what a hostile page can make us probe", () => {
+    const html = Array.from({ length: 200 }, (_, i) => `<script src="/wp-content/plugins/p${i}/a.js"></script>`).join("");
+    expect(extractWpPluginSlugs(html)).toHaveLength(40);
+  });
+
+  // Regression for the 20-slug shortlist: a plugin outside it was never found.
+  it("WordPress: finds a plugin the page loads that isn't on the shortlist, and flags ones it can't version", async () => {
+    const { wordpress } = await scan(
+      {
+        page: [
+          '<script src="/wp-content/plugins/amelia/js/x.js"></script>',
+          '<script src="/wp-content/plugins/locked-down/js/y.js"></script>',
+        ].join(""),
+        paths: {
+          "/wp-content/plugins/amelia/readme.txt": { body: "=== Amelia ===\nStable tag: 6.1.2\n" },
+          // readme.txt blocked (not a 200): seen in use, version unreadable.
+          "/wp-content/plugins/locked-down/readme.txt": { status: 403, body: "Forbidden" },
+        },
+      },
+      { ...NO_CMS, isWordPress: true }
+    );
+    expect(wordpress?.plugins).toEqual([{ slug: "amelia", name: "amelia", version: "6.1.2" }]);
+    expect(wordpress?.pluginsWithoutVersion).toEqual(["locked-down"]);
   });
 
   // A site that answers every path with its shell must not "have" every plugin.
