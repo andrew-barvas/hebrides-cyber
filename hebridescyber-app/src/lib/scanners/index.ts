@@ -866,7 +866,9 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         // fingerprint.risky-library above.
         findings.push({
           checkId: `webapp.vulnerable-js-lib:${lib.name}`,
-          severity: "medium",
+          // The published severity when retire.js supplied one; the legacy
+          // pattern path has none and stays medium.
+          severity: lib.severity ?? "medium",
           title: `Vulnerable JS library: ${lib.name} ${lib.version}`,
           detail: lib.reason,
           remediation: FIX.OUTDATED_LIBRARY,

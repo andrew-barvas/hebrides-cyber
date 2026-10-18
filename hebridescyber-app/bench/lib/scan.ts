@@ -10,6 +10,13 @@ import { checkWebApp } from "@/lib/scanners/webapp";
 import { checkBusinessLogic } from "@/lib/scanners/businessLogic";
 import { checkGraphql } from "@/lib/scanners/graphql";
 import { summariseResults, type ScanResults } from "@/lib/scanners";
+import { setRetireRepositoryForTests, type RetireRepository } from "@/lib/scanners/retireJs";
+import retireSubset from "../fixtures/retire-subset.json";
+
+// The real retire.js entries (jquery, jquery-ui, lodash) copied unchanged from
+// the pinned commit (RETIRE_DATA_COMMIT), so the default run stays offline and
+// measures the real extractors and ranges. Apache-2.0: docs/THIRD-PARTY-NOTICES.md.
+setRetireRepositoryForTests(retireSubset as RetireRepository);
 
 /** Modules the benchmark can drive offline. Anything else is out of scope. */
 export const BENCH_MODULES = [

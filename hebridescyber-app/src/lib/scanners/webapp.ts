@@ -3,6 +3,7 @@
 // versions, Subresource Integrity on cross-origin scripts/stylesheets.
 // All checks are passive/safe read-only probes — no exploit code.
 import { npmPackageNameFor, lookupNpmCveIds, extractCveIdsFromText } from "./osv";
+import { compareRetireVersions, displayName, loadRetireRepository, matchRetire, type RetireRepository } from "./retireJs";
 import { type Baseline, normaliseBody, fetchBaseline, matchesBaselineHeaders, isCatchAllBody } from "./httpProbe";
 
 export type WebAppResult =
@@ -133,6 +134,8 @@ export type JsLibraryFinding = {
   // See src/lib/scanners/osv.ts for why this covers JS libraries specifically
   // and not every risky-software finding in the scanner suite.
   cveIds?: string[];
+  /** Highest published severity among the matched vulnerabilities (retire.js data). Absent from the legacy path. */
+  severity?: "low" | "medium" | "high" | "critical";
 };
 
 // ── Robots.txt ────────────────────────────────────────────────────────────────
@@ -703,11 +706,84 @@ export function isVersionBelow(version: string, fixedIn: string): boolean {
   return false;
 }
 
+/** Script bodies read for retire.js's content/hash extractors: few and bounded. */
+const MAX_SCRIPT_BODIES = 10;
+const MAX_SCRIPT_BYTES = 1_000_000;
+const SEVERITY_RANK = { low: 1, medium: 2, high: 3, critical: 4 } as const;
+
+async function fetchScriptBodies(urls: string[]): Promise<string[]> {
+  const bodies = await Promise.allSettled(
+    urls.slice(0, MAX_SCRIPT_BODIES).map(async (url) => {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6_000) });
+      if (!res.ok) return "";
+      const text = await res.text();
+      return text.length > MAX_SCRIPT_BYTES ? text.slice(0, MAX_SCRIPT_BYTES) : text;
+    })
+  );
+  return bodies.flatMap((b) => (b.status === "fulfilled" && b.value ? [b.value] : []));
+}
+
+/**
+ * retire.js path: every library its extractors recognise in the page's
+ * script URLs and bodies, with published vulnerable ranges. Exported for
+ * tests with an injected repository.
+ */
+export async function jsLibrariesFromRetire(repo: RetireRepository, html: string, pageUrl: string): Promise<JsLibraryFinding[]> {
+  const urls: string[] = [];
+  for (const { src } of extractScriptTags(html)) {
+    try {
+      const u = new URL(src, pageUrl);
+      if (u.protocol === "http:" || u.protocol === "https:") urls.push(u.href);
+    } catch {
+      /* unparseable src: skip */
+    }
+  }
+  const bodies = await fetchScriptBodies(urls);
+  const matches = matchRetire(repo, urls, bodies);
+
+  return Promise.all(
+    matches.map(async (m) => {
+      const name = displayName(m.component);
+      const vulnerable = m.vulnerabilities.length > 0;
+      let cveIds = [...new Set(m.vulnerabilities.flatMap((v) => v.cveIds))];
+      // retire.js lists most CVEs itself; OSV fills gaps for npm-mapped libraries.
+      if (vulnerable && cveIds.length === 0) {
+        const npmName = npmPackageNameFor(name);
+        if (npmName) cveIds = await lookupNpmCveIds(npmName, m.version);
+      }
+      const top = m.vulnerabilities.reduce<JsLibraryFinding["severity"]>(
+        (acc, v) => (!acc || SEVERITY_RANK[v.severity] > SEVERITY_RANK[acc] ? v.severity : acc),
+        undefined
+      );
+      // The highest "below" bound is the first version clear of every match.
+      const fixedIn = m.vulnerabilities
+        .map((v) => v.below)
+        .filter((b): b is string => Boolean(b))
+        .reduce<string | undefined>((max, b) => (!max || (compareRetireVersions(b, max) ?? 0) > 0 ? b : max), undefined);
+      return {
+        name,
+        version: m.version,
+        isVulnerable: vulnerable,
+        reason: vulnerable
+          ? `${name} ${m.version} has ${m.vulnerabilities.length} published vulnerabilit${m.vulnerabilities.length === 1 ? "y" : "ies"}: ${[...new Set(m.vulnerabilities.map((v) => v.summary))].slice(0, 3).join("; ")}${fixedIn ? `. Fixed in ${fixedIn} or later.` : "."}`
+          : `${name} ${m.version}: no published vulnerabilities for this version`,
+        ...(vulnerable ? { cveIds, severity: top } : {}),
+      };
+    })
+  );
+}
+
 async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> {
   try {
     const res = await fetch(targetUrl, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const html = await res.text();
+
+    // retire.js data when it loads (76 libraries, published ranges); the
+    // hand-kept pattern list below otherwise, so a data outage narrows
+    // detection rather than dropping it.
+    const repo = await loadRetireRepository();
+    if (repo) return await jsLibrariesFromRetire(repo, html, targetUrl);
 
     const findings: JsLibraryFinding[] = [];
     const seen = new Set<string>();
