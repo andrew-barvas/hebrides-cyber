@@ -50,6 +50,8 @@ export type WordPressData = {
   wpCronAccessible: boolean;
   enumeratedUsers: string[];
   plugins: DetectedPlugin[];
+  /** Plugin slugs the page loads assets from whose version couldn't be read. Optional: older stored scans lack it. */
+  pluginsWithoutVersion?: string[];
 };
 
 // A plugin name + version pair read from the plugin's own public readme.txt.
@@ -285,7 +287,12 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     } catch { /* ignore */ }
   }
 
-  const plugins = await detectPlugins(origin, baseline);
+  // Plugins the page itself loads assets from, not just the fixed shortlist.
+  const homepageHtml = await fetch(`${origin}/`, { signal: AbortSignal.timeout(8_000) })
+    .then((r) => (r.ok ? r.text() : ""))
+    .catch(() => "");
+  const discovered = extractWpPluginSlugs(homepageHtml);
+  const { plugins, unversioned } = await detectPlugins(origin, baseline, discovered);
 
   return {
     xmlRpcEnabled: xmlRpc,
@@ -295,6 +302,7 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     wpCronAccessible: wpCron,
     enumeratedUsers,
     plugins,
+    pluginsWithoutVersion: unversioned,
   };
 }
 
@@ -369,16 +377,50 @@ async function probePlugin(origin: string, candidate: PluginCandidate, baseline:
   }
 }
 
-async function detectPlugins(origin: string, baseline: Baseline): Promise<DetectedPlugin[]> {
+/** Most plugin slugs read from the page, so a hostile page can't make us probe hundreds. */
+const MAX_DISCOVERED_PLUGINS = 40;
+const WP_PLUGIN_PATH_RE = /\/wp-content\/plugins\/([a-z0-9][a-z0-9_-]{0,63})\//gi;
+
+/**
+ * Plugin slugs the page loads assets from (`/wp-content/plugins/<slug>/…`),
+ * which is how every plugin that enqueues a script or stylesheet shows up.
+ * The fixed shortlist below only finds 20 well-known plugins; this finds
+ * whatever the site really runs. Slugs only — a slug is never a finding.
+ */
+export function extractWpPluginSlugs(html: string): string[] {
+  const slugs = new Set<string>();
+  for (const m of html.matchAll(WP_PLUGIN_PATH_RE)) {
+    slugs.add(m[1].toLowerCase());
+    if (slugs.size >= MAX_DISCOVERED_PLUGINS) break;
+  }
+  return [...slugs];
+}
+
+async function detectPlugins(
+  origin: string,
+  baseline: Baseline,
+  discoveredSlugs: string[] = []
+): Promise<{ plugins: DetectedPlugin[]; unversioned: string[] }> {
+  const known = new Set(PLUGIN_CANDIDATES.map((c) => c.slug));
+  const candidates: PluginCandidate[] = [
+    ...PLUGIN_CANDIDATES,
+    ...discoveredSlugs.filter((s) => !known.has(s)).map((slug) => ({ slug, name: slug })),
+  ];
+
   const found: DetectedPlugin[] = [];
-  for (let i = 0; i < PLUGIN_CANDIDATES.length; i += PLUGIN_PROBE_CONCURRENCY) {
-    const batch = PLUGIN_CANDIDATES.slice(i, i + PLUGIN_PROBE_CONCURRENCY);
+  for (let i = 0; i < candidates.length; i += PLUGIN_PROBE_CONCURRENCY) {
+    const batch = candidates.slice(i, i + PLUGIN_PROBE_CONCURRENCY);
     const results = await Promise.allSettled(batch.map((c) => probePlugin(origin, c, baseline)));
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) found.push(r.value);
     }
   }
-  return found;
+  // Seen loading assets but the version couldn't be read (readme blocked or
+  // absent). Reported separately and never matched against a CVE database:
+  // without a version, a match would be a guess.
+  const versioned = new Set(found.map((p) => p.slug));
+  const unversioned = discoveredSlugs.filter((s) => !versioned.has(s));
+  return { plugins: found, unversioned };
 }
 
 // ── Joomla deep scan ───────────────────────────────────────────────────────────
