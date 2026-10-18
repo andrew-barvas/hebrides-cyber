@@ -59,6 +59,16 @@ The product is **live, deployed, and functional**:
     scan gate, and GraphQL endpoint scanning
   - **Remediation**: AI-tailored fixes, automated pull requests, and ticket
     creation with de-duplication
+  - **Detection depth** *(added October 2026)*: a bounded site crawler so
+    checks run on inner pages, not just the homepage; dependency scanning
+    from lockfiles including transitive packages; static code analysis;
+    a third-party script inventory (PCI DSS 6.4.3); alerts within hours
+    when CISA lists a newly exploited vulnerability that matches a
+    customer's software; confirmed-exploitable flags on findings;
+    DMARC report processing; and a public accuracy benchmark suite
+  - **Workflow**: accept-risk / false-positive / snooze triage with a
+    recorded reason, remediation SLAs with alerts, a cross-site findings
+    view, and pull-request dependency checks for CI
 - Continuous Integration/Continuous Deployment pipeline with automated
   quality gates (lint, type checking, unit tests, end-to-end tests)
 - Pricing: £20/month (Basic), £35/month (Pro), £75/month (Agency) — 
@@ -159,6 +169,27 @@ self-service tool.
 All items are directly tied to making the business operational and
 revenue-generating. There is no speculative R&D in this request — the
 product is already built and deployed.
+
+### Optional larger request: scale-up *(owner to decide — `[CONFIRM]`)*
+
+The table above is the minimum to operate. If a larger award is
+appropriate, the launch priorities in `hebridescyber-app/docs/LAUNCH-PRIORITY.md`
+are what it would fund. **Every figure here is a placeholder to confirm; none
+comes from verified costs or sales data.**
+
+| Item | Amount | What it delivers |
+|---|---|---|
+| Paid hosting with an uptime commitment | `[CONFIRM]` | Replaces the free hosting tier, which has no SLA |
+| Reliability baseline | `[CONFIRM]` | Error monitoring, public status page, staging environment, tested backup restore |
+| Engineering capacity (up to 2 roles, Highlands and Islands) | `[CONFIRM]` | Single sign-on for larger customers, evidence captured on findings, scale work |
+| Security assurance (SOC 2 readiness) | `[CONFIRM]` | Procurement requirement for larger buyers |
+| Marketing and SME acquisition | `[CONFIRM]` | As above, extended beyond six months |
+
+Milestones to agree before quoting any: first paying customers
+(`[CONFIRM]`), reliability baseline live, first enterprise pilots
+(`[CONFIRM]`). Do not state customer or revenue targets as facts; this
+application should describe the product as built and the money as
+requested, and leave projections to section 5.
 
 ---
 
