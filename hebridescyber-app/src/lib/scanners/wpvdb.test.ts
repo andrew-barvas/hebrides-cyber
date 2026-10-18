@@ -70,6 +70,7 @@ describe("checkWpVulnDb", () => {
         },
         { ...yoast, vulnerabilities: [] }, // 404: WPScan doesn't track it — nothing to report
       ],
+      themes: [],
     });
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ headers: { Authorization: "Token token=t" } });
   });
@@ -84,7 +85,24 @@ describe("checkWpVulnDb", () => {
     );
     expect(await checkWpVulnDb([elementor, yoast])).toEqual({
       status: "error",
-      note: "WPScan lookup failed for 1 of 2 plugin(s): elementor",
+      note: "WPScan lookup failed for 1 of 2 plugin(s)/theme(s): elementor",
     });
+  });
+
+  it("looks themes up at /themes/{slug} and reports them separately from plugins", async () => {
+    vi.stubEnv("WPSCAN_API_TOKEN", "t");
+    const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) =>
+      url.endsWith("/themes/astra")
+        ? new Response(JSON.stringify({ astra: { vulnerabilities: [{ id: 7, title: "Stored XSS", fixed_in: "4.6.9", vuln_type: "XSS" }] } }))
+        : new Response("", { status: 404 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await checkWpVulnDb([], [{ slug: "astra", name: "Astra", version: "4.6.0" }]);
+    expect(result).toMatchObject({
+      status: "checked",
+      plugins: [],
+      themes: [{ slug: "astra", version: "4.6.0", vulnerabilities: [{ id: "7", fixedIn: "4.6.9" }] }],
+    });
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/themes\/astra$/);
   });
 });

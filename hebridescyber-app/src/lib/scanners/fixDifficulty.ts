@@ -150,6 +150,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
 
   // --- WPScan Vulnerability Database ---
   "wpvdb.plugin-vulnerability": "easy", // usually a plugin update
+  "wpvdb.theme-vulnerability": "easy", // usually a theme update
 
   // --- Software CVE DB (E-24) ---
   "softwareCveDb.wordpressCore": "easy", // core update, usually low-risk/backward-compatible

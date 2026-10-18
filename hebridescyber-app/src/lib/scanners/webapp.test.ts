@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkWebApp, extractWpPluginSlugs, isVersionBelow, type WebAppResult } from "./webapp";
+import { checkWebApp, extractWpPluginSlugs, extractWpThemeSlugs, isVersionBelow, parseThemeHeader, type WebAppResult } from "./webapp";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -252,6 +252,31 @@ describe("CMS deep scans", () => {
     );
     expect(wordpress?.plugins).toEqual([{ slug: "amelia", name: "amelia", version: "6.1.2" }]);
     expect(wordpress?.pluginsWithoutVersion).toEqual(["locked-down"]);
+  });
+
+  it("parseThemeHeader needs a real Theme Name, and reads the version", () => {
+    expect(parseThemeHeader("/*\nTheme Name: Astra\nVersion: 4.6.0\nAuthor: x\n*/\nbody{}")).toEqual({ name: "Astra", version: "4.6.0" });
+    expect(parseThemeHeader("<html>app shell</html>")).toBeNull();
+    expect(parseThemeHeader("/* Version: 1.0 */")).toBeNull();
+  });
+
+  it("extractWpThemeSlugs reads at most three theme slugs", () => {
+    const html = ["child", "parent", "x", "y"].map((t) => `<link href="/wp-content/themes/${t}/style.css">`).join("");
+    expect(extractWpThemeSlugs(html)).toEqual(["child", "parent", "x"]);
+  });
+
+  it("WordPress: versions the active theme from its style.css, ignoring a theme whose header is missing", async () => {
+    const { wordpress } = await scan(
+      {
+        page: '<link href="/wp-content/themes/astra/style.css"><link href="/wp-content/themes/fake/style.css">',
+        paths: {
+          "/wp-content/themes/astra/style.css": { body: "/*\nTheme Name: Astra\nVersion: 4.6.0\n*/", type: "text/css" },
+          "/wp-content/themes/fake/style.css": { body: "body { color: red }", type: "text/css" },
+        },
+      },
+      { ...NO_CMS, isWordPress: true }
+    );
+    expect(wordpress?.themes).toEqual([{ slug: "astra", name: "Astra", version: "4.6.0" }]);
   });
 
   // A site that answers every path with its shell must not "have" every plugin.
