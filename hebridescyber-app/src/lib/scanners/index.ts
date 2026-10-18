@@ -711,6 +711,18 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           });
         }
       }
+      // One finding for plugins seen but not versioned: we can't check them
+      // against a vulnerability database, and say so rather than staying silent.
+      const unversioned = wordpress.pluginsWithoutVersion ?? [];
+      if (unversioned.length > 0) {
+        findings.push({
+          checkId: "webapp.wp-plugins-unversioned",
+          severity: "info",
+          title: `${unversioned.length} WordPress plugin${unversioned.length === 1 ? "" : "s"} in use, version not readable`,
+          detail: `The page loads files from these plugins, but their version could not be read (readme.txt is blocked or missing), so they could not be checked for known vulnerabilities: ${unversioned.slice(0, 15).join(", ")}${unversioned.length > 15 ? ` (+${unversioned.length - 15} more)` : ""}. Check each is up to date in your WordPress dashboard.`,
+          remediation: FIX.WP_PLUGIN_DETECTED,
+        });
+      }
     }
 
     // Joomla findings
