@@ -86,7 +86,7 @@ const HEADER_ISSUES: Record<string, string> = {
 };
 
 /** Target-side own findings whose CVE list can absorb another tool's CVE finding. */
-const CVE_CANONICAL_BASES = new Set(["webapp.vulnerable-js-lib", "wpvdb.plugin-vulnerability"]);
+const CVE_CANONICAL_BASES = new Set(["webapp.vulnerable-js-lib", "wpvdb.plugin-vulnerability", "wpvdb.theme-vulnerability"]);
 /** Extended tools whose findings carry real CVE ids worth matching on. */
 const CVE_REPORTING_TOOLS = new Set(["nuclei", "cairn", "strix"]);
 

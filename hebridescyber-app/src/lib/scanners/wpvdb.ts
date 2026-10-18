@@ -54,7 +54,8 @@ export type WpVulnDbPluginResult = {
 };
 
 export type WpVulnDbResult =
-  | { status: "checked"; plugins: WpVulnDbPluginResult[] }
+  /** themes: optional because results stored before theme lookups lack it. */
+  | { status: "checked"; plugins: WpVulnDbPluginResult[]; themes?: WpVulnDbPluginResult[] }
   | { status: "not_applicable"; note: string }
   | { status: "not_configured"; note: string }
   | { status: "error"; note: string };
@@ -105,9 +106,9 @@ export function wpVulnSeverity(vulnType: string | null): Finding["severity"] {
   return "high";
 }
 
-async function fetchPluginVulnerabilities(slug: string, token: string): Promise<WpScanVulnerability[] | null> {
+async function fetchPluginVulnerabilities(slug: string, token: string, kind: "plugins" | "themes" = "plugins"): Promise<WpScanVulnerability[] | null> {
   try {
-    const res = await fetch(`${WPSCAN_API_BASE}/plugins/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${WPSCAN_API_BASE}/${kind}/${encodeURIComponent(slug)}`, {
       headers: { Authorization: `Token token=${token}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -135,19 +136,24 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-export async function checkWpVulnDb(plugins: DetectedPlugin[]): Promise<WpVulnDbResult> {
+export async function checkWpVulnDb(plugins: DetectedPlugin[], themes: DetectedPlugin[] = []): Promise<WpVulnDbResult> {
   const token = process.env.WPSCAN_API_TOKEN;
   if (!token) {
     return { status: "not_configured", note: "WPSCAN_API_TOKEN is not set — skipping WordPress plugin CVE lookup. See .env.example." };
   }
-  if (plugins.length === 0) {
-    return { status: "not_applicable", note: "No WordPress plugins were detected to look up." };
+  if (plugins.length === 0 && themes.length === 0) {
+    return { status: "not_applicable", note: "No WordPress plugins or themes were detected to look up." };
   }
 
   try {
-    const lookups = await mapWithConcurrency(plugins, QUERY_CONCURRENCY, async (plugin) => ({
-      plugin,
-      raw: await fetchPluginVulnerabilities(plugin.slug, token),
+    const items = [
+      ...plugins.map((p) => ({ item: p, kind: "plugins" as const })),
+      ...themes.map((t) => ({ item: t, kind: "themes" as const })),
+    ];
+    const lookups = await mapWithConcurrency(items, QUERY_CONCURRENCY, async ({ item, kind }) => ({
+      plugin: item,
+      kind,
+      raw: await fetchPluginVulnerabilities(item.slug, token, kind),
     }));
 
     // A failed lookup (rate limit — the free tier allows 25 a day — a revoked
@@ -156,10 +162,10 @@ export async function checkWpVulnDb(plugins: DetectedPlugin[]): Promise<WpVulnDb
     // their tickets, so any failure makes the whole check an error.
     const failed = lookups.filter((l) => l.raw === null).map((l) => l.plugin.slug);
     if (failed.length > 0) {
-      return { status: "error", note: `WPScan lookup failed for ${failed.length} of ${plugins.length} plugin(s): ${failed.join(", ")}` };
+      return { status: "error", note: `WPScan lookup failed for ${failed.length} of ${items.length} plugin(s)/theme(s): ${failed.join(", ")}` };
     }
 
-    const results = lookups.map(({ plugin, raw }) => {
+    const results = lookups.map(({ plugin, kind, raw }) => {
       const vulnerabilities: WpVulnDbVulnerability[] = (raw ?? [])
         .filter((v) => vulnerabilityAppliesToVersion(v, plugin.version))
         .map((v) => ({
@@ -170,10 +176,14 @@ export async function checkWpVulnDb(plugins: DetectedPlugin[]): Promise<WpVulnDb
           cveIds: (v.references?.cve ?? []).map((c) => (c.toUpperCase().startsWith("CVE-") ? c.toUpperCase() : `CVE-${c}`)),
           referenceUrls: v.references?.url ?? [],
         }));
-      return { slug: plugin.slug, name: plugin.name, version: plugin.version, vulnerabilities };
+      return { kind, result: { slug: plugin.slug, name: plugin.name, version: plugin.version, vulnerabilities } };
     });
 
-    return { status: "checked", plugins: results };
+    return {
+      status: "checked",
+      plugins: results.filter((r) => r.kind === "plugins").map((r) => r.result),
+      themes: results.filter((r) => r.kind === "themes").map((r) => r.result),
+    };
   } catch (err) {
     return { status: "error", note: `WPScan lookup failed: ${(err as Error).message}` };
   }
