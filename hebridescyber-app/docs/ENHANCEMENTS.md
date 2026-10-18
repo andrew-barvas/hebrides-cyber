@@ -1767,3 +1767,22 @@ recall per module and failing on regressions.
 filterable and groupable, with bulk triage (E-64's bulk API) and export.
 **Impact/effort**: high / medium. **Category**: code (UI).
 **Source**: industry-grade gap analysis, 2026-10-05.
+
+## E-75 — Request/response evidence on findings
+
+**Status: open.** Brief in `docs/LAUNCH-PRIORITY.md` item 3.
+**What**: store a bounded, redacted request and response for each finding
+that came from an HTTP probe, and show it in the finding card, PDF and CSV.
+No credential or session value may be stored; deleted with the scan.
+**Why**: proof drives trust and fixes; enterprise tools show it.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: launch-readiness review, 2026-10-18.
+
+## E-76 — Single sign-on (SAML) for the top plan
+
+**Status: open — only if a customer asks.** Brief in `docs/LAUNCH-PRIORITY.md` item 4.
+**What**: SAML login for one identity provider mapped to the existing team
+roles. The earlier SSO/RBAC/SCIM modules were deleted on 2026-10-13 (no
+importers); migrations 034-036 remain.
+**Impact/effort**: medium / medium-high. **Category**: code.
+**Source**: launch-readiness review, 2026-10-18.
