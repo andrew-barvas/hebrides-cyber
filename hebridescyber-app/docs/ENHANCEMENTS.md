@@ -1786,3 +1786,26 @@ roles. The earlier SSO/RBAC/SCIM modules were deleted on 2026-10-13 (no
 importers); migrations 034-036 remain.
 **Impact/effort**: medium / medium-high. **Category**: code.
 **Source**: launch-readiness review, 2026-10-18.
+
+## E-77 — CMS and client-side library depth
+
+**Status: in progress.** One PR per item, each with tests and a benchmark case.
+**What**:
+1. ~~Passive WordPress plugin discovery~~ done (PR #60): slugs come from the
+   page's own `/wp-content/plugins/<slug>/` references, not only a fixed list.
+2. ~~WordPress theme detection and theme vulnerabilities~~ done (PR #61):
+   `style.css` header version, WPScan `/themes/{slug}`.
+3. ~~retire.js data for JS libraries~~ done: `scanners/retireJs.ts` replaces
+   the 7 hand-kept `LIB_PATTERNS` with the retire.js repository (~76
+   libraries, published vulnerable ranges and severities), fetched at scan
+   time from a pinned commit. Detection uses retire.js's own URL, filename,
+   file-banner and SHA-1 extractors over up to 10 script bodies. If the data
+   can't be loaded the legacy patterns still run. Apache-2.0, attributed in
+   `docs/THIRD-PARTY-NOTICES.md`.
+4. badsecrets (known framework secret keys in ViewState/cookies; GPL-3.0 —
+   run as a separate binary, check before use).
+5. katana crawl seeding (MIT, pinned + SHA-256).
+6. More CMS fingerprints: PrestaShop, OpenCart, TYPO3, Umbraco, Craft,
+   Moodle; Joomla component and Drupal module versions.
+**Impact/effort**: high / medium. **Category**: code (detection).
+**Source**: CMS/tooling gap review, 2026-10-18.

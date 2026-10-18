@@ -248,3 +248,29 @@ export const spaLogin: SiteHandler = (req, res) => {
   const p = pathOf(req);
   return send(req, res, 200, { ...HTML, ...SECURE_HEADERS }, `<!doctype html><html><body><div id="root" data-p="${p}"></div></body></html>`);
 };
+
+/**
+ * Site loading outdated client-side libraries, each detectable only one way:
+ * jQuery from its filename, jQuery UI only from the banner in a
+ * neutrally-named file, and a current Lodash that must not be reported.
+ */
+export const legacyJs: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const js = { "content-type": "application/javascript", ...SECURE_HEADERS };
+  if (p === "/") {
+    return send(
+      req,
+      res,
+      200,
+      { ...HTML, ...SECURE_HEADERS },
+      `<!doctype html><html><head><title>Shop</title><script src="/js/jquery-1.8.3.min.js"></script><script src="/vendor/ui.js"></script><script src="/vendor/utils.js"></script></head><body><h1>Shop</h1></body></html>`
+    );
+  }
+  if (p === "/js/jquery-1.8.3.min.js") return send(req, res, 200, js, "/*! jQuery v1.8.3 jquery.com | jquery.org/license */\n(function(){})();");
+  if (p === "/vendor/ui.js") return send(req, res, 200, js, "/*! jQuery UI - v1.12.1 - 2016-09-14\n* http://jqueryui.com */\n(function(){})();");
+  if (p === "/vendor/utils.js") return send(req, res, 200, js, "/**\n * @license\n * Lodash v4.18.0 <https://lodash.com/>\n */\n(function(){})();");
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
+};
