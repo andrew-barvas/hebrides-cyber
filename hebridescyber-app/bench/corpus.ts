@@ -25,5 +25,6 @@ export const CORPUS: CorpusTarget[] = [
   { id: "login-throttled", description: "Login form with CSRF token and 429 throttling", create: () => sites.createLoginThrottled() },
   { id: "graphql-open", description: "GraphQL endpoint with introspection and GraphiQL exposed", create: () => sites.graphqlOpen },
   { id: "graphql-locked", description: "GraphQL endpoint with introspection off, no suggestions, no IDE", create: () => sites.graphqlLocked },
+  { id: "legacy-js", description: "Outdated jQuery and jQuery UI script tags beside a current Lodash", create: () => sites.legacyJs },
   { id: "spa-login", description: "Client-rendered login that answers every POST with 200", create: () => sites.spaLogin },
 ];

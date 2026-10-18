@@ -149,6 +149,8 @@ Not doing: MFA bypass, JWT forging, CSRF bypass, gRPC fuzzing (attacks, not scan
 
 **Migrations `034_organizations.sql`/`035_rbac.sql`/`036_sso_providers.sql`/`037_ip_allowlist.sql` build the schema these modules would have used** (`organizations`, `org_members`, `rbac_permissions`, `sso_providers`, `ip_allowlist` — the last is a different table from the live per-API-key `ipAllowlist.ts`/`api_keys.allowed_cidrs`, despite the name). None of the four tables are referenced anywhere in `src/` or `tests/db/`, so the feature itself was never wired — but **the owner has confirmed 034-037 are applied to the real Supabase project**, so unlike `ssoSaml.ts`/`orgModel.ts`/`cicdSdk.ts` the migration files stay. They document real, already-applied schema; only the application code that would have used it was dead.
 
+**Detection queue (2026-10-18), one PR each with tests, a benchmark case, green CI and a deploy:** finish E-77 (badsecrets, katana, more CMS fingerprints), then the five competitor-gap features in `.claude/plans/proud-spinning-nygaard.md`: website malware/injected-content detection, a Cyber Essentials self-assessment assistant, network exposure (naabu top-1000 + nmap + nuclei network), live-site JS secret/endpoint scanning (check what `backendExposure.ts` already covers first), dependency licence compliance (deps.dev).
+
 **Launch blockers and acceptance criteria:** see `docs/LAUNCH-PRIORITY.md` (payments, reliability baseline, evidence on findings E-75, SSO E-76, detection proof).
 
 ## Owner actions pending (not code)
