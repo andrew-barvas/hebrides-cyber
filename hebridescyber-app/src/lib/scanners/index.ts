@@ -298,7 +298,8 @@ export async function runAllChecks(
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
   const wpVulnDb = await checkWpVulnDb(
-    webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : []
+    webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : [],
+    webapp.status === "checked" && webapp.wordpress ? (webapp.wordpress.themes ?? []) : []
   );
 
   // Depends on fingerprint's riskySoftware detection (WordPress core, PHP,
@@ -1037,6 +1038,23 @@ export function summariseResults(results: ScanResults): { summary: string; findi
             ? `WPScan's vulnerability database lists this as fixed in version ${vuln.fixedIn} — the detected version ${plugin.version} predates that fix.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`
             : `WPScan's vulnerability database lists this as still unpatched upstream as of its last update — no fixed version exists yet.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`,
           remediation: FIX.wpPluginVulnerabilityRemediation(plugin.name, vuln.fixedIn, vuln.referenceUrls[0]),
+          cveIds: vuln.cveIds,
+        });
+      }
+    }
+    // Themes: same evidence (WPScan record vs the version in the theme's
+    // own style.css header), separate checkId so a theme and a plugin with
+    // the same slug can never collide.
+    for (const theme of results.wpVulnDb.themes ?? []) {
+      for (const vuln of theme.vulnerabilities) {
+        findings.push({
+          checkId: `wpvdb.theme-vulnerability:${theme.slug}:${vuln.id}`,
+          severity: wpVulnSeverity(vuln.vulnType),
+          title: `Theme ${theme.name} ${theme.version} — ${vuln.title}`,
+          detail: vuln.fixedIn
+            ? `WPScan's vulnerability database lists this as fixed in version ${vuln.fixedIn} — the detected theme version ${theme.version} (from its style.css) predates that fix.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`
+            : `WPScan's vulnerability database lists this as still unpatched upstream as of its last update — no fixed version exists yet.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`,
+          remediation: FIX.wpPluginVulnerabilityRemediation(theme.name, vuln.fixedIn, vuln.referenceUrls[0], "theme"),
           cveIds: vuln.cveIds,
         });
       }

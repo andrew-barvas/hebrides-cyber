@@ -52,6 +52,8 @@ export type WordPressData = {
   plugins: DetectedPlugin[];
   /** Plugin slugs the page loads assets from whose version couldn't be read. Optional: older stored scans lack it. */
   pluginsWithoutVersion?: string[];
+  /** Themes the page loads, versioned from their style.css header. Optional: older stored scans lack it. */
+  themes?: DetectedPlugin[];
 };
 
 // A plugin name + version pair read from the plugin's own public readme.txt.
@@ -292,7 +294,10 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     .then((r) => (r.ok ? r.text() : ""))
     .catch(() => "");
   const discovered = extractWpPluginSlugs(homepageHtml);
-  const { plugins, unversioned } = await detectPlugins(origin, baseline, discovered);
+  const [{ plugins, unversioned }, themes] = await Promise.all([
+    detectPlugins(origin, baseline, discovered),
+    detectThemes(origin, baseline, extractWpThemeSlugs(homepageHtml)),
+  ]);
 
   return {
     xmlRpcEnabled: xmlRpc,
@@ -303,6 +308,7 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     enumeratedUsers,
     plugins,
     pluginsWithoutVersion: unversioned,
+    themes,
   };
 }
 
@@ -394,6 +400,47 @@ export function extractWpPluginSlugs(html: string): string[] {
     if (slugs.size >= MAX_DISCOVERED_PLUGINS) break;
   }
   return [...slugs];
+}
+
+/** A site runs one theme, plus at most a parent theme for a child theme. */
+const MAX_DISCOVERED_THEMES = 3;
+const WP_THEME_PATH_RE = /\/wp-content\/themes\/([a-z0-9][a-z0-9_-]{0,63})\//gi;
+
+/** Theme slugs the page loads assets from (`/wp-content/themes/<slug>/…`). */
+export function extractWpThemeSlugs(html: string): string[] {
+  const slugs = new Set<string>();
+  for (const m of html.matchAll(WP_THEME_PATH_RE)) {
+    slugs.add(m[1].toLowerCase());
+    if (slugs.size >= MAX_DISCOVERED_THEMES) break;
+  }
+  return [...slugs];
+}
+
+/**
+ * A theme's own style.css header is WordPress's source of truth for its name
+ * and version. It counts only if it declares `Theme Name:` — a catch-all page
+ * or an unrelated 200 never does, the same decisive check as `Stable tag:`.
+ */
+export function parseThemeHeader(css: string): { name: string; version: string } | null {
+  const head = css.slice(0, 8_192);
+  const name = head.match(/^[\s*/]*Theme Name:\s*(.+?)\s*$/im)?.[1];
+  const version = head.match(/^[\s*/]*Version:\s*([\w.-]+)\s*$/im)?.[1];
+  return name && version ? { name, version } : null;
+}
+
+async function detectThemes(origin: string, baseline: Baseline, slugs: string[]): Promise<DetectedPlugin[]> {
+  const results = await Promise.allSettled(
+    slugs.map(async (slug): Promise<DetectedPlugin | null> => {
+      const path = `/wp-content/themes/${slug}/style.css`;
+      const res = await fetch(origin + path, { redirect: "manual", signal: AbortSignal.timeout(6_000) });
+      if (res.status !== 200 || matchesBaselineHeaders(baseline, res)) return null;
+      const text = await res.text().catch(() => "");
+      if (isCatchAllBody(baseline, normaliseBody(text, path))) return null;
+      const header = parseThemeHeader(text);
+      return header ? { slug, name: header.name, version: header.version } : null;
+    })
+  );
+  return results.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
 }
 
 async function detectPlugins(

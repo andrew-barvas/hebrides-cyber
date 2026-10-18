@@ -1497,13 +1497,14 @@ exact version remotely.`;
  * fixedIn null means still unpatched upstream, which changes the advice
  * from "update" to "there is nothing to update to yet."
  */
-export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: string | null, referenceUrl?: string): string {
+export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: string | null, referenceUrl?: string, kind: "plugin" | "theme" = "plugin"): string {
   const parts: string[] = [];
+  const where = kind === "theme" ? "**Appearance → Themes**" : "**Plugins → Update Available**";
 
   if (fixedIn) {
     parts.push(
       `Update **${pluginName}** to version **${fixedIn}** or later from the WordPress admin dashboard ` +
-        `(**Plugins → Update Available**) after taking a backup. This is a confirmed, disclosed vulnerability ` +
+        `(${where}) after taking a backup. This is a confirmed, disclosed vulnerability ` +
         `in the specific version detected — not a general "keep plugins updated" reminder.`
     );
   } else {

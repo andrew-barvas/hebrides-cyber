@@ -192,6 +192,7 @@ const CE_CONTROL_CHECKERS: Array<{
       "dependency-manifest.",
       "docker-base-image.outdated-base",
       "wpvdb.plugin-vulnerability",
+      "wpvdb.theme-vulnerability",
       "trivy-image.vulnerable-package",
       "eol.unsupported",
     ],
@@ -201,7 +202,7 @@ const CE_CONTROL_CHECKERS: Array<{
 
       const vulnLibs = findings.filter((f) => f.checkId?.startsWith("webapp.vulnerable-js-lib"));
       const depFindings = findings.filter((f) => f.checkId?.startsWith("dependency-manifest."));
-      const wpPlugins = findings.filter((f) => f.checkId?.startsWith("wpvdb.plugin-vulnerability"));
+      const wpPlugins = findings.filter((f) => f.checkId?.startsWith("wpvdb.plugin-vulnerability") || f.checkId?.startsWith("wpvdb.theme-vulnerability"));
       const eolImages = findings.filter((f) => f.checkId?.startsWith("docker-base-image.outdated-base"));
       const trivyCves = findings.filter((f) => f.checkId?.startsWith("trivy-image.vulnerable-package"));
       const eolSoftware = findings.filter((f) => f.checkId?.startsWith("eol.unsupported"));
@@ -216,7 +217,7 @@ const CE_CONTROL_CHECKERS: Array<{
       else evidence.push("No vulnerable JavaScript libraries detected on the frontend");
 
       if (depFindings.length > 0) gaps.push(`${depFindings.length} server-side dependenc${depFindings.length === 1 ? "y" : "ies"} with known vulnerabilities`);
-      if (wpPlugins.length > 0) gaps.push(`${wpPlugins.length} WordPress plugin${wpPlugins.length === 1 ? "" : "s"} with known vulnerabilities`);
+      if (wpPlugins.length > 0) gaps.push(`${wpPlugins.length} known ${wpPlugins.length === 1 ? "vulnerability" : "vulnerabilities"} in WordPress plugins or themes`);
       if (eolImages.length > 0) gaps.push("Docker base image has reached end-of-life — no longer receiving security updates");
       if (trivyCves.length > 0) gaps.push(`${trivyCves.length} CVE(s) in container image packages`);
 
