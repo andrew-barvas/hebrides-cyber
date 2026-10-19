@@ -13,7 +13,8 @@
     "business-logic.*",
     "graphql.*",
     "crawl.*",
-    "malware.*"
+    "malware.*",
+    "js-secrets.*"
   ],
   "optional": [
     "fingerprint.tech-detected"

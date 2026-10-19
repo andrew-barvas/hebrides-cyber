@@ -10,6 +10,7 @@ import { checkWebApp } from "@/lib/scanners/webapp";
 import { checkBusinessLogic } from "@/lib/scanners/businessLogic";
 import { checkGraphql } from "@/lib/scanners/graphql";
 import { checkCrawl } from "@/lib/scanners/crawler";
+import { checkJsSecrets } from "@/lib/scanners/jsSecrets";
 import { summariseResults, type ScanResults } from "@/lib/scanners";
 import { setRetireRepositoryForTests, type RetireRepository } from "@/lib/scanners/retireJs";
 import retireSubset from "../fixtures/retire-subset.json";
@@ -31,6 +32,7 @@ export const BENCH_MODULES = [
   "graphql",
   "crawl",
   "malware",
+  "js-secrets",
 ] as const;
 
 export type BenchModule = (typeof BENCH_MODULES)[number];
@@ -39,7 +41,7 @@ const NOT_RUN = { status: "error", note: "not run by the benchmark" };
 
 /** Returns the checkIds the scanner reports for `targetUrl`. */
 export async function scanTarget(targetUrl: string): Promise<string[]> {
-  const [tls, headers, exposure, directoryListing, fingerprint, businessLogic, graphql, crawl] = await Promise.all([
+  const [tls, headers, exposure, directoryListing, fingerprint, businessLogic, graphql, crawl, jsSecrets] = await Promise.all([
     checkTls(targetUrl),
     checkHeaders(targetUrl),
     checkExposure(targetUrl),
@@ -51,6 +53,7 @@ export async function scanTarget(targetUrl: string): Promise<string[]> {
     // results drive buildCrawlFindings (crawl.*) and buildMalwareFindings
     // (malware.*) in summariseResults, so injected-content detection is scored.
     checkCrawl(targetUrl),
+    checkJsSecrets(targetUrl),
   ]);
   const cmsType = getCmsType(fingerprint.status === "checked" ? fingerprint.technologies : []);
   const webapp = await checkWebApp(targetUrl, {
@@ -86,6 +89,7 @@ export async function scanTarget(targetUrl: string): Promise<string[]> {
     apiSpec: NOT_RUN,
     graphql,
     crawl,
+    jsSecrets,
     zap: NOT_RUN,
   } as unknown as ScanResults;
 

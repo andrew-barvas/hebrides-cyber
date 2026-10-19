@@ -50,6 +50,13 @@
       "precision": 1,
       "recall": 1
     },
+    "js-secrets": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1,
+      "recall": 1
+    },
     "malware": {
       "tp": 3,
       "fp": 0,
@@ -58,7 +65,7 @@
       "recall": 1
     },
     "tls": {
-      "tp": 16,
+      "tp": 17,
       "fp": 0,
       "fn": 0,
       "precision": 1,

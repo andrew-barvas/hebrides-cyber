@@ -25,6 +25,7 @@ import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
 import { checkCrawl, type CrawlResult } from "./crawler";
 import { checkBackendExposure, type BackendExposureResult } from "./backendExposure";
+import { checkJsSecrets, buildJsSecretsFindings, type JsSecretsResult } from "./jsSecrets";
 import { checkGraphql, buildGraphqlFindings, type GraphqlResult } from "./graphql";
 import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
@@ -72,6 +73,7 @@ export type ScanResults = {
   scriptInventory?: ScriptInventoryResult;
   crawl?: CrawlResult;
   backendExposure?: BackendExposureResult;
+  jsSecrets?: JsSecretsResult;
   graphql?: GraphqlResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
@@ -229,6 +231,7 @@ export async function runAllChecks(
     checkDomainRegistration(targetUrl),
     checkBackendExposure(targetUrl),
     checkGraphql(targetUrl),
+    checkJsSecrets(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -251,6 +254,7 @@ export async function runAllChecks(
   const domainRegistration = unwrap(settled1[13], { status: "error", note: "check crashed" } as DomainRegistrationResult);
   const backendExposure = unwrap(settled1[14], { status: "error", note: "check crashed" } as BackendExposureResult);
   const graphql = unwrap(settled1[15], { status: "error", note: "check crashed" } as GraphqlResult);
+  const jsSecrets = unwrap(settled1[16], { status: "error", note: "check crashed" } as JsSecretsResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -362,6 +366,7 @@ export async function runAllChecks(
     scriptInventory,
     crawl,
     backendExposure,
+    jsSecrets,
     graphql,
     zap,
   };
@@ -1214,6 +1219,12 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       });
     }
   }
+
+  // --- Live-site JS secrets / endpoints ---------------------------------------
+  // High-confidence API keys/tokens and internal endpoints shipped to the
+  // browser. Supabase/Firebase/JWT/framework-key material is owned by other
+  // checks and skipped inside jsSecrets.ts, so nothing is double-reported.
+  findings.push(...buildJsSecretsFindings(results.jsSecrets));
 
   findings.push(...buildGraphqlFindings(results.graphql));
 

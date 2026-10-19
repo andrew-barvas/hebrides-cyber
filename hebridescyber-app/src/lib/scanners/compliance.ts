@@ -208,6 +208,9 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "backend-exposure.firebase-rtdb": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
   "backend-exposure.firebase-storage": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, ISO_A9],
   "backend-exposure.firestore": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
+  // A secret shipped to the client is a cryptographic/secrets-management failure.
+  "js-secrets.exposed-key": [OWASP_A02, OWASP_A05, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21, DORA_ART9],
+  "js-secrets.exposed-endpoint": [OWASP_A05, CE_SECURE_CONFIG, CIS_4, ISO_A12],
 
   // --- Site crawl (E-70): the same controls as the home-page checks they extend ---
   "crawl.header-gap": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],

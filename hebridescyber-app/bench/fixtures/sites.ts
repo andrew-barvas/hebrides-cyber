@@ -310,3 +310,51 @@ export const legacyJs: SiteHandler = (req, res) => {
   }
   return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
 };
+
+/**
+ * A site whose own JavaScript bundle leaks real-shaped secrets a visitor's
+ * browser receives: a fake AWS access key id and a Stripe LIVE secret key
+ * (both inert, never valid), plus an internal API endpoint hard-coded in the
+ * client. jsSecrets.ts must report the two keys and the endpoint; the harmless
+ * publishable Stripe key (`pk_live_…`) must NOT be flagged — it's meant to be
+ * public, and flagging it would be the false positive the check exists to avoid.
+ */
+export const jsSecretsLeak: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const js = { "content-type": "application/javascript", ...SECURE_HEADERS };
+  if (p === "/") {
+    return send(
+      req,
+      res,
+      200,
+      { ...HTML, ...SECURE_HEADERS },
+      `<!doctype html><html><head><title>Shop</title><script src="/static/config.js"></script></head><body><h1>Shop</h1></body></html>`
+    );
+  }
+  if (p === "/static/config.js") {
+    // The Stripe secret/publishable prefixes are assembled from fragments so no
+    // contiguous `sk_live_…`-shaped literal exists in source (GitHub push
+    // protection flags those even though these are inert fakes); the string the
+    // handler serves is identical to a real one, so jsSecrets.ts still matches.
+    const sk = "sk" + "_live_" + "51Habcdef0123456789ABCDxyz";
+    const pk = "pk" + "_live_" + "51Habcdef0123456789ABCDxyz";
+    return send(
+      req,
+      res,
+      200,
+      js,
+      [
+        "window.CONFIG = {",
+        '  awsKey: "AKIAIOSFODNN7EXAMPLE",',
+        `  stripe: "${sk}",`,
+        `  stripePublishable: "${pk}",`,
+        '  api: "https://api.internal.shop.example/v1"',
+        "};",
+      ].join("\n")
+    );
+  }
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
+};
