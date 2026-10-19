@@ -11,7 +11,9 @@
     "directory-listing.*",
     "webapp.*",
     "business-logic.*",
-    "graphql.*"
+    "graphql.*",
+    "crawl.*",
+    "malware.*"
   ],
   "optional": [
     "fingerprint.tech-detected"

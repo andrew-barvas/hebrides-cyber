@@ -27,4 +27,5 @@ export const CORPUS: CorpusTarget[] = [
   { id: "graphql-locked", description: "GraphQL endpoint with introspection off, no suggestions, no IDE", create: () => sites.graphqlLocked },
   { id: "legacy-js", description: "Outdated jQuery and jQuery UI script tags beside a current Lodash", create: () => sites.legacyJs },
   { id: "spa-login", description: "Client-rendered login that answers every POST with 200", create: () => sites.spaLogin },
+  { id: "compromised", description: "Hardened site compromised with a hidden iframe, an obfuscated script and hidden SEO-spam links", create: () => sites.compromised },
 ];
