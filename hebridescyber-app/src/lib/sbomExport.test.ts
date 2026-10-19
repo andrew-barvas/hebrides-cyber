@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPurl, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory, type SbomInput } from "./sbomExport";
+import { buildPurl, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory, toLicenseChoices, type SbomInput } from "./sbomExport";
 import type { DependencyInventory } from "./scanners/dependencyManifest";
 import type { Finding } from "./scanners";
 
@@ -167,6 +167,30 @@ describe("generateCycloneDxBom", () => {
       ],
     });
     expect(bom.components.map((c) => c.purl)).toEqual(["pkg:maven/org.example/demo-lib@1.0.0", "pkg:maven/org.example/demo-lib@1.1.0"]);
+  });
+});
+
+describe("toLicenseChoices", () => {
+  it("maps SPDX ids to license.id and non-standard markers to license.name", () => {
+    expect(toLicenseChoices(["MIT", "Apache-2.0"])).toEqual([{ license: { id: "MIT" } }, { license: { id: "Apache-2.0" } }]);
+    expect(toLicenseChoices(["non-standard"])).toEqual([{ license: { name: "non-standard" } }]);
+  });
+  it("is undefined for no data", () => {
+    expect(toLicenseChoices(undefined)).toBeUndefined();
+    expect(toLicenseChoices([])).toBeUndefined();
+  });
+});
+
+describe("generateCycloneDxBomFromInventory licences", () => {
+  it("populates component.licenses from the inventory's deps.dev data, omitting it where absent", () => {
+    const inv = inventory();
+    inv.packages[0].license = ["MIT"];
+    inv.packages[1].license = ["GPL-3.0-only"];
+    // packages[2] has no licence → no licenses field.
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inv });
+    expect(bom.components[0].licenses).toEqual([{ license: { id: "MIT" } }]);
+    expect(bom.components[1].licenses).toEqual([{ license: { id: "GPL-3.0-only" } }]);
+    expect(bom.components[2].licenses).toBeUndefined();
   });
 });
 

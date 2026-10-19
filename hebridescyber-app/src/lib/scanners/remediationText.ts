@@ -3268,3 +3268,33 @@ export const MALWARE_DEFACEMENT = `A page title announces that the site has been
 site without your permission.
 
 ${MALWARE_CLEANUP}`;
+
+// ---------------------------------------------------------------------------
+// Dependency licence compliance (src/lib/scanners/dependencyLicense.ts,
+// data from deps.dev) — a legal/compliance axis, not a vulnerability.
+// ---------------------------------------------------------------------------
+
+export const COPYLEFT_LICENSE = `This dependency is distributed under a strong or network copyleft licence (GPL, AGPL, LGPL,
+SSPL and similar), identified from deps.dev's SPDX data. These licences can require you to make
+your own source code available under the same terms when you distribute software that includes
+them — and AGPL/SSPL extend that to software you merely make available over a network, which
+covers most SaaS. This is a legal question, not a security bug, so there is no one-line fix:
+
+1. **Confirm the licence and how you use the package.** A build-only or test-only dependency
+   usually doesn't trigger distribution obligations the way a bundled runtime one does. LGPL is
+   generally fine when the library is dynamically linked and unmodified.
+2. **Check it against your product's licensing.** If you ship closed-source or commercial
+   software, a GPL/AGPL runtime dependency may be incompatible — take legal advice if unsure.
+3. **Replace it if needed.** Where the licence doesn't fit, look for a permissively-licensed
+   (MIT/BSD/Apache-2.0) alternative, or isolate the component so its obligations don't reach
+   your own code.`;
+
+export const UNKNOWN_LICENSE = `deps.dev could not resolve this dependency to a recognised SPDX licence (it reports the licence
+as non-standard or absent). You can't automatically confirm you're permitted to use the package
+the way you intend, and an SBOM with "unknown" licences fails most compliance reviews.
+
+- Open the package's own LICENSE/COPYING file or its repository and read the actual terms.
+- If it genuinely has no licence, you have no right to use it — treat an unlicensed dependency
+  as "all rights reserved" and replace it with a clearly-licensed equivalent.
+- If it does carry a licence deps.dev simply didn't parse, record it in your own dependency
+  inventory so the gap is closed for your compliance records.`;

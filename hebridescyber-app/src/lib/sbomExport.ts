@@ -17,6 +17,11 @@
 import type { Finding } from "./scanners";
 import type { DependencyInventory } from "./scanners/dependencyManifest";
 
+// CycloneDX 1.5 licence entry: an SPDX id goes in `license.id`, anything else
+// in `license.name`. Scans stored before licence enrichment have no licence
+// data, so the field is optional and deserialises absent.
+export type SbomLicenseChoice = { license: { id?: string; name?: string } };
+
 export type SbomComponent = {
   type: "library";
   group?: string;
@@ -25,8 +30,23 @@ export type SbomComponent = {
   purl: string;
   "bom-ref": string;
   scope?: "required" | "optional";
+  licenses?: SbomLicenseChoice[];
   properties?: Array<{ name: string; value: string }>;
 };
+
+// Known SPDX ids are a closed set; rather than ship the whole list, treat an id
+// that looks like an SPDX expression (letters/digits/.+- and a licence-ish
+// shape) as `license.id`, and deps.dev's "non-standard" marker as `license.name`.
+const SPDX_ID_RE = /^[A-Za-z0-9][A-Za-z0-9.+-]*$/;
+
+/** Maps deps.dev SPDX strings to CycloneDX licence choices. */
+export function toLicenseChoices(licenses: string[] | undefined): SbomLicenseChoice[] | undefined {
+  if (!licenses || licenses.length === 0) return undefined;
+  const choices = licenses.map((l) =>
+    SPDX_ID_RE.test(l) && l.toLowerCase() !== "non-standard" ? { license: { id: l } } : { license: { name: l } }
+  );
+  return choices.length > 0 ? choices : undefined;
+}
 
 export type SbomVulnerability = {
   "bom-ref": string;
@@ -144,6 +164,7 @@ export function generateCycloneDxBomFromInventory(input: InventorySbomInput): Cy
       ...(p.direct !== null ? [{ name: "hebrides:dependency", value: p.direct ? "direct" : "transitive" }] : []),
       ...(file ? [{ name: "hebrides:source-file", value: file.file }, { name: "hebrides:version-source", value: file.kind === "lockfile" ? "lockfile-exact" : "manifest-range" }] : []),
     ];
+    const licenses = toLicenseChoices(p.license);
     return {
       type: "library",
       ...groupAndName(p.ecosystem, p.name),
@@ -151,6 +172,7 @@ export function generateCycloneDxBomFromInventory(input: InventorySbomInput): Cy
       purl: refs[i],
       "bom-ref": refs[i],
       ...(p.scope ? { scope: p.scope } : {}),
+      ...(licenses ? { licenses } : {}),
       ...(properties.length ? { properties } : {}),
     };
   });

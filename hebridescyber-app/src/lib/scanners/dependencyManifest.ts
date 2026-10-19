@@ -47,6 +47,8 @@ import {
   type OsvVulnDetail,
 } from "./osv";
 import { dependencyVulnerableRemediation, type DependencyEcosystemSlug } from "./remediationText";
+import { lookupLicenses } from "./depsDev";
+import { buildLicenseFindings } from "./dependencyLicense";
 import { LOCKFILES, packageKey, type LockfilePackage, type OsvEcosystem } from "./dependencyLockfiles";
 import { resolveGithubAuth } from "../githubApp";
 import { assessTyposquatCandidates, buildTyposquatFinding, findTyposquatCandidates } from "./typosquatRisk";
@@ -107,6 +109,9 @@ export type DependencyInventoryPackage = {
   vulnIds?: string[];
   /** The version OSV.dev names as fixing all of vulnIds, when it names one. */
   fixedVersion?: string;
+  /** SPDX licence expression(s) from deps.dev. Absent when deps.dev had no data
+   *  or couldn't be reached — never an empty array meaning "unlicensed". */
+  license?: string[];
 };
 
 export type DependencyAdvisory = {
@@ -728,6 +733,26 @@ export async function evaluateDependencyPackages(collected: CollectedPackages): 
         detail: `${names.length} vulnerable ${slug} packages were found in total (from ${sourceFiles}); the first ${MAX_FINDINGS} are listed above. Additional: ${names.slice(MAX_FINDINGS, MAX_FINDINGS + 10).join(", ")}${remaining > 10 ? ` (+${remaining - 10} more)` : ""}.`,
       });
     }
+  }
+
+  // Dependency licence compliance (deps.dev) — independent of the OSV
+  // vulnerability lookup above, over the same `queried` package list. Attaches
+  // each package's SPDX licence(s) to the inventory (so the SBOM carries them)
+  // and emits copyleft/unknown-licence findings. A failed/absent deps.dev
+  // lookup attaches no licence and emits nothing — never a false "compliant"
+  // or a false "unknown". Keyed `ecosystem:name@version`, matching depsDev.ts.
+  const { licenses, failed: licenseFailed } = await lookupLicenses(
+    queried.map((p) => ({ ecosystem: p.ecosystem, name: p.name, version: p.version }))
+  );
+  if (licenses.size > 0 || licenseFailed > 0) {
+    inventory.packages.forEach((p) => {
+      const found = licenses.get(`${p.ecosystem}:${p.name}@${p.version}`);
+      if (found) p.license = found;
+    });
+    if (licenseFailed > 0) {
+      notes.push(`Licence data for ${licenseFailed} package(s) could not be fetched from deps.dev; those carry no licence in this result.`);
+    }
+    findings.push(...buildLicenseFindings(inventory.packages));
   }
 
   return { findings, inventory, checked: queried.length, notes };

@@ -325,6 +325,11 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // mode from an outdated-but-legitimate package — same refs as zizmor's
   // "supply-chain-integrity" category above.
   "dependency-manifest.typosquat-risk": [OWASP_A08, OWASP_A06, CE_PATCHING, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  // Licence compliance (dependencyLicense.ts, deps.dev data) is a software-asset
+  // governance concern, not a vulnerability: knowing what you depend on and under
+  // what terms. Maps to asset management and supply-chain risk management.
+  "dependency-license.copyleft": [ISO_A8, NIS2_ART21],
+  "dependency-license.unknown": [ISO_A8, NIS2_ART21],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   // Unsupported software on the site itself (endOfLife.ts). Not
