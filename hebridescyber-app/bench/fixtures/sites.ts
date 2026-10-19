@@ -250,6 +250,42 @@ export const spaLogin: SiteHandler = (req, res) => {
 };
 
 /**
+ * A hardened site that has nonetheless been compromised: its homepage carries
+ * three injected-content traces the crawler's malware check (injectedContent.ts)
+ * must catch, all in the HTML a visitor receives — nothing is executed or fetched:
+ *   - a hidden, cross-origin iframe (display:none, off-site src);
+ *   - an obfuscated inline script (a long base64 payload handed to eval(atob()));
+ *   - a hidden <div> of off-site SEO-spam links.
+ * It is otherwise hardened (full headers, security.txt, real 404s) so the ONLY
+ * findings are tls.no-https (every loopback fixture is HTTP) and the three
+ * malware.* ones — the off-site hosts are never contacted (the check is pure
+ * HTML parsing), so this stays loopback-only. The miner and defacement rules
+ * must stay silent: the page carries no miner host/API name and an ordinary
+ * <title>, so this also guards those two rules against over-firing.
+ */
+export const compromised: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  if (p === "/robots.txt") return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "User-agent: *\nAllow: /\n");
+  if (p !== "/") return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
+  // 384 base64 characters — well over the obfuscated-script rule's 300-char floor.
+  const payload = "ZG9jdW1lbnQud3JpdGUodW5lc2NhcGUoJyUzQ3NjcmlwdCUyMHNyYz0laHR0cDov".repeat(6);
+  const spamLinks = ["cheap-watches", "payday-fast", "rx-pills", "casino-win", "replica-bags"]
+    .map((h) => `<a href="http://${h}.example/buy">deal</a>`)
+    .join("");
+  const body =
+    `<!doctype html><html><head><title>Welcome to our shop</title></head><body>` +
+    `<h1>Shop</h1><p>Our normal content.</p>` +
+    `<iframe src="http://ad-malware.example/landing" style="display:none" width="0" height="0"></iframe>` +
+    `<script>eval(atob("${payload}"));</script>` +
+    `<div style="display:none">${spamLinks}</div>` +
+    `</body></html>`;
+  return send(req, res, 200, { ...HTML, ...SECURE_HEADERS }, body);
+};
+
+/**
  * Site loading outdated client-side libraries, each detectable only one way:
  * jQuery from its filename, jQuery UI only from the banner in a
  * neutrally-named file, and a current Lodash that must not be reported.

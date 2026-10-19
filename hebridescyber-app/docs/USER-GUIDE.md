@@ -72,6 +72,16 @@ lookup), Subresource Integrity checks, Google Safe Browsing malware/
 phishing flags, Wayback Machine historical-URL discovery, and HaveIBeenPwned
 domain breach exposure.
 
+**Injected-content / page-compromise detection** — as the site crawler walks
+each page, it also reads the HTML a visitor receives for the tell-tale traces
+of a hacked site: a hidden iframe pointing at another site, an obfuscated
+inline script (a long encoded payload handed to `eval`/`document.write`), an
+in-browser cryptocurrency miner, a hidden block of SEO-spam links, or a
+defaced page title. It never runs, fetches or follows anything — it is a
+pattern match on markup — and it reports only high-confidence signals that
+legitimate sites don't produce, so a clean result means "no such traces on the
+pages we visited", not "the server is clean".
+
 **WordPress plugin CVE matching** — plugin versions detected on the target
 are checked against the real WPScan Vulnerability Database, not just
 reported as "detected" with no risk signal.

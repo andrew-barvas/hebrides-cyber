@@ -119,6 +119,20 @@ describe("fixture sites", () => {
 
     expect((await get(sites.spaLogin, "/login", post)).status).toBe(200);
   });
+
+  it("compromised serves the three injected-content traces and a clean 404 elsewhere", async () => {
+    const home = await get(sites.compromised, "/");
+    expect(home.status).toBe(200);
+    expect(home.body).toContain('<iframe src="http://ad-malware.example/landing" style="display:none"');
+    expect(home.body).toContain("eval(atob(");
+    expect(home.body).toContain('<div style="display:none">');
+    expect(home.body).toContain("payday-fast.example");
+    // Ordinary title and no miner host/API name — the two silent rules.
+    expect(home.body).toContain("<title>Welcome to our shop</title>");
+    expect(home.body.toLowerCase()).not.toContain("coinhive");
+    expect((await get(sites.compromised, "/.well-known/security.txt")).body).toContain("Contact:");
+    expect((await get(sites.compromised, "/missing")).status).toBe(404);
+  });
 });
 
 describe("startSite", () => {
