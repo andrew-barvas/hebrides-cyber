@@ -178,6 +178,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dependency-manifest.nuget": "easy",
   "dependency-manifest.additional-vulnerable": "easy",
   "dependency-manifest.typosquat-risk": "moderate", // removing the package is quick; confirming nothing it ran was harmful is not
+  "dependency-license.copyleft": "moderate", // a licensing/legal decision, sometimes a dependency swap
+  "dependency-license.unknown": "easy", // confirm the licence or replace the package
   "docker-base-image.unpinned-tag": "trivial",
   "docker-base-image.outdated-base": "moderate",
   "eol.unsupported": "moderate", // a major-version upgrade, usually
