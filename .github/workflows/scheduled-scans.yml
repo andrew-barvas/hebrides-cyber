@@ -197,6 +197,26 @@ jobs:
             || echo "httpx install failed — hostProbe.ts will report status: not_configured"
           rm -f /tmp/httpx.zip
 
+      - name: Install katana
+        # src/worker/tools/katana.ts: JavaScript-aware page discovery, whose
+        # pages then get the crawler's page checks (katana.* findings). MIT.
+        # SHA-256 is the publisher's own katana-1.8.0-checksums.txt line,
+        # cross-checked against the downloaded asset. A failed install
+        # degrades only this check (katana.ts → not_configured).
+        env:
+          KATANA_VERSION: v1.8.0
+          KATANA_SHA256: cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
+        run: |
+          curl -fsSL \
+            "https://github.com/projectdiscovery/katana/releases/download/${KATANA_VERSION}/katana_${KATANA_VERSION#v}_linux_amd64.zip" \
+            -o /tmp/katana.zip \
+            && echo "${KATANA_SHA256}  /tmp/katana.zip" | sha256sum -c - \
+            && sudo unzip -o /tmp/katana.zip katana -d /usr/local/bin \
+            && sudo chmod +x /usr/local/bin/katana \
+            && katana -version \
+            || echo "katana install failed — katana.ts will report status: not_configured"
+          rm -f /tmp/katana.zip
+
       - name: Install ffuf (Tier A offensive content discovery)
         # src/worker/tools/contentDiscovery.ts shells out to `ffuf` for the Tier A
         # offensive profile's bounded directory/path discovery. Pinned release

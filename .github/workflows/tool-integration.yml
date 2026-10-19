@@ -18,6 +18,8 @@ on:
       - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
       - "hebridescyber-app/src/worker/tools/contentDiscovery*.ts"
       - "hebridescyber-app/src/worker/tools/badsecrets*.ts"
+      - "hebridescyber-app/src/worker/tools/katana*.ts"
+      - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
@@ -54,7 +56,7 @@ jobs:
           sudo ln -sf /opt/badsecrets/bin/badsecrets /usr/local/bin/badsecrets
           badsecrets -l --no-color | tail -5
 
-      - name: Install nuclei, gospider, kiterunner and httpx (pinned)
+      - name: Install nuclei, gospider, kiterunner, httpx, ffuf and katana (pinned)
         env:
           NUCLEI_VERSION: v3.3.9
           NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
@@ -66,6 +68,8 @@ jobs:
           HTTPX_SHA256: e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
           FFUF_VERSION: 2.1.0
           FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
+          KATANA_VERSION: v1.8.0
+          KATANA_SHA256: cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
         run: |
           # Same pins as scheduled-scans.yml, so the integration tests exercise
           # exactly what production installs.
@@ -83,6 +87,11 @@ jobs:
           echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c -
           sudo tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf && sudo chmod +x /usr/local/bin/ffuf
           ffuf -V
+
+          curl -fsSL "https://github.com/projectdiscovery/katana/releases/download/${KATANA_VERSION}/katana_${KATANA_VERSION#v}_linux_amd64.zip" -o /tmp/katana.zip
+          echo "${KATANA_SHA256}  /tmp/katana.zip" | sha256sum -c -
+          sudo unzip -o /tmp/katana.zip katana -d /usr/local/bin && sudo chmod +x /usr/local/bin/katana
+          katana -version
 
           curl -fsSL "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" -o /tmp/gospider.zip
           echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
@@ -115,6 +124,7 @@ jobs:
           src/worker/tools/httpProbe.integration.test.ts
           src/worker/tools/contentDiscovery.integration.test.ts
           src/worker/tools/badsecrets.integration.test.ts
+          src/worker/tools/katana.integration.test.ts
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it
