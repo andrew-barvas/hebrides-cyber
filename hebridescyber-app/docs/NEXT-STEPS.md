@@ -106,7 +106,7 @@ branches / functions / lines). Lint: 0 errors (36 known warnings).
 Short notes on what each shipped feature still doesn't cover; the design of
 each lives in CLAUDE.md and the module's header.
 
-- **Crawler (E-70):** login recording for the signed-in crawl (slice 1 uses a saved cookie/Basic credential, see `docs/AUTHENTICATED-CRAWL.md`); JS-rendered link discovery beyond the Next.js build manifest; per-page SRI/cookies for pages behind forms.
+- **Crawler (E-70):** login recording for the signed-in crawl (slice 1 uses a saved cookie/Basic credential, see `docs/AUTHENTICATED-CRAWL.md`); JS-rendered link discovery beyond the Next.js build manifest on passive scans (scheduled scans now get it from katana, E-77, as `katana.*` findings); per-page SRI/cookies for pages behind forms.
 - **PR dependency checks (E-71):** lockfile-less PRs (manifest-only changes); a GitHub App for comments on fork PRs; pinning a finding to the changed line.
 - **Benchmark (E-73):** DNS, ports, recon and the extended tools are not benchmarked; `knownIssues` lists the tracked defects.
 - **Cross-site findings (E-74):** no authenticated e2e yet.

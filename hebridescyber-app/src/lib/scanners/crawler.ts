@@ -549,11 +549,22 @@ export type CrawlOptions = {
    * robots.txt and sitemaps are always fetched anonymously.
    */
   credentialHeaders?: Record<string, string>;
+  /**
+   * Visit the start page plus exactly these URLs, and nothing else: no links,
+   * sitemaps or seeds are followed. Every safety rule (same site, robots.txt,
+   * action links, per-shape cap, page cap) still applies. Used to run the page
+   * checks on URLs another discoverer (katana) found.
+   */
+  onlyUrls?: string[];
 };
+
+/** The action-link pattern, for tools that crawl on their own (katana's -cos). */
+export const ACTION_URL_PATTERN = `(?i)${ACTION_URL_RE.source}`;
 
 export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}): Promise<CrawlResult> {
   const maxPages = options.maxPages ?? CRAWL_LIMITS.maxPages;
-  const maxDepth = options.maxDepth ?? CRAWL_LIMITS.maxDepth;
+  const fixedList = options.onlyUrls !== undefined;
+  const maxDepth = fixedList ? 1 : (options.maxDepth ?? CRAWL_LIMITS.maxDepth);
   const concurrency = options.concurrency ?? CRAWL_LIMITS.concurrency;
   const budgetMs = options.budgetMs ?? CRAWL_LIMITS.budgetMs;
   const deadline = Date.now() + budgetMs;
@@ -604,7 +615,9 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
   let failures = 0;
   let attempted = 1;
 
-  if (!robotsUnreadable) {
+  if (!robotsUnreadable && fixedList) {
+    for (const u of options.onlyUrls ?? []) enqueue(normaliseUrl(u, startUrl.origin), 1);
+  } else if (!robotsUnreadable) {
     if (first.html) {
       const { base, hrefs } = extractLinks(first.html);
       for (const href of hrefs) enqueue(normaliseUrl(href, resolveBase(base, first.finalUrl)), 1);

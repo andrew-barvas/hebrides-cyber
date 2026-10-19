@@ -272,8 +272,9 @@ const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
   const base = idx === -1 ? checkId : checkId.slice(0, idx);
-  // crawl.auth.* is the signed-in crawl's copy of crawl.*: same fix, same mapping.
-  return base.replace(/^crawl\.auth\./, "crawl.");
+  // crawl.auth.* (signed-in crawl) and katana.* (katana-found pages) are copies
+  // of crawl.*: same fix, same mapping.
+  return base.replace(/^(?:crawl\.auth|katana)\./, "crawl.");
 }
 
 /** Returns undefined (not a guess) when the checkId is unmapped — see module header. */
