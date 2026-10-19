@@ -3231,3 +3231,40 @@ export function badsecretsRemediation(module: string, product: string, secretLab
     "4. Rescan to confirm the finding has cleared.",
   ].join("\n\n");
 }
+
+// ---- Injected content and malware (src/lib/scanners/injectedContent.ts) ----------
+const MALWARE_CLEANUP = `Treat this as a possible compromise, not a cosmetic issue:
+1. Take a backup of the site as it is now (for evidence), then restore the affected files from a known-good backup, or remove the injected code. Compare file dates and contents against a clean copy of the CMS, theme and plugins.
+2. Find how they got in before you clean up, or it will come back: update the CMS, themes and plugins, remove anything unused, and check for unknown admin users.
+3. Change every password and key (hosting, FTP/SFTP, database, CMS admins) and rotate salts/secret keys.
+4. Rescan to confirm the finding has cleared, then ask Google to re-review the site if it was flagged (Search Console > Security issues).`;
+
+export const MALWARE_HIDDEN_IFRAME = `A page embeds an invisible frame from another website. Attackers add these to
+load exploit kits or ad fraud in the background of your visitors' browsers. If you
+did not add this frame yourself, your site has been modified.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_OBFUSCATED_SCRIPT = `A page contains script that is deliberately scrambled (a long encoded payload
+passed to eval/Function, document.write(unescape(...)), or packed code that redirects
+or writes a frame). Ordinary site code is not written this way; injected redirectors
+and malware loaders usually are. Check whether you or your developer added it. If not:
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_CRYPTOMINER = `A page loads an in-browser cryptocurrency miner. It uses your visitors' processors
+to make money for whoever planted it, slows their devices, and harms your reputation.
+Unless you added this deliberately, your site has been modified.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_SEO_SPAM = `A page contains a hidden block of links to other websites (or spam vocabulary in hidden
+text). This is "SEO spam": attackers hide links to their own sites on yours to borrow
+your search ranking. It can get your site flagged or removed from search results.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_DEFACEMENT = `A page title announces that the site has been hacked. Someone has changed content on your
+site without your permission.
+
+${MALWARE_CLEANUP}`;

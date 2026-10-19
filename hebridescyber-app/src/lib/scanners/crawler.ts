@@ -28,6 +28,7 @@
 import { buildHeaderAnalysis } from "./headers";
 import { extractScriptTags, DISCLOSURE_PATTERNS, type ScriptTag } from "./webapp";
 import { detectPaymentPage } from "./scriptInventory";
+import { detectInjectedContent, type InjectionSignal } from "./injectedContent";
 
 /**
  * Sent on every crawler request so site owners can recognise us in their logs
@@ -82,6 +83,14 @@ export type PageChecks = {
   /** Payment-page evidence on this page (card inputs, checkout forms/address). */
   paymentSignals: string[];
   formCount: number;
+  /**
+   * Injected-content traces on this page (injectedContent.ts): hidden
+   * iframes, obfuscated script, miners, hidden spam links, defacement.
+   * Optional because scans stored before it existed don't carry it.
+   */
+  injection?: InjectionSignal[];
+  /** Off-site hosts this page frames or posts a form to (scripts are in `scripts`). */
+  embeds?: { kind: "iframe" | "form"; host: string }[];
 };
 
 export type CrawledPage = {
@@ -300,6 +309,8 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
     scripts: [],
     paymentSignals: [],
     formCount: 0,
+    injection: [],
+    embeds: [],
   };
 
   // Headers and cookies — only a successful page speaks for the site's own
@@ -333,6 +344,10 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
       checks.mixedContent.push({ url: resolved.href, active: kind === "script" || kind === "iframe" || kind === "link" || kind === "embed" });
     }
     const crossOrigin = resolved.origin !== url.origin;
+    if (kind === "iframe" && crossOrigin && (resolved.protocol === "http:" || resolved.protocol === "https:")) {
+      const embeds = checks.embeds as NonNullable<PageChecks["embeds"]>;
+      if (embeds.length < 20 && !embeds.some((e) => e.kind === "iframe" && e.host === resolved.hostname)) embeds.push({ kind: "iframe", host: resolved.hostname });
+    }
     const resKind = kind === "script" ? "script" : kind === "link" ? "stylesheet" : null;
     if (resKind && crossOrigin && !INTEGRITY_RE.test(tag) && checks.unprotectedResources.length < MAX_LISTED) {
       if (!checks.unprotectedResources.some((r) => r.url === resolved.href)) checks.unprotectedResources.push({ kind: resKind, url: resolved.href });
@@ -364,12 +379,19 @@ export function analysePage(args: { url: URL; status: number; res: Response; htm
     try {
       const target = new URL(action, url);
       if (isHttps && target.protocol === "http:") checks.insecureForms.push(`a form posts to ${target.origin}${target.pathname} over unencrypted HTTP`);
+      const embeds = checks.embeds as NonNullable<PageChecks["embeds"]>;
+      if (target.origin !== url.origin && (target.protocol === "http:" || target.protocol === "https:") && embeds.length < 20 && !embeds.some((e) => e.kind === "form" && e.host === target.hostname)) {
+        embeds.push({ kind: "form", host: target.hostname });
+      }
     } catch {
       // unparseable action — nothing to evidence
     }
   }
   if (!isHttps && PASSWORD_INPUT_RE.test(html)) checks.insecureForms.push("a password field is on a page served over unencrypted HTTP");
   checks.insecureForms = [...new Set(checks.insecureForms)].slice(0, MAX_LISTED);
+
+  // Injected-content traces (hidden iframes, packed script, miners, spam, defacement).
+  checks.injection = detectInjectedContent(html, url);
 
   // Error disclosure — only on real error pages (404/5xx), where a framework's
   // own error output is evidence. Matching the same patterns on a 200 page
