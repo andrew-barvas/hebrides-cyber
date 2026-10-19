@@ -73,7 +73,7 @@ describe("AppMobileNav", () => {
     state.pathname = "/dashboard/integrations";
     render(<AppMobileNav />);
     const links = screen.getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Findings", "Assets", "SLAs", "Integrations", "Account"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Findings", "Assets", "SLAs", "Cyber Essentials", "Integrations", "Account"]);
     expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute("aria-current", "page");
   });
 });
