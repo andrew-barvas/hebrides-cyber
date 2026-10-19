@@ -13,6 +13,7 @@ export type CorpusTarget = {
 
 export const CORPUS: CorpusTarget[] = [
   { id: "hardened", description: "Well-configured static site", create: () => sites.hardened },
+  { id: "csp-weak", description: "Hardened site whose only flaw is a bypassable CSP (nonce-less 'unsafe-inline')", create: () => sites.cspWeak },
   { id: "spa-catch-all", description: "SPA returning its shell (echoing the path) for every URL", create: () => sites.spaCatchAll },
   { id: "spa-catch-all-nonce", description: "SPA catch-all with a per-request nonce in the shell", create: () => sites.spaCatchAllNonce },
   { id: "soft-404", description: "Unknown paths return a 200 'page not found' page", create: () => sites.soft404 },

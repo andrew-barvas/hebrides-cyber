@@ -39,25 +39,59 @@ describe("buildHeaderAnalysis", () => {
       expect(result.csp.grade).toBe("F");
     });
 
-    it("grades A for a tight policy with no dangerous directives", () => {
+    it("grades A for a modern policy: nonce + strict-dynamic and all three framing directives", () => {
       const result = buildHeaderAnalysis(
-        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'none'" })
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self'; script-src 'nonce-r4nd0m' 'strict-dynamic' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
       );
+      // 'unsafe-inline' here is a legacy fallback a modern browser ignores
+      // because the nonce/strict-dynamic is present — so it must NOT count.
       expect(result.csp.grade).toBe("A");
       expect(result.csp.issues).toEqual([]);
     });
 
-    it("flags 'unsafe-inline' and 'unsafe-eval'", () => {
+    it("downgrades 'unsafe-inline' with no nonce/hash/strict-dynamic to a serious weakness", () => {
       const result = buildHeaderAnalysis(
-        makeResponse({ "content-security-policy": "script-src 'self' 'unsafe-inline' 'unsafe-eval'" })
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
       );
-      expect(result.csp.issues.some((i) => i.includes("unsafe-inline"))).toBe(true);
-      expect(result.csp.issues.some((i) => i.includes("unsafe-eval"))).toBe(true);
+      // One serious weakness, no gaps → weak (C), not absent (F) and not A/B.
+      expect(result.csp.grade).toBe("C");
+      expect(result.csp.issues.some((i) => i.includes("'unsafe-inline'") && i.includes("script-src"))).toBe(true);
     });
 
-    it("flags a wildcard script-src", () => {
+    it("flags 'unsafe-eval' and names the directive", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "script-src 'self' 'unsafe-eval'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("'unsafe-eval'") && i.includes("script-src"))).toBe(true);
+    });
+
+    it("flags a wildcard script-src with the offending token", () => {
       const result = buildHeaderAnalysis(makeResponse({ "content-security-policy": "script-src *" }));
-      expect(result.csp.issues.some((i) => i.includes("Wildcard"))).toBe(true);
+      expect(result.csp.issues.some((i) => i.includes("Wildcard source '*'"))).toBe(true);
+    });
+
+    it("flags a missing frame-ancestors as a graded gap", () => {
+      // Strong script-src but no framing control: a hardening gap, not a bypass.
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("frame-ancestors"))).toBe(true);
+      // One gap, no serious weakness → still a strong policy (grade B).
+      expect(result.csp.grade).toBe("B");
+    });
+
+    it("flags missing base-uri and form-action, both without a default-src fallback", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("base-uri"))).toBe(true);
+      expect(result.csp.issues.some((i) => i.includes("form-action"))).toBe(true);
     });
 
     // Regression test: the object-src pattern used to be
@@ -67,23 +101,41 @@ describe("buildHeaderAnalysis", () => {
     // policy got falsely flagged as "Missing object-src 'none'".
     it("does not flag object-src 'none' as missing", () => {
       const result = buildHeaderAnalysis(
-        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'none'" })
+        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" })
       );
       expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(false);
     });
 
     it("does flag object-src set to something other than 'none'", () => {
       const result = buildHeaderAnalysis(
-        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'self'" })
+        makeResponse({ "content-security-policy": "default-src 'self'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" })
       );
       expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(true);
     });
 
-    it("degrades to grade C or worse with three or more issues", () => {
+    it("grades F for a policy with several serious weaknesses at once", () => {
       const result = buildHeaderAnalysis(
         makeResponse({ "content-security-policy": "default-src *; script-src 'unsafe-inline' 'unsafe-eval' data:" })
       );
-      expect(["C", "F"]).toContain(result.csp.grade);
+      expect(result.csp.grade).toBe("F");
+    });
+
+    it("credits a hash as mitigation for 'unsafe-inline', like a nonce", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'sha256-abc123'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
+      );
+      expect(result.csp.issues.some((i) => i.includes("'unsafe-inline'"))).toBe(false);
+      expect(result.csp.grade).toBe("A");
+    });
+
+    it("falls back to default-src for the script directive when script-src is absent", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("'unsafe-inline'") && i.includes("default-src"))).toBe(true);
     });
   });
 
