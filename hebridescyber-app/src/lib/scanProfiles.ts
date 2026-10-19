@@ -43,7 +43,8 @@ export type ExtendedToolName =
   | "credentialSpray"
   | "strix"
   | "cairn"
-  | "apiSpecInjection";
+  | "apiSpecInjection"
+  | "badsecrets";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -85,6 +86,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "strix",
   "cairn",
   "apiSpecInjection",
+  "badsecrets",
 ];
 
 // The opt-in offensive suite: tools that generate brute-force or real attack
@@ -109,10 +111,10 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
   safe: {},
   full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
-  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true },
+  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true, badsecrets: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
   // active scan + XSS are the classic CMS admin/comment-form vectors.
-  cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true },
+  cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true, badsecrets: true },
   // Passive reconnaissance / supply-chain inventory — no active exploitation.
   osint: {
     subdomains: true,

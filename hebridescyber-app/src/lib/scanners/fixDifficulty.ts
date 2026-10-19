@@ -47,6 +47,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   // --- JWT security: library/config changes, no architecture change ---
   "jwt-analysis.none-algorithm": "easy", // configure the library's allowed algorithms
   "jwt-analysis.weak-secret": "easy", // rotate the signing secret
+  "badsecrets.known-secret": "easy", // set a new random key; sessions signed with the old one end
   "jwt-analysis.no-expiration": "easy", // add an exp claim when issuing
   "jwt-analysis.sent-over-http": "moderate", // same as tls.no-https
   "jwt-analysis.exposed-in-url": "moderate", // move the token into a header/cookie across every caller

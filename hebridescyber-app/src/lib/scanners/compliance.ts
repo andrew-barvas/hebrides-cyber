@@ -72,6 +72,7 @@ const ISO_A9: ComplianceRef = { framework: "iso-27001", control: "A.9 – Access
 const ISO_A12: ComplianceRef = { framework: "iso-27001", control: "A.12 – Operations Security" };
 const ISO_A13: ComplianceRef = { framework: "iso-27001", control: "A.13 – Communications Security" };
 
+const PCI_REQ2: ComplianceRef = { framework: "pci-dss", control: "Requirement 2 – Apply Secure Configurations to All System Components" };
 const PCI_REQ4: ComplianceRef = { framework: "pci-dss", control: "Requirement 4 – Protect Cardholder Data with Strong Cryptography During Transmission" };
 const PCI_REQ6: ComplianceRef = { framework: "pci-dss", control: "Requirement 6 – Develop and Maintain Secure Systems and Software" };
 const PCI_REQ8: ComplianceRef = { framework: "pci-dss", control: "Requirement 8 – Identify Users and Authenticate Access to System Components" };
@@ -173,6 +174,9 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "jwt-analysis.no-expiration": [OWASP_A07, CE_ACCESS, CIS_16, ISO_A9],
   "jwt-analysis.sent-over-http": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "jwt-analysis.exposed-in-url": [CE_SECURE_CONFIG, OWASP_A02, CIS_16, ISO_A9],
+  // --- Known framework secrets (src/worker/tools/badsecrets.ts): a default
+  // signing/encryption key is a default credential ---
+  "badsecrets.known-secret": [CE_SECURE_CONFIG, OWASP_A02, OWASP_A05, OWASP_A07, CIS_4, PCI_REQ2, ISO_A9, NIS2_ART21],
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],

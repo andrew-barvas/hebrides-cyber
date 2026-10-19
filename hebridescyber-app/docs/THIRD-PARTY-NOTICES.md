@@ -17,6 +17,18 @@ dependencies listed in `package.json` (whose licences ship with each package).
 - **Changes:** none to the data. We read its extractors and vulnerable
   version ranges; the matching code is our own.
 
+## badsecrets
+
+- **Used by:** `src/worker/tools/badsecrets.ts` (known framework secret keys).
+- **Source:** https://github.com/blacklanternsecurity/badsecrets, PyPI
+  `badsecrets==1.2.0`, installed into its own virtualenv on the scan worker.
+- **Licence:** GNU Affero General Public License v3.0 (the repository's
+  LICENSE file; its `pyproject.toml` declares GPL-3.0). Copyright Black
+  Lantern Security.
+- **How it is used:** run unmodified as a separate program and called as a
+  subprocess; never modified, imported, linked or redistributed. Its source
+  is available at the link above.
+
 ## Scan-worker binaries
 
 The scheduled scan workers install third-party tools (nuclei, subfinder,

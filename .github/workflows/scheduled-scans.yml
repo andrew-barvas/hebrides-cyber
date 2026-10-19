@@ -309,6 +309,20 @@ jobs:
             && zizmor --version \
             || echo "zizmor install failed — workflowSecurity.ts will report status: not_configured"
 
+      - name: Install badsecrets
+        # Known framework secret keys (src/worker/tools/badsecrets.ts).
+        # AGPL-3.0: run unmodified as a separate program, in its own
+        # virtualenv so its Django/yara dependencies can't clash with the
+        # other pip-installed tools. Pinned on PyPI like zizmor; pip checks the
+        # files against PyPI's hashes for that exact release. A failed install
+        # only degrades the check: badsecrets.ts reports not_configured.
+        run: |
+          (sudo python3 -m venv /opt/badsecrets \
+            && sudo /opt/badsecrets/bin/pip install --quiet badsecrets==1.2.0 \
+            && sudo ln -sf /opt/badsecrets/bin/badsecrets /usr/local/bin/badsecrets \
+            && badsecrets -l --no-color | tail -3) \
+            || echo "badsecrets install failed — badsecrets.ts will report status: not_configured"
+
       - name: Install whatwaf, wpscan, and cmsmap
         run: |
           pip3 install --break-system-packages whatwaf \
