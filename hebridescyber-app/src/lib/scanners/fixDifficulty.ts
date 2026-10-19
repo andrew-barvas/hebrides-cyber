@@ -83,6 +83,12 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "crawl.mixed-content": "easy",
   "crawl.insecure-form": "easy",
   "crawl.error-disclosure": "easy",
+  // Injected content means a compromise: cleanup plus finding the way in.
+  "malware.hidden-iframe": "hard",
+  "malware.obfuscated-script": "hard",
+  "malware.cryptominer": "hard",
+  "malware.seo-spam": "hard",
+  "malware.defacement": "hard",
   "crawl.missing-sri": "easy",
   "graphql.introspection": "easy",
   "graphql.suggestions": "moderate",

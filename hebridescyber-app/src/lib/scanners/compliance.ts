@@ -215,6 +215,12 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "crawl.mixed-content": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "crawl.insecure-form": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "crawl.error-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
+  // --- Injected content (src/lib/scanners/injectedContent.ts) ---
+  "malware.hidden-iframe": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.obfuscated-script": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.cryptominer": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.seo-spam": [CE_MALWARE, OWASP_A08, CIS_7, NIS2_ART21],
+  "malware.defacement": [CE_MALWARE, OWASP_A08, CIS_7, NIS2_ART21],
   "crawl.missing-sri": [OWASP_A08, CIS_16],
   "graphql.introspection": [CE_SECURE_CONFIG, OWASP_A05, CIS_16, ISO_A12],
   "graphql.suggestions": [OWASP_A05, CIS_16],

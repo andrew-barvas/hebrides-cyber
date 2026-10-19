@@ -11,6 +11,7 @@
 // pages — because when the start page lacks one too, headers.* already says so.
 import type { Finding } from "./index";
 import type { CrawlResult, CrawledPage } from "./crawler";
+import type { InjectionRule } from "./injectedContent";
 import * as FIX from "./remediationText";
 
 export const MAX_PAGE_FINDINGS = 10;
@@ -166,5 +167,39 @@ export function buildCrawlFindings(crawl: CrawlResult | undefined, options: Craw
     });
   }
 
+  return findings;
+}
+
+// ---- Injected content and malware ---------------------------------------------------
+// Separate from buildCrawlFindings: these are about the site being compromised,
+// not misconfigured, so they get their own `malware.*` namespace (and category).
+// They share the crawl's coverage in findingLifecycle.ts (a partial or failed
+// crawl never marks them fixed). Every page is checked, the start page included.
+
+const MALWARE_RULES: Record<InjectionRule, { severity: Finding["severity"]; title: string; remediation: string }> = {
+  "hidden-iframe": { severity: "high", title: "Hidden iframe from another site", remediation: FIX.MALWARE_HIDDEN_IFRAME },
+  "obfuscated-script": { severity: "medium", title: "Obfuscated script that looks injected", remediation: FIX.MALWARE_OBFUSCATED_SCRIPT },
+  cryptominer: { severity: "critical", title: "Cryptocurrency miner script", remediation: FIX.MALWARE_CRYPTOMINER },
+  "seo-spam": { severity: "high", title: "Hidden spam links", remediation: FIX.MALWARE_SEO_SPAM },
+  defacement: { severity: "high", title: "Page announces the site was hacked", remediation: FIX.MALWARE_DEFACEMENT },
+};
+
+export function buildMalwareFindings(crawl: CrawlResult | undefined): Finding[] {
+  if (!crawl || (crawl.status !== "checked" && crawl.status !== "partial")) return [];
+  const findings: Finding[] = [];
+  for (const rule of Object.keys(MALWARE_RULES) as InjectionRule[]) {
+    const meta = MALWARE_RULES[rule];
+    const hits = crawl.pages.filter((p) => p.checks?.injection?.some((s) => s.rule === rule));
+    for (const page of hits.slice(0, MAX_PAGE_FINDINGS)) {
+      const evidence = page.checks!.injection!.filter((s) => s.rule === rule).map((s) => s.evidence);
+      findings.push({
+        checkId: `malware.${rule}:${pagePath(page.url)}`,
+        severity: meta.severity,
+        title: `${meta.title} on ${pagePath(page.url)}`,
+        detail: `Found in the HTML that visitors receive: ${evidence.map((e) => `\`${e.replace(/`/g, "'")}\``).join(" and ")}. We read the page only; nothing was executed or downloaded. This is a pattern match, so check whether you or your developer added it.`,
+        remediation: meta.remediation,
+      });
+    }
+  }
   return findings;
 }

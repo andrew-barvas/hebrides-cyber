@@ -26,7 +26,7 @@ import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts
 import { checkCrawl, type CrawlResult } from "./crawler";
 import { checkBackendExposure, type BackendExposureResult } from "./backendExposure";
 import { checkGraphql, buildGraphqlFindings, type GraphqlResult } from "./graphql";
-import { buildCrawlFindings } from "./crawlFindings";
+import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
@@ -1285,6 +1285,8 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // Page-level issues on pages beyond the one scanned. "partial" still
   // evidences what it saw; findingLifecycle.ts won't resolve on it.
   findings.push(...buildCrawlFindings(results.crawl));
+  // Injected content / malware traces from the same crawl (malware.* namespace).
+  findings.push(...buildMalwareFindings(results.crawl));
 
   if (findings.length === 0) {
     findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });
