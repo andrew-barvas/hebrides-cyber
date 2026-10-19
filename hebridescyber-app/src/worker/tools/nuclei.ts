@@ -68,6 +68,14 @@ const TECH_TAG_MAP: Record<string, string[]> = {
   Joomla: ["joomla"],
   Magento: ["magento"],
   Ghost: ["ghost"],
+  // Tags checked against the real nuclei-templates repo (2026-10-19): each has
+  // exposed-panel, installer or misconfiguration templates.
+  PrestaShop: ["prestashop"],
+  OpenCart: ["opencart"],
+  TYPO3: ["typo3"],
+  Umbraco: ["umbraco"],
+  "Craft CMS": ["craftcms"],
+  Moodle: ["moodle"],
   Laravel: ["laravel"],
   Django: ["django"],
   "Ruby on Rails": ["rails"],

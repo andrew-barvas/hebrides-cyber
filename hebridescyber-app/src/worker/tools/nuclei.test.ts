@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import { buildTagArgument, parseNucleiOutput } from "./nuclei";
 
 describe("buildTagArgument", () => {
+  it("scopes nuclei to the newer CMS platforms by their real template tags", () => {
+    const tags = buildTagArgument(["PrestaShop", "OpenCart", "TYPO3", "Umbraco", "Craft CMS", "Moodle"]).split(",");
+    expect(tags).toEqual(expect.arrayContaining(["prestashop", "opencart", "typo3", "umbraco", "craftcms", "moodle"]));
+  });
+
   it("always includes the baseline tags, incl. ssrf/oast out-of-band testing", () => {
     const tags = buildTagArgument([]).split(",");
     expect(tags).toEqual(expect.arrayContaining(["cve", "exposure", "misconfig", "default-login", "takeover", "ssrf", "oast"]));

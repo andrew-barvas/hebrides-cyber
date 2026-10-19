@@ -112,7 +112,7 @@ Not called, despite appearing in comments or docs: Amass (explicitly not wired),
 | Node `fetch`, `crypto`, `child_process` | everywhere | HTTP probing, hashing for stable checkIds, subprocess execution. |
 | `git` CLI | `repoClone.ts` | Shallow clone of the connected repo with an installation token. |
 | Docker | scheduled workflow | Runs the ZAP daemon; Strix needs it per its workflow comment. |
-| Own pattern tables | `fingerprint.ts` (56 patterns), `webapp.ts` (7 JS libs, 20 WP plugin slugs), `exposure.ts` (41 paths), `ports.ts` (30 ports), `directoryListing.ts` (18 paths), `takeover.ts` (15 providers) | No Wappalyzer or other third-party fingerprint library is used. |
+| Own pattern tables | `fingerprint.ts` (63 patterns), `webapp.ts` (7 JS libs, 20 WP plugin slugs), `exposure.ts` (41 paths), `ports.ts` (30 ports), `directoryListing.ts` (18 paths), `takeover.ts` (15 providers) | No Wappalyzer or other third-party fingerprint library is used. |
 
 ---
 

@@ -164,6 +164,29 @@ describe("NVD configurations", () => {
     expect(ranges.get("Joomla")).toEqual([{ source: "nvd", startIncluding: "4.0.0", endExcluding: "4.2.8" }]);
   });
 
+  it("maps the newer CMS platforms from NVD's CPE names", () => {
+    const ranges = nvdRangesByTech({
+      configurations: [
+        {
+          nodes: [
+            {
+              cpeMatch: [
+                { vulnerable: true, criteria: cpe("typo3:typo3"), versionEndExcluding: "12.4.11" },
+                { vulnerable: true, criteria: cpe("umbraco:umbraco_cms"), versionEndExcluding: "13.5.2" },
+                { vulnerable: true, criteria: cpe("craftcms:craft_cms"), versionEndExcluding: "4.8.1" },
+                { vulnerable: true, criteria: cpe("moodle:moodle"), versionEndExcluding: "4.1.9" },
+                { vulnerable: true, criteria: cpe("prestashop:prestashop"), versionEndExcluding: "8.1.3" },
+                { vulnerable: true, criteria: cpe("opencart:opencart"), versionEndExcluding: "4.0.2.3" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect([...ranges.keys()].sort()).toEqual(["Craft CMS", "Moodle", "OpenCart", "PrestaShop", "TYPO3", "Umbraco"]);
+    expect(ranges.get("TYPO3")).toEqual([{ source: "nvd", endExcluding: "12.4.11" }]);
+  });
+
   it("tolerates a record with no configurations", () => {
     expect(nvdRangesByTech(null).size).toBe(0);
     expect(nvdRangesByTech({}).size).toBe(0);
