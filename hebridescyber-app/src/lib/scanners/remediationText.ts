@@ -3195,3 +3195,39 @@ export const GRAPHQL_IDE = `Remove or protect the GraphQL explorer in production
 - **Hasura:** disable the console on the public endpoint.
 
 If a team needs it, serve the explorer only behind your VPN or sign-in.`;
+
+// ---- Known framework secrets (src/worker/tools/badsecrets.ts) ---------------
+// Where each framework keeps the key badsecrets matched, keyed by its module
+// (Python class) name. A module missing here gets the generic text.
+const BADSECRETS_KEY_LOCATION: Record<string, string> = {
+  ASPNET_Viewstate: "the `<machineKey>` element in `web.config` (validationKey/decryptionKey). Remove any key copied from documentation or a sample; on .NET 4.5+ set `validation=\"HMACSHA256\"` and let IIS auto-generate per-application keys, or generate new ones with IIS Manager's Machine Key feature",
+  ASPNET_Resource: "the `<machineKey>` element in `web.config`, which also protects `WebResource.axd`/`ScriptResource.axd` URLs",
+  ASPNET_compressedviewstate: "the page's ViewState settings: it is sent with no MAC at all. Set `EnableViewStateMac=\"true\"` (never disable it) and configure a private `<machineKey>`",
+  DjangoSignedCookies: "`SECRET_KEY` in `settings.py` or the environment. Generate one with `django.core.management.utils.get_random_secret_key()`",
+  Flask_SignedCookies: "`app.secret_key` / `SECRET_KEY` in the Flask config. Generate one with `python -c \"import secrets; print(secrets.token_hex(32))\"`",
+  ExpressSignedCookies_CS: "the `secret` passed to `cookie-session`",
+  ExpressSignedCookies_ES: "the `secret` passed to `express-session`",
+  Generic_JWT: "the signing secret or private key your JWT library is configured with",
+  Jsf_viewstate: "the JSF ViewState encryption settings (`org.apache.myfaces.SECRET` / `MAC_SECRET` for MyFaces, or `com.sun.faces.ClientStateSavingPassword` for Mojarra) — or switch `javax.faces.STATE_SAVING_METHOD` to `server`",
+  LaravelSignedCookies: "`APP_KEY` in `.env`. Run `php artisan key:generate`",
+  LTPA_Token: "the WebSphere LTPA keys (Global security → LTPA → Generate keys)",
+  Peoplesoft_PSToken: "the PeopleSoft node password used to sign PS_TOKEN (PeopleTools → Portal → Node Definitions)",
+  Rack2_SignedCookies: "the `secret` given to `Rack::Session::Cookie`",
+  Rails_SecretKeyBase: "`secret_key_base` in `config/credentials.yml.enc` (`bin/rails credentials:edit`) or `SECRET_KEY_BASE`. Generate one with `bin/rails secret`",
+  Shiro_RememberMe: "the Apache Shiro `rememberMe` cipher key (`securityManager.rememberMeManager.cipherKey`). Shiro's default key allows remote code execution (CVE-2016-4437); set a random 16-byte key",
+  Symfony_SignedURL: "`APP_SECRET` in `.env`. Leaving the demo value lets anyone sign `_fragment` URLs, which is a known remote-code-execution path",
+  Telerik_EncryptionKey: "`Telerik.AsyncUpload.ConfigurationEncryptionKey` and `Telerik.Upload.ConfigurationHashKey` in `web.config`; also update Telerik UI for ASP.NET AJAX (CVE-2017-11317, CVE-2019-18935)",
+  Telerik_HashKey: "`Telerik.Web.UI.DialogParametersEncryptionKey` in `web.config`; also update Telerik UI for ASP.NET AJAX (CVE-2017-9248)",
+  Yii2_SignedCookies: "`cookieValidationKey` in the `request` component of the Yii2 config",
+};
+
+export function badsecretsRemediation(module: string, product: string, secretLabel: string): string {
+  const where = BADSECRETS_KEY_LOCATION[module] ?? `wherever your application configures its ${secretLabel}`;
+  return [
+    `This ${product} is protected with a ${secretLabel} that appears on public lists of default and example keys, so an attacker can forge or decrypt it.`,
+    `1. Generate a new, long, random key and set it in ${where}.`,
+    "2. Keep the new key out of source control: load it from the environment or a secrets manager.",
+    "3. Deploy, then treat everything signed with the old key as compromised: active sessions, remember-me cookies and signed links are invalidated by the rotation, which is intended.",
+    "4. Rescan to confirm the finding has cleared.",
+  ].join("\n\n");
+}

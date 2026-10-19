@@ -48,6 +48,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "credential-spray",
   "strix",
   "cairn",
+  "badsecrets",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

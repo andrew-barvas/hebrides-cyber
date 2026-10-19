@@ -1802,8 +1802,9 @@ importers); migrations 034-036 remain.
    file-banner and SHA-1 extractors over up to 10 script bodies. If the data
    can't be loaded the legacy patterns still run. Apache-2.0, attributed in
    `docs/THIRD-PARTY-NOTICES.md`.
-4. badsecrets (known framework secret keys in ViewState/cookies; GPL-3.0 —
-   run as a separate binary, check before use).
+4. ~~badsecrets~~ done: `src/worker/tools/badsecrets.ts`, known/default
+   framework keys behind cookies, ViewState and JWTs (passive mode; AGPL-3.0,
+   run unmodified as a separate program per the owner's decision 2026-10-19).
 5. katana crawl seeding (MIT, pinned + SHA-256).
 6. More CMS fingerprints: PrestaShop, OpenCart, TYPO3, Umbraco, Craft,
    Moodle; Joomla component and Drupal module versions.
