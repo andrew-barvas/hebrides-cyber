@@ -43,6 +43,7 @@ import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
 import { runBadsecrets } from "../worker/tools/badsecrets";
+import { runKatana } from "../worker/tools/katana";
 import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
@@ -154,7 +155,9 @@ async function runExtendedTools(
   detectedTechnologies: string[],
   toolConfig: Record<ExtendedToolName, boolean>,
   supabaseAdmin: SupabaseClient,
-  ownerId: string
+  ownerId: string,
+  /** Pages the base crawl already visited; katana checks only the others. */
+  crawledUrls: string[] = []
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -197,6 +200,7 @@ async function runExtendedTools(
     cairnResult,
     apiSpecInjectionResult,
     badsecretsResult,
+    katanaResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -345,6 +349,11 @@ async function runExtendedTools(
     toolConfig.badsecrets
       ? runBadsecrets(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], note: "Disabled by scan profile." }),
+    // JS-aware page discovery; the crawler's page checks on what it finds
+    // (katana.* namespace — see katana.ts header for why not crawl seeds).
+    toolConfig.katana
+      ? runKatana(targetUrl, crawledUrls)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], note: "Disabled by scan profile." }),
   ]);
 
   // httpx runs AFTER the batch, not inside it: it probes the hostnames the
@@ -408,6 +417,7 @@ async function runExtendedTools(
     cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
     apiSpecInjection: apiSpecInjectionResult.status === "fulfilled" ? apiSpecInjectionResult.value : { status: "error", findings: [], note: String(apiSpecInjectionResult.reason) },
     badsecrets: badsecretsResult.status === "fulfilled" ? badsecretsResult.value : { status: "error" as const, findings: [] as Finding[], note: String(badsecretsResult.reason) },
+    katana: katanaResult.status === "fulfilled" ? katanaResult.value : { status: "error" as const, findings: [] as Finding[], note: String(katanaResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -520,6 +530,11 @@ async function runExtendedTools(
   }
   if (extended.badsecrets.status === "completed") {
     findings.push(...extended.badsecrets.findings);
+  }
+  // A "partial" katana run still reports what it saw; lifecycle treats it as
+  // not-run, so nothing it didn't visit is marked fixed.
+  if (extended.katana.status === "completed" || extended.katana.status === "partial") {
+    findings.push(...extended.katana.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
@@ -961,7 +976,7 @@ export async function executeScan(
         console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
       }
       const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId);
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : []);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");

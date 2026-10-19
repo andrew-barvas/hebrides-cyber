@@ -1805,7 +1805,9 @@ importers); migrations 034-036 remain.
 4. ~~badsecrets~~ done: `src/worker/tools/badsecrets.ts`, known/default
    framework keys behind cookies, ViewState and JWTs (passive mode; AGPL-3.0,
    run unmodified as a separate program per the owner's decision 2026-10-19).
-5. katana crawl seeding (MIT, pinned + SHA-256).
+5. ~~katana~~ done: `src/worker/tools/katana.ts`, JavaScript-aware page
+   discovery whose pages get the crawler's checks as `katana.*` findings (its
+   own namespace rather than crawl seeds, so passive scans can't resolve them).
 6. More CMS fingerprints: PrestaShop, OpenCart, TYPO3, Umbraco, Craft,
    Moodle; Joomla component and Drupal module versions.
 **Impact/effort**: high / medium. **Category**: code (detection).

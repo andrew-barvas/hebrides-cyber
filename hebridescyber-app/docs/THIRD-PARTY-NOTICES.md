@@ -32,7 +32,7 @@ dependencies listed in `package.json` (whose licences ship with each package).
 ## Scan-worker binaries
 
 The scheduled scan workers install third-party tools (nuclei, subfinder,
-httpx, gitleaks, trivy, opengrep, zizmor, ffuf, gospider, kiterunner, nmap,
+httpx, katana, gitleaks, trivy, opengrep, zizmor, ffuf, gospider, kiterunner, nmap,
 sqlmap, commix, testssl.sh, OWASP ZAP). Each is pinned by version and checksum
 in `.github/workflows/scheduled-scans.yml` and runs as a separate program under
 its own licence; see `docs/SCANNER-INVENTORY.md`. No rules are copied from

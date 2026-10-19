@@ -49,6 +49,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "strix",
   "cairn",
   "badsecrets",
+  "katana",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {
