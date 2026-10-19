@@ -19,6 +19,7 @@ import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
 import { runNmap } from "../worker/tools/nmap";
+import { runNetworkExposure } from "../worker/tools/networkExposure";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
@@ -176,6 +177,7 @@ async function runExtendedTools(
     sqlmapResult,
     commixResult,
     nmapResult,
+    networkExposureResult,
     subdomainsResult,
     deepTlsResult,
     secretScanResult,
@@ -216,6 +218,10 @@ async function runExtendedTools(
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
     toolConfig.nmap
       ? runNmap(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
+    // Broad port discovery (naabu top-1000) → nmap -sV on whatever's open.
+    toolConfig.networkExposure
+      ? runNetworkExposure(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
     toolConfig.subdomains
       ? runSubdomainDiscovery(targetUrl)
@@ -393,6 +399,7 @@ async function runExtendedTools(
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
     commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
+    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error", host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
@@ -483,6 +490,24 @@ async function runExtendedTools(
           remediation: nmapDangerousPortRemediation(p.port),
         });
       }
+    }
+  }
+
+  // Network exposure (naabu top-1000 → nmap -sV): one finding per discovered
+  // open port carrying real risk. "info" ports (80/443/expected services) are
+  // left out — they'd flood the report without evidencing a problem. A port's
+  // risk/service comes from portRisk.ts, the same table ports.ts uses.
+  if (extended.networkExposure.status === "completed") {
+    for (const p of extended.networkExposure.ports) {
+      if (p.risk === "info") continue;
+      const version = p.version ? ` (${p.version})` : "";
+      findings.push({
+        checkId: `network-exposure.open-port:${p.port}`,
+        severity: p.risk,
+        title: `[network] Open port ${p.port}/${p.protocol} — ${p.service}${version}`,
+        detail: `Port discovery (naabu top-1000) found port ${p.port} open, and service detection identified it as ${p.service}${version}. ${p.reason}`,
+        remediation: nmapDangerousPortRemediation(p.port),
+      });
     }
   }
 

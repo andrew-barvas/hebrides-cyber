@@ -89,6 +89,18 @@ const TECH_TAG_MAP: Record<string, string[]> = {
 // (exposed panels/files, generic misconfigurations, default credentials,
 // subdomain takeovers, CVE-tagged templates that match on product
 // signatures nuclei detects itself rather than needing our own hint).
+//
+// NOT included: "network". nuclei's network-category templates are TCP
+// service-protocol templates confirmed real against the repo
+// (network/detection/mysql-detect.yaml carries `tags: network,mysql,...`), but
+// adding them to the always-on baseline makes nuclei probe service ports on
+// every target, and against closed ports each template burns the full
+// per-request timeout — a clean run already clocks ~110s, and the extra
+// category pushed the step past its 120s budget (nuclei.integration.test.ts).
+// Broad network coverage is networkExposure.ts's job (naabu top-1000 + nmap
+// -sV, bounded); a scoped nuclei network pass against ONLY the ports naabu
+// found is the right follow-up, not a blanket baseline tag that degrades every
+// scan's HTTP template run.
 const BASELINE_TAGS = ["cve", "exposure", "misconfig", "default-login", "takeover", "ssrf", "oast"];
 
 export function buildTagArgument(detectedTechnologies: string[]): string {
