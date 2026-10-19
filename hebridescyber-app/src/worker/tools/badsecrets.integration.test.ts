@@ -3,8 +3,8 @@
 // RUN_TOOL_INTEGRATION=1, as the tool-integration CI job arranges.
 //
 // No key is committed: the cookie is signed at run time by badsecrets'
-// virtualenv Python with flask_unsign (a badsecrets dependency), using the
-// first entry of badsecrets' own known-key list, so this checks the wrapper's
+// virtualenv Python with flask_unsign (a badsecrets dependency), using an
+// entry of badsecrets' own known-key list, so this checks the wrapper's
 // flags and JSON parsing against what the pinned release really emits.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
@@ -14,11 +14,13 @@ import { runBadsecrets } from "./badsecrets";
 
 const PYTHON = process.env.BADSECRETS_PYTHON ?? "/opt/badsecrets/bin/python";
 
+// The list's whitespace is significant (its first entry has leading spaces),
+// so take the first plain entry verbatim rather than stripping one.
 const SIGN = `
-import os, secrets, sys, badsecrets
+import os, re, secrets, sys, badsecrets
 from flask_unsign import session
 path = os.path.join(os.path.dirname(badsecrets.__file__), "resources", "flask_secret_keys.txt")
-known = next(l.strip() for l in open(path) if l.strip())
+known = next(l.rstrip("\\r\\n") for l in open(path, encoding="utf-8") if re.fullmatch(r"[A-Za-z0-9_-]{6,}", l.rstrip("\\r\\n")))
 key = known if sys.argv[1] == "known" else secrets.token_hex(32)
 print(session.sign({"user": "integration-test"}, secret=key))
 `;
