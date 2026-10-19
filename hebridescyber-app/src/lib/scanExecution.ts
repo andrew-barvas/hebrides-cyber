@@ -42,6 +42,7 @@ import { runKiterunner } from "../worker/tools/kiterunner";
 import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
+import { runBadsecrets } from "../worker/tools/badsecrets";
 import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
@@ -195,6 +196,7 @@ async function runExtendedTools(
     strixResult,
     cairnResult,
     apiSpecInjectionResult,
+    badsecretsResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -338,6 +340,11 @@ async function runExtendedTools(
     toolConfig.apiSpecInjection
       ? checkApiSpecInjection(targetUrl, supabaseAdmin, ownerId)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], endpointsTested: 0 as const, specSource: "none" as const }),
+    // Known framework secrets (AGPL tool, run unmodified as a separate
+    // program, passive mode only — see badsecrets.ts header).
+    toolConfig.badsecrets
+      ? runBadsecrets(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], note: "Disabled by scan profile." }),
   ]);
 
   // httpx runs AFTER the batch, not inside it: it probes the hostnames the
@@ -400,6 +407,7 @@ async function runExtendedTools(
     strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
     cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
     apiSpecInjection: apiSpecInjectionResult.status === "fulfilled" ? apiSpecInjectionResult.value : { status: "error", findings: [], note: String(apiSpecInjectionResult.reason) },
+    badsecrets: badsecretsResult.status === "fulfilled" ? badsecretsResult.value : { status: "error" as const, findings: [] as Finding[], note: String(badsecretsResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -509,6 +517,9 @@ async function runExtendedTools(
   // workflowSecurity.ts (zizmor) already builds full Finding[] too.
   if (extended.workflowSecurity.status === "completed") {
     findings.push(...extended.workflowSecurity.findings);
+  }
+  if (extended.badsecrets.status === "completed") {
+    findings.push(...extended.badsecrets.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 

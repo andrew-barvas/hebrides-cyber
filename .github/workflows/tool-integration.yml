@@ -17,6 +17,7 @@ on:
       - "hebridescyber-app/src/worker/tools/kiterunner*.ts"
       - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
       - "hebridescyber-app/src/worker/tools/contentDiscovery*.ts"
+      - "hebridescyber-app/src/worker/tools/badsecrets*.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
@@ -44,6 +45,14 @@ jobs:
 
       - name: Install sqlmap
         run: pip3 install --break-system-packages sqlmap
+
+      - name: Install badsecrets (pinned, own virtualenv)
+        # Same install as scheduled-scans.yml.
+        run: |
+          sudo python3 -m venv /opt/badsecrets
+          sudo /opt/badsecrets/bin/pip install --quiet badsecrets==1.2.0
+          sudo ln -sf /opt/badsecrets/bin/badsecrets /usr/local/bin/badsecrets
+          badsecrets -l --no-color | tail -5
 
       - name: Install nuclei, gospider, kiterunner and httpx (pinned)
         env:
@@ -105,6 +114,7 @@ jobs:
           src/worker/tools/kiterunner.integration.test.ts
           src/worker/tools/httpProbe.integration.test.ts
           src/worker/tools/contentDiscovery.integration.test.ts
+          src/worker/tools/badsecrets.integration.test.ts
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it

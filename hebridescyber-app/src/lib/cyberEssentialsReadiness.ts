@@ -83,6 +83,7 @@ const CE_CONTROL_CHECKERS: Array<{
       "exposure.sensitive-path",
       "directoryListing.enabled",
       "dns.caa-missing",
+      "badsecrets.known-secret",
     ],
     assessEvidence(findings) {
       const evidence: string[] = [];
@@ -112,6 +113,8 @@ const CE_CONTROL_CHECKERS: Array<{
       if (infoDisc) gaps.push("Server version information disclosed in headers");
       if (exposedPaths.length > 0) gaps.push(`${exposedPaths.length} sensitive file(s) publicly accessible (.env, .git, etc.)`);
       if (dirListing.length > 0) gaps.push("Directory listing enabled — exposes file structure");
+      const knownKeys = findings.filter((f) => f.checkId?.startsWith("badsecrets.known-secret"));
+      if (knownKeys.length > 0) gaps.push(`${knownKeys.length} framework secret key${knownKeys.length === 1 ? " is a" : "s are"} publicly known default — CE requires default credentials to be changed`);
 
       if (!noHttps && !weakProto && !selfSigned && !missingHeaders) {
         evidence.push("TLS and header configuration meets CE Secure Configuration requirements");
