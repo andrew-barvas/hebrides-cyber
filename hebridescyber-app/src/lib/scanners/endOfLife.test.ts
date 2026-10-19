@@ -51,6 +51,15 @@ const DATA: Record<string, EolEntry[]> = {
     { cycle: "5", eol: "2027-10-12" },
     { cycle: "3", eol: "2023-08-17" },
   ],
+  typo3: [
+    { cycle: "14", eol: "2029-06-30" },
+    { cycle: "11", eol: "2024-10-31" },
+    { cycle: "7", eol: "2018-12-01" },
+  ],
+  umbraco: [
+    { cycle: "17", eol: "2028-11-27" },
+    { cycle: "8", eol: "2025-02-24" },
+  ],
   angular: [
     { cycle: "20", eol: "2026-11-28" },
     { cycle: "15", eol: "2024-05-18" },
@@ -157,6 +166,29 @@ describe("collectEolCandidates", () => {
       { tech: "Joomla", version: "3.10.12" },
       { tech: "Bootstrap", version: "4.6.2" },
     ]);
+  });
+});
+
+describe("checkEndOfLife: TYPO3 and Umbraco", () => {
+  it("reports an out-of-support TYPO3 or Umbraco release the page shows a version for", async () => {
+    serveEol();
+    const result = await checkEndOfLife(fp(tech("TYPO3", "7.6.32", { source: "html" }), tech("Umbraco", "8.18.14"), tech("Moodle", null)), noWebapp, NOW);
+    if (result.status !== "checked") throw new Error(JSON.stringify(result));
+    expect(result.items.map((i) => i.product).sort()).toEqual(["typo3", "umbraco"]);
+    expect(result.evaluated.sort()).toEqual(["TYPO3", "Umbraco"]); // Moodle has no version, so is not evaluated
+  });
+
+  it("stays silent for a supported release, and for a version no cycle covers", async () => {
+    serveEol();
+    const supported = await checkEndOfLife(fp(tech("TYPO3", "14.0.1", { source: "html" }), tech("Umbraco", "17.1.0")), noWebapp, NOW);
+    if (supported.status !== "checked") throw new Error(JSON.stringify(supported));
+    expect(supported.items).toEqual([]);
+    expect(supported.evaluated.sort()).toEqual(["TYPO3", "Umbraco"]);
+    // TYPO3 6.2 is older than every cycle endoflife.date lists: no verdict, not a guess.
+    const unplaced = await checkEndOfLife(fp(tech("TYPO3", "6.2", { source: "html" })), noWebapp, NOW);
+    if (unplaced.status !== "checked") throw new Error(JSON.stringify(unplaced));
+    expect(unplaced.items).toEqual([]);
+    expect(unplaced.evaluated).toEqual([]);
   });
 });
 
