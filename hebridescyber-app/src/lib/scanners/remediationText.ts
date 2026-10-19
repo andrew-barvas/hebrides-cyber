@@ -3298,3 +3298,34 @@ the way you intend, and an SBOM with "unknown" licences fails most compliance re
   as "all rights reserved" and replace it with a clearly-licensed equivalent.
 - If it does carry a licence deps.dev simply didn't parse, record it in your own dependency
   inventory so the gap is closed for your compliance records.`;
+
+// ---------------------------------------------------------------------------
+// Live-site JS secret / endpoint scanning (src/lib/scanners/jsSecrets.ts)
+// ---------------------------------------------------------------------------
+
+export const JS_SECRET_EXPOSED = `A credential that looks like a real API key or token is being delivered to the browser in
+your site's own HTML or JavaScript. Anything the browser receives is public — view-source,
+the network tab, or a saved copy all reveal it — so treat this key as compromised.
+
+1. **Rotate it now.** Issue a new key in the provider's dashboard and revoke the exposed one.
+   Until you do, anyone who viewed the page may have it.
+2. **Move it server-side.** Secret keys belong only in server code (API routes, serverless
+   functions, CI secrets), never in a client bundle or a variable prefixed \`NEXT_PUBLIC_\`,
+   \`VITE_\` or \`REACT_APP_\`. If the browser genuinely needs to call that service, proxy the
+   call through your own backend so the key never leaves the server.
+3. **Check for misuse** in the provider's logs/billing for activity you don't recognise.
+
+We matched a pattern and store only a fingerprint of the value, never the value itself —
+confirm it is a live credential (some keys, e.g. a publishable \`pk_\` key, are meant to be
+public) before treating it as an incident.`;
+
+export const JS_ENDPOINT_EXPOSED = `Your site's client-side code references an internal, API, staging or private-network
+endpoint. This isn't a vulnerability on its own, but it hands an attacker a map of where to
+look next, and a localhost/private-IP URL usually means a debug build was shipped to
+production.
+
+- Confirm the endpoint is meant to be publicly known. If it's an internal or staging host,
+  remove the reference from the production bundle (environment-specific config, not a
+  hard-coded URL).
+- Make sure the endpoint itself enforces authentication and authorisation — being
+  "undiscovered" was never protecting it.`;

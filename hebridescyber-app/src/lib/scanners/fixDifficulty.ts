@@ -72,6 +72,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.cors-wildcard": "easy",
   "headers.info-disclosure": "trivial",
   "headers.smuggling-surface": "moderate", // config change on the app or front-end, but needs careful testing to avoid breaking real traffic
+  "js-secrets.exposed-key": "easy", // rotate the key and move it server-side / proxy the call
+  "js-secrets.exposed-endpoint": "easy", // remove the hard-coded internal URL from the bundle
   "backend-exposure.service-key": "easy", // rotate the key and move it server-side
   "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
   "backend-exposure.storage-bucket": "easy", // drop one storage.objects policy
