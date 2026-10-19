@@ -131,6 +131,11 @@ export const TECH_EOL_PRODUCTS: Record<string, TechProduct> = {
   Apache: { product: "apache-http-server", label: "Apache HTTP Server", kind: "platform" },
   Drupal: { product: "drupal", label: "Drupal", kind: "application" },
   Joomla: { product: "joomla", label: "Joomla", kind: "application" },
+  // Only the platforms that can show a version on a public page. PrestaShop and
+  // OpenCart have no endoflife.date product (404), and Moodle and Craft CMS
+  // publish no version, so they would never produce a verdict.
+  TYPO3: { product: "typo3", label: "TYPO3", kind: "application" },
+  Umbraco: { product: "umbraco", label: "Umbraco", kind: "application" },
   Angular: { product: "angular", label: "Angular", kind: "library" },
   jQuery: { product: "jquery", label: "jQuery", kind: "library" },
   Bootstrap: { product: "bootstrap", label: "Bootstrap", kind: "library" },

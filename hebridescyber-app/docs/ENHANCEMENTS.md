@@ -1808,7 +1808,17 @@ importers); migrations 034-036 remain.
 5. ~~katana~~ done: `src/worker/tools/katana.ts`, JavaScript-aware page
    discovery whose pages get the crawler's checks as `katana.*` findings (its
    own namespace rather than crawl seeds, so passive scans can't resolve them).
-6. More CMS fingerprints: PrestaShop, OpenCart, TYPO3, Umbraco, Craft,
-   Moodle; Joomla component and Drupal module versions.
+6. ~~More CMS fingerprints~~ done for PrestaShop, OpenCart, TYPO3, Umbraco,
+   Craft CMS and Moodle (`fingerprint.ts`): detection, nuclei tag scoping,
+   NVD CPE entries, TYPO3/Umbraco end-of-life. Checked against real sites:
+   TYPO3 (typo3.org), Craft (craftcms.com) and Moodle (a demo site) match,
+   and example.com, this site, wordpress.org and drupal.org are clean. Not
+   verified live: OpenCart and Moodle's own sites sit behind bot challenges
+   (not bypassed), PrestaShop's demo is a launcher page, and umbraco.com's
+   front end shows no Umbraco markup, which is typical, so recall is limited.
+   **Still open:** Joomla component and Drupal module versions with CVEs
+   (module version needs a `.info.yml` fetch like WordPress plugins'
+   readme.txt; OSV carries Packagist `drupal/*` advisories) and reading the
+   Moodle version (`/lib/upgrade.txt`).
 **Impact/effort**: high / medium. **Category**: code (detection).
 **Source**: CMS/tooling gap review, 2026-10-18.

@@ -228,6 +228,15 @@ export const NVD_CPE_BY_NAME: Record<string, { vendor: string; product: string }
   WordPress: { vendor: "wordpress", product: "wordpress" }, // CVE-2022-21661
   Drupal: { vendor: "drupal", product: "drupal" }, // CVE-2018-7600
   Joomla: { vendor: "joomla", product: "joomla\\!" }, // CVE-2023-23752
+  // Checked against NVD's CVE API (virtualMatchString, 2026-10-19): TYPO3 473
+  // CVEs, Moodle 641, Umbraco 57 (4 under "umbraco:umbraco"), Craft 97,
+  // PrestaShop 95, OpenCart 39.
+  TYPO3: { vendor: "typo3", product: "typo3" },
+  Moodle: { vendor: "moodle", product: "moodle" },
+  Umbraco: { vendor: "umbraco", product: "umbraco_cms" },
+  "Craft CMS": { vendor: "craftcms", product: "craft_cms" },
+  PrestaShop: { vendor: "prestashop", product: "prestashop" },
+  OpenCart: { vendor: "opencart", product: "opencart" },
   jQuery: { vendor: "jquery", product: "jquery" }, // CVE-2020-11023
   Bootstrap: { vendor: "getbootstrap", product: "bootstrap" }, // CVE-2019-8331
   // AngularJS (1.x) is "angularjs:angularjs", not "angular.js".
