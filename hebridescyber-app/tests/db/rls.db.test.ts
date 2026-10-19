@@ -49,6 +49,7 @@ const KEY_TABLES: TableSpec[] = [
   { table: "sla_policies", ownerCol: "owner", insert: "insert into sla_policies (owner) values ($1)" },
   { table: "dmarc_reports", ownerCol: "owner", insert: "insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, 'new.test', 'google.com', 'rpt-new')" },
   { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
+  { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -58,7 +59,7 @@ const SERVICE_WRITE_ONLY = [
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
-  "dmarc_reports", "dmarc_ingest_tokens",
+  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -104,6 +105,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into sla_policies (owner) values ($1)", [o]);
       await q("insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, $2, 'google.com', $3)", [o, h, `rpt-${h}`]);
       await q("insert into dmarc_ingest_tokens (owner, token) values ($1, $2)", [o, `tok-${h}-0123456789abcdef`]);
+      await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
