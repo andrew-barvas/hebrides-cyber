@@ -151,6 +151,8 @@ Not doing: MFA bypass, JWT forging, CSRF bypass, gRPC fuzzing (attacks, not scan
 
 **Detection queue (2026-10-18), one PR each with tests, a benchmark case, green CI and a deploy:** finish E-77 (badsecrets, katana, more CMS fingerprints), then the five competitor-gap features in `.claude/plans/proud-spinning-nygaard.md`: website malware/injected-content detection, a Cyber Essentials self-assessment assistant, network exposure (naabu top-1000 + nmap + nuclei network), live-site JS secret/endpoint scanning (check what `backendExposure.ts` already covers first), dependency licence compliance (deps.dev).
 
+**Malware detection status (2026-10-19, PR 66):** injected-content detection is wired into scans; its benchmark case and docs entries (SCANNER-INVENTORY, USER-GUIDE) are NOT added yet. Remaining competitor-gap features, one PR each: (1) Cyber Essentials self-assessment assistant, (2) network exposure (naabu top-1000 + nmap + nuclei network), (3) live-site JS secret/endpoint scanning (check `backendExposure.ts` coverage first), (4) dependency licence compliance (deps.dev), (5) malware benchmark case and docs follow-up.
+
 **Launch blockers and acceptance criteria:** see `docs/LAUNCH-PRIORITY.md` (payments, reliability baseline, evidence on findings E-75, SSO E-76, detection proof).
 
 ## Owner actions pending (not code)
