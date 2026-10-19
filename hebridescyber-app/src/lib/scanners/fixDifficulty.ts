@@ -167,6 +167,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "sqlmap.sqli": "hard",
   "commix.command-injection": "hard",
   "nmap.dangerous-port": "easy",
+  "network-exposure.open-port": "easy", // firewall rule / bind-to-localhost change
   "secretScan.exposed-secret": "moderate", // rotate the credential + purge from git history
   "dependency-manifest.npm": "easy",
   "dependency-manifest.pip": "easy",

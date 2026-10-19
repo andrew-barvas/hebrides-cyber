@@ -50,6 +50,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "cairn",
   "badsecrets",
   "katana",
+  "network-exposure",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

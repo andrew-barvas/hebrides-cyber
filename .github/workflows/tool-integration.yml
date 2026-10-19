@@ -22,6 +22,7 @@ on:
       - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
+      - "hebridescyber-app/src/worker/tools/networkExposure*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
       - "hebridescyber-app/tests/fixtures/test-app/**"
       - ".github/workflows/tool-integration.yml"
@@ -48,6 +49,9 @@ jobs:
       - name: Install sqlmap
         run: pip3 install --break-system-packages sqlmap
 
+      - name: Install nmap (for networkExposure service detection)
+        run: sudo apt-get update && sudo apt-get install -y nmap
+
       - name: Install badsecrets (pinned, own virtualenv)
         # Same install as scheduled-scans.yml.
         run: |
@@ -56,7 +60,7 @@ jobs:
           sudo ln -sf /opt/badsecrets/bin/badsecrets /usr/local/bin/badsecrets
           badsecrets -l --no-color | tail -5
 
-      - name: Install nuclei, gospider, kiterunner, httpx, ffuf and katana (pinned)
+      - name: Install nuclei, gospider, kiterunner, httpx, ffuf, katana and naabu (pinned)
         env:
           NUCLEI_VERSION: v3.3.9
           NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
@@ -70,6 +74,8 @@ jobs:
           FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
           KATANA_VERSION: v1.8.0
           KATANA_SHA256: cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
+          NAABU_VERSION: v2.6.1
+          NAABU_SHA256: 018c4c9884dea971eda860435ede3021d1150732f34cfd245498c6726d8cab90
         run: |
           # Same pins as scheduled-scans.yml, so the integration tests exercise
           # exactly what production installs.
@@ -92,6 +98,12 @@ jobs:
           echo "${KATANA_SHA256}  /tmp/katana.zip" | sha256sum -c -
           sudo unzip -o /tmp/katana.zip katana -d /usr/local/bin && sudo chmod +x /usr/local/bin/katana
           katana -version
+
+          sudo apt-get install -y libpcap-dev >/dev/null 2>&1 || true
+          curl -fsSL "https://github.com/projectdiscovery/naabu/releases/download/${NAABU_VERSION}/naabu_${NAABU_VERSION#v}_linux_amd64.zip" -o /tmp/naabu.zip
+          echo "${NAABU_SHA256}  /tmp/naabu.zip" | sha256sum -c -
+          sudo unzip -o /tmp/naabu.zip naabu -d /usr/local/bin && sudo chmod +x /usr/local/bin/naabu
+          naabu -version
 
           curl -fsSL "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" -o /tmp/gospider.zip
           echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
@@ -125,6 +137,7 @@ jobs:
           src/worker/tools/contentDiscovery.integration.test.ts
           src/worker/tools/badsecrets.integration.test.ts
           src/worker/tools/katana.integration.test.ts
+          src/worker/tools/networkExposure.integration.test.ts
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it

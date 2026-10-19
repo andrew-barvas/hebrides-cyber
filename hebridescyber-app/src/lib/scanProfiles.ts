@@ -45,7 +45,8 @@ export type ExtendedToolName =
   | "cairn"
   | "apiSpecInjection"
   | "badsecrets"
-  | "katana";
+  | "katana"
+  | "networkExposure";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -89,6 +90,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "apiSpecInjection",
   "badsecrets",
   "katana",
+  "networkExposure",
 ];
 
 // The opt-in offensive suite: tools that generate brute-force or real attack
@@ -122,6 +124,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     subdomains: true,
     deepTls: true,
     nmap: true,
+    networkExposure: true,
     secretScan: true,
     dependencyManifest: true,
     dockerBaseImage: true,

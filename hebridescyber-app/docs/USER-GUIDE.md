@@ -77,7 +77,10 @@ are checked against the real WPScan Vulnerability Database, not just
 reported as "detected" with no risk signal.
 
 **Extended active-tool suite** — runs only on the scheduled monitoring path
-(nightly, via GitHub Actions, where real binaries can run): nmap, nuclei
+(nightly, via GitHub Actions, where real binaries can run): nmap, broad network
+exposure scanning (naabu top-1000 port discovery feeding nmap service detection
+on whatever's open — so a risky service on an unusual port is caught, not just
+the 30 fixed ports the base scan checks), nuclei
 (template set scoped to the target's actual detected technologies, not the
 entire default template library), sqlmap, commix (dedicated OS command injection
 confirmation), Subfinder subdomain takeover detection, httpx live-host probing
