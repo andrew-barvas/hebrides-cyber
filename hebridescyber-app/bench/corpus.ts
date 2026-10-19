@@ -28,4 +28,5 @@ export const CORPUS: CorpusTarget[] = [
   { id: "legacy-js", description: "Outdated jQuery and jQuery UI script tags beside a current Lodash", create: () => sites.legacyJs },
   { id: "spa-login", description: "Client-rendered login that answers every POST with 200", create: () => sites.spaLogin },
   { id: "compromised", description: "Hardened site compromised with a hidden iframe, an obfuscated script and hidden SEO-spam links", create: () => sites.compromised },
+  { id: "js-secrets-leak", description: "Client JS bundle leaking an AWS key, a Stripe live secret and an internal API endpoint (publishable key must not be flagged)", create: () => sites.jsSecretsLeak },
 ];
