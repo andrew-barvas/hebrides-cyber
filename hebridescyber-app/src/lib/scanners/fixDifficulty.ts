@@ -103,6 +103,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dns.spf-issues": "easy",
   "dns.dmarc-missing": "easy",
   "dns.dmarc-none": "easy",
+  "dns.dmarc-partial-enforcement": "trivial", // raise pct to 100 (one DNS record edit)
+  "dns.dmarc-no-reporting": "trivial", // add a rua= address (one DNS record edit)
   "dns.dkim-issues": "moderate", // needs coordination with the sending mail platform
   "dns.caa-missing": "trivial",
   "dns.mta-sts-missing": "moderate",

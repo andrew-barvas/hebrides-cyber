@@ -471,6 +471,28 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       findings.push({ checkId: "dns.dmarc-missing", severity: "high", title: "No DMARC record", detail: "Without DMARC, email spoofing is undetected. Add a _dmarc TXT record.", remediation: FIX.DMARC_MISSING });
     } else if (results.dns.dmarc.policy === "none") {
       findings.push({ checkId: "dns.dmarc-none", severity: "medium", title: "DMARC policy is 'none' — no enforcement", detail: "Spoofed emails are not rejected. Upgrade to p=quarantine or p=reject.", remediation: FIX.DMARC_NONE });
+    } else {
+      // Enforcing policy (quarantine/reject) but weakened or unmonitored.
+      // Separate from dmarc-none above: these only apply when the policy IS
+      // enforcing, so they never double up with it.
+      if (results.dns.dmarc.partialEnforcement) {
+        findings.push({
+          checkId: "dns.dmarc-partial-enforcement",
+          severity: "low",
+          title: `DMARC enforcement weakened by pct=${results.dns.dmarc.pct}`,
+          detail: `The policy is p=${results.dns.dmarc.policy}, but pct=${results.dns.dmarc.pct} applies it to only ${results.dns.dmarc.pct}% of failing messages — the rest are delivered as if there were no policy. Once you've confirmed legitimate mail passes, raise pct to 100.`,
+          remediation: FIX.DMARC_PARTIAL_ENFORCEMENT,
+        });
+      }
+      if (results.dns.dmarc.noReporting) {
+        findings.push({
+          checkId: "dns.dmarc-no-reporting",
+          severity: "info",
+          title: "DMARC has no aggregate-report (rua) address",
+          detail: `The policy enforces (p=${results.dns.dmarc.policy}) but has no rua= tag, so you receive no aggregate reports and have no visibility into who is sending as your domain or whether legitimate mail is being caught. Add rua=mailto:dmarc@your-domain to start receiving them.`,
+          remediation: FIX.DMARC_NO_REPORTING,
+        });
+      }
     }
     if (!results.dns.caa.present) {
       findings.push({ checkId: "dns.caa-missing", severity: "low", title: "No CAA records", detail: "Any CA can issue certificates for this domain. Add CAA records to restrict to your provider.", remediation: FIX.CAA_MISSING });

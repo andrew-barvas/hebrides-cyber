@@ -235,6 +235,8 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "dns.dkim-issues": [CIS_9, ISO_A13],
   "dns.dmarc-missing": [CIS_9, ISO_A13],
   "dns.dmarc-none": [CIS_9, ISO_A13],
+  "dns.dmarc-partial-enforcement": [CIS_9, ISO_A13],
+  "dns.dmarc-no-reporting": [CIS_9, ISO_A13],
   "dns.caa-missing": [OWASP_A05, CIS_4, ISO_A13],
   "dns.dnssec-missing": [CIS_4, ISO_A12, NIS2_ART21],
 
