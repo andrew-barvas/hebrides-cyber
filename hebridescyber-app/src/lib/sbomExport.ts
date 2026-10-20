@@ -48,6 +48,18 @@ export function toLicenseChoices(licenses: string[] | undefined): SbomLicenseCho
   return choices.length > 0 ? choices : undefined;
 }
 
+// CycloneDX 1.5 vulnerability `analysis` object — the VEX (Vulnerability
+// Exploitability eXchange) statement. `state` is one of CycloneDX's own
+// impact-analysis values; `justification` (when state is not_affected) is one
+// of CycloneDX's impactJustification values. We only ever emit a subset.
+export type SbomAnalysisState = "exploitable" | "in_triage" | "not_affected" | "resolved";
+export type SbomVulnerabilityAnalysis = {
+  state: SbomAnalysisState;
+  /** CycloneDX impactJustification — only set with state "not_affected". */
+  justification?: string;
+  detail?: string;
+};
+
 export type SbomVulnerability = {
   "bom-ref": string;
   id: string;
@@ -56,6 +68,34 @@ export type SbomVulnerability = {
   ratings: Array<{ severity: string; method?: string; score?: number; vector?: string }>;
   description?: string;
   affects: Array<{ ref: string }>;
+  /** VEX exploitability statement — populated when VEX signals are threaded
+   *  in. Absent (not in_triage) when the BOM was generated without them, so a
+   *  consumer treats "no analysis" the same as "in triage". */
+  analysis?: SbomVulnerabilityAnalysis;
+};
+
+// FIRST EPSS probability at or above which we assert "exploitable" without a
+// KEV listing: a ≥10% modelled chance of exploitation in the next 30 days is
+// the common actionable cut-off (and the band riskScore.ts already treats as
+// elevated). Below it, and absent a KEV listing or a triage decision, the
+// honest state is in_triage — we have no evidence either way.
+export const EPSS_EXPLOITABLE_THRESHOLD = 0.1;
+
+/**
+ * The signals a VEX `analysis` is derived from, all optional so a caller that
+ * has none still produces valid (in_triage) statements:
+ *   - kevCveIds: CVE ids CISA KEV lists as known-exploited (from threatIntel);
+ *   - ransomwareCveIds: the subset CISA marks as used in ransomware (detail only);
+ *   - epssByCve: CVE id → FIRST EPSS probability (0–1);
+ *   - notAffected: advisory id OR CVE id → the recorded false-positive triage
+ *     reason. Only ever built from a real triage decision — see
+ *     collectVexSignals — so not_affected is never defaulted.
+ */
+export type SbomVexInput = {
+  kevCveIds?: readonly string[];
+  ransomwareCveIds?: readonly string[];
+  epssByCve?: Readonly<Record<string, number>>;
+  notAffected?: Readonly<Record<string, string>>;
 };
 
 export type CycloneDxBom = {
@@ -145,7 +185,63 @@ export type InventorySbomInput = {
   targetUrl: string;
   scanId: string;
   inventory: DependencyInventory;
+  /** VEX signals, when the caller has them. Omit and every vulnerability's
+   *  analysis defaults to in_triage (absent) — scans serialised before VEX
+   *  existed still produce a valid BOM. */
+  vex?: SbomVexInput;
 };
+
+/**
+ * The CycloneDX VEX `analysis` for one advisory, from its own id and CVE ids.
+ * Precedence (most-to-least decisive):
+ *   1. a recorded false_positive triage on the advisory/CVE → not_affected,
+ *      justification code_not_reachable, detail = the recorded reason;
+ *   2. a KEV listing → exploitable, detail naming the KEV (and ransomware) CVE;
+ *   3. EPSS ≥ threshold → exploitable, detail naming the score;
+ *   4. otherwise in_triage.
+ * not_affected is only ever reached from signal (1) — a real triage decision,
+ * never defaulted (evidence discipline).
+ */
+export function analysisFor(advisoryId: string, cveIds: readonly string[], vex: SbomVexInput | undefined): SbomVulnerabilityAnalysis {
+  if (!vex) return { state: "in_triage" };
+  const ids = [advisoryId, ...cveIds];
+
+  const notAffectedReason = vex.notAffected
+    ? ids.map((id) => vex.notAffected![id]).find((r): r is string => typeof r === "string")
+    : undefined;
+  if (notAffectedReason !== undefined) {
+    return {
+      state: "not_affected",
+      justification: "code_not_reachable",
+      detail: notAffectedReason || "Triaged as a false positive.",
+    };
+  }
+
+  const kev = new Set(vex.kevCveIds ?? []);
+  const kevHits = cveIds.filter((c) => kev.has(c));
+  if (kevHits.length > 0) {
+    const ransom = new Set(vex.ransomwareCveIds ?? []);
+    const inRansom = kevHits.some((c) => ransom.has(c));
+    const detail = `CISA KEV lists ${kevHits.join(", ")} as known-exploited${inRansom ? " and used in ransomware campaigns" : ""}.`;
+    return { state: "exploitable", detail };
+  }
+
+  const epss = vex.epssByCve ?? {};
+  let topEpss = -1;
+  let topCve = "";
+  for (const c of cveIds) {
+    const score = epss[c];
+    if (typeof score === "number" && score > topEpss) {
+      topEpss = score;
+      topCve = c;
+    }
+  }
+  if (topEpss >= EPSS_EXPLOITABLE_THRESHOLD) {
+    return { state: "exploitable", detail: `FIRST EPSS puts ${topCve} at ${(topEpss * 100).toFixed(1)}% probability of exploitation in the next 30 days.` };
+  }
+
+  return { state: "in_triage" };
+}
 
 /** True for an inventory this module can turn into an SBOM (written by dependencyManifest.ts, schema 1). */
 export function isDependencyInventory(value: unknown): value is DependencyInventory {
@@ -219,10 +315,70 @@ export function generateCycloneDxBomFromInventory(input: InventorySbomInput): Cy
         ],
         ...(a.summary ? { description: a.summary } : {}),
         affects: inventory.packages.map((p, i) => (p.vulnIds?.includes(a.id) ? { ref: refs[i] } : null)).filter((x): x is { ref: string } => x !== null),
+        // VEX exploitability statement. Omitted entirely when no signals were
+        // threaded in (input.vex absent), so an older scan serialises exactly
+        // as before; otherwise always present, defaulting to in_triage.
+        ...(input.vex ? { analysis: analysisFor(a.id, a.cveIds, input.vex) } : {}),
       }))
       .filter((v) => v.affects.length > 0);
   }
   return bom;
+}
+
+/**
+ * Builds the VEX signals for an inventory BOM from the scan's own
+ * threat-intel-enriched dependency findings plus a triage lookup. Pure.
+ *
+ * Each dependency finding carries its advisory ids (metadata.osvIds), its CVE
+ * ids, and — after threatIntel.ts's enrichment pass — a threatIntel block
+ * (KEV membership, ransomware, EPSS). A false_positive triage on that
+ * finding's checkId makes every advisory/CVE it covers not_affected.
+ *
+ * `isFalsePositive(checkId)` is the one injected lookup: the route builds it
+ * from the triage index, so this stays pure and unit-testable without a DB.
+ */
+export function collectVexSignals(
+  findings: Finding[] | undefined,
+  isFalsePositive: (checkId: string | undefined) => boolean = () => false
+): SbomVexInput {
+  const kevCveIds = new Set<string>();
+  const ransomwareCveIds = new Set<string>();
+  const epssByCve: Record<string, number> = {};
+  const notAffected: Record<string, string> = {};
+
+  for (const f of findings ?? []) {
+    if (!f.checkId?.startsWith("dependency-manifest.")) continue;
+    const cveIds = f.cveIds ?? [];
+    const osvIds = Array.isArray((f.metadata as { osvIds?: unknown })?.osvIds)
+      ? ((f.metadata as { osvIds?: string[] }).osvIds ?? [])
+      : [];
+
+    const ti = f.threatIntel;
+    if (ti?.knownExploited) {
+      // kevCveIds names the KEV-listed CVEs when present; fall back to all of
+      // the finding's CVE ids (knownExploited is only ever true off a real
+      // KEV read, so this isn't a guess about which — it's the finding's set).
+      for (const c of ti.kevCveIds ?? cveIds) kevCveIds.add(c);
+      if (ti.ransomware) for (const c of ti.kevCveIds ?? cveIds) ransomwareCveIds.add(c);
+    }
+    if (typeof ti?.epss === "number") {
+      // The finding carries the highest EPSS across its CVEs; attribute it to
+      // each so analysisFor() finds it under whichever CVE the advisory lists.
+      for (const c of cveIds) epssByCve[c] = Math.max(epssByCve[c] ?? 0, ti.epss);
+    }
+
+    if (isFalsePositive(f.checkId)) {
+      const reason = `Triaged as a false positive for ${f.checkId}.`;
+      for (const id of [...osvIds, ...cveIds]) notAffected[id] = reason;
+    }
+  }
+
+  return {
+    kevCveIds: [...kevCveIds],
+    ransomwareCveIds: [...ransomwareCveIds],
+    epssByCve,
+    notAffected,
+  };
 }
 
 // ---- From findings (scans stored before the inventory existed) -----------------
