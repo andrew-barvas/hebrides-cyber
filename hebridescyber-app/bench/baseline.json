@@ -51,7 +51,7 @@
       "recall": 1
     },
     "js-secrets": {
-      "tp": 3,
+      "tp": 5,
       "fp": 0,
       "fn": 0,
       "precision": 1,

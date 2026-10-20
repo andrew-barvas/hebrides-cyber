@@ -343,6 +343,13 @@ export const legacyJs: SiteHandler = (req, res) => {
  * client. jsSecrets.ts must report the two keys and the endpoint; the harmless
  * publishable Stripe key (`pk_live_…`) must NOT be flagged — it's meant to be
  * public, and flagging it would be the false positive the check exists to avoid.
+ *
+ * The bundle also carries a `sourceMappingURL` comment pointing at a publicly
+ * readable `config.js.map` whose `sourcesContent` inlines the un-minified
+ * source — which itself contains an npm token (a secret the minified bundle
+ * didn't). jsSecrets.ts must report the exposed sourcemap AND the npm token it
+ * found inside it; a 404 on a map (none of the other fixtures serve one) must
+ * stay silent.
  */
 export const jsSecretsLeak: SiteHandler = (req, res) => {
   const p = pathOf(req);
@@ -375,8 +382,24 @@ export const jsSecretsLeak: SiteHandler = (req, res) => {
         `  stripePublishable: "${pk}",`,
         '  api: "https://api.internal.shop.example/v1"',
         "};",
+        "//# sourceMappingURL=config.js.map",
       ].join("\n")
     );
+  }
+  if (p === "/static/config.js.map") {
+    // A real source map: a `sources` array plus `sourcesContent` inlining the
+    // original source, which carries an npm token (npm_ + 36 base36 chars) the
+    // minified bundle above does not — proving the catalogue runs over inlined
+    // source. Assembled from a fragment so no literal token sits in the repo.
+    const npmToken = "npm_" + "abcdefghijklmnopqrstuvwxyz0123456789";
+    const map = {
+      version: 3,
+      sources: ["src/config.js"],
+      sourcesContent: [`export const NPM_TOKEN = "${npmToken}"; // build-time only, do not ship\nexport const CONFIG = { api: "https://api.internal.shop.example/v1" };\n`],
+      names: [],
+      mappings: "",
+    };
+    return send(req, res, 200, { "content-type": "application/json", ...SECURE_HEADERS }, JSON.stringify(map));
   }
   if (p === "/.well-known/security.txt") {
     return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");

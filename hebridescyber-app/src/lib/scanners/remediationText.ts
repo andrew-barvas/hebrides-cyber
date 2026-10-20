@@ -3390,3 +3390,23 @@ production.
   hard-coded URL).
 - Make sure the endpoint itself enforces authentication and authorisation — being
   "undiscovered" was never protecting it.`;
+
+export const JS_SOURCEMAP_EXPOSED = `A JavaScript source map (\`.map\`) is publicly readable alongside your minified bundle.
+Source maps exist to help developers debug — they reconstruct the original, pre-minification
+code, including file structure, variable names, comments, and (when \`sourcesContent\` is
+inlined) the full original source. Shipping one to production hands all of that to anyone who
+appends \`.map\` to a script URL or reads its \`sourceMappingURL\` comment.
+
+1. **Stop publishing maps to production.** In most bundlers this is one setting:
+   - **webpack:** set \`devtool: false\` (or a \`hidden-*\`/\`nosources-*\` variant) for the
+     production build.
+   - **Vite / Rollup:** \`build.sourcemap: false\` (or \`'hidden'\`).
+   - **Next.js:** \`productionBrowserSourceMaps: false\` (the default).
+   - **esbuild:** drop \`--sourcemap\`, or use \`--sourcemap=external\` and don't deploy the file.
+2. **Remove the already-deployed \`.map\` files** from the server/CDN, not just future builds.
+3. **If you need maps for error monitoring** (Sentry, Datadog), upload them privately to that
+   service during CI instead of serving them from your own origin.
+
+This is an information-disclosure finding, not a direct compromise — but if the map inlined
+your source, treat any secret it revealed as exposed and rotate it (those are reported
+separately above).`;

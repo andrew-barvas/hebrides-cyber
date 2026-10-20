@@ -74,6 +74,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.smuggling-surface": "moderate", // config change on the app or front-end, but needs careful testing to avoid breaking real traffic
   "js-secrets.exposed-key": "easy", // rotate the key and move it server-side / proxy the call
   "js-secrets.exposed-endpoint": "easy", // remove the hard-coded internal URL from the bundle
+  "js-secrets.exposed-sourcemap": "trivial", // one bundler setting + remove the deployed .map
   "backend-exposure.service-key": "easy", // rotate the key and move it server-side
   "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
   "backend-exposure.storage-bucket": "easy", // drop one storage.objects policy
