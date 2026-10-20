@@ -130,31 +130,93 @@ describe("checkDns", () => {
     });
 
     it("flags '+all' as allowing any sender", async () => {
-      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com +all"]] });
+      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com +all"]], "_spf.google.com": [["v=spf1 -all"]] });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.spf.issues.some((i) => i.includes("+all") || i.includes("'all'"))).toBe(true);
     });
 
     it("flags '~all' (softfail) distinctly from '-all'", async () => {
-      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com ~all"]] });
+      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com ~all"]], "_spf.google.com": [["v=spf1 -all"]] });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.spf.issues.some((i) => i.includes("~all"))).toBe(true);
     });
 
-    it("does not flag a strict '-all' policy", async () => {
-      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com -all"]] });
+    it("does not flag a strict '-all' policy whose include chain resolves within the limit", async () => {
+      // The include target must resolve so the recursive lookup counter sees a
+      // complete, under-limit chain — otherwise it would (correctly) note it
+      // could not be fully evaluated, which is a separate concern from the
+      // qualifier check this test covers.
+      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com -all"]], "_spf.google.com": [["v=spf1 ip4:1.2.3.0/24 -all"]] });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.spf.issues).toEqual([]);
+      expect(result.spf.lookupCount).toBe(1);
+      expect(result.spf.lookupError).toBe(false);
     });
 
     it("flags multiple SPF records as invalid", async () => {
-      routeResolveTxt({ "example.com": [["v=spf1 -all"], ["v=spf1 include:_spf.google.com -all"]] });
+      routeResolveTxt({ "example.com": [["v=spf1 -all"], ["v=spf1 include:_spf.google.com -all"]], "_spf.google.com": [["v=spf1 -all"]] });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.spf.issues.some((i) => i.includes("Multiple SPF"))).toBe(true);
+    });
+  });
+
+  describe("SPF recursive lookup counting (RFC 7208 §4.6.4)", () => {
+    it("counts nested include lookups, not just the top-level ones, and flags >10", async () => {
+      // Top-level record spends 1 (include:a). a spends 10 more (10 includes
+      // to leaf records that each cost 0) → 11 total, over the limit.
+      routeResolveTxt({ "example.com": [["v=spf1 include:a.example -all"]] });
+      const chain: Record<string, string> = {
+        "a.example": "v=spf1 " + Array.from({ length: 10 }, (_, i) => `include:leaf${i}.example`).join(" ") + " -all",
+      };
+      for (let i = 0; i < 10; i++) chain[`leaf${i}.example`] = "v=spf1 -all"; // no further lookups
+      const spfLookup = async (name: string) => chain[name] ?? null;
+
+      const result = await checkDns("https://example.com", { spfLookup });
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.spf.lookupCount).toBe(11);
+      expect(result.spf.lookupError).toBe(false);
+      expect(result.spf.issues.some((i) => i.includes("11 DNS lookups") && i.includes("limit of 10"))).toBe(true);
+    });
+
+    it("stays silent for a chain that totals 10 or fewer", async () => {
+      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com -all"]] });
+      const spfLookup = async (name: string) =>
+        name === "_spf.google.com" ? "v=spf1 include:_netblocks.google.com ~all" : name === "_netblocks.google.com" ? "v=spf1 ip4:1.2.3.0/24 -all" : null;
+      const result = await checkDns("https://example.com", { spfLookup });
+      if (result.status !== "checked") throw new Error("expected checked");
+      // 1 (top include) + 1 (nested include) + 0 (ip4 is free) = 2.
+      expect(result.spf.lookupCount).toBe(2);
+      expect(result.spf.issues.some((i) => i.includes("DNS lookup"))).toBe(false);
+    });
+
+    it("terminates on a circular include and never claims a definitive 'exceeds'", async () => {
+      routeResolveTxt({ "example.com": [["v=spf1 include:a.example -all"]] });
+      // a → b → a (cycle). The visited-set breaks it; the count is whatever
+      // was tallied before the loop closed, and no infinite recursion occurs.
+      const spfLookup = async (name: string) =>
+        name === "a.example" ? "v=spf1 include:b.example -all" : name === "b.example" ? "v=spf1 include:a.example -all" : null;
+      const result = await checkDns("https://example.com", { spfLookup });
+      if (result.status !== "checked") throw new Error("expected checked");
+      // 3 includes seen (top→a, a→b, b→a-but-already-visited is skipped), none over 10.
+      expect(result.spf.lookupCount).toBeLessThanOrEqual(10);
+      expect(result.spf.issues.some((i) => i.includes("over the RFC 7208 limit"))).toBe(false);
+    });
+
+    it("reports 'could not evaluate', not 'exceeds', when a chain record fails to resolve", async () => {
+      routeResolveTxt({ "example.com": [["v=spf1 include:broken.example -all"]] });
+      const spfLookup = async (name: string) => {
+        if (name === "broken.example") throw new Error("SERVFAIL");
+        return null;
+      };
+      const result = await checkDns("https://example.com", { spfLookup });
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.spf.lookupError).toBe(true);
+      expect(result.spf.issues.some((i) => i.includes("could not be fully evaluated"))).toBe(true);
+      expect(result.spf.issues.some((i) => i.includes("over the RFC 7208 limit"))).toBe(false);
     });
   });
 
@@ -185,6 +247,31 @@ describe("checkDns", () => {
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.dmarc.issues).toEqual([]);
+      expect(result.dmarc.partialEnforcement).toBe(false);
+      expect(result.dmarc.noReporting).toBe(false);
+    });
+
+    it("flags partial enforcement when an enforcing policy has pct<100", async () => {
+      routeResolveTxt({ "_dmarc.example.com": [["v=DMARC1; p=quarantine; pct=50; rua=mailto:d@example.com"]] });
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.dmarc.partialEnforcement).toBe(true);
+      expect(result.dmarc.pct).toBe(50);
+    });
+
+    it("flags no reporting when an enforcing policy has no rua=", async () => {
+      routeResolveTxt({ "_dmarc.example.com": [["v=DMARC1; p=reject"]] });
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.dmarc.noReporting).toBe(true);
+    });
+
+    it("does not flag partial-enforcement or no-reporting on a p=none policy (covered by dmarc-none)", async () => {
+      routeResolveTxt({ "_dmarc.example.com": [["v=DMARC1; p=none; pct=50"]] });
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.dmarc.partialEnforcement).toBe(false);
+      expect(result.dmarc.noReporting).toBe(false);
     });
   });
 

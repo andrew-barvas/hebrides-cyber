@@ -210,6 +210,50 @@ describe("certificate trust findings", () => {
   });
 });
 
+describe("DMARC depth findings", () => {
+  const dns = (dmarc: Record<string, unknown>): ScanResults["dns"] =>
+    ({
+      status: "checked",
+      spf: { present: true, record: "v=spf1 -all", issues: [], lookupCount: 1, lookupError: false },
+      dkim: { found: false, selector: null, record: null, selectorsTried: 0, issues: [] },
+      dmarc: { present: true, record: "v=DMARC1; p=reject", policy: "reject", pct: 100, issues: [], partialEnforcement: false, noReporting: false, ...dmarc },
+      caa: { present: true, records: [], issues: [] },
+      dnssec: { likelySigned: true, note: "x" },
+      mtaSts: { dnsRecordPresent: false, policyFetched: false, mode: null, issues: [] },
+      tlsRpt: { present: false, record: null, issues: [] },
+      ipv6: false,
+      mxCount: 1,
+    }) as unknown as ScanResults["dns"];
+
+  const dmarcFinding = (r: ScanResults, checkId: string) =>
+    summariseResults(r).findings.find((f) => f.checkId === checkId);
+
+  it("flags partial enforcement (pct<100 on an enforcing policy) as a low finding", () => {
+    const f = dmarcFinding(results({ dns: dns({ policy: "quarantine", pct: 50, partialEnforcement: true }) }), "dns.dmarc-partial-enforcement");
+    expect(f).toMatchObject({ checkId: "dns.dmarc-partial-enforcement", severity: "low" });
+    expect(f!.detail).toContain("pct=50");
+    expect(getComplianceRefs("dns.dmarc-partial-enforcement").length).toBeGreaterThan(0);
+  });
+
+  it("flags a missing rua on an enforcing policy as an info finding", () => {
+    const f = dmarcFinding(results({ dns: dns({ noReporting: true }) }), "dns.dmarc-no-reporting");
+    expect(f).toMatchObject({ checkId: "dns.dmarc-no-reporting", severity: "info" });
+    expect(f!.remediation).toContain("rua=");
+  });
+
+  it("says nothing extra about a healthy enforcing policy", () => {
+    const dmarcFindings = ids(results({ dns: dns({}) })).filter((id) => id?.startsWith("dns.dmarc"));
+    expect(dmarcFindings).toEqual([]);
+  });
+
+  it("never emits the depth findings alongside dmarc-none (p=none is its own finding)", () => {
+    const found = ids(results({ dns: dns({ policy: "none", pct: 50, partialEnforcement: false, noReporting: false }) }));
+    expect(found).toContain("dns.dmarc-none");
+    expect(found).not.toContain("dns.dmarc-partial-enforcement");
+    expect(found).not.toContain("dns.dmarc-no-reporting");
+  });
+});
+
 describe("subdomain certificate findings", () => {
   const issue = { certName: "*.example.com", hosts: ["a.example.com", "b.example.com"], validTo: "Sep 20 00:00:00 2026 GMT", issuer: "Let's Encrypt" };
 
