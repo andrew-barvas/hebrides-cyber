@@ -52,34 +52,111 @@ type CspAnalysis = {
   grade: "A" | "B" | "C" | "F";
 };
 
-const DANGEROUS_CSP_PATTERNS: Array<{ pattern: RegExp; issue: string }> = [
-  { pattern: /'unsafe-inline'/i, issue: "'unsafe-inline' allows inline scripts/styles — XSS risk" },
-  { pattern: /'unsafe-eval'/i, issue: "'unsafe-eval' allows eval() — code injection risk" },
-  { pattern: /script-src[^;]*\*/i, issue: "Wildcard (*) in script-src allows scripts from any origin" },
-  { pattern: /default-src[^;]*\*/i, issue: "Wildcard (*) in default-src negates most CSP protections" },
-  { pattern: /script-src[^;]*data:/i, issue: "'data:' URIs in script-src can be abused for XSS" },
-  // NOT `/object-src[^;']*(?!none)/` — that looked right but a negative
-  // lookahead after a `*` doesn't mean "never contains none" the way it
-  // reads; backtracking finds SOME position where "none" isn't immediately
-  // next, so it matched "object-src 'none'" too and flagged a correctly
-  // locked-down policy as a false positive. This only fires when object-src
-  // is actually declared with something other than 'none' as its first value.
-  { pattern: /object-src\s+(?!'none')/i, issue: "Missing object-src 'none' allows Flash/plugin injection" },
-];
+// Parse a policy into directive → source-expression tokens. Per CSP, a
+// repeated directive is ignored after its first occurrence, so first wins.
+// Directive names are case-insensitive; source expressions (nonces, hashes)
+// are not, so only the directive name is lower-cased.
+function parseCspDirectives(value: string): Map<string, string[]> {
+  const directives = new Map<string, string[]>();
+  for (const part of value.split(";")) {
+    const tokens = part.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+    const name = tokens[0].toLowerCase();
+    if (!directives.has(name)) directives.set(name, tokens.slice(1));
+  }
+  return directives;
+}
 
+const HASH_RE = /^'sha(?:256|384|512)-/i;
+const NONCE_RE = /^'nonce-/i;
+
+/**
+ * Grades a CSP on what actually stops XSS, not a pattern blacklist.
+ *
+ * Two tiers of weakness, each naming the exact directive/token that triggers
+ * it (evidence discipline — never "looks weak"):
+ *   - SERIOUS (the policy fails at its primary job of stopping script
+ *     injection): 'unsafe-inline' in the effective script directive NOT
+ *     mitigated by a nonce/hash/'strict-dynamic' on that same directive (a
+ *     modern policy that keeps 'unsafe-inline' only as a fallback for old
+ *     browsers is fully credited, since any supporting browser ignores it);
+ *     'unsafe-eval'; a wildcard source; a 'data:' script source; or no
+ *     script restriction at all.
+ *   - GAP (hardening the policy still owes): no base-uri (base-tag injection),
+ *     no frame-ancestors (clickjacking), no form-action (form hijacking) —
+ *     none of which fall back to default-src — or an object-src that isn't
+ *     'none'.
+ *
+ * Grade: no serious weakness → A (no gaps) / B (1–2 gaps) / C (3+ gaps); any
+ * serious weakness → F when there are 2+ of them or 4+ issues total, else C.
+ * summariseResults maps F → headers.csp-absent and C → headers.csp-weak, so
+ * B and A stay silent.
+ */
 function analyseCsp(value: string | null): CspAnalysis {
   if (!value) {
     return { present: false, value: null, issues: ["Content-Security-Policy header is missing"], grade: "F" };
   }
-  const issues: string[] = [];
-  for (const { pattern, issue } of DANGEROUS_CSP_PATTERNS) {
-    if (pattern.test(value)) issues.push(issue);
+
+  const directives = parseCspDirectives(value);
+  const serious: string[] = [];
+  const gaps: string[] = [];
+
+  // The directive that governs <script> execution: script-src, else the
+  // default-src fallback. object-src/base-uri/etc. are handled separately.
+  const scriptSrc = directives.get("script-src");
+  const effectiveName = scriptSrc ? "script-src" : directives.has("default-src") ? "default-src" : null;
+  const effective = scriptSrc ?? directives.get("default-src");
+
+  if (!effective) {
+    serious.push("No default-src or script-src directive — script sources are unrestricted");
+  } else {
+    const mitigated = effective.some((t) => NONCE_RE.test(t) || HASH_RE.test(t) || t.toLowerCase() === "'strict-dynamic'");
+    if (effective.some((t) => t.toLowerCase() === "'unsafe-inline'") && !mitigated) {
+      serious.push(
+        `'unsafe-inline' in ${effectiveName} is not mitigated by a nonce, hash or 'strict-dynamic' — inline scripts execute, defeating most XSS protection`
+      );
+    }
+    if (effective.some((t) => t.toLowerCase() === "'unsafe-eval'")) {
+      serious.push(`'unsafe-eval' in ${effectiveName} allows eval()-family string-to-code execution`);
+    }
+    const wildcard = effective.find((t) => t === "*" || t.includes("*"));
+    if (wildcard) {
+      serious.push(`Wildcard source '${wildcard}' in ${effectiveName} allows scripts from any matching origin`);
+    }
+    if (effective.some((t) => t.toLowerCase() === "data:")) {
+      serious.push(`'data:' scheme in ${effectiveName} can be abused to execute an attacker-controlled script`);
+    }
   }
-  if (!value.includes("default-src") && !value.includes("script-src")) {
-    issues.push("No default-src or script-src directive — scripts are unrestricted");
+
+  // object-src: only flagged when explicitly declared as something other than
+  // 'none' (an absent object-src is covered by default-src). Matches the old
+  // check's intent — a correctly locked-down "object-src 'none'" is silent.
+  const objectSrc = directives.get("object-src");
+  if (objectSrc && objectSrc[0]?.toLowerCase() !== "'none'") {
+    gaps.push(`object-src is '${objectSrc.join(" ") || "(empty)"}' not 'none' — allows <object>/<embed> plugin injection`);
   }
-  const grade: CspAnalysis["grade"] = issues.length === 0 ? "A" : issues.length <= 1 ? "B" : issues.length <= 3 ? "C" : "F";
-  return { present: true, value, issues, grade };
+
+  // These three have no default-src fallback, so absence is a real gap.
+  if (!directives.has("base-uri")) {
+    gaps.push("No base-uri directive — an injected <base> tag can rewrite where every relative URL (including scripts) resolves to");
+  }
+  if (!directives.has("frame-ancestors")) {
+    gaps.push("No frame-ancestors directive — the page can be framed by any site (clickjacking)");
+  }
+  if (!directives.has("form-action")) {
+    gaps.push("No form-action directive — a form can be pointed at an attacker's endpoint (credential/data hijacking)");
+  }
+
+  const s = serious.length;
+  const g = gaps.length;
+  let grade: CspAnalysis["grade"];
+  if (s === 0) {
+    grade = g === 0 ? "A" : g <= 2 ? "B" : "C";
+  } else {
+    grade = s >= 2 || s + g >= 4 ? "F" : "C";
+  }
+
+  return { present: true, value, issues: [...serious, ...gaps], grade };
 }
 
 // ---- Cookie analysis -------------------------------------------------------

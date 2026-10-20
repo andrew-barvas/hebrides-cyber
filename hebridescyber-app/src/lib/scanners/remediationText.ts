@@ -243,23 +243,48 @@ against cross-site scripting.
 Start in report-only mode so nothing breaks:
 
 \`\`\`
-Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 \`\`\`
 
 Watch the browser console and your report endpoint for violations, add the
 origins you genuinely use (CDN, analytics, payment scripts), then switch the
 header name to \`Content-Security-Policy\` to enforce.
 
-Avoid \`'unsafe-inline'\` in \`script-src\` — it removes most of the protection.
-Use a per-request nonce instead if you need inline scripts.`;
+**Make the script-src strong, not just present:**
 
-export const CSP_WEAK = `Tighten the existing policy. The issues listed above each weaken it materially:
+- Avoid \`'unsafe-inline'\` in \`script-src\` — it removes most of the protection.
+  If you need inline scripts, add a per-request **nonce** (\`script-src
+  'nonce-{random}'\`) and put that same random value on each \`<script nonce="…">\`.
+  A policy that pairs a nonce (or a \`'sha256-…'\` hash) with \`'strict-dynamic'\`
+  can keep \`'unsafe-inline'\` purely as a fallback older browsers ignore — modern
+  browsers honour the nonce and ignore the \`'unsafe-inline'\`, so it isn't a
+  weakness there.
 
-- **\`'unsafe-inline'\` in \`script-src\`** — defeats most XSS protection. Replace
-  with a per-request nonce: \`script-src 'nonce-{random}'\`.
+**Include the three directives that have no \`default-src\` fallback**, or they
+are silently absent even with a tight \`default-src\`:
+
+- \`base-uri 'self'\` — stops an injected \`<base>\` tag rewriting where every
+  relative URL (scripts included) resolves to.
+- \`frame-ancestors 'none'\` (or an allow-list) — stops clickjacking, and
+  supersedes \`X-Frame-Options\`.
+- \`form-action 'self'\` — stops a form being re-pointed at an attacker's endpoint.`;
+
+export const CSP_WEAK = `Tighten the existing policy. The issues listed above name the exact directive
+and token that triggered each — fix those specifically:
+
+- **\`'unsafe-inline'\` in \`script-src\` with no nonce/hash/\`'strict-dynamic'\`** —
+  this is the real bypass: inline scripts (including injected ones) execute.
+  Add a per-request **nonce** (\`script-src 'nonce-{random}'\` plus a matching
+  \`<script nonce="…">\`), or a \`'sha256-…'\` hash of each inline block. Pairing
+  either with \`'strict-dynamic'\` lets \`'unsafe-inline'\` stay only as a fallback
+  that modern browsers ignore — so it stops counting against you.
 - **\`'unsafe-eval'\`** — remove unless a dependency genuinely requires it.
 - **Wildcard (\`*\`) sources** — replace with explicit origins.
-- **Missing \`object-src\`/\`base-uri\`** — add \`object-src 'none'; base-uri 'self'\`.
+- **\`object-src\` not \`'none'\`** — set \`object-src 'none'\` to block plugin injection.
+- **Missing \`base-uri\` / \`frame-ancestors\` / \`form-action\`** — none of these
+  fall back to \`default-src\`, so add them explicitly:
+  \`base-uri 'self'; frame-ancestors 'none'; form-action 'self'\`. They stop
+  base-tag injection, clickjacking and form hijacking respectively.
 
 Test changes with \`Content-Security-Policy-Report-Only\` before enforcing.`;
 
