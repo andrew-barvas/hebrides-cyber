@@ -49,6 +49,31 @@ export const hardened: SiteHandler = (req, res) => {
 };
 
 /**
+ * A hardened site in every respect EXCEPT its Content-Security-Policy, which is
+ * present but trivially bypassable: 'unsafe-inline' in script-src with no
+ * nonce/hash/'strict-dynamic' to mitigate it. The modern CSP grader must grade
+ * this "C" (one serious weakness, no gaps) and report headers.csp-weak — not
+ * headers.csp-absent (the policy exists), and not stay silent (a nonce-less
+ * 'unsafe-inline' is the real bypass). Every other header is complete, so this
+ * also guards against the grader over-firing: only tls.no-https (loopback is
+ * HTTP) and headers.csp-weak may appear.
+ */
+export const cspWeak: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const headers: Headers = {
+    ...SECURE_HEADERS,
+    "content-security-policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  };
+  if (p === "/") return send(req, res, 200, { ...HTML, ...headers }, HOME);
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...headers }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  if (p === "/robots.txt") return send(req, res, 200, { ...TEXT, ...headers }, "User-agent: *\nAllow: /\n");
+  return send(req, res, 404, { ...HTML, ...headers }, "<!doctype html><title>Not found</title><p>Not found</p>");
+};
+
+/**
  * Single-page app: every unknown path returns the same 200 shell, which echoes
  * the requested URL back (router state) — the classic false-positive trap for
  * path-probing checks. Nothing is exposed.
