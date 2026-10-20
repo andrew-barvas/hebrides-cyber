@@ -397,6 +397,42 @@ Check your aggregate reports first — every legitimate sender must be passing S
 or DKIM, or their mail will start going to spam. Once clean, move to \`p=reject\`.
 You can ease in with \`pct=25\` to apply the policy to a quarter of failing mail.`;
 
+export const DMARC_PARTIAL_ENFORCEMENT = `Your DMARC policy enforces (p=quarantine or p=reject), but \`pct\` is below 100,
+so the policy is only applied to that percentage of failing messages — the
+remainder are delivered exactly as if you had no policy at all. \`pct\` is meant
+as a temporary ramp while you confirm legitimate senders pass, not a permanent
+setting.
+
+\`\`\`
+v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com
+\`\`\`
+
+1. Review your aggregate (rua) reports and confirm every legitimate sender is
+   passing SPF or DKIM.
+2. Once clean, raise \`pct\` to 100 (or simply remove the tag — it defaults to
+   100) so the policy covers all failing mail.
+
+Leaving a reduced \`pct\` in place indefinitely means spoofed mail still gets
+through a fraction of the time, which is the exact gap DMARC exists to close.`;
+
+export const DMARC_NO_REPORTING = `Your DMARC policy enforces, but has no \`rua=\` aggregate-reporting address, so
+you get no feedback at all: no visibility into who is sending mail as your
+domain, which of your own senders are failing authentication, or whether a
+spoofing campaign is underway. Add one:
+
+\`\`\`
+v=DMARC1; p=reject; rua=mailto:dmarc@example.com
+\`\`\`
+
+A plain mailbox is the simplest start; the reports arrive as periodic XML
+summaries (a reporting service makes them readable, but isn't required).
+
+This product already ingests DMARC aggregate (RUA) reports, so you can point
+\`rua=\` at us to see sender authentication results alongside your scans rather
+than parsing the raw XML yourself. Reporting is also what makes it safe to
+*keep* an enforcing policy — without it, you can't tell whether tightening the
+policy has started silently dropping legitimate mail.`;
+
 export const DKIM_NOT_DETECTED = `DKIM signs outgoing mail with a private key so receivers can verify it really
 came from you and was not altered in transit. Together with SPF it is what
 DMARC enforcement depends on.

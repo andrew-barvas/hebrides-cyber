@@ -28,14 +28,148 @@ type SpfAnalysis = {
   present: boolean;
   record: string | null;
   issues: string[];
+  /** The recursive DNS-lookup count across the whole include/redirect chain,
+   *  per RFC 7208 §4.6.4 (null when it couldn't be computed — see lookupError). */
+  lookupCount: number | null;
+  /** Set when a record in the chain couldn't be resolved, so the count is a
+   *  floor, not the real total — reported as "could not evaluate", never "exceeds". */
+  lookupError: boolean;
 };
 
+// RFC 7208 §4.6.4: the mechanisms that each cost one DNS lookup, capped at 10
+// in total across the whole (recursively-evaluated) record. `redirect=` also
+// costs a lookup and continues evaluation at the target.
+const SPF_LOOKUP_MECHANISMS = ["include", "a", "mx", "ptr", "exists"] as const;
+
+// Hard ceilings so a hostile or circular record can't hang (or balloon) a
+// scan: stop resolving once this many SPF records have been fetched. 12 > the
+// RFC's own 10-lookup limit, so a compliant record is always fully evaluated
+// and only an over-limit (or malicious) one is cut short.
+const SPF_MAX_RESOLUTIONS = 12;
+
+/** Fetches the SPF (v=spf1) TXT record for a name, or null when there's none.
+ *  Injected so the recursion is unit-testable without live DNS. */
+export type SpfLookup = (name: string) => Promise<string | null>;
+
+/** The individual lookup-costing terms in one SPF record (not counting
+ *  `all`/`redirect`): used both to tally and to find the names to recurse into. */
+function spfTokens(record: string): string[] {
+  return record.split(/\s+/).filter(Boolean);
+}
+
+/** Count the lookup-costing mechanisms in a single record (no recursion). */
+function countLocalLookups(record: string): number {
+  let count = 0;
+  for (const token of spfTokens(record)) {
+    // Strip a leading qualifier (+/-/~/?) then read the mechanism name.
+    const mech = token.replace(/^[+\-~?]/, "").split(/[:/=]/)[0].toLowerCase();
+    if ((SPF_LOOKUP_MECHANISMS as readonly string[]).includes(mech)) count += 1;
+  }
+  return count;
+}
+
+type SpfRecursionResult = { count: number; chain: string[]; error: boolean };
+
+/**
+ * The real RFC 7208 §4.6.4 lookup total: this record's own costing mechanisms
+ * plus, recursively, those inside every `include:`/`redirect=` target. Bounded
+ * by SPF_MAX_RESOLUTIONS and a visited-set so a circular or deliberately-deep
+ * chain terminates. A target that can't be resolved sets `error` (the count is
+ * then a floor), so the caller reports "could not evaluate", not "exceeds".
+ */
+async function countSpfLookups(
+  rootDomain: string,
+  rootRecord: string,
+  lookup: SpfLookup
+): Promise<SpfRecursionResult> {
+  const visited = new Set<string>([rootDomain.toLowerCase()]);
+  let resolutions = 0;
+  let error = false;
+  const chain: string[] = [];
+
+  // Each queued item is a record whose own lookups we still need to count,
+  // plus the target names it refers out to.
+  async function walk(record: string): Promise<number> {
+    let total = countLocalLookups(record);
+
+    const targets: string[] = [];
+    for (const token of spfTokens(record)) {
+      const bare = token.replace(/^[+\-~?]/, "");
+      const inc = bare.match(/^include:(.+)$/i);
+      const red = bare.match(/^redirect=(.+)$/i);
+      if (inc) targets.push(inc[1].toLowerCase());
+      else if (red) targets.push(red[1].toLowerCase());
+    }
+
+    for (const target of targets) {
+      if (visited.has(target)) continue; // cycle guard
+      visited.add(target);
+      if (resolutions >= SPF_MAX_RESOLUTIONS) {
+        // Can't be sure we've seen the whole chain — treat as unevaluable
+        // rather than claiming a definitive total.
+        error = true;
+        continue;
+      }
+      resolutions += 1;
+      let targetRecord: string | null;
+      try {
+        targetRecord = await lookup(target);
+      } catch {
+        targetRecord = null;
+        error = true;
+      }
+      if (targetRecord === null) {
+        // A missing/failed include target can't be counted — the real total is
+        // unknown. (An include: pointing at a name with no SPF record is itself
+        // a permerror, but either way we can't assert "exceeds".)
+        error = true;
+        continue;
+      }
+      chain.push(target);
+      total += await walk(targetRecord);
+    }
+    return total;
+  }
+
+  const count = await walk(rootRecord);
+  return { count, chain, error };
+}
+
+// Per-lookup bound so a slow or hanging authoritative server for one include
+// target can't stall the whole chain (the convention's "a hung third party
+// must not hang a scan"). DNS has its own retry/timeout, but a Promise.race
+// gives a hard ceiling regardless of resolver config.
+const SPF_LOOKUP_TIMEOUT_MS = 5_000;
+
+/** The default live SPF lookup: the first v=spf1 TXT record at `name`, or null.
+ *  Rejects (so the caller records a lookup error) on timeout or DNS failure. */
+async function liveSpfLookup(name: string): Promise<string | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const records = await Promise.race([
+      resolveTxt(name),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("SPF lookup timed out")), SPF_LOOKUP_TIMEOUT_MS);
+      }),
+    ]);
+    const flat = records.map((chunks) => chunks.join(""));
+    return flat.find((r) => r.trim().toLowerCase().startsWith("v=spf1")) ?? null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Pure SPF record analysis (qualifier/multiplicity checks). The recursive
+ * lookup count is attached separately by analyseSpfWithLookups so this stays
+ * synchronous and the DNS recursion is injectable.
+ */
 function analyseSpf(records: string[][]): SpfAnalysis {
   const flat = records.flat();
   const spfRecords = flat.filter((r) => r.startsWith("v=spf1"));
 
   if (spfRecords.length === 0) {
-    return { present: false, record: null, issues: ["No SPF record found — domain is vulnerable to email spoofing"] };
+    return { present: false, record: null, issues: ["No SPF record found — domain is vulnerable to email spoofing"], lookupCount: null, lookupError: false };
   }
 
   const record = spfRecords[0];
@@ -53,14 +187,41 @@ function analyseSpf(records: string[][]): SpfAnalysis {
   if (record.includes("~all")) {
     issues.push("SPF uses '~all' (softfail) — unauthorised senders are flagged but not rejected; upgrade to '-all'");
   }
-  const includeLookups = (record.match(/include:/g) ?? []).length;
-  const aLookups = (record.match(/\ba\b/g) ?? []).length;
-  const mxLookups = (record.match(/\bmx\b/g) ?? []).length;
-  if (includeLookups + aLookups + mxLookups > 10) {
-    issues.push("SPF record exceeds 10 DNS lookup limit — some receivers will fail to evaluate it (permerror)");
+
+  return { present: true, record, issues, lookupCount: null, lookupError: false };
+}
+
+/**
+ * analyseSpf plus the recursive lookup count. Replaces the old literal-token
+ * tally (which only counted include/a/mx in the top-level record and so missed
+ * the nested lookups that cause the real >10 permerror). When the computed
+ * total exceeds 10 the issue states the count and chain; when a record in the
+ * chain couldn't be resolved it says "could not evaluate" rather than asserting
+ * the limit was breached — evidence discipline.
+ */
+async function analyseSpfWithLookups(records: string[][], lookup: SpfLookup, domain: string): Promise<SpfAnalysis> {
+  const base = analyseSpf(records);
+  if (!base.present || base.record === null) return base;
+
+  const { count, chain, error } = await countSpfLookups(domain, base.record, lookup);
+  const chainNote = chain.length > 0 ? ` (chain: ${[domain, ...chain].join(" → ")})` : "";
+
+  if (error) {
+    base.lookupError = true;
+    base.lookupCount = count;
+    base.issues.push(
+      `SPF DNS-lookup count could not be fully evaluated — at least ${count} lookup${count === 1 ? "" : "s"} so far, but a record in the include/redirect chain could not be resolved${chainNote}. Confirm the chain resolves and stays within the RFC 7208 limit of 10.`
+    );
+  } else {
+    base.lookupCount = count;
+    if (count > 10) {
+      base.issues.push(
+        `SPF requires ${count} DNS lookups across its include/redirect chain — over the RFC 7208 limit of 10, so some receivers fail evaluation with a permerror and ignore the record entirely${chainNote}. Flatten or remove includes to get back under 10.`
+      );
+    }
   }
 
-  return { present: true, record, issues };
+  return base;
 }
 
 // ---- DKIM ------------------------------------------------------------------
@@ -168,7 +329,17 @@ type DmarcAnalysis = {
   policy: string | null;
   pct: number | null;
   issues: string[];
+  /** An enforcing policy (quarantine/reject) weakened by pct<100 — so only a
+   *  fraction of failing mail is actually acted on. */
+  partialEnforcement: boolean;
+  /** An enforcing policy with no rua= aggregate-report address configured. */
+  noReporting: boolean;
 };
+
+/** An enforcing DMARC policy: quarantine or reject (not none/absent). */
+function isEnforcingPolicy(policy: string | null): boolean {
+  return policy === "quarantine" || policy === "reject";
+}
 
 function analyseDmarc(records: string[][]): DmarcAnalysis {
   const flat = records.flat();
@@ -181,6 +352,8 @@ function analyseDmarc(records: string[][]): DmarcAnalysis {
       policy: null,
       pct: null,
       issues: ["No DMARC record found — no policy for email authentication failures"],
+      partialEnforcement: false,
+      noReporting: false,
     };
   }
 
@@ -200,7 +373,14 @@ function analyseDmarc(records: string[][]): DmarcAnalysis {
     issues.push("No DMARC reporting address (rua) — authentication failures won't be reported");
   }
 
-  return { present: true, record: dmarcRecord, policy, pct, issues };
+  // Both are only meaningful on an enforcing policy: a p=none record is
+  // already covered by dns.dmarc-none, so reporting "partial enforcement" or
+  // "no reporting" on top of it would be noise. pct only weakens enforcement
+  // when the policy is actually enforcing something.
+  const partialEnforcement = isEnforcingPolicy(policy) && pct !== null && pct < 100;
+  const noReporting = isEnforcingPolicy(policy) && !dmarcRecord.includes("rua=");
+
+  return { present: true, record: dmarcRecord, policy, pct, issues, partialEnforcement, noReporting };
 }
 
 // ---- CAA -------------------------------------------------------------------
@@ -374,7 +554,13 @@ async function resolveCaaForHost(hostname: string, domain: string): Promise<CaaR
   return resolveCaa(domain);
 }
 
-export async function checkDns(targetUrl: string): Promise<DnsResult> {
+export type CheckDnsOptions = {
+  /** Override the SPF include/redirect resolver — tests inject a fake chain
+   *  so the recursive lookup counting runs without live DNS. */
+  spfLookup?: SpfLookup;
+};
+
+export async function checkDns(targetUrl: string, options: CheckDnsOptions = {}): Promise<DnsResult> {
   const hostname = new URL(targetUrl).hostname;
   // Email authentication (SPF, DMARC, DKIM, MX → MTA-STS/TLS-RPT) and the
   // zone's DNSSEC status belong to the registered domain, not to whichever
@@ -397,7 +583,11 @@ export async function checkDns(targetUrl: string): Promise<DnsResult> {
       checkDkim(domain),
     ]);
 
-    const spf = analyseSpf(txtRecords.status === "fulfilled" ? txtRecords.value : []);
+    const spf = await analyseSpfWithLookups(
+      txtRecords.status === "fulfilled" ? txtRecords.value : [],
+      options.spfLookup ?? liveSpfLookup,
+      domain
+    );
     const dkim: DkimAnalysis =
       dkimResult.status === "fulfilled"
         ? dkimResult.value
