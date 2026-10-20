@@ -113,6 +113,33 @@ describe("buildHeaderAnalysis", () => {
       expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(true);
     });
 
+    it("honours the first occurrence of a repeated directive and ignores empty segments", () => {
+      // Trailing/doubled semicolons produce empty segments (skipped); the first
+      // script-src wins per CSP, so the strict one is used and no serious
+      // weakness is reported even though a later, laxer one is present.
+      const result = buildHeaderAnalysis(
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self';; script-src 'self'; script-src 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
+      );
+      expect(result.csp.issues.some((i) => i.includes("'unsafe-inline'"))).toBe(false);
+      expect(result.csp.grade).toBe("A");
+    });
+
+    it("reports an explicitly-empty object-src as a gap", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({ "content-security-policy": "default-src 'self'; script-src 'self'; object-src; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" })
+      );
+      expect(result.csp.issues.some((i) => i.includes("object-src"))).toBe(true);
+    });
+
+    it("treats a policy with neither script-src nor default-src as unrestricted scripts", () => {
+      // Only framing/object directives, nothing governing script execution.
+      const result = buildHeaderAnalysis(makeResponse({ "content-security-policy": "object-src 'none'; frame-ancestors 'none'" }));
+      expect(result.csp.issues.some((i) => i.includes("script sources are unrestricted"))).toBe(true);
+    });
+
     it("grades F for a policy with several serious weaknesses at once", () => {
       const result = buildHeaderAnalysis(
         makeResponse({ "content-security-policy": "default-src *; script-src 'unsafe-inline' 'unsafe-eval' data:" })

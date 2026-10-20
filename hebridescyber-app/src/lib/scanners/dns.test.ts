@@ -143,6 +143,30 @@ describe("checkDns", () => {
       expect(result.spf.issues.some((i) => i.includes("~all"))).toBe(true);
     });
 
+    it("flags '?all' (neutral) as not rejecting unauthorised senders", async () => {
+      routeResolveTxt({ "example.com": [["v=spf1 include:_spf.google.com ?all"]], "_spf.google.com": [["v=spf1 -all"]] });
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.spf.issues.some((i) => i.includes("?all"))).toBe(true);
+    });
+
+    it("stops at the resolution cap on a very deep chain and reports 'could not evaluate'", async () => {
+      routeResolveTxt({ "example.com": [["v=spf1 include:a0.example -all"]] });
+      // A chain a0 → a1 → … → a30, each a single include: well past the
+      // SPF_MAX_RESOLUTIONS (12) cap, so the walk stops and marks it unevaluable
+      // rather than claiming a definitive total.
+      const spfLookup = async (name: string) => {
+        const m = name.match(/^a(\d+)\.example$/);
+        if (!m) return null;
+        const n = Number(m[1]);
+        return n < 30 ? `v=spf1 include:a${n + 1}.example -all` : "v=spf1 -all";
+      };
+      const result = await checkDns("https://example.com", { spfLookup });
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.spf.lookupError).toBe(true);
+      expect(result.spf.issues.some((i) => i.includes("could not be fully evaluated"))).toBe(true);
+    });
+
     it("does not flag a strict '-all' policy whose include chain resolves within the limit", async () => {
       // The include target must resolve so the recursive lookup counter sees a
       // complete, under-limit chain — otherwise it would (correctly) note it
@@ -305,6 +329,14 @@ describe("checkDns", () => {
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.dkim.issues.some((i) => i.includes("testing mode"))).toBe(true);
     });
+
+    it("flags a 1024-bit (short) RSA key", async () => {
+      // ~160-byte DER (< the 200-byte boundary) → read as 1024-bit or smaller.
+      routeResolveTxt({ "google._domainkey.example.com": [["v=DKIM1; k=rsa; p=" + "A".repeat(216)]] });
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.dkim.issues.some((i) => i.includes("1024-bit or smaller"))).toBe(true);
+    });
   });
 
   describe("CAA", () => {
@@ -321,6 +353,14 @@ describe("checkDns", () => {
       expect(result.caa.present).toBe(true);
       expect(result.caa.issues).toEqual([]);
     });
+
+    it("flags a CAA record set that has neither an issue nor an issuewild entry", async () => {
+      resolveCaaMock.mockResolvedValue([{ critical: 0, iodef: "mailto:sec@example.com" }]);
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.caa.present).toBe(true);
+      expect(result.caa.issues.some((i) => i.includes("no 'issue' or 'issuewild'"))).toBe(true);
+    });
   });
 
   describe("DNSSEC", () => {
@@ -331,11 +371,12 @@ describe("checkDns", () => {
       expect(result.dnssec.likelySigned).toBe(true);
     });
 
-    it("reports not signed (but inconclusive, not asserted) when the DS lookup fails", async () => {
-      resolveMock.mockRejectedValue(new Error("ENODATA"));
+    it("reports not signed when no DS record resolves", async () => {
+      resolveMock.mockResolvedValue([]);
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.dnssec.likelySigned).toBe(false);
+      expect(result.dnssec.note).toContain("No DS record");
     });
   });
 

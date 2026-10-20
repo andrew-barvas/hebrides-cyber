@@ -38,6 +38,8 @@ type Scenario = {
   domXss?: "found" | "not-found" | Error;
   /** Cookies the browser context reports after load (cookieConsent.ts input). */
   cookies?: Array<{ name: string; domain: string }> | Error;
+  /** console messages emitted while the page loads: [type, text] pairs. */
+  consoleMessages?: Array<[string, string]>;
 };
 
 function fakeBrowser(scenario: Scenario) {
@@ -50,6 +52,7 @@ function fakeBrowser(scenario: Scenario) {
     goto: vi.fn(async () => {
       if (scenario.gotoError) throw scenario.gotoError;
       for (const r of scenario.duringLoad ?? []) emit("request", r);
+      for (const [type, text] of scenario.consoleMessages ?? []) emit("console", { type: () => type, text: () => text });
       const status = scenario.status ?? 200;
       return { ok: () => status >= 200 && status < 300, status: () => status };
     }),
@@ -145,6 +148,23 @@ describe("runtime script capture", () => {
     if (result.status !== "checked") throw new Error(result.note);
     expect(result.scripts?.requested).toHaveLength(MAX_RUNTIME_SCRIPTS);
     expect(result.scripts?.elements).toHaveLength(MAX_RUNTIME_SCRIPTS);
+  });
+
+  it("records browser console errors, ignoring non-error console output", async () => {
+    fakeBrowser({
+      consoleMessages: [
+        ["error", "Refused to load the script 'https://evil.example/x.js'"],
+        ["warning", "deprecation notice"],
+        ["log", "hello"],
+        ["error", "Uncaught TypeError: x is not a function"],
+      ],
+    });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.consoleErrors).toEqual([
+      "Refused to load the script 'https://evil.example/x.js'",
+      "Uncaught TypeError: x is not a function",
+    ]);
   });
 
   it("keeps the existing page-health signals: status, redirect and mixed content", async () => {

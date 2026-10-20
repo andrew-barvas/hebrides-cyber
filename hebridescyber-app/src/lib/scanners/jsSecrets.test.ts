@@ -184,6 +184,16 @@ describe("buildJsSecretsFindings", () => {
     expect(findings[3].severity).toBe("low");
   });
 
+  it("falls back to the raw map url when it isn't a parseable URL", () => {
+    const findings = buildJsSecretsFindings({
+      status: "checked",
+      secrets: [],
+      endpoints: [],
+      sourcemaps: [{ url: "not a url", scriptUrl: "not a url either", hasSourcesContent: false, sourceCount: 1 }],
+    });
+    expect(findings.map((f) => f.checkId)).toEqual(["js-secrets.exposed-sourcemap:not a url"]);
+  });
+
   it("returns nothing for a non-checked result", () => {
     expect(buildJsSecretsFindings({ status: "not_applicable" })).toEqual([]);
     expect(buildJsSecretsFindings(undefined)).toEqual([]);
