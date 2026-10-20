@@ -71,6 +71,10 @@ const ISO_A8: ComplianceRef = { framework: "iso-27001", control: "A.8 – Asset 
 const ISO_A9: ComplianceRef = { framework: "iso-27001", control: "A.9 – Access Control" };
 const ISO_A12: ComplianceRef = { framework: "iso-27001", control: "A.12 – Operations Security" };
 const ISO_A13: ComplianceRef = { framework: "iso-27001", control: "A.13 – Communications Security" };
+// A.18 covers compliance with legal/regulatory requirements — the right home
+// for a privacy-law finding (PECR/GDPR cookie consent) within the frameworks
+// this table already models.
+const ISO_A18: ComplianceRef = { framework: "iso-27001", control: "A.18 – Compliance" };
 
 const PCI_REQ2: ComplianceRef = { framework: "pci-dss", control: "Requirement 2 – Apply Secure Configurations to All System Components" };
 const PCI_REQ4: ComplianceRef = { framework: "pci-dss", control: "Requirement 4 – Protect Cardholder Data with Strong Cryptography During Transmission" };
@@ -301,6 +305,11 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // authorisation, 11.6.1's change detection, and CIS 16.4's inventory of
   // third-party software components.
   "script-inventory.unreviewed": [PCI_6_4_3, PCI_11_6_1, OWASP_A08, CIS_16],
+  // Cookie consent (cookieConsent.ts): a privacy-law (PECR/GDPR) obligation.
+  // ISO A.18 (compliance with legal requirements) is the honest fit within the
+  // frameworks this table models; CIS 3 covers the data-protection angle.
+  "cookie-consent.tracker-before-consent": [ISO_A18, CIS_3],
+  "cookie-consent.no-cmp-detected": [ISO_A18],
 
   // --- Third-party threat intel ---
   "safe-browsing.flagged": [CE_MALWARE, CIS_9, CIS_7, NIS2_ART21, DORA_ART9],

@@ -254,6 +254,46 @@ describe("DMARC depth findings", () => {
   });
 });
 
+describe("cookie-consent findings", () => {
+  const cc = (overrides: Record<string, unknown>): ScanResults["cookieConsent"] =>
+    ({ status: "checked", trackers: [], cmpDetected: false, ...overrides }) as unknown as ScanResults["cookieConsent"];
+
+  it("reports a medium per tracker plus one info no-CMP finding", () => {
+    const found = ids(
+      results({
+        cookieConsent: cc({
+          trackers: [
+            { kind: "cookie", name: "_ga", detail: 'Google Analytics cookie "_ga"' },
+            { kind: "request", host: "connect.facebook.net", detail: "Meta Pixel loaded from connect.facebook.net" },
+          ],
+        }),
+      })
+    );
+    expect(found).toContain("cookie-consent.tracker-before-consent:_ga");
+    expect(found).toContain("cookie-consent.tracker-before-consent:connect.facebook.net");
+    expect(found).toContain("cookie-consent.no-cmp-detected");
+  });
+
+  it("sets the tracker finding severity to medium and the no-cmp to info", () => {
+    const findings = summariseResults(results({ cookieConsent: cc({ trackers: [{ kind: "cookie", name: "_ga", detail: "x" }] }) })).findings;
+    const tracker = findings.find((f) => f.checkId === "cookie-consent.tracker-before-consent:_ga");
+    const noCmp = findings.find((f) => f.checkId === "cookie-consent.no-cmp-detected");
+    expect(tracker?.severity).toBe("medium");
+    expect(noCmp?.severity).toBe("info");
+    expect(getComplianceRefs("cookie-consent.tracker-before-consent:_ga").length).toBeGreaterThan(0);
+  });
+
+  it("says nothing when a CMP is present (trackers empty by construction)", () => {
+    expect(ids(results({ cookieConsent: cc({ trackers: [], cmpDetected: true, cmpVendor: "Cookiebot" }) }))).toEqual(["meta.no-issues"]);
+  });
+
+  it("says nothing for not_applicable / partial / error", () => {
+    expect(ids(results({ cookieConsent: { status: "not_applicable", note: "x" } as ScanResults["cookieConsent"] }))).toEqual(["meta.no-issues"]);
+    expect(ids(results({ cookieConsent: { status: "partial", note: "x" } as ScanResults["cookieConsent"] }))).toEqual(["meta.no-issues"]);
+    expect(ids(results({ cookieConsent: { status: "error", note: "x" } as ScanResults["cookieConsent"] }))).toEqual(["meta.no-issues"]);
+  });
+});
+
 describe("subdomain certificate findings", () => {
   const issue = { certName: "*.example.com", hosts: ["a.example.com", "b.example.com"], validTo: "Sep 20 00:00:00 2026 GMT", issuer: "Let's Encrypt" };
 
