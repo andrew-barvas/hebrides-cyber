@@ -3410,3 +3410,41 @@ appends \`.map\` to a script URL or reads its \`sourceMappingURL\` comment.
 This is an information-disclosure finding, not a direct compromise — but if the map inlined
 your source, treat any secret it revealed as exposed and rotate it (those are reported
 separately above).`;
+
+// ---------------------------------------------------------------------------
+// Cookie consent / tracker-before-consent (src/lib/scanners/cookieConsent.ts)
+// — UK PECR + GDPR. A non-essential (analytics/marketing) cookie or tracker
+// firing before consent, with no consent banner on the page at all.
+// ---------------------------------------------------------------------------
+
+export const COOKIE_CONSENT_TRACKER = `Under UK PECR (regulation 6) and GDPR, you must get the visitor's consent
+**before** setting non-essential cookies or firing analytics/marketing
+trackers. This page set one on arrival with no cookie banner present, so a
+visitor has no way to decline it first.
+
+1. **Add a consent-management platform (CMP)** that shows a banner and blocks
+   non-essential cookies until the visitor opts in — Cookiebot, OneTrust,
+   Osano, CookieYes, Civic Cookie Control, Complianz (WordPress), or similar.
+   A compliant banner offers "Reject" as prominently as "Accept" and does not
+   pre-tick consent.
+2. **Gate the trackers behind consent, not just the banner.** A banner that
+   appears while the tracker already fired changes nothing. With Google tags,
+   use **Consent Mode v2** and set \`analytics_storage\`/\`ad_storage\` to
+   \`denied\` by default, granting them only after opt-in. With a tag manager,
+   fire the tags on a consent-granted trigger.
+3. **Essential cookies are exempt** — a session/login cookie, a cart, or the
+   consent choice itself needs no consent. Analytics and advertising
+   (Google Analytics, Meta Pixel, TikTok, Hotjar, …) are never essential.
+4. Re-scan after wiring consent in: on a correctly configured site the tracker
+   should no longer fire on the initial, no-interaction load.`;
+
+export const COOKIE_CONSENT_NO_CMP = `This page loads analytics or marketing trackers but shows no sign of a
+consent-management platform (no OneTrust / Cookiebot / Osano / CookieYes /
+Civic / Complianz / IAB TCF marker in its scripts or markup).
+
+A compliant UK/EU site presents a cookie banner that blocks non-essential
+cookies until the visitor opts in. Add one (see the tracker finding's
+remediation for the integration steps) — this informational finding simply
+flags that none was detected while trackers are present. If you do use a CMP
+that this scan didn't recognise, confirm it actually blocks the trackers
+before they fire, not just displays a banner alongside them.`;

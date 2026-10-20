@@ -18,6 +18,11 @@ export type RuntimeScripts = {
   elements: Array<{ src: string; integrity: boolean }>;
 };
 
+/** A cookie present in the browser after the initial page load, with no
+ *  consent interaction. Only the fields the consent check needs — never a
+ *  cookie value (which can carry a session token). */
+export type CapturedCookie = { name: string; domain: string };
+
 export type PlaywrightResult =
   | {
       status: "checked";
@@ -35,6 +40,11 @@ export type PlaywrightResult =
        *  probe failure shouldn't turn an otherwise-successful page load into
        *  an "error" result. */
       domXss?: DomXssVerdict;
+      /** Cookies set after the initial load with no consent interaction, for
+       *  cookieConsent.ts (PECR/GDPR). Names + domains only, never values.
+       *  Optional: scans stored before this existed lack it, and a capture
+       *  failure must not fail the page load. */
+      cookies?: CapturedCookie[];
     }
   | { status: "error"; loadedOk: false; note: string };
 
@@ -93,6 +103,15 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
     const finalUrl = page.url();
     const redirected = finalUrl !== targetUrl;
 
+    // Cookies present after the initial load, with no consent interaction —
+    // the raw material for the PECR/GDPR cookie-consent check. Names + domains
+    // only (never values). Best-effort: a failure here must not fail the load.
+    const cookies = await page
+      .context()
+      .cookies()
+      .then((list) => list.map((c) => ({ name: c.name, domain: c.domain })))
+      .catch(() => [] as CapturedCookie[]);
+
     // The DOM read is best-effort: without it the inventory still has every
     // requested URL, just not which ones carry an integrity hash.
     const elements = await page
@@ -130,6 +149,7 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
       domXss,
       redirected,
       scripts: { requested: [...scriptUrls], elements: elements.slice(0, MAX_RUNTIME_SCRIPTS) },
+      cookies,
     };
   } catch (err) {
     return { status: "error", loadedOk: false, note: `Headless page load failed: ${(err as Error).message}` };
