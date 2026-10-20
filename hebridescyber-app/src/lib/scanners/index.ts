@@ -29,6 +29,7 @@ import { checkJsSecrets, buildJsSecretsFindings, type JsSecretsResult } from "./
 import { checkGraphql, buildGraphqlFindings, type GraphqlResult } from "./graphql";
 import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
+import { runCookieConsent, type CookieConsentResult } from "./cookieConsent";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -42,6 +43,7 @@ export type {
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
   EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult, CrawlResult, BackendExposureResult,
+  CookieConsentResult,
 };
 
 export type ScanResults = {
@@ -71,6 +73,7 @@ export type ScanResults = {
   endOfLife?: EndOfLifeResult;
   subdomainCerts?: SubdomainCertsResult;
   scriptInventory?: ScriptInventoryResult;
+  cookieConsent?: CookieConsentResult;
   crawl?: CrawlResult;
   backendExposure?: BackendExposureResult;
   jsSecrets?: JsSecretsResult;
@@ -298,6 +301,12 @@ export async function runAllChecks(
   const scriptInventoryPending = checkScriptInventory(targetUrl, playwright, crawl).catch(
     (err: Error): ScriptInventoryResult => ({ status: "error", note: err.message })
   );
+  // Cookie-consent / tracker-before-consent (PECR/GDPR): consumes the same
+  // Playwright pass (cookies + script hosts) plus one HTML fetch for CMP
+  // markers. Runs after playwright resolves, like scriptInventory.
+  const cookieConsentPending = runCookieConsent(targetUrl, playwright).catch(
+    (err: Error): CookieConsentResult => ({ status: "error", note: err.message })
+  );
 
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
@@ -337,6 +346,7 @@ export async function runAllChecks(
 
   const endOfLife = await endOfLifePending;
   const scriptInventory = await scriptInventoryPending;
+  const cookieConsent = await cookieConsentPending;
 
   return {
     target_url: targetUrl,
@@ -364,6 +374,7 @@ export async function runAllChecks(
     endOfLife,
     subdomainCerts,
     scriptInventory,
+    cookieConsent,
     crawl,
     backendExposure,
     jsSecrets,
@@ -1238,6 +1249,35 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         title: `Unreviewed third-party script source: ${shown}`,
         detail: `This page runs JavaScript from ${entry.origin}, ${foundByPhrase(entry.foundBy)}. Scripts: ${entry.sampleUrls.join(", ")}${more}. ${integrityPhrase(entry.integrity)} ${entryContext} It stays listed as unreviewed until you authorise it: use "Mark as accepted / authorised" on this finding and record why the script is needed. Every scan compares this list with the previous one, so a script source that appears or disappears shows as New or Fixed.`,
         remediation: FIX.scriptInventoryRemediation(entry.origin, onPayment),
+      });
+    }
+  }
+
+  // --- Cookie consent / tracker-before-consent (PECR/GDPR) --------------------
+  // Known analytics/marketing trackers (by cookie name or request host) fired
+  // on the no-interaction load with no consent-management platform on the
+  // page. A page with a CMP is silent (we can't prove pre-consent firing
+  // without driving the banner); not_applicable/partial/error produce nothing.
+  if (results.cookieConsent?.status === "checked") {
+    for (const tracker of results.cookieConsent.trackers) {
+      const key = tracker.kind === "cookie" ? tracker.name : tracker.host;
+      findings.push({
+        checkId: `cookie-consent.tracker-before-consent:${key}`,
+        severity: "medium",
+        title: `Tracker set before consent: ${tracker.detail}`,
+        detail: `${tracker.detail} was ${tracker.kind === "cookie" ? "set" : "requested"} on the initial page load, before any consent was given, and no cookie-consent banner (CMP) was detected on the page. Under UK PECR and GDPR, analytics and marketing cookies/trackers need the visitor's consent *before* they fire — a non-essential cookie set on arrival with no banner at all is the most common compliance gap for small-business sites.`,
+        remediation: FIX.COOKIE_CONSENT_TRACKER,
+      });
+    }
+    if (results.cookieConsent.trackers.length > 0) {
+      // Only emitted alongside real trackers: "no CMP" is only a problem when
+      // there's something that needs consent in the first place.
+      findings.push({
+        checkId: "cookie-consent.no-cmp-detected",
+        severity: "info",
+        title: "No cookie-consent banner detected despite trackers present",
+        detail: `This page loads analytics or marketing trackers but no consent-management platform (OneTrust, Cookiebot, Osano, CookieYes, and similar) was detected in its scripts or markup. A compliant site presents a banner that blocks non-essential cookies until the visitor opts in.`,
+        remediation: FIX.COOKIE_CONSENT_NO_CMP,
       });
     }
   }
