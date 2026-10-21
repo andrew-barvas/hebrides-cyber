@@ -5,6 +5,8 @@ import {
   editVercelJson,
   editNetlifyToml,
   editNextConfig,
+  editHeadersFile,
+  CONFIG_TARGETS,
   REMEDIABLE_HEADERS,
 } from "./configFixes";
 
@@ -141,5 +143,47 @@ describe("editNextConfig", () => {
   it("skips a shape it can't locate safely", () => {
     const raw = "export default withSentry(makeConfig(process.env));\n";
     expect(editNextConfig(raw, missingRemediableHeaders(ALL_MISSING)).status).toBe("skip");
+  });
+});
+
+describe("editHeadersFile (Cloudflare Pages / Netlify static _headers)", () => {
+  it("appends a /* block for every desired header on an empty file, with no leading blank line", () => {
+    const res = editHeadersFile("", missingRemediableHeaders(ALL_MISSING));
+    expect(res.status).toBe("edited");
+    if (res.status !== "edited") return;
+    expect(res.updated.startsWith("# Added by Hebrides Cyber")).toBe(true);
+    expect(res.updated).toContain("/*\n  Strict-Transport-Security: max-age=31536000; includeSubDomains");
+    expect(res.updated).toContain("  X-Frame-Options: SAMEORIGIN");
+    expect(res.applied).toHaveLength(4);
+  });
+
+  it("keeps existing content and only adds headers not already named as header lines", () => {
+    const raw = "/*\n  X-Frame-Options: DENY\n";
+    const res = editHeadersFile(raw, missingRemediableHeaders(ALL_MISSING));
+    expect(res.status).toBe("edited");
+    if (res.status !== "edited") return;
+    expect(res.updated.startsWith("/*\n  X-Frame-Options: DENY")).toBe(true); // original preserved at top
+    expect(res.applied).not.toContain("X-Frame-Options"); // already named
+    expect(res.applied).toContain("Strict-Transport-Security");
+  });
+
+  it("does not mistake a path pattern for a header of the same name", () => {
+    // A rule FOR the path /referrer-policy/ must not count as the Referrer-Policy header.
+    const raw = "/referrer-policy/*\n  X-Frame-Options: DENY\n";
+    const res = editHeadersFile(raw, missingRemediableHeaders(ALL_MISSING));
+    expect(res.status).toBe("edited");
+    if (res.status !== "edited") return;
+    expect(res.applied).toContain("Referrer-Policy");
+  });
+
+  it("is a noop when every desired header is already present as a header line", () => {
+    const raw = ["/*", ...REMEDIABLE_HEADERS.map((h) => `  ${h.label}: x`)].join("\n") + "\n";
+    expect(editHeadersFile(raw, missingRemediableHeaders(ALL_MISSING)).status).toBe("noop");
+  });
+
+  it("is registered as a config target at the repo root and under public/", () => {
+    const paths = CONFIG_TARGETS.map((t) => t.path);
+    expect(paths).toContain("_headers");
+    expect(paths).toContain("public/_headers");
   });
 });

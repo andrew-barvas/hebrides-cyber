@@ -205,6 +205,33 @@ export function editNextConfig(raw: string, desired: DesiredHeader[]): ConfigFix
   return { status: "edited", updated, applied: desired.map((h) => h.label) };
 }
 
+// ---------------------------------------------------------------------------
+// Static `_headers` file — Cloudflare Pages and Netlify both read a plain-text
+// `_headers` file: a path pattern on its own line, then indented
+// `Header-Name: value` lines beneath it until the next pattern. We append a
+// new `/*` block for the headers not already named anywhere in the file (same
+// conservative duplicate-guard as the Netlify TOML editor) — appending is
+// always valid and both platforms merge it with any existing block.
+// ---------------------------------------------------------------------------
+export function editHeadersFile(raw: string, desired: DesiredHeader[]): ConfigFixResult {
+  const lower = raw.toLowerCase();
+  // A header is "already named" only as a header line (`name:`), not anywhere —
+  // a path like `/strict-transport-security/` mustn't count as the header.
+  const toAdd = desired.filter((h) => !new RegExp(`(^|\\n)\\s*${h.name}\\s*:`, "i").test(lower));
+  if (toAdd.length === 0) return { status: "noop" };
+  const nl = detectNewline(raw);
+  const block = [
+    "# Added by Hebrides Cyber — security headers missing from the live site.",
+    "/*",
+    ...toAdd.map((h) => `  ${h.label}: ${h.value}`),
+  ].join(nl);
+  // Trim one trailing newline off the original so the block starts on its own
+  // line; prefix a blank separator line only when there's existing content.
+  const trimmed = raw.endsWith(nl) ? raw.slice(0, -nl.length) : raw;
+  const prefix = trimmed.length > 0 ? trimmed + nl + nl : "";
+  return { status: "edited", updated: prefix + block + nl, applied: toAdd.map((h) => h.label) };
+}
+
 /** A repo-relative config path and the editor that understands it, in the
  *  priority order the PR route tries them: safe structured data first, the
  *  Next.js code config last. */
@@ -212,6 +239,10 @@ export const CONFIG_TARGETS: Array<{ path: string; edit: (raw: string, desired: 
   { path: "staticwebapp.config.json", edit: editStaticWebAppConfig },
   { path: "vercel.json", edit: editVercelJson },
   { path: "netlify.toml", edit: editNetlifyToml },
+  // Cloudflare Pages / Netlify static `_headers` — common for static-site repos
+  // with no framework config. In both a repo-root and a `public/` build dir.
+  { path: "_headers", edit: editHeadersFile },
+  { path: "public/_headers", edit: editHeadersFile },
   { path: "next.config.mjs", edit: editNextConfig },
   { path: "next.config.js", edit: editNextConfig },
   { path: "next.config.ts", edit: editNextConfig },

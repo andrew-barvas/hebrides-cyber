@@ -226,6 +226,29 @@ const CHAIN_RULES: ChainRule[] = [
       { role: "impact", label: "Usable credential set" },
     ],
   },
+  // ---- v2.1 additions: chains across the recent scanner-depth checks ----
+  {
+    title: "An exposed source map combined with a client-side secret makes that secret trivial to locate and use",
+    narrative:
+      "A publicly readable `.map` source map reconstructs the original, un-minified source — variable names, comments and structure the minified bundle hid. When the same site also ships a high-confidence secret in its client JavaScript, the source map turns 'a key is in here somewhere' into a labelled map of exactly where it is and how it's used, collapsing the effort to weaponise it.",
+    severity: "high",
+    steps: [
+      { role: "entry", label: "Exposed source map", requires: "js-secrets.exposed-sourcemap" },
+      { role: "pivot", label: "Secret in client JS", requires: "js-secrets.exposed-key" },
+      { role: "impact", label: "Readily usable credential" },
+    ],
+  },
+  {
+    title: "Mixed content on an HTTPS page combined with an insecure session cookie exposes that cookie to interception",
+    narrative:
+      "A subresource loaded over plain HTTP on an otherwise-HTTPS page is a request an on-path attacker can read or tamper with. A session cookie missing the Secure flag is sent on exactly that kind of plaintext request, so the mixed-content load becomes a concrete interception point for the authenticated session rather than a theoretical weakness.",
+    severity: "high",
+    steps: [
+      { role: "entry", label: "Mixed (HTTP) content on an HTTPS page", requires: "playwright.mixed-content" },
+      { role: "pivot", label: "Insecure session cookie", requires: "headers.cookie-flags" },
+      { role: "impact", label: "Session cookie interception" },
+    ],
+  },
 ];
 
 export function computeCriticalPaths(findings: Finding[]): CriticalPath[] {
