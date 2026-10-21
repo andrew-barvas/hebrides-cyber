@@ -16,6 +16,7 @@
 // - Escaping: every value is HTML-escaped including quotes, and a logo is only
 //   used if it is an https URL (the report is rendered by a headless browser).
 import type { Finding } from "./scanners";
+import { computeCriticalPaths, computeChokepoints } from "./attackPathAnalysis";
 import { COMPLIANCE_REPORT_DISCLAIMER, generateComplianceReport, withComplianceRefs } from "./complianceReport";
 import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
@@ -135,6 +136,9 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   const top = ordered.filter((f) => f.severity !== "info").slice(0, TOP_N);
   const compliance = generateComplianceReport(input.targetUrl, withComplianceRefs(open));
   const incomplete = incompleteChecks(input.results);
+  const attackPaths = computeCriticalPaths(open);
+  const chokepoints = computeChokepoints(attackPaths).filter((c) => c.pathCount > 1);
+  const titleByCheckId = new Map(open.filter((f) => f.checkId).map((f) => [f.checkId as string, f.title]));
 
   const disclaimer = branding ? COMPLIANCE_REPORT_DISCLAIMER.replace("Hebrides Cyber's external scan", "the external scan") : COMPLIANCE_REPORT_DISCLAIMER;
 
@@ -173,6 +177,27 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
        <ul>${accepted.map((f) => `<li>${e(f.title)} <span class="muted">— ${e(TRIAGE_STATE_LABELS[input.triage.get(host, f.checkId)!.state])}</span></li>`).join("")}</ul>`
     : "";
 
+  const chokepointsHtml = chokepoints.length
+    ? `<div class="chokepoints"><b>Fix these first — each breaks more than one chain:</b>
+       <ul>${chokepoints.map((c) => `<li>${e(titleByCheckId.get(c.checkId) ?? c.checkId)} <span class="muted">(breaks ${c.pathCount} chains)</span></li>`).join("")}</ul></div>`
+    : "";
+  const attackPathsHtml = attackPaths.length
+    ? `<h2>Attack chains</h2>
+       <p class="muted">Combinations of this scan's findings that are worse together than any is alone — a different read of what has already been found, not a new scan.</p>
+       ${chokepointsHtml}
+       ${attackPaths
+         .map(
+           (p) => `<div class="chain">
+             <div>${badge(p.severity)} <b>${e(p.title)}</b></div>
+             <div class="chainsteps">${p.steps
+               .map((s, i) => `${i > 0 ? '<span class="arrow">&rarr;</span>' : ""}<span class="node node-${s.role}">${e(s.label)}</span>`)
+               .join("")}</div>
+             <p class="muted">${e(plainText(p.narrative, DETAIL_CHARS))}</p>
+           </div>`
+         )
+         .join("")}`
+    : "";
+
   const incompleteHtml = incomplete.length
     ? `<h2>Checks that did not finish</h2>
        <p class="muted">No findings from these checks does not mean no problems: ${incomplete.length === 1 ? "it was" : "they were"} not able to look in full.</p>
@@ -202,6 +227,11 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   .pb p { margin: 3px 0; } .fix { background: #f1f5f8; padding: 6px 8px; border-radius: 4px; }
   table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; vertical-align: top; font-size: 11px; }
   th { background: #f1f5f8; } tr { page-break-inside: avoid; }
+  .chain { margin: 10px 0; page-break-inside: avoid; } .chain > div:first-child { margin-bottom: 4px; }
+  .chainsteps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0; }
+  .node { border: 1px solid #c3ccd6; border-radius: 6px; padding: 3px 8px; font-size: 10px; background: #f8fafc; }
+  .node-entry { border-color: #0b7a5b; } .node-pivot { border-color: #b45309; } .node-impact { border-color: #b91c1c; }
+  .arrow { color: #64727f; font-size: 12px; } .chokepoints { background: #f1f7f4; border: 1px solid #0b7a5b33; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
   .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #d5dde5; font-size: 10px; color: #64727f; }
 </style></head><body>
   <div class="head">${logo ? `<img src="${e(logo)}" alt="${e(brandName)}" />` : ""}<div><h1>${e(brandName)}</h1><div class="muted">Security assessment report</div></div></div>
@@ -217,6 +247,8 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
 
   <h2>Top priorities</h2>
   ${topHtml}
+
+  ${attackPathsHtml}
 
   <h2>Compliance snapshot</h2>
   <table><thead><tr><th>Framework</th><th>Controls with no issues found</th><th>With critical/high issues</th></tr></thead><tbody>${frameworkRows}</tbody></table>
