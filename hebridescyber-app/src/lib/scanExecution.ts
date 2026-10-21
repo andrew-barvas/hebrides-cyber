@@ -48,7 +48,7 @@ import { runKatana } from "../worker/tools/katana";
 import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
-import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
+import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { parseDisabledTools, applyKillSwitch, type KillSwitchRow } from "./toolKillSwitch";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
@@ -912,7 +912,11 @@ export async function executeScan(
   });
 
   const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "scriptInventory", "crawl", "backendExposure", "graphql", "businessLogic"];
-  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 26 : BASE_CHECK_NAMES.length;
+  // Derived from EXTENDED_TOOL_NAMES, never a literal: this was a hand-typed
+  // 26 against 36 real tool keys, so every non-safe scan under-reported its
+  // own progress total. A literal just drifts again on the next tool added.
+  const totalChecks =
+    profile !== "safe" ? BASE_CHECK_NAMES.length + EXTENDED_TOOL_NAMES.length : BASE_CHECK_NAMES.length;
 
   await updateScanProgress(supabaseAdmin, scanId, {
     phase: "base",
