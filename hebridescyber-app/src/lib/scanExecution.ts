@@ -912,7 +912,11 @@ export async function executeScan(
   });
 
   const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "scriptInventory", "crawl", "backendExposure", "graphql", "businessLogic"];
-  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + EXTENDED_TOOL_NAMES.length : BASE_CHECK_NAMES.length;
+  // Derived from EXTENDED_TOOL_NAMES, never a literal: this was a hand-typed
+  // 26 against 36 real tool keys, so every non-safe scan under-reported its
+  // own progress total. A literal just drifts again on the next tool added.
+  const totalChecks =
+    profile !== "safe" ? BASE_CHECK_NAMES.length + EXTENDED_TOOL_NAMES.length : BASE_CHECK_NAMES.length;
 
   await updateScanProgress(supabaseAdmin, scanId, {
     phase: "base",

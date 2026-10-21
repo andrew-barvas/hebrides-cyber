@@ -429,8 +429,9 @@ jobs:
         # Strix AI pentest agent (Apache 2.0, https://github.com/usestrix/strix).
         # Needs Docker (available on GitHub Actions runners) and an LLM API key
         # (STRIX_LLM_API_KEY secret). strix.ts degrades to status: "not_configured"
-        # when the binary is absent, and the "ai-pentest" scan profile is the
-        # only one that enables it — other profiles skip it entirely.
+        # when the binary is absent. Both the "offensive" and "ai-pentest"
+        # profiles enable it (it is in OFFENSIVE_ONLY_TOOLS, and both spread
+        # every tool key); every other profile skips it entirely.
         env:
           STRIX_VERSION: 0.5.0
         run: |
@@ -547,8 +548,10 @@ jobs:
           HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
           # Strix AI pentest agent (Sprint 18) — needs an LLM API key to run.
           # strix.ts reads STRIX_LLM_API_KEY from process.env and passes it
-          # to the strix CLI. Only the "ai-pentest" scan profile enables strix;
-          # other profiles skip it regardless of whether this secret is set.
+          # to the strix CLI. The "offensive" and "ai-pentest" profiles both
+          # enable strix, and both must clear run-queued-scan-jobs.ts's Tier A
+          # + per-target authorization gate first; every other profile skips it
+          # regardless of whether this secret is set.
           STRIX_LLM_API_KEY: ${{ secrets.STRIX_LLM_API_KEY }}
         run: npm run queue:run-worker
 
