@@ -26,6 +26,7 @@ import { executeScan } from "../lib/scanExecution";
 import { hasTierAAccess } from "../lib/planAccess";
 import { hasActiveOffensiveAuthorization } from "../lib/offensiveAuthorization";
 import { logAuditEvent } from "../lib/audit";
+import { enablesOffensiveTools } from "../lib/scanProfiles";
 import type { ScanProfile, ExtendedToolName } from "../lib/scanProfiles";
 
 // With a "full"/"api"/"cms"/"osint" scan profile, a single job can take up to ~3.5 minutes
@@ -205,29 +206,38 @@ async function runOne(
 
   let scanConfig = await resolveScanConfig(supabaseAdmin, job);
 
-  // Authoritative gate for the Tier A `offensive` profile (brute-force / real
-  // attack tools). The UI and the DB CHECK constraint let the value be stored,
-  // but nothing until here decides whether it may actually RUN. It runs only
-  // when the owner is on Tier A AND has a current per-scan authorization for
-  // this target (offensive_scan_authorizations) — the domain-ownership check
-  // above already ran. If either is missing we downgrade to a passive "safe"
-  // scan rather than failing the job, and record why. This is the only place
-  // the offensive suite is unlocked; a comment used to be the sole "gate".
-  if (scanConfig.profile === "offensive") {
+  // Authoritative gate for any configuration that would run the offensive-only
+  // tools (brute-force / real attack). The UI and the DB CHECK constraint let
+  // the value be stored, but nothing until here decides whether it may actually
+  // RUN. It runs only when the owner is on Tier A AND has a current per-scan
+  // authorization for this target (offensive_scan_authorizations) — the
+  // domain-ownership check above already ran. If either is missing we downgrade
+  // to a passive "safe" scan rather than failing the job, and record why. This
+  // is the only place the offensive suite is unlocked; a comment used to be the
+  // sole "gate".
+  //
+  // The condition asks enablesOffensiveTools() rather than comparing the
+  // profile to "offensive": that comparison missed `ai-pentest`, which enables
+  // the same four tools, and would miss a scan bundle whose tool_overrides turn
+  // one on over a tame base profile.
+  if (enablesOffensiveTools(scanConfig.profile, scanConfig.toolOverrides)) {
+    const requestedProfile = scanConfig.profile;
     const [tierOk, authorized] = await Promise.all([
       hasTierAAccess(supabaseAdmin, job.owner),
       hasActiveOffensiveAuthorization(supabaseAdmin, job.owner, job.target_url),
     ]);
     if (!tierOk || !authorized) {
       const reason = !tierOk ? "owner is not on Tier A" : "no current offensive-scan authorization for this target";
-      console.warn(`[job ${job.id}] offensive profile refused (${reason}); downgrading to safe`);
+      console.warn(`[job ${job.id}] offensive tools refused for profile "${requestedProfile}" (${reason}); downgrading to safe`);
       await logAuditEvent(supabaseAdmin, {
         actorId: job.owner,
         action: "offensive_scan.refused",
         resourceType: "scan_job",
         resourceId: job.id,
-        metadata: { target_url: job.target_url, reason },
+        metadata: { target_url: job.target_url, reason, profile: requestedProfile },
       });
+      // Drops toolOverrides along with the profile — a "safe" profile carrying
+      // an override that re-enabled an offensive tool would defeat the point.
       scanConfig = { profile: "safe" };
     } else {
       await logAuditEvent(supabaseAdmin, {
@@ -235,7 +245,7 @@ async function runOne(
         action: "offensive_scan.ran",
         resourceType: "scan_job",
         resourceId: job.id,
-        metadata: { target_url: job.target_url },
+        metadata: { target_url: job.target_url, profile: requestedProfile },
       });
     }
   }

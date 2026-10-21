@@ -3,12 +3,13 @@
 // (all-or-nothing) with a named profile plus optional per-tool overrides —
 // see scanExecution.ts's runExtendedTools() for where this is consumed.
 //
-// Deliberately excludes tools that don't exist in this codebase yet
-// (Kiterunner, Arjun, Dalfox, WPScan CLI, CMSmap, Gospider, Photon,
-// WhatWaf — see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Each
-// future tool's own PR adds its own key here, in whichever profile(s) it
-// belongs — additive, no restructuring, same precedent compliance.ts and
-// fixDifficulty.ts already set for their own tables.
+// Deliberately excludes Dalfox, which doesn't exist in this codebase yet
+// (see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Each future
+// tool's own PR adds its own key here, in whichever profile(s) it belongs —
+// additive, no restructuring, same precedent compliance.ts and
+// fixDifficulty.ts already set for their own tables. This list used to also
+// name Kiterunner, Arjun, WPScan CLI, CMSmap, Gospider, Photon and WhatWaf;
+// all seven now exist and are wired, so only Dalfox remains.
 
 export type ExtendedToolName =
   | "nuclei"
@@ -158,9 +159,11 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
 };
 
 /**
- * Resolves a profile (plus optional bundle overrides) into a full,
- * all-14-keys-present tool-enable map. bundleOverrides, when given, win
- * over the base profile's own tool list — see scan_bundles (Item 3).
+ * Resolves a profile (plus optional bundle overrides) into a tool-enable map
+ * carrying every ExtendedToolName, present whether enabled or not.
+ * bundleOverrides, when given, win over the base profile's own tool list —
+ * see scan_bundles (Item 3). Deliberately names no count: the previous
+ * "all-14-keys-present" wording went stale as tools were added.
  */
 export function resolveToolConfig(
   profile: ScanProfile,
@@ -172,4 +175,30 @@ export function resolveToolConfig(
     result[name] = merged[name] ?? false;
   }
   return result;
+}
+
+/**
+ * True when a resolved scan configuration would run any OFFENSIVE_ONLY_TOOLS,
+ * and must therefore pass run-queued-scan-jobs.ts's Tier A + per-target
+ * authorization gate before it runs.
+ *
+ * Derived from the resolved tool map, never from a list of profile names.
+ * A `profile === "offensive"` check used to be the gate's condition, and it
+ * missed `ai-pentest`, which spreads every tool key and so enables the same
+ * four offensive-only tools; migration 051 made that value storable, and
+ * MonitoredTargets.tsx writes scan_profile straight from the browser under
+ * RLS with no server-side validation, so any owner could reach it. Deriving
+ * the answer here means a new profile — or a scan bundle's tool_overrides —
+ * that enables an offensive tool is gated automatically rather than silently
+ * bypassing it.
+ */
+export function enablesOffensiveTools(
+  profile: ScanProfile,
+  bundleOverrides?: Partial<Record<ExtendedToolName, boolean>>
+): boolean {
+  const config = resolveToolConfig(profile, bundleOverrides);
+  for (const tool of OFFENSIVE_ONLY_TOOLS) {
+    if (config[tool]) return true;
+  }
+  return false;
 }
