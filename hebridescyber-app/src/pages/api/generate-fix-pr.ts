@@ -631,7 +631,7 @@ export async function openConfigFixPr(
   }
   if (!chosen) {
     if (skips.length > 0) return { note: `No config file could be edited safely: ${skips.join("; ")}.` };
-    return { note: "No supported header-config file (staticwebapp.config.json, vercel.json, netlify.toml, next.config.*) found in the repo root." };
+    return { note: "No supported header-config file (staticwebapp.config.json, vercel.json, netlify.toml, _headers, next.config.*) found in the repo root." };
   }
 
   // 1. Base branch HEAD sha.

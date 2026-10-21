@@ -88,6 +88,31 @@ describe("computeCriticalPaths", () => {
   it("does not fire the service_role chain on the service-key finding alone", () => {
     expect(computeCriticalPaths([finding("backend-exposure.service-key:abcd")])).toEqual([]);
   });
+
+  it("fires the exposed-sourcemap → client-secret chain", () => {
+    const findings = [
+      finding("js-secrets.exposed-sourcemap:/static/app.js.map"),
+      finding("js-secrets.exposed-key:stripe-secret-key"),
+    ];
+    const [path] = computeCriticalPaths(findings);
+    expect(path).toBeDefined();
+    expect(path.title).toContain("source map");
+    expect(path.severity).toBe("high");
+    expect(path.steps[0].checkIds).toEqual(["js-secrets.exposed-sourcemap:/static/app.js.map"]);
+    expect(path.steps[1].checkIds).toEqual(["js-secrets.exposed-key:stripe-secret-key"]);
+  });
+
+  it("does not fire the sourcemap chain on an exposed sourcemap alone (needs a client secret too)", () => {
+    expect(computeCriticalPaths([finding("js-secrets.exposed-sourcemap:/static/app.js.map")])).toEqual([]);
+  });
+
+  it("fires the mixed-content → insecure-cookie interception chain", () => {
+    const findings = [finding("playwright.mixed-content"), finding("headers.cookie-flags:session")];
+    const [path] = computeCriticalPaths(findings);
+    expect(path).toBeDefined();
+    expect(path.title).toContain("Mixed content");
+    expect(path.steps[2].label).toContain("interception");
+  });
 });
 
 describe("computeChokepoints", () => {
