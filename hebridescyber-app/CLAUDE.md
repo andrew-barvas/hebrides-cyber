@@ -1,28 +1,39 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository. Everything here applies to
+*every* change. Module-level detail lives in `docs/` — see "Where to read what"
+at the bottom and read only the entry you need.
 
-**Starting a new session?** Read `docs/NEXT-STEPS.md` next: current state, the rules that kept causing CI failures, and the next five features (E-70 to E-74) with full briefs.
+> **Moved sections.** This file was cut from 110 KB to ~20 KB on 2026-10-20. The
+> module-level narrative that used to live here moved verbatim to
+> `docs/ARCHITECTURE-NOTES.md`. Code comments and docs elsewhere still say
+> things like *see CLAUDE.md's "Content generation" / "Scanner pipeline" /
+> "Database schema" / "Mobile & PWA" / "EASM discovery" section* — every one of
+> those is now a heading in `docs/ARCHITECTURE-NOTES.md`. Look there before
+> concluding a reference is stale.
 
 ## Commands
 
 ```bash
-npm run dev                  # Start dev server (Next.js 16 + Turbopack, port 3000)
+npm run dev                  # Dev server (Next.js 16 + Turbopack, port 3000)
 npm run build                # Production build
 npm run lint                 # ESLint
-npx tsc --noEmit             # TypeScript check — build does NOT run tsc, always run this separately
-npm test                     # Playwright e2e (builds app + starts server automatically — slow, hermetic)
-npm run test:unit            # Vitest unit/integration tests
-npm run test:unit:coverage   # Same, with a coverage report — thresholds in vitest.config.mts are a
-                              # calibrated floor, never lowered; raise them when a change adds real coverage
-npm run scan:local           # Run a real scan against a URL and persist to Supabase (needs SCAN_OWNER_ID)
-npm run seed:users           # Create demo accounts in Supabase (admin, basic/pro/agency/no-plan)
-npm run queue:enqueue-scheduled-scans  # Manually run the scheduled-scan enqueue step locally
-npm run queue:run-worker               # Manually claim + run one batch of queued scan_jobs locally
-npm run newsletter:daily               # Run the daily blog generation script directly (no HTTP hop)
-npm run newsletter:weekly              # Run the weekly newsletter generation script directly
-npm run threats:check -- --dry-run     # Emerging-threat alerts: print KEV matches without writing/sending
+npx tsc --noEmit             # Type check — build does NOT run tsc, always run it separately
+npm test                     # Playwright e2e (builds app + starts server; slow, hermetic)
+npm run test:unit            # Vitest unit/integration
+npm run test:unit:coverage   # Same, with coverage report
+npm run test:db              # Database/RLS tests (needs DATABASE_URL)
+npm run bench                # Scanner accuracy benchmark
+npm run scan:local           # Real scan against a URL, persisted (needs SCAN_OWNER_ID)
+npm run seed:users           # Demo accounts in Supabase (admin, basic/pro/agency/no-plan)
+npm run queue:enqueue-scheduled-scans  # Run the scheduled-scan enqueue step locally
+npm run queue:run-worker               # Claim + run one batch of queued scan_jobs locally
+npm run newsletter:daily               # Daily blog generation script (no HTTP hop)
+npm run newsletter:weekly              # Weekly newsletter generation script
+npm run threats:check -- --dry-run     # Emerging-threat alerts, no writes/sends
 ```
+
+The `/verify` skill runs the full pre-deploy gate in `deploy.yml`'s order.
 
 ## Environment
 
@@ -33,13 +44,150 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
-Without those, the app boots but all auth/data calls fail. The Supabase client logs a warning and uses a placeholder rather than throwing.
+Without those the app boots but all auth/data calls fail — the Supabase client
+logs a warning and uses a placeholder rather than throwing.
+
+## Rules that always apply
+
+These are the ones that have actually broken CI or production. Follow them
+without needing to be asked.
+
+### Gate and tooling
+
+1. **The gate is four commands, and you check exit codes, not summary lines.**
+   From `hebridescyber-app/`: `npm run lint` (0 errors), `npx tsc --noEmit` (no
+   output), `npm run test:unit:coverage`, `npm test`. Vitest prints "N passed"
+   even when an *unhandled error* fails the run — a line `Errors  1 error` means
+   failure. CI type-checks PRs merged into master, so rebase onto latest master
+   before trusting a local pass.
+2. **Never return a value from a `beforeEach`/`afterEach` arrow.**
+   `beforeEach(() => mock.mockReset())` returns the mock, and Vitest runs a
+   returned function as a cleanup hook — it called the mock with no arguments
+   and failed CI. Use a block body.
+3. **Windows line endings.** Every file in this repo is CRLF. String-replace
+   scripts that assume `\n` silently miss. Use the Edit tool, and avoid passing
+   `\n` escapes through shell heredocs.
+4. **Coverage thresholds only go up**, to the value a PR's own
+   `test:unit:coverage` run actually reports, after merging. Never lower them.
+5. **One build at a time.** Parallel subagents exhausted the usage limit three
+   times; local and cloud sessions share one allowance. Give any scratch file a
+   unique name — two builds have overwritten each other's PR body.
+6. **Commits and PRs carry the attribution lines** for the model that made the
+   change (the session's own attribution guidance supplies the exact text).
+   Draft PR → wait for CI → squash-merge → watch the `Deploy` run. The `/ship`
+   skill does this.
+
+### Scanner checks
+
+7. **Evidence discipline: a failed lookup is `status: "error"`, never an empty
+   "checked".** `findingLifecycle.ts` would otherwise mark last scan's findings
+   fixed and close their tickets. "No evidence either way" is never "clean".
+8. **Every finding needs a stable `checkId`** — `"<module>.<check-name>"`, or
+   `"<module>.<check-name>:<key>"` in a loop. `findingsDiff.ts` matches on it to
+   tell new from unchanged, so an untagged finding never participates in
+   diffing. A new base-suite prefix that doesn't normalise to its `ScanResults`
+   key needs a `BASE_ALIASES` entry; a new extended tool needs `TOOL_ALIASES`.
+9. **Import the base pipeline as `@/lib/scanners` (the directory).** A
+   single-file `src/lib/scanners.ts` once shadowed it in module resolution, so
+   every entry point silently ran an old 4-check version. It is deleted — never
+   recreate a file at that path.
+10. **Shell out via `src/lib/execTool.ts`'s `execTool`, never bare
+    `execFile`/`promisify(execFile)`.** It closes the child's stdin, without
+    which tools that read targets from stdin (nuclei, gospider) hang until
+    their timeout — which is why every scheduled scan's nuclei step produced
+    nothing until this was found.
+11. **A check that probes for a file must reuse `fetchBaseline`/`normaliseBody`
+    (`httpProbe.ts`)**, never trust a 200 status. Without it every SPA that
+    returns its shell for unknown paths reports an exposed `.env`.
+12. **Remediation text is attached at the point the finding is created**
+    (`remediationText.ts` → `Finding.remediation`), where the check result is
+    still in scope. Never re-derive which fix applies by string-matching a
+    finding's title. The field is optional, so consumers must guard.
+13. A check with a genuine compliance angle gets its base checkId added to
+    `COMPLIANCE_MAP` (`compliance.ts`). No entry means "not yet categorised",
+    never a forced mapping.
+14. **A path-probing check needs a bench fixture and expectation**
+    (`bench/fixtures/sites.ts`, `bench/expectations/<target>.json`).
+15. Writing or extending a check follows `docs/SCANNER-CONVENTIONS.md`'s five
+    rules. Pinned release binaries are verified by version **and SHA-256**; an
+    install step that only logs a failure hides a tool that never installed
+    (how gospider/kiterunner/trivy silently did nothing until 2026-10-06).
+
+### Data, auth and secrets
+
+16. **`SUPABASE_SERVICE_ROLE_KEY` must never appear in a `NEXT_PUBLIC_*` var or
+    any client bundle.**
+17. **Plan gating is always `src/lib/planAccess.ts`** (`planGate`,
+    `hasProAccess`/`hasAgencyAccess`/`hasTierAAccess`). The webhook marks a
+    lapsed subscription `past_due`/`cancelled` but leaves `plan` unchanged, so
+    never gate on `plan` alone — only `status === "active"` grants a tier
+    (admins exempt). Tiers nest upward: Tier A ⊃ Agency ⊃ Pro, per
+    `PLANS_FOR_TIER`.
+18. **Client IP is always `getClientIp(req)`, never a header directly.** Azure
+    Static Web Apps *appends* to a client-supplied `X-Forwarded-For`, so the
+    leftmost entry is attacker-controlled. It feeds rate limits *and* API-key IP
+    allowlists, so a forgeable value is an auth bypass.
+19. **Customer-repo access is always `githubApp.ts`'s
+    `resolveGithubAuth(githubRepo)`** — never read `process.env.GITHUB_PAT`
+    directly in a new module. (`GITHUB_PAT` separately dispatches this repo's
+    own `on-demand-scan.yml`; don't conflate the two concerns.)
+20. **A new stored secret**: seal it on write behind the
+    `isCredentialEncryptionConfigured()` 503 guard (never a plaintext
+    fallback), `revealSecrets` where it is used, and add its table/columns to
+    `STRING_SECRET_TARGETS` in `secretMigration.ts`. Browser code must never
+    select a secret column.
+21. **`ticket_integrations` is unique on `(owner, provider)` but trackers and
+    on-call rows share the table**, so an owner can have two rows: every read
+    must `.order("created_at", { ascending: false }).limit(1)` before
+    `.maybeSingle()`, which would otherwise throw on exactly those accounts.
+    Use `findTicketIntegration()` rather than querying it directly.
+22. **Audit actions follow the stable `"<resource>.<verb>"` vocabulary** — the
+    admin Audit tab filters on it. Keep new call sites consistent rather than
+    inventing new verb shapes. Logging is best-effort and must never gate the
+    action it describes.
+23. RLS is enabled on every table; the only path that bypasses it is
+    server-side code using the service role key.
+
+### Migrations
+
+24. **A migration must apply cleanly and re-apply idempotently.** Known
+    exceptions are listed in `migrations.db.test.ts` and may only shrink. A new
+    client-readable table needs an entry in `rls.db.test.ts`.
+25. **A policy must never sub-select its own table inline** — Postgres fails it
+    with 42P17 "infinite recursion". Put the read in a `SECURITY DEFINER`
+    function, as `047` does.
+26. Migrations auto-apply on push to master (`apply-migrations.ts`, ledger
+    `schema_migrations`, checksum drift check). Take the next free number; the
+    `/migration` skill walks the whole flow.
+
+### Site and UI
+
+27. **Generate `www` URLs** — `process.env.NEXT_PUBLIC_SITE_URL ??
+    "https://www.hebridescyber.co.uk"`. The bare domain only redirects.
+28. **Security headers are set in `next.config.mjs`'s own `headers()`.** Azure
+    SWA hybrid mode serves every route through the managed Next.js server, which
+    bypasses `staticwebapp.config.json`'s `globalHeaders` entirely (confirmed by
+    curling production). That file is kept in sync as a fallback for pure static
+    assets but is not load-bearing — **keep both in sync** if the policy changes.
+29. **Never run `shadcn init`** — it overwrites `globals.css` and
+    `tailwind.config.cjs`. `npx shadcn@2 add <component>` is fine.
+30. **E2E tests must never use real Supabase credentials.**
+    `playwright.config.ts` hardcodes `example-project` as the project ref;
+    it must stay that.
 
 ## Architecture
 
 ### One API layer
 
-**`src/pages/api/`** — every server-side route, including the scan pipeline (`run-scan`, `verify-ownership`, `generate-report`, `generate-fix-pr`), Stripe webhooks/checkout/portal, admin panel endpoints, and the contact form. Runs as Next.js API routes deployed to Azure Static Web Apps (Oryx auto-deploys them as managed Functions behind the CDN) — there is no separate standalone Azure Functions app. The daily blog and weekly newsletter are **not** API routes — see "Content generation" below for why. There used to be one (`src/functions/`); it was never actually deployable (no `host.json`, no real `@azure/functions` registration) and got fully consolidated here — see `src/pages/api/run-scan.ts`'s header comment and `docs/decisions/ENGINEERING-LOG-2026-08.md`'s "17 Aug" note. All of `src/pages/api/` has access to `NEXT_PUBLIC_*` env vars alongside server-only vars, and uses `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (server-only) directly for privileged operations — never the anon key.
+**`src/pages/api/`** — every server-side route, including the scan pipeline
+(`run-scan`, `verify-ownership`, `generate-report`, `generate-fix-pr`), Stripe
+webhooks/checkout/portal, admin endpoints and the contact form. Deployed to
+Azure Static Web Apps, which auto-deploys them as managed Functions behind the
+CDN — there is no separate standalone Azure Functions app. The daily blog and
+weekly newsletter are **not** API routes. All of `src/pages/api/` can read
+`NEXT_PUBLIC_*` alongside server-only vars, and uses `SUPABASE_URL` +
+`SUPABASE_SERVICE_ROLE_KEY` directly for privileged operations — never the anon
+key.
 
 ### Two routers in one Next.js app
 
@@ -54,251 +202,30 @@ Without those, the app boots but all auth/data calls fail. The Supabase client l
 | API routes & Functions | `createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)` | service role — bypasses RLS |
 | Admin API routes | service role for writes; anon client to verify the caller's JWT | both |
 
-`SUPABASE_SERVICE_ROLE_KEY` must never appear in a `NEXT_PUBLIC_*` var or any client bundle.
-
-### Scan flow (two-step proof of ownership, queue-backed)
-
-1. Dashboard POSTs `{ targetUrl }` to `/api/run-scan` → creates a `scans` row (status `pending`) and returns `{ scanId, proofToken }`. Rejected with 402 if the caller is on the free tier and has already used their one free scan (`src/lib/freeTier.ts`) — admins exempt.
-2. Dashboard POSTs `{ scanId }` to `/api/run-scan` → verifies domain ownership (real DNS/file verification, required by default — admins exempt, see `src/lib/ownership.ts`'s `isDomainVerified`), then **enqueues** a `scan_jobs` row and returns `202 { status: "queued" }`. It does not run the scan pipeline inline — a real production scan once exceeded Azure Static Web Apps' Free-tier Functions execution ceiling and returned a proxy error instead of JSON, so nothing calls `executeScan()` synchronously from an HTTP request anymore. `src/lib/onDemandScanTrigger.ts`'s `triggerOnDemandWorkflow()` immediately dispatches `.github/workflows/on-demand-scan.yml` via the GitHub API (needs `GITHUB_PAT`) so the job is usually picked up within about a minute; if that dispatch fails or the token isn't set, the job still gets picked up by the next `scheduled-scans.yml` cron as a fallback. The dashboard polls step 2 again to see `queued` → `running` → `completed`/`failed`. Replaying step 2 against an already-`completed` scan returns the cached result instead of re-queuing.
-
-`POST /api/v1/scans` (the public API) enqueues the same way and also returns `202` immediately — `action/index.js` (the packaged GitHub Action) and `docs/API.md` both poll `GET /api/v1/scans/{id}` rather than expecting a synchronous report.
-
-`executeScan()` (`src/lib/scanExecution.ts`) is the single implementation that actually runs a scan, called only by the queue workers (`src/scripts/run-queued-scan-jobs.ts`) — never directly from a request handler. It always runs the base passive check suite; the active-tool suite runs according to `ExecuteScanOptions.profile` (`src/lib/scanProfiles.ts`; `"safe"` runs none of it) plus per-scan `toolOverrides`, merged by `resolveToolConfig()`. `decideScanConfig()` in `run-queued-scan-jobs.ts` picks the profile: a job's own `scan_profile`, else `"safe"` for on-demand jobs (those arrive with `scan_jobs.scan_id` pre-set, from `run-scan.ts`/`v1/scans.ts`), else the scan bundle, else the target's profile, defaulting to `"full"` — so in practice only scheduled jobs run active tools.
-
-`ALLOW_DEV_TOKEN_VERIFICATION` defaults to unset/`false` (real DNS/file verification required). Set it `true` only for local dev, to use the `X-Scan-Token` echo shortcut instead.
-
-### Scheduled + on-demand queue (Postgres, no Redis)
-
-Both scan-triggering paths share one Postgres-backed queue (`sql/migrations/008_scan_jobs.sql`) worked by ephemeral GitHub Actions runners — deliberately not BullMQ/Redis (an earlier `src/worker/` attempt along those lines was built, never wired to a real Redis instance, and later deleted once this replaced it).
-
-- **Scheduled**: `.github/workflows/scheduled-scans.yml` cron → `src/scripts/enqueue-scheduled-scans.ts` inserts one `scan_jobs` row per verified target that's due (see "Scan cadence by plan" below), then a matrix of worker shards (`src/scripts/run-queued-scan-jobs.ts`) claim jobs via the `claim_scan_job()` RPC (`SELECT ... FOR UPDATE SKIP LOCKED` — needed because PostgREST can't express locking clauses) and run them under the target's profile (default `"full"`). This is the only place the real active-scanning tools run — the workflow installs nmap/sqlmap/nuclei/commix/testssl.sh/gitleaks/trivy/opengrep and starts a ZAP daemon fresh each time. Release binaries are pinned by version **and SHA-256** (from the project's checksums file, cross-checked against the downloaded asset); when bumping one, update both and confirm the asset name exists — an install step that only logs a failure hides a tool that never installed (how gospider/kiterunner/trivy silently did nothing until 2026-10-06; gospider and kiterunner are now fixed+pinned+verified, strix and cairn are still `not_configured` pending an owner decision — see `docs/SCANNER-INVENTORY.md`). **Every tool wrapper shells out via `src/lib/execTool.ts` (`execTool`), never bare `execFile`/`promisify(execFile)`: it closes the child's stdin, without which tools that read targets from stdin (nuclei, gospider) hang until their timeout — which is exactly why every scheduled scan's nuclei step produced nothing before this was found.** Kiterunner needs `KITERUNNER_WORDLIST` (a `.kite` compiled from `src/worker/tools/wordlists/api-routes.txt` in the install step) or it no-ops.
-- **On-demand**: `.github/workflows/on-demand-scan.yml`, a lighter sibling that skips those tool installs, dispatched immediately by `triggerOnDemandWorkflow()` (see above). Jobs it picks up run passive-only.
-- These two workers are the only place `executeScan()` runs, so every secret its post-scan notifiers read must be in their "Work the scan job queue" step's env (`src/lib/scanWorkerEnv.test.ts` checks the essentials). `RESEND_API_KEY` was missing until 2026-10-06, so no post-scan email (critical findings, scan complete, SLA) had ever been sent.
-
-### Scan cadence by plan
-
-`src/lib/scanCadence.ts`'s `isScanDue(plan, lastCompletedScanAt, now)` — Basic gets weekly, Pro/Agency get daily (matching the once-a-day `scheduled-scans.yml` cron; there's no faster-than-daily tier without a second cron). Pure/sync so it's unit-testable without touching Supabase — `enqueue-scheduled-scans.ts` does the DB lookup and passes the result in.
-
-### Scanner pipeline
-
-`src/lib/scanners/` — two tiers, not one flat list. Writing or extending a
-check must follow `docs/SCANNER-CONVENTIONS.md`'s five rules (evidence
-discipline, `checkId`, `AbortSignal.timeout()`, etc.) — six existing modules
-reference that file directly. For which checks are plan-gated, credential-
-dependent, or tested, see `docs/FUNCTIONALITY-MATRIX.md` rather than this
-section, which covers what each check does, not how it's gated.
-
-**Base passive suite** — always runs, on every scan regardless of plan or repo connection. Wired into `runAllChecks()`/`summariseResults()` in `src/lib/scanners/index.ts`:
-- `tls.ts` — certificate grade and expiry, and why a browser would refuse the certificate (expired, self-signed, wrong hostname, incomplete chain, untrusted). It handshakes with `rejectUnauthorized: false` and reads Node's `authorizationError`: with the default, every broken certificate failed the handshake and became a generic error, never a finding. `readCertificate()` is the shared reader
-- `subdomainCerts.ts` — certificate expiry on up to 20 of recon.ts's CT-log subdomains (most recently certified first), one finding per certificate. If the CT lookup failed (`recon.ctLookupFailed`), this and `takeover.ts` report `error`, never an empty "checked" — crt.sh is often down, and an empty list would mark every subdomain finding fixed
-- `headers.ts` — security header presence, CSP grading, cookie flags, CORS, info disclosure, and a passive HTTP-request-smuggling surface signal: a response carrying both `Content-Length` and `Transfer-Encoding` is itself an RFC 7230 §3.3.3 framing ambiguity (`headers.smuggling-surface`) — the condition CL.TE/TE.CL desync attacks exploit when a front-end and back-end disagree on which to trust. Passive only: proves risk surface, never exploitability, and deliberately never sends deliberately ambiguous/malformed framing to probe for a real desync, since that needs raw-socket control this codebase has never written for any attack purpose and risks corrupting a connection pool shared with other, non-consenting tenants of the same front-end/CDN — out of scope for every profile this product offers, Tier A included (see docs/USER-GUIDE.md §6)
-- `dns.ts` — SPF, DMARC, DKIM (best-effort selector guessing), MTA-STS (DNS record + live policy-file fetch), TLS-RPT, CAA, DNSSEC. MTA-STS/TLS-RPT only get evaluated when the domain has MX records — silent otherwise, not a false "missing"
-- `exposure.ts` — sensitive paths (.env, .git, phpinfo, etc.), security.txt presence
-- `directoryListing.ts` — autoindex detection, reuses `httpProbe.ts`'s baseline/masking
-- `cloudMisconfig.ts` — public S3/Azure Blob/GCS buckets, but only ones the target's own page source references
-- `fingerprint.ts` — technology detection (WordPress etc.). Includes PrestaShop, OpenCart, TYPO3, Umbraco, Craft CMS and Moodle (E-77): passive markup/header signals only. **Most of these platforms don't publish a version**, so a detection usually has no version and the CVE (`emergingThreats.ts`), end-of-life and risky-software checks correctly stay silent — a name alone is never evidence. What a detection does buy: nuclei is scoped by the real template tags (`prestashop`, `opencart`, `typo3`, `umbraco`, `craftcms`, `moodle`, checked against nuclei-templates), the asset inventory records `cms_type`, and the tech inventory lists it. Versions come from legacy TYPO3's `content="TYPO3 6.2 CMS"` generator tag and Umbraco 7/8's `X-Umbraco-Version` header; TYPO3 and Umbraco have `endOfLife.ts` entries (PrestaShop/OpenCart have no endoflife.date product, Moodle/Craft publish no version). All six have NVD CPE entries in `NVD_CPE_BY_NAME`. Two patterns may share a name (TYPO3: detection + version) — the engine merges them
-- `ports.ts` — direct TCP connect (2s timeout) to 30 fixed security-relevant ports; no nmap, no Shodan (that's `recon.ts`, below)
-- `recon.ts` — IP resolution, Shodan CVEs, crt.sh subdomain enumeration
-- `webapp.ts` — robots.txt, HTTP OPTIONS, error disclosure, WordPress/Joomla/Drupal/Magento/Shopify deep scan, CORS reflected-origin, JS library versions (`retireJs.ts`: the retire.js repository's extractors and published vulnerable ranges, fetched from a pinned commit and cached per process — script URLs, filenames, file banners and SHA-1 of up to 10 script bodies; finding severity is retire.js's own; checkIds keep the old display names (`webapp.vulnerable-js-lib:jQuery`) via `RETIRE_DISPLAY_NAMES`; if the data can't be loaded the old 7-library `LIB_PATTERNS` path runs, CVE-enriched via `osv.ts`), Subresource Integrity on cross-origin `<script>`/`<link rel=stylesheet>` tags (same-origin resources are never flagged — SRI protects against a compromised third party, not the site's own origin). Magento: `env.php`/downloader/default admin-path exposure, content-signature validated (not just HTTP 200, since a catch-all page can 200 anything). Shopify: leaked Admin API tokens (`shpat_`/`shpca_`/`shppa_` prefixes only, redacted before storage) — the Storefront API token is Shopify's own intentionally-public format and is never flagged
-- `safeBrowsing.ts` — Google Safe Browsing malware/phishing check (needs `GOOGLE_SAFE_BROWSING_API_KEY`; `not_configured` without it)
-- `waybackDiscovery.ts` — checks historical URLs from the Wayback Machine CDX API that still resolve live, surfacing forgotten endpoints a fresh crawl can't find
-- `hibp.ts` — HaveIBeenPwned domain breach check (needs `HIBP_API_KEY`; `not_configured` without it)
-- `wpvdb.ts` — matches `webapp.ts`-detected WordPress plugin versions against the real WPScan Vulnerability Database (needs `WPSCAN_API_TOKEN`; `not_configured` without it). Runs after `webapp` resolves, not in the main `Promise.all` batch, since it needs `webapp.wordpress.plugins` as input — enrichment only, does no detection of its own.
-- `takeover.ts` — dangling DNS / subdomain takeover over the site and recon.ts's CT-log subdomains (runs after recon resolves). Reports only with two pieces of evidence: a CNAME to a provider in `TAKEOVER_PROVIDERS` *and* that provider's proof the resource is gone (NXDOMAIN on the CNAME target, or its own "unclaimed" page). Resolver timeouts/SERVFAIL are "unknown", never NXDOMAIN. Detection only.
-- `endOfLife.ts` — end-of-life software the site reveals (PHP/nginx/Apache from headers, Drupal/Joomla from webapp.ts probes, Angular/jQuery/Bootstrap), against endoflife.date release-line dates. Runs after webapp resolves. Also holds the endoflife.date client `dockerBaseImage.ts` uses. A version is matched to a cycle only exactly; a distro hint in the header (`fingerprint.ts`'s `packagedBy`) downgrades the finding, since distributions backport fixes; any failed lookup is an `error`, never "nothing is EOL". Where it reaches a verdict, its `eol.unsupported:<product>` finding replaces `fingerprint.risky-library` for that technology. WordPress is excluded on purpose (see the file header).
-- `domainRegistration.ts` — registered-domain expiry and (gTLDs only) transfer lock, from the registry's RDAP record via IANA's bootstrap file. `registrableDomain.ts` answers "which domain" from the full Public Suffix List (`tldts`): `registrableDomain` (ICANN suffixes: the domain registered at a registry, used for RDAP, email authentication in `dns.ts` and HIBP) and `ownerDomain` (private suffixes too: the narrowest domain one customer controls, used to scope hostnames in `recon.ts`, `takeover.ts`, `subdomainCerts.ts`, `scriptInventory.ts` and the attack-surface alerts, so `mysite.github.io` never takes in other github.io sites). Don't hand-roll suffix logic: a hand-picked list used to map `www.school.herts.sch.uk` to the whole county's zone.
-- `scriptInventory.ts` — third-party script inventory for PCI DSS 6.4.3 / 11.6.1: every external origin the page loads JavaScript from, from the raw HTML (`webapp.ts`'s `extractScriptTags`) plus `playwright.ts`'s runtime capture (main-frame script requests and `<script src>` elements after network idle — where tag-manager scripts show up). Same-origin and same-registrable-domain scripts are first party. One `script-inventory.unreviewed:<origin>` finding per origin, open while present (info — no score cost; low when the page shows payment signals — card inputs, a checkout form action, a payment provider's SDK); customers authorise an origin by accepting the finding with a justification. Browser failed → `partial` (HTML only), which `findingLifecycle.ts` treats as not-run so runtime-only origins aren't resolved; neither source → `error`. Runs after playwright resolves
-- `crawler.ts` + `crawlFindings.ts` (E-70) — site crawler and page-level checks on every reachable page. `checkCrawl()` walks breadth-first from the target (same site, www/apex as one; ≤50 pages, depth 3, 4 concurrent, 45 s budget; read-only GETs; `robots.txt` honoured (a group naming `hebridescyber` beats `*`; every request sends the `CRAWLER_USER_AGENT` identifying us); seeded by links, sitemap.xml and `waybackDiscovery`'s live paths; logout/delete/cart-action links and files are never fetched, forms are recorded never submitted; query/numeric-segment normalisation and a per-shape cap defeat traps). `analysePage()` runs the per-page checks (tracked security headers via `headers.ts`'s `buildHeaderAnalysis`, cookie flags, mixed content, SRI, forms over HTTP, error disclosure on 404/5xx bodies reusing `webapp.ts`'s `DISCLOSURE_PATTERNS`, third-party script tags, payment signals); results are stored per page in `ScanResults.crawl.pages[].checks`. `buildCrawlFindings()` aggregates: header gaps are *gaps relative to the start page* (`crawl.header-gap:<header>`, one finding listing pages — when the home page lacks the header too, `headers.*` already reports it), `crawl.cookie-flags:<name>` (cookies first set by inner pages), `crawl.missing-sri`, and capped per-page `crawl.mixed-content|insecure-form|error-disclosure:<path>`. Inner-page third-party scripts are merged into `scriptInventory` (`crawledPages`; an origin on a page with payment signals gets `paymentPages` and `low` severity). Evidence discipline: start page unreachable or ≥400 → `error`; page cap/time budget/429/503/failed requests/unreadable robots.txt → `partial`; both are "not run" to `findingLifecycle.ts` (key `crawl`), so unvisited pages are never read as fixed. Add new page-level checks to `analysePage()` + `buildCrawlFindings()` with a `crawl.<check>` base id (compliance + fix-difficulty entries)
-- `backendExposure.ts` — Supabase backend exposure. From the page's HTML and same-origin scripts only (what a visitor's browser already gets) it finds `<ref>.supabase.co` project URLs, decodes each JWT's role claim (never verified, never stored in full) and collects the table names the code queries (`.from("x")`). It reports `backend-exposure.service-key:<ref>` (critical: a `service_role` key shipped to the client, shown by fingerprint only) and `backend-exposure.open-table:<ref>:<table>` (high). A table counts as open only when `GET /rest/v1/<t>?select=*&limit=0` with `Prefer: count=exact` and the page's own anon key returns a `Content-Range` total above zero — **no row is ever requested**, an RLS-protected table answers `*/0` and is never reported, and verified against a real PostgREST (open table `206 */N`, RLS table `200 */0`, no grant `401`). Only `https://<ref>.supabase.co` is ever contacted. Buckets the code names via `.storage.from("x")` (never counted as tables) are listed with the anon key, one name at most: `backend-exposure.storage-bucket:<ref>:<bucket>` (medium) only when an object comes back. **Firebase** (`firebaseExposure.ts`, same page material): databases/bucket/project come only from the site's own config keys (`databaseURL`, `storageBucket`, `projectId`), never any firebaseio.com URL on the page (a site reading a deliberately public RTDB such as the HN API must not be told its database is open); unauthenticated GETs — RTDB `/.json?shallow=true` (key names only), Storage `o?maxResults=1`, Firestore `pageSize=1&mask.fieldPaths=__name__` for collections the code names (first project only) — reported only on a 200 with at least one key/object/document: `backend-exposure.firebase-rtdb:<host>` (high), `backend-exposure.firebase-storage:<bucket>` (medium), `backend-exposure.firestore:<project>:<collection>` (high). Neither Supabase nor Firebase on the page → `not_applicable`; unreadable page → `error`.
-- `graphql.ts` — GraphQL exposure. Probes `/graphql`, `/api/graphql`, `/gql`, `/v1/graphql`, `/query` with `{ __typename }`; an endpoint exists only if the reply is JSON with GraphQL's own shape (`data.__typename` or a validator error), so a catch-all that echoes `"data"` is never one. Reports `graphql.introspection:<path>` (medium; `data.__schema.types` is a real list, type names and a count only), `graphql.suggestions:<path>` ("Did you mean" leak, only when introspection is off) and `graphql.ide:<path>` (GraphiQL/Playground/Sandbox page text). Read-only, no mutations. All probes failing at the network level → `error`; nothing found → `not_applicable`
-- `playwright.ts` — headless browser checks (needs Playwright's browser binaries: both scan workflows install Chromium, cached, after `npm ci`, which doesn't download browsers — before that step every production run of this check errored; a bare local `tsx` run of this without `npx playwright install` will show `status: "error"`, not a real bug). Also runs a DOM-based-XSS probe (`xssConfirm.ts`'s `confirmDomXss()`, reusing the same inert-marker convention as reflected-XSS confirmation) on a second page in the same browser: loads the target with the marker already in the URL **fragment** — never sent to the server, so this is the one XSS class reflected-XSS confirmation structurally can't see — and checks whether some client script read it and wrote it into the DOM unsanitised. Confirmed by construction (nothing to re-verify later), so the resulting `playwright.dom-xss` finding carries `metadata.proofOfExploit` directly rather than going through `proofOfExploit.ts`.
-- `zap.ts` (inline in `index.ts`, not its own file) — kicks off an async ZAP spider if `ZAP_API_URL` is set; the real active ZAP *scan* is a separate module below
-
-**Extended active-tool suite** — opt-in only, via `runExtendedTools()` in `src/lib/scanExecution.ts`, gated per tool by the scan's profile (`src/lib/scanProfiles.ts` `ExtendedToolName`/`EXTENDED_TOOL_NAMES`) — in practice scheduled jobs only, see "Scan flow" above. Real binaries/daemons that only exist in that GitHub Actions job:
-- `src/worker/tools/{nuclei,zap,sqlmap,nmap,commix}.ts` — real active scans (`sqlmap.ts` reads sqlmap's real output via `sqlmapOutput.ts`, tested against captured output in `fixtures/sqlmap/`; unreachable or unfinished runs are `error`, nothing-to-test is `not_applicable`; `tool-integration.yml` runs it against `tests/fixtures/test-app`), ported out of the deleted BullMQ worker (commix is a newer addition, scoped from a review of eccouncil.org's pentest tool list — see its file header for the CONFIDENCE NOTE; xsser was **retired** in E-72b: it isn't installable on the runner image — no apt package on Ubuntu 24.04, and the pip build crashes at import because it only runs from inside its own source checkout — so it had only ever returned `not_configured`; ZAP covers XSS and reflected-XSS confirmation is planned in `proofOfExploit.ts`). `nuclei.ts` is scoped by `-tags` (Sprint 5) rather than firing nuclei's entire default template set — a fixed baseline (`cve`/`exposure`/`misconfig`/`default-login`/`takeover`/`ssrf`/`oast`) plus tags mapped from whatever `fingerprint.ts` detected (`TECH_TAG_MAP`), fed in from `scanExecution.ts`'s `results.fingerprint`. An unmapped or wrong tag just contributes nothing to nuclei's OR-match — never an error, never a reason to fall back to the unscoped scan. `ssrf`/`oast` are SSRF out-of-band detection: real nuclei templates (confirmed against the real nuclei-templates repo — 215 tagged `ssrf`, 601 using the `{{interactsh-url}}` placeholder) that inject that placeholder and match only on a real callback (`interactsh_protocol`), never a response-body guess. nuclei resolves it against a server it polls itself — by default the free public interactsh collaborator pool (`nuclei -help`: `-iserver` defaults to `oast.pro,oast.live,oast.site,oast.online,oast.fun,oast.me`, the same ProjectDiscovery infrastructure as nuclei/subfinder/httpx themselves) — so this needed no new flag, no server to host, and no owner decision beyond the one already made by including `nuclei.ts` at all: before the Sprint 5 tag curation, nuclei ran unscoped and already fired every OAST template; `ssrf`/`oast` simply weren't on the curated allow-list
-- `subdomains.ts` — Subfinder subdomain discovery (supersedes `recon.ts`'s lighter crt.sh-only finding when it finds anything)
-- `scanners/hostProbe.ts` — httpx live-host probing. Runs *after* `subdomains.ts` (it needs the discovered hostnames), one GET per host via `-u` (never stdin, which execTool closes), reporting status/title/server/tech/TLS. Emits `http-probe.live:<host>` info findings for the discovered hosts that serve a live app (the scanned target itself is excluded — the base suite already covers it), so a subdomain that starts serving a web app shows up as NEW in the diff. Read-only, no payloads, probes only the target and hostnames within its own domain — no brute-forcing (the host list comes from passive enumeration). `httpx` is pinned v1.6.10 + SHA-256 in `scheduled-scans.yml`; `not_configured` without the binary. full + osint profiles.
-- `deepTls.ts` — testssl.sh
-- `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `trivyScan.ts` — all four require a connected GitHub repo (`repo_connections` table, `sql/migrations/009_repo_connections.sql`, set via `src/pages/api/account/connect-repo.ts`); each returns a clean `not_applicable`/`not_configured` result with no repo rather than an error. `secretScan.ts` runs Gitleaks against repo contents; `dependencyManifest.ts` (E-67) lists the repo root once, then per ecosystem prefers a lockfile — package-lock.json/npm-shrinkwrap.json, pnpm-lock.yaml, yarn.lock (v1 and berry), poetry.lock, Pipfile.lock, composer.lock, go.sum (+go.mod), gradle.lockfile, Gemfile.lock, Cargo.lock, packages.lock.json — giving exact versions of every package, transitive ones included, with direct/transitive, dev scope and an "introduced via a > b > c" chain where the format records a graph. The parsers are pure functions of file contents in `dependencyLockfiles.ts` (`parseLockfile(name, content, companionManifest)`, `LOCKFILES`; minimal YAML/TOML readers in `lockfileSyntax.ts`, no dependency) so a pull-request check can reuse them. With no readable lockfile it falls back to the old manifest-range check (`package.json`, `requirements.txt`, `composer.json`, `go.mod`, `pom.xml`: lowest version a range allows — findings say so and stay `medium`). Up to 2000 packages per repo go to OSV.dev in one `POST /v1/querybatch` (≤1000 per request, per-query `next_page_token` followed), then `GET /v1/vulns/{id}` for CVE aliases, severity (GHSA rating, else CVSS v3 band) and fixed versions (`osv.ts`; SEMVER *and* ECOSYSTEM ranges via `ecosystemVersion.ts`). A failed batch makes the result `error` — never "no vulnerabilities". checkIds stay `dependency-manifest.<slug>:<name>` (slugs npm/pip/composer/go/maven/ruby/cargo/nuget), one finding per package name across its vulnerable versions. The same module also runs `typosquatRisk.ts`'s typosquat/supply-chain risk check (npm/PyPI only, independent of the OSV lookup above): a declared package name exactly one Levenshtein edit from a curated list of well-known packages (`POPULAR_PACKAGES`), corroborated against the real registry (`registry.npmjs.org`/`pypi.org`, no key) — reported only when the candidate has far fewer published releases than the mature package it resembles (e.g. `loadsh`, a real still-live typosquat of `lodash`: 4 releases since 2018 against lodash's 117 and counting), never on name similarity alone. A candidate missing from the registry, or a failed lookup, is never reported — no evidence either way. checkId `dependency-manifest.typosquat-risk:<name>`, medium severity (a heuristic signal, not a confirmed-malicious verdict). The result carries `inventory` (every package, scope, graph as indices, advisories), which `sbomExport.ts` turns into the CycloneDX SBOM served by `GET /api/v1/scans/{id}/sbom`; scans stored before the inventory existed fall back to the old finding-based SBOM; `dockerBaseImage.ts` extracts a `Dockerfile`'s base image tag and checks it against real end-of-life dates (endoflife.date), not OSV.dev — real installed-package CVE matching needs the actual dpkg/apk manifest a tag name alone doesn't give you, which is what `trivyScan.ts` (E-34) exists to fill: it resolves the same Dockerfile's final-stage base image (reusing `dockerBaseImage.ts`'s own `parseDockerfileStages`/`resolveBaseImages`) and runs a real `trivy image` scan against it, plus a separate `trivy config` scan (shallow clone, no image involved) for Terraform/Kubernetes/Dockerfile misconfigurations — the only IaC scanning in the whole suite.
-- `src/worker/tools/sast.ts` (E-69) — static code analysis of the connected repo (same repo gating as above; full + osint profiles). Shallow-clones via `src/lib/repoClone.ts`'s `withShallowClone()` — the one shared clone helper (token sanitising, no credential helper/prompts, symlinks checked out as files, no submodules/LFS, temp dir always removed); `trivyScan.ts`'s config mode uses it too, and `secretScan.ts` keeps its own full-history clone but shares `sanitiseGitOutput()` — then runs the **Opengrep** engine (LGPL-2.1, separate binary, pinned + SHA-256-checked in `scheduled-scans.yml`) with **our own rule pack in `sast-rules/`** (34 rules, JS/TS + Python + PHP, taint mode, each with an annotated `ruleid:`/`ok:` test file; `.github/workflows/sast-rules.yml` runs `opengrep validate` + `opengrep test` on changes). **Licensing: never copy rules from semgrep-rules (Semgrep Rules License v1.0 forbids use in a competing commercial SaaS) or opengrep-rules (archived, "for research, testing & benchmarking")** — write them from scratch. Every rule needs `metadata.cwe`/`confidence`/`severity` and an entry in `src/lib/scanners/sastCatalog.ts` (`sastCatalog.test.ts` reads the YAML and fails otherwise); that catalogue drives compliance refs, fix difficulty and `sastRemediation()`. checkIds are `sast.<rule-id>:<sha256(path|line|rule)[0:16]>` — location only, never code. Capped at 50 findings (most severe first). Pattern-based, not a code review — see `docs/USER-GUIDE.md` §6.
-- `src/worker/tools/workflowSecurity.ts` — GitHub Actions workflow/composite-action security, same repo gating as the four above (full + osint profiles), same shared clone helper. Runs **zizmor** (MIT, a real third-party tool — never hand-rolled; PyPI, pinned `zizmor==1.30.1` in `scheduled-scans.yml`) over the cloned repo (`--format json --no-exit-codes --no-progress`, plus `--gh-token` when a GitHub token is available, enabling zizmor's own online audits like `known-vulnerable-actions`/`impostor-commit`). Deliberately the **default `regular` persona, not `--pedantic`** — same "precision over recall" choice `sast.ts`'s own rule pack makes; pedantic-only findings (`excessive-permissions`, `undocumented-permissions`, `concurrency-limits`, `anonymous-definition`) are zizmor's own judgment call on what's a code smell vs. a real finding, and this scanner respects that. `workflowSecurityCatalog.ts` maps all 40 real zizmor audit idents (checked against `crates/zizmor/src/audit/mod.rs` at the matching tag, never guessed; `workflowSecurityCatalog.test.ts` fails if the real list changes) to 7 categories (injection, dangerous-triggers, excessive-permissions, supply-chain-integrity, credential-exposure, unsound-logic, hygiene) driving compliance refs, fix difficulty and `workflowSecurityRemediation()` — an ident zizmor adds later falls back to "hygiene" rather than going uncategorised. checkIds are `workflow-security.<ident>:<sha256(path|line|ident)[0:16]>`. Capped at 50 findings (most severe first).
-- `src/worker/tools/jwtAnalysis.ts` — JWT security analysis, extended tier (`api` profile — same "login/business-logic" placement as `sessionCheck.ts`, no repo needed). Decodes JWTs the target itself issues — in a `Set-Cookie` header, the response body, or the request/response URL (regex-fingerprinted on the `eyJ` base64 header prefix) — and reports on their own header/payload fields: `alg:"none"`/no signature, a missing `exp` claim, a known weak HMAC secret (recomputed locally against ~30 publicly known default secrets — zero extra requests to the target), transmission over plain HTTP, or the token appearing in a URL at all. **Deliberately never forges a token or replays anything against the server** — `docs/NEXT-STEPS.md` already scoped "JWT forging" out as an attack, not scanning. checkIds are `jwt-analysis.<type>:<url>#<sha256(token)[0:12]>` (a per-token fingerprint, never the raw token) except `sent-over-http`, which is scan-level (keyed on the target URL alone, emitted once if any token was seen over HTTP).
-- `src/worker/tools/badsecrets.ts` (E-77) — known framework secret keys via **badsecrets** (AGPL-3.0; owner decision 2026-10-19: run **unmodified** as a separate program from its own virtualenv `/opt/badsecrets`, pinned `badsecrets==1.2.0`, never imported or redistributed). `--passive-only` (its active modules send crafted values to the target): one GET, then offline checks of cookies, headers and body against its known-key lists. checkIds `badsecrets.known-secret:<Module>` (one per detecting module), severity from badsecrets. **The matched key and the cookie/token value are never stored** — only a 12-hex SHA-256 fingerprint of the key. `--json` is silent both on "nothing found" and on "couldn't connect", so the wrapper fetches the target itself first: unreachable is `error`, never clean. `IdentifyOnly` results are not findings. Real-binary test: `badsecrets.integration.test.ts` signs a Flask cookie at run time with a plain entry from badsecrets' own list (no key in the repo; the list's whitespace is significant). full, api, cms profiles.
-- `src/worker/tools/katana.ts` (E-77) — **katana** (MIT, pinned v1.8.0 + SHA-256) discovers pages with JavaScript parsing (`-jc`), and the pages the base crawl didn't visit (≤30) go through `checkCrawl(target, { onlyUrls })` — start page plus exactly those URLs, nothing followed, robots.txt/action-link/page-cap rules intact — then `buildCrawlFindings`, re-namespaced `katana.*` (compliance/fix difficulty map them to `crawl.*`). **Not crawl seeds on purpose:** katana only exists on the scheduled worker, so seeding `crawl.*` would let every passive scan mark katana-page findings fixed. Real v1.8.0 behaviour, each covered by a test: `-ob` also disables JS endpoint extraction (so plain URL output, not JSONL), `-kf` takes one value (`all`), flag errors print on stdout with exit 2 (any non-URL line is an `error`), an unreachable target still prints its URL and exits 0 (the wrapper fetches the target first), without `-cos` it follows `/logout` (we pass `ACTION_URL_PATTERN`), it ignores robots.txt for its own discovery and fetches robots/sitemap with its default user agent. Throttled page checks → `partial`, which lifecycle treats as not run. full, api, osint.
-- `authenticatedCheck.ts` + `authenticatedCrawl.ts` (Sprint 3 "first slice", extended by `docs/AUTHENTICATED-CRAWL.md`'s "slice 1") — requires a saved credential in `target_auth_credentials` (`sql/migrations/014_target_auth_credentials.sql`, one row per `monitored_targets` row, set either by hand via `src/pages/api/account/target-auth.ts`, or recorded through a real login form via `/api/account/record-login` — see "Login recording" below; no live-validation call, since unlike GitHub/Jira/Linear there's no generic "am I authenticated" signal for an arbitrary customer site). `authenticatedCheck.ts` re-runs `headers.ts`'s `buildHeaderAnalysis` (exported specifically so this doesn't duplicate it) against the start page carrying the credential; `authenticatedCrawl.ts` then runs the full E-70 crawl signed in too — this genuinely is a crawl behind login now, just not IDOR testing (one logged-in user reaching another's data — see `docs/COMPETITIVE-ANALYSIS.md` §9). `checkId`s are `auth-check.*` and `crawl.auth.*` respectively, distinct from the identical-looking unauthenticated `headers.*`/`crawl.*` findings, since they describe a genuinely different response.
-
-**Login recording** (`src/lib/scanners/loginRecorder.ts`, `POST /api/account/record-login`) drives a real headless browser through the target's own login form (fill username + password, press Enter so the page's own CSRF token travels with the submit) and saves the resulting cookies as a normal `target_auth_credentials` row — the alternative to manually pasting a session cookie, for a plain form with no MFA step. Same Agency gate + ownership check as `target-auth.ts`, plus: session auth only, rate-limited, `loginUrl` must be on the target's own host and `https://`, and the caller must send `acknowledged: true`. The password is used once and never logged, stored or returned. UI: `MonitoredTargets.tsx`'s `AuthenticatedScanConfig` gets a third "Recorded login" tab alongside "Session cookie"/"Basic Auth". A public-facing consent-wording review (what the UI's checkbox and any marketing copy say) is still owed — see `docs/AUTHENTICATED-CRAWL.md`.
-
-When adding a new check to either tier: export its result type from the module, add it to `ScanResults` (base) or the `extended` object (extended tier), and push `Finding` entries with a stable `checkId` (`"<module>.<check-name>"`, or `"<module>.<check-name>:<key>"` in a loop) — `src/lib/findingsDiff.ts` matches on this to tell "new" from "unchanged" between two scans of the same target, so an untagged finding never participates in diffing.
-
-Import the base pipeline as `@/lib/scanners` (the directory). A single-file `src/lib/scanners.ts` used to sit alongside it and **shadowed the directory in module resolution**, so every entry point silently ran an old 4-check version. It has been deleted — do not recreate a file at that path.
-
-**Remediation text** lives in `src/lib/scanners/remediationText.ts` and is attached to each finding as `Finding.remediation` at the point the finding is created, where the check result is still in scope. The field is optional because scans stored before it existed deserialise without it, so any consumer must guard. Never re-derive which fix applies by string-matching a finding's title.
-
-**Threat intelligence** (`src/lib/scanners/threatIntel.ts`) is another final pass, run by `executeScan()` right after CVSS enrichment: every CVE-backed finding gets `threatIntel` — CISA KEV membership (and ransomware use) plus the highest FIRST EPSS score across its CVEs. Both sources are free and keyless; the KEV feed is cached per worker process. It never changes `severity` (that's the finding's evidence); the report sorts known-exploited and higher-EPSS findings first *within* a severity and shows badges. Absent `threatIntel` means unknown, never "not exploited" — `knownExploited: false` is only written when the KEV feed was actually read. It does change what a finding *costs in the score*: `scanners/riskScore.ts`'s `findingPenalty()` starts from the flat severity penalty, raises it to at least the CVSS band's penalty, multiplies it for KEV (1.5x, 2x if ransomware) and high EPSS, lowers it (0.75x) only for a *measured* EPSS < 0.01 on a non-KEV finding, and caps one finding at 45. A finding with no CVSS or intel costs exactly its flat penalty, so most scores are unchanged; stored scores are never rewritten.
-
-**Compliance mapping** (`src/lib/scanners/compliance.ts`) is different from remediation text: applied as a *final pass* over the whole `findings` array (in `summariseResults()` for the base suite, and again in `scanExecution.ts` for extended-tool findings appended afterward), not set at any individual push site. `getComplianceRefs(checkId)` matches on the checkId's base (the part before its first `:`) against a hand-curated, deliberately non-exhaustive table mapping to Cyber Essentials, OWASP Top 10, CIS Controls v8, ISO 27001, PCI DSS, NIS2 and DORA; SOC 2 (Trust Services Criteria) and HIPAA Security Rule refs are *derived* from those rows by the small `CROSSWALK` table in `compliance.ts` (one line to dispute per objective, not 150 rows) and are an automated indicator, never an attestation — a checkId with no entry gets no refs, meaning "not yet categorised" or "genuinely doesn't fit," never a forced mapping. When adding a new check that has a genuine compliance angle, add its base checkId to `COMPLIANCE_MAP` rather than leaving it uncategorised by default. `ComplianceSummary` in `ScanReportView.tsx` renders the Cyber-Essentials-specific breakdown on the scan report — worded as an "automated indicator," never a certification claim.
-
-**False positives.** `exposure.ts` fetches a random-slug URL alongside the site root to learn what a "not found" response looks like, masks the probed path out of both bodies, and discards any probe whose body matches that baseline. Without this, every SPA that returns its shell for unknown paths reports an exposed `.env`. Any new check that probes for a file must reuse `fetchBaseline`/`normaliseBody` (`httpProbe.ts`) rather than trusting a 200 status.
-
-### Pull-request dependency checks (E-71)
-
-`POST /api/v1/dependency-diff` (`src/pages/api/v1/dependency-diff.ts`; API key or session, rate limited under namespace `dependency-diff`, Pro/Agency via `planAccess.ts`'s `hasProAccess`, admins exempt) takes base and head lockfile contents and returns only the vulnerable packages the head **introduces**. All logic is in `src/lib/dependencyDiff.ts`: `diffLockfiles()` (pure) parses both sides with E-67's `parseLockfile()` and keeps head packages whose name+version base lacks; `computeDependencyDiff()` queries OSV (`queryOsvBatch`/`fetchOsvVulnDetails`, same severity/fixed-version logic as `dependencyManifest.ts`). Parsing is guarded: 5 MB per file and 20 MB per request (400 above), a 20 s `PARSE_BUDGET_MS` checked between files (parsers measured at ≤1 s per 5 MB, pathological nesting is caught as a per-file error). Evidence discipline: an unparseable lockfile, an unsupported file name, or more than 2000 introduced packages sets `complete: false`; an OSV failure is `status: "error"` (HTTP 502 `lookup_failed`) — never an empty clean result. A lockfile new in the PR (`base: null`) counts every package as introduced; deleted (`head: null`) introduces nothing. The packaged Action (`action/index.js`, `mode: dependencies`) runs `git merge-base`/`git diff`/`git show` for each changed lockfile (and its companion manifest), calls the endpoint, fails on `fail-on` (and on `complete: false`), writes the job summary and upserts one PR comment identified by `<!-- hebrides-cyber-dependency-check -->` using the workflow's `GITHUB_TOKEN` (no GitHub App). `LOCKFILE_COMPANIONS` in the Action mirrors `LOCKFILES` in `dependencyLockfiles.ts`; `githubAction.test.ts` fails if they drift — add a new lockfile to both.
-
-### CI templates (any CI system)
-
-`public/ci/hebrides-scan.sh` (POSIX sh + curl + jq) is the scan gate customers run from GitLab, Jenkins, Azure DevOps, Bitbucket or GitHub Actions; `public/ci/` also holds one template per CI system, and `/docs/ci` (`src/app/docs/ci/page.tsx`, static, reads the files at build via `src/lib/ciTemplates.ts`) presents them with the script's SHA-256. The gate must stay identical to `action/index.js`'s `blockingFindings` (new, untriaged, at or above `HEBRIDES_FAIL_ON`; first scan passes; exit 1 blocked, 2 could not scan). The API key goes to curl on stdin (`-H @-`), never argv. This is the supported route because the repo is private, so customers can't `uses:` the packaged Action. Adding a template: put it in `public/ci/` and `CI_TEMPLATES`; `ciTemplates.test.ts` fails on an unlisted file, a setting the script doesn't read, or a key not taken from a secret. `ciScanScript.test.ts` runs the real script under every available shell. (The old `sdk/` templates were deleted: they sent `targetUrl`/parsed `scanId` and never started a scan.)
-
-**Accuracy benchmark (E-73).** `bench/` scores the base checks (tls, headers, exposure, directory-listing, fingerprint, webapp, business-logic) against local fixture sites (`bench/fixtures/sites.ts`, loopback only, no internet) via the real `summariseResults()`. `bench/expectations/<target>.json` lists `mustFind`/`mustNotFind` checkIds (wildcards end in `*`), `optional` noise and `knownIssues` (tracked defects, still scored). `npm run bench` prints precision/recall per module, writes `bench/reports/latest.json` and exits 1 on a hard expectation failure or a drop below `bench/baseline.json`; `npm run bench -- --update-baseline` refreshes it after an improvement; `npm run bench:test` runs its unit tests (separate from `test:unit`). When you add or change a path-probing check, add a fixture and an expectation. `.github/workflows/benchmark.yml` runs it weekly and on `src/lib/scanners/**` changes.
-
-### Real remediation PRs vs AI-tailored fixes vs static remediation text vs the remediation pack
-
-Five distinct, non-overlapping "help me fix this" features — don't conflate them:
-- `remediationText.ts` — static markdown, attached to every finding unconditionally (see above).
-- `src/lib/aiRemediation.ts` / `POST /api/scans/[id]/ai-fix` — on-demand, per-finding, sends the finding + detected tech stack to Azure OpenAI for a stack-specific fix (only live if `AZURE_OPENAI_*` is configured).
-- `POST /api/generate-fix-pr` — opens a real GitHub pull request. Auth resolves via `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` (see below); for dependency findings it bumps the actual version in `package.json` (via `osv.ts`'s `lookupOsvFixInfo`), not just a recommendations file. Needs a connected repo.
-- `POST /api/scans/[id]/create-ticket` — opens a real Jira, Linear, ServiceNow or GitHub issue from one finding, via `buildProviderClient()` in `src/lib/ticketLinks.ts` (clients in `ticketIntegrations.ts` and `ticketProviders.ts`). Reuses the finding's own detail/remediation text as the ticket body rather than generating new prose — the point of this feature is "send existing guidance to where my team tracks work," not a fifth kind of write-up. Requires a saved `ticket_integrations` row (`sql/migrations/013_ticket_integrations.sql`, one per owner+provider, written only by `src/pages/api/account/ticket-integration.ts` after a real validate call against Jira/Linear's own API — same "verify before saving" precedent as `connect-repo.ts`). The "Create ticket" button in `ScanReportView.tsx`'s `FindingCard` only renders when the caller has already confirmed an integration exists (`hasTicketIntegration` prop) — it never has to know which provider is behind it.
-- **Remediation pack** (`buildRemediationPack()` in `remediation.ts`, `GET /api/v1/scans/{id}/remediation-pack`) — every actionable finding as one Markdown download, grouped by category (checkId's module prefix, same taxonomy as `ComplianceTrend.tsx`'s `categoryLabel()` — duplicated as a small local map rather than imported, since that file is a `"use client"` UI component) rather than the flat severity order `buildRemediationMarkdown` (the PR body, above) uses. Needs no connected repo and isn't plan-gated (same as the Executive PDF) — it's the option for a team that wants the same fix content without opening a PR or needing a repo connected at all. "↓ Remediation pack" button next to "↓ Executive PDF" on the scan report page.
-
-### Ticket lifecycle: dedupe and auto-close
-
-`sql/migrations/016_ticket_links.sql`'s `ticket_links` is the finding→issue ledger, keyed `(owner, provider, target_host, check_id)`. It exists because nothing previously recorded which finding produced which issue — `createJiraIssue()` read the issue key only to build a URL and discarded it, so clicking "Create ticket" twice opened two identical issues.
-
-- **Dedupe** — `decideTicketAction(link, issueState)` in `src/lib/ticketLinks.ts` is a *pure* function holding the whole decision table, so every branch is unit-testable without a mocked Jira. It matches on `checkId` (the same stable identity `findingsDiff.ts` uses) rather than issue title, and on `target_host` rather than raw `target_url` (same normalisation as `scanReport.ts`'s `findPreviousFindings`) — so the ledger agrees with the new/fixed diff by construction. It always re-checks the tracker before reusing a row, since an issue deleted in Jira must not suppress ticketing for a live finding. Its `"blocked"` outcome is load-bearing: an unreachable tracker is not evidence of anything, so it creates nothing *and* suppresses nothing, and retries next scan.
-- **Auto-close** — `src/lib/ticketAutoClose.ts`, called from `executeScan()`'s Phase 2 alongside the other notification hooks (same never-throw contract). Consumes `ScanReport.fixed_findings`, which `findingsDiff.ts` already computes — it does not form a second opinion about what counts as fixed. **Opt-in via `ticket_integrations.auto_close_enabled`, default false**: transitioning an issue in someone else's tracker is a visible action in a system this app doesn't own, and an account that connected Jira before this existed must never find its board moving on its own.
-- Jira has no "set status" API — `transitionJiraIssueToDone()` lists the issue's *currently available* transitions and picks one whose target `statusCategory.key === "done"`, rather than string-matching a name like "Done" which breaks on any customised workflow. Linear's `WorkflowState.type` vocabulary is fixed workspace-wide, so its equivalent needs no such care.
-- Close happens *before* the comment, deliberately: a workflow with no available done-transition would otherwise collect an identical "verified as fixed" comment on every nightly scan forever, since nothing records that we already said it.
-
-### Finding lifecycle and remediation SLAs
-
-`src/lib/findingLifecycle.ts` keeps `finding_lifecycle` (`043_finding_lifecycle_sla.sql`): one row per (owner, target host, checkId) with first seen, last seen and resolved. `executeScan()` syncs it after every completed scan (Phase 1.75, never throws, no-op before 043). Identity is checkId, same as `findingsDiff.ts`.
-
-**A scan can only resolve what it could have detected.** On-demand scans are passive-only, so a passive scan's silence about a nuclei/sqlmap finding is not a fix. Each row records its `source`: `"base"`, the normalised `extended` key of the tool that produced it (from the checkId namespace, `"deep-tls.x"` → `deeptls`), or `"extended"` if unmatched. A scan resolves a row only if that source completed in it (`isCovered`). If you add an extended tool whose checkId namespace doesn't normalise to its `extended` key, add it to `TOOL_ALIASES`. A finding that reappears within 7 days of resolving reopens with its original `first_seen_at`, so a flapping check can't reset its clock. A site's first sync backfills first-seen from up to 45 earlier scans under the same coverage rule.
-
-`slaMonitoring.ts` is the pure maths on top (policy, due dates, due-soon/breached, time-to-fix); `slaAlerts.ts` emails the owner once per finding per stage (`sla_warned_at`, `sla_breach_notified_at`), only marking what was actually delivered. Agency plan, admins exempt (`hasSlaAccess`). Per-account targets live in `sla_policies`, written only by `PUT /api/account/sla`.
-
-Note the same passive-vs-active gap still affects `findingsDiff.ts`'s `fixed_findings`, and therefore ticket auto-close: an on-demand scan after a scheduled full scan reports the active-tool findings as fixed.
-
-### Emerging-threat alerts
-
-`.github/workflows/emerging-threats.yml` (every 6 hours) runs `npm run threats:check` (`src/scripts/check-emerging-threats.ts`, `--dry-run` writes and sends nothing). It takes CVEs CISA added to KEV in the last 3 days (`threatIntel.ts`'s cached `loadKev`), reads their affected versions from NVD's CVE API configurations and, for npm libraries, OSV.dev's GHSA ranges (OSV wins for npm-mapped libraries whenever it has npm data — NVD misfiles some, e.g. Angular CVEs under AngularJS), and compares them with each paid owner's (and admin's) latest completed scan per host from the last 30 days. Matching is pure (`src/lib/emergingThreats.ts`); I/O, the ledger and sending are in `emergingThreatAlerts.ts`. What a scan saw comes from `scanners/techInventory.ts`'s `collectTechInventory`, shared with `endOfLife.ts`; technology → CPE is `softwareCveDb.ts`'s `NVD_CPE_BY_NAME` (add entries only after checking a real NVD record).
-
-Evidence tiers: `affected` = detected version inside a range; `possibly_affected` = product seen but version unknown or partial, distro-packaged (`packagedBy`), or in range only under an NVD AND-configuration we can't see (e.g. PHP-on-Windows). Never a name-only match. A failed KEV/NVD/OSV lookup is an error (KEV → exit 1; NVD/OSV → that CVE skipped, exit 1), never "not affected"; a CVE NVD hasn't analysed yet is "pending". Ledger: `emerging_threat_alerts` (`045_emerging_threat_alerts.sql`, unique owner+host+CVE, owner-read, service-role write). Only rows matched in the current run are sent, `notified_at` is stamped after at least one channel delivered, and a stamped row is never re-sent. Email for every paid plan; Slack/Teams (`sendSlackThreatAlert`/`sendTeamsThreatAlert`, which throw on failure) for Pro/Agency, admins exempt. Read by `GET /api/emerging-threats` and `EmergingThreatsPanel` on `/dashboard`; both no-op before 045.
-
-### Attack-surface change alerts
-
-`src/lib/attackSurfaceMonitor.ts`'s `sendAttackSurfaceAlerts` runs last in `executeScan()` Phase 2 (after `syncAssetInventory` recorded the scan's hostnames; never throws) and tells the owner about new hostnames and NS/MX/SPF/DMARC changes. The domain is `registrableDomain.ts`'s `ownerDomain` (full Public Suffix List, private suffixes included).
-- **New hostnames need evidence.** A row missing from `asset_inventory` isn't new: crt.sh is capped at the 50 most recently certified names and can be down, and Subfinder's passive sources vary. A pending row (`notified_at` null, `049_attack_surface_monitoring.sql`) is reported only when this scan's crt.sh data (`recon.subdomains[].firstNotBefore`, the name's earliest certificate) shows it was first certified after the earlier of the previous scan of the same host and 14 days ago (or 14 days before the row was first seen, so a released claim doesn't age out before its retry), it is inside the domain, and it isn't the scanned host. Every other pending row is stamped as known without an alert. When crt.sh couldn't be read (`ctLookupFailed`, recon error) an alerting owner's rows stay pending: no evidence either way is not "not new".
-- **DNS** is looked up fresh (`observeDns`, injectable resolver, 5 s timeout), because `dns.ts` treats a failed lookup as "no record": here only ENODATA/ENOTFOUND mean absent, any other failure is unknown, keeps the stored value and is never a change. `dns_snapshots` (one row per owner + domain) has `known_fields`: a field's first answer is its baseline, so a first scan, or a field unreadable until now, never alerts, and one persistently unreadable record doesn't switch the others off.
-- **Claim, then send.** Hostnames are claimed by setting `notified_at` where it is still null, the DNS change by advancing the snapshot only where `captured_at` is still what was read; if no channel delivers, both are put back so the next scan retries. Two scans of www and apex finishing together therefore send each change once.
-- Email for active paid plans and admins; Slack/Teams (`sendSlackNotice`/`sendTeamsNotice`, which throw on failure) via `emergingThreatAlerts.ts`'s `channelsFor`. An owner without an alerting plan gets nothing, but their rows are stamped and their snapshot advances, so upgrading doesn't replay old changes. Before 049 it no-ops.
-- Not reported on purpose: hostnames that disappear (CT logs are append-only and passive sources vary, so "removed" would be noise).
-
-**EASM discovery** (`src/lib/easmDiscovery.ts`'s `runEasmDiscovery`, wired into `executeScan` right after `syncAssetInventory`) finds subdomains beyond what the scan's own recon/Subfinder saw, via crt.sh (passive, every scan) and, only once a scan's content-discovery (ffuf) has already cleared the Tier A offensive-profile gate, DNS brute-force of a fixed common-prefix list (`options.bruteForce`) — the same gate `contentDiscovery.ts` uses, so the base suite's no-brute-force rule is never broken. New hosts (capped at 30 probed/saved per run; the rest get picked up on a later scan once the current batch is no longer "new") get one HTTP(S) HEAD probe each, then an `asset_inventory` upsert with no `notified_at` set — `sendAttackSurfaceAlerts` above picks those up for free as "new hostnames," no separate alert wiring needed.
-
-### Lookalike-domain / phishing monitoring
-
-`src/lib/lookalikeDomainMonitor.ts`'s `sendLookalikeDomainAlerts`, called from `executeScan()` Phase 2 right after `sendAttackSurfaceAlerts` (never throws). For an owner's domain (`registrableDomain.ts`'s `ownerDomain`), it generates a small, bounded set of candidates one simple edit away — a character dropped/doubled/swapped for a visual lookalike/transposed, a hyphen inserted, or a common TLD swapped (`generateLookalikeCandidates()`, pure, capped at `MAX_CANDIDATES`) — and checks the real Certificate Transparency logs (crt.sh, the same data source `recon.ts`/`subdomainCerts.ts`/attack-surface monitoring already trust, queried with the exact candidate domain rather than a wildcard) for each one. A candidate is only ever reported once crt.sh shows a real certificate already issued for it — never on name similarity alone, and never when the lookup 404s or fails (no evidence either way). This deliberately does not use dnstwist (the well-known real tool for this): dnstwist's value is live DNS resolution per candidate, which needs a worker with unrestricted DNS egress to verify — unverifiable in the sandbox this was built in, unlike crt.sh's already-proven, already-used endpoint.
-
-A full sweep only runs once every `SWEEP_INTERVAL_DAYS` (7) per domain (`lookalike_domain_sweeps`, one row per owner+domain recording only *when* the last sweep ran, so a clean domain with zero findings still throttles correctly) and only for alerting-eligible owners (active paid plan or admin) — unlike attack-surface monitoring's asset-inventory baseline (nearly free, built from data the scan gathers anyway), a sweep here costs real external crt.sh queries, so non-alerting accounts are skipped entirely rather than sweeping silently. Findings live in `lookalike_domains` (`053_lookalike_domains.sql`, unique on owner+candidate domain); `notified_at` null means found but not yet reported, same convention as `asset_inventory`. A candidate already known (a row exists, reported or not) is never re-alerted — a phishing domain usually stays registered. Claim-then-send and release-on-delivery-failure follow `attackSurfaceMonitor.ts`'s pattern exactly. Email for active paid plans and admins; Slack/Teams via `emergingThreatAlerts.ts`'s `channelsFor`. Before 053 it no-ops.
-
-**Admin: stuck/failed queue job recovery** (`src/pages/api/admin/queue.ts`). The Queue tab's "Retry" button on a failed job reuses the existing `PATCH /api/admin/scans` `{scanId, action: "retry"}` path — the backend already did this via the Scans tab, the Queue tab just never offered it. A separate "Recover stuck jobs" button calls `PATCH /api/admin/queue`, which runs `reset_stale_scan_jobs()` (`041_reset_stale_scan_jobs.sql`) on demand instead of waiting for the next scheduled worker run to call it, logged as `admin.stale_jobs_recovered` with the count reset.
-
-**Admin: plan override + customer detail** (`src/pages/api/admin/subscription.ts`, `src/pages/api/admin/customers/[id].ts`). `PATCH /api/admin/subscription` upserts `subscriptions` with a plan/status chosen outside Stripe (comps, pilots, support goodwill), tagged `source = 'admin'` plus `granted_by`/`grant_reason` (migration 052) so it's visibly distinct from a Stripe-paid row in the Customers tab; a later real Stripe checkout for the same owner overwrites `plan`/`status`/`source` back to `'stripe'` — a real payment always supersedes a manual grant. The same migration also fixes `subscriptions.plan`'s CHECK constraint, which was never widened for `'tier_a'` when Tier A shipped (051) despite the webhook/`planAccess.ts`/pricing page already treating it as valid. `GET /api/admin/customers/[id]` is a read-only profile + subscription + last-20-scans view reached from the Customers tab's "View" button, logged as `admin.customer_viewed`. This is deliberately **not** session impersonation: minting a real Supabase session as another user, or threading a "viewing as" identity through every RLS-gated client-side query across the dashboard (`AppShell`'s `refreshSubscription` and most page-level reads go straight to `supabase.from(...)` under the admin's own session, not through `authenticateApiRequest`), was weighed and rejected as unneeded risk for what support actually needs — a safe, consolidated, read-only view, assembled with `supabaseAdmin` like every other admin route.
-
-**Admin: usage/cap visibility** (`src/lib/usageCapStatus.ts`, extends `GET /api/admin/customers/[id]`). The customer-detail view now surfaces the three real, enforced ceilings in this product — **not** an invented scans-per-month quota, which doesn't exist anywhere in enforcement or pricing copy: monitored-targets-per-plan (the existing `monitored_targets_cap()` RPC from `018_monitored_targets_plan_cap.sql`, the same one `MonitoredTargets.tsx` already shows the customer), team members vs. the flat 25 in `src/pages/api/team/members.ts`, and — only for an account with no active subscription — free-tier scans used vs. `FREE_SCANS_ALLOWED` (1, `freeTier.ts`). `capStatus(count, cap)` is a pure, unit-tested classifier (ok/near ≥80%/at/unknown) the UI uses to flag an account worth an upgrade conversation, same "pure fn fed real numbers" model as `scanCadence.ts`'s `isScanDue()`. Cadence (scan frequency) is not a cap and isn't shown here — Basic/Pro/Agency have no numeric scans-per-month limit, only a schedule.
-
-**Admin: revenue/MRR/churn** (`src/lib/revenueMetrics.ts`, extends `GET /api/admin/metrics`). The Overview tab's "Paying MRR" card and a new "revenue & churn" panel come from real subscription rows and this product's own published prices — **no live Stripe API call** (prices are fixed and published on `/pricing`; calling Stripe per admin-load would be heavy and isn't reachable in CI, and the subscription rows are already kept in sync by the webhook). `computeMrr(subs)` counts only active subs, treats `source = 'admin'` comps as £0 cash and bespoke Tier A (`PLAN_PRICE_GBP.tier_a === null`, "Contact us") as excluded-from-MRR, and surfaces both counts separately so they don't inflate the headline — the previous flat "every active sub × its plan price" sum both missed `tier_a` and counted comps. New subscriptions and cancellations over the trailing 30 days are counted from the webhook-synced `audit_logs` (`stripe.checkout.completed` / `stripe.subscription.deleted` rows — the only history kept, since `subscriptions` is one upserted row per owner); `churnRatePct(cancelled, activeAtStart)` turns those into a monthly churn rate (null when the base is too small to express one). Both functions are pure and unit-tested.
-
-**Admin: structured audit-log filtering** (`src/lib/auditFilters.ts`, extends `GET /api/admin/audit`). On top of the existing action/actor free-text search, the Audit tab now filters by **category** and **date range**. Category uses the action vocabulary's own structure — every action is `<resource>.<verb>`, so `categoryLikePattern("stripe")` → a `LIKE 'stripe.%'` on `action` (the dropdown's options are `AUDIT_CATEGORIES`, the stable prefix list). `dateRangeBounds(from, to)` turns `YYYY-MM-DD` inputs into inclusive start-of-day/end-of-day UTC `created_at` bounds, and yields a null bound (no filter that side) for an empty or unparseable value rather than a bogus one. Both helpers are pure and unit-tested; the route applies whatever they return.
-
-**Admin: per-tool kill switch** (`src/lib/toolKillSwitch.ts`, `GET`/`PATCH /api/admin/tool-flags`, new "Tools" tab). A global, admin-controlled on/off switch for each extended-scan tool, backed by `tool_kill_switches` (migration 055 — global config, service-role-only like `audit_logs`; an absent row means enabled). The scan worker reads it in `scanExecution.ts` right after `resolveToolConfig` and applies `applyKillSwitch()`, which only ever forces a tool OFF (never enables one the profile didn't ask for), so a disabled tool produces the same "not run" shape as a missing binary — nothing downstream special-cases it. The read is best-effort: a missing table (pre-055) or a read error means "nothing disabled", never a failed scan. `parseDisabledTools()` ignores unknown tool names so a renamed tool can't silently disable another. Toggles are audited (`admin.tool_disabled`/`admin.tool_enabled`).
-
-**Admin: GDPR erasure queue** (`summarizeDeletionQueue()` in `accountErasure.ts`, `GET /api/admin/deletion-requests`, new "Erasure" tab). A read-only view of pending `deletion_requests` (migration 048), soonest deadline first, each tagged overdue/with `deadlineWording()`, plus an overdue count — the same "what's owed and how urgently" the daily reminder email computes, now visible on demand. Deliberately read-only: the erasure itself stays the deliberate operator step `npm run account:erase` (`erase-user-data.ts` → `eraseAccount()`), never a one-click web button, because it is irreversible and cross-table. `summarizeDeletionQueue(rows, now)` is pure/unit-tested; the route adds the owner-email join (two queries, like the Stripe webhook, since `owner` references `auth.users`).
-
-**Admin: email deliverability** (`src/lib/emailEvents.ts`, `GET /api/admin/email-health`, new "Email" tab). The shared Resend sender (`email.ts`'s `sendEmail`) now records one `email_events` row (migration 056) per real send attempt — PII-minimised to the recipient *domain* only, never the full address or body. Recording is best-effort and gated on the service-role env being present, so it is a complete no-op in tests/local dev and a DB failure never affects whether the email counts as sent; the three caller tests that set `RESEND_API_KEY` mock `sendEmail` so they never reach it. `summarizeEmailHealth(rows, now, windowHours)` is pure/unit-tested — send count, failure rate (null, not 0, when nothing was sent), and the latest failures. The admin view shows the last 24h. Known gap: the Stripe welcome email still goes through SendGrid directly (`webhook.ts`), outside this choke point, so it isn't recorded.
-
-### Finding triage (accept risk / false positive / snooze)
-
-`finding_triage` (`046_finding_triage.sql`) holds one customer decision per (owner, target host, checkId) — `accepted_risk` (also "authorised", e.g. third-party scripts), `false_positive` or `snoozed`, always with a reason, optional `expires_at` (required for snoozed). Deliberately its own table: `findingLifecycle.ts` upserts complete rows and would wipe extra columns. Written only by `/api/findings/triage` (session or API key; `targetHost` or `scanId`, bulk up to 200, any checkId; team admin/developer may act via the owner's `scanId`; audited `finding.triaged`/`finding.untriaged`); owners get SELECT via RLS.
-
-`src/lib/findingTriage.ts` is the single place that decides what triage does — consumers take a `TriageIndex` built with a fixed `now`, and an expired row is simply no triage:
-- **Every active state**: out of the report's open list and executive-summary counts (`ScanReportView` "Triaged" group, Undo), out of SLA items/alerts (`slaMonitoring.ts` takes the index; the deadline is *not* extended — a finding returns from an expired snooze against its original first-seen), out of new-finding email/on-call alerts, and ignored by `action/index.js`'s gate.
-- **Only `false_positive`** leaves the score, applied at scan time in `executeScan()` (`excludeFalsePositives` before `scoreFromFindings`). Stored scores are never rewritten.
-- `buildScanReport(…, triage)` adds a `triage` field per finding for `GET /api/v1/scans/{id}` and the webhook; the public share link builds without it so an owner's reasons stay private. The export adds `triage_*` columns / `triage`.
-
-Before migration 046 every read degrades to "nothing triaged" (`loadTriageIndexForTarget`), GET answers `available: false`, writes 503. A triage read that fails for any *other* reason makes the SLA API 500 and SLA alerts wait — never treat it as "nothing triaged" where that would alert on accepted findings.
-
-### Cross-tool duplicate findings
-
-`src/lib/findingConsolidation.ts`'s `consolidateFindings()` runs in `executeScan()` after all findings are gathered and before enrichment/scoring (so an issue costs score once). It folds *extended-tool* duplicates (nuclei, ZAP, testssl) into one canonical finding using a curated table (`EQUIVALENCES`: our checkIds, nuclei template ids, ZAP alert names, testssl ids, plus CVE ids against JS-library/WP-plugin findings) — never title similarity. The canonical keeps its checkId, takes the max severity, and lists the others in `Finding.corroboratedBy` (`{ tool, checkId, title }`; shown as "Also reported by …", in the API as `corroborated_by`, in the CSV export). Our own checks are never merged into each other, a duplicate the owner has triaged is left alone, and no confident match means no change. Old state: `findingsDiff.ts` treats a finding as standing for its `corroboratedBy` ids too (a pre-consolidation nuclei finding is not "fixed", the canonical is not "new"); `findingLifecycle.ts` resolves an open duplicate's row and gives the canonical the earliest first-seen of those it absorbed (one-time, and it shows up once in time-to-fix); triage and `ticket_links` on a dropped duplicate's checkId stop applying (they are keyed by checkId, which no longer exists as a finding). To add an equivalence, add it to `EQUIVALENCES` only with evidence that both ids describe the same defect on the same target.
-
-### Portfolio report (Agency)
-
-`GET /api/portfolio-report` (Agency via `planGate`, session or API key, rate-limited, `?format=html` for HTML) renders every monitored site into one client-ready PDF: `portfolioData.ts` loads `monitored_targets`, each host's latest completed scan (matched by hostname, `results->findings` only), the account's triage and branding; `portfolioReport.ts` (pure) sorts worst site first (unscanned last), counts open findings after triage (false positives and accepted/snoozed excluded, as in the executive report), flags sites not rescanned for 14 days, lists checkIds open on more than one site, and white-labels completely. The PDF is streamed and **never stored**, so nothing escapes retention or account erasure. `reportPdf.ts`'s `htmlToPdf` is the Chromium renderer shared with `generate-report.ts`. The dashboard shows `PortfolioReportButton` to Agency accounts.
-
-### Cross-site findings view (E-74)
-
-`/dashboard/findings` (`FindingsExplorer.tsx`, nav item "Findings") lists every open finding across the owner's sites, from `GET /api/findings` (`pages/api/findings/index.ts`, session or key, owner-scoped, paginated, `format=csv` export). All logic is in `src/lib/findingsView.ts`: open = `finding_lifecycle` rows with `resolved_at` null, enriched with the host's latest completed scan (detail, KEV/EPSS — a finding that scan doesn't carry stays listed from its lifecycle row) and `findingTriage.ts`'s active triage (default filter "Not triaged"). Filters: site, severity, KEV, EPSS, category, triage state, SLA state (only with `hasSlaAccess`), age; grouping is by checkId base ("missing HSTS on 7 sites"). Bulk Accept/authorise, False positive and Snooze go through the existing bulk `PUT /api/findings/triage` (200 per request, chunked client-side); nothing reimplements triage. CSV cells go through `csvCell` (formula-safe). Before 043 it answers `available: false`; before 046 triage is absent and bulk actions are disabled; a failed triage read is a 500, never "nothing triaged". `findingsView.ts` has server-only imports, so client code imports types from it only.
-
-### GitHub access for customer repos
-
-`src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` is the one function every customer-repo-touching module calls (`generate-fix-pr.ts`, `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `connect-repo.ts`) — never read `process.env.GITHUB_PAT` directly in a new one. It tries a GitHub App installation token first (per-repo, expires in an hour, resolved live via `GET /repos/{owner}/{repo}/installation` — no webhook or install-callback flow needed), falling back to the shared `GITHUB_PAT` when the App isn't configured or isn't installed on that repo. `GITHUB_PAT` is also used, unrelated to any of this, by `src/lib/onDemandScanTrigger.ts` to dispatch this repo's own `on-demand-scan.yml` — don't conflate the two concerns when reasoning about that token's scope.
-
-### Content generation: daily blog + weekly newsletter
-
-Two genuinely separate, independently-scheduled posts — not one replacing the other — sharing real-event sourcing in `src/lib/newsletter.ts`:
-- **Daily** (`generateDailyBlogPost`, run by `src/scripts/generate-daily-blog.ts`, `.github/workflows/daily-blog.yml` at 07:00 UTC every day) — narrower lookback (KEV 7d / NVD 1d / news 2d), slug `cyber-brief-YYYY-MM-DD`.
-- **Weekly** (`generateWeeklyNewsletterPost`, run by `src/scripts/generate-weekly-newsletter.ts`, `.github/workflows/weekly-newsletter.yml` at 07:00 UTC every Monday) — full 7-day window on everything, fuller own-scan-stats section, slug `week-of-YYYY-MM-DD`.
-
-Both real-event sources, no fabrication: CISA's Known Exploited Vulnerabilities catalog (`fetchRecentKevEntries`), high-severity CVEs from the NVD API (`fetchRecentHighSeverityCves`, CVSS ≥ 7.0, no key needed at this volume), and a curated set of security-news RSS feeds parsed with hand-rolled regex extraction, not a dependency (`fetchRecentSecurityNews` — The Hacker News, BleepingComputer, Krebs on Security), de-duplicated by normalised title across feeds. AI narrative write-up if `AZURE_OPENAI_*` is configured, otherwise a deterministic templated post from the same fetched data — either path always publishes something rather than silently skipping a day/week.
-
-**Not API routes.** Both used to be `POST /api/generate-daily-blog` / `POST /api/generate-newsletter`, curled from their workflows with a shared service token — the same "GitHub Actions → Next.js API route on Azure" pattern the scan pipeline used before it hit Azure Static Web Apps' Free-tier Functions execution ceiling. A real run of `daily-blog.yml` hit the identical failure (`"Backend call failure"` after 46s — see `src/scripts/generate-daily-blog.ts`'s header), so both were converted the same way `run-scan.ts` was: the workflow runs the script directly against Supabase (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, same credentials pattern as `run-queued-scan-jobs.ts`), no HTTP hop through Azure at all. The two API routes and their service token are fully deleted — not kept as a fallback, and not read by any code today (its old name lingered as a stale doc reference until this pass). The monthly digest (`src/lib/monthlyDigest.ts`, run by `src/scripts/send-monthly-digest.ts`) used to be the one exception — deliberately kept as an HTTP route gated by `DIGEST_SERVICE_TOKEN` since it sends real customer email — until `docs/ENHANCEMENTS.md` E-11 found the identical N+1-query execution-ceiling risk there too. Converted the same way; `DIGEST_SERVICE_TOKEN` and the route it gated are both deleted. All three scheduled content/email jobs now follow the exact same pattern with no remaining exception.
-
-Deliberately not a Supabase Edge Function either: this app has exactly one pattern for scheduled work now (GitHub Actions running a script directly against Supabase — matches `scheduled-scans.yml`), and a second execution environment with its own secrets to keep in sync is a cost already paid once (the deleted standalone Azure Functions app) and not worth reintroducing.
-
-**RSS feed** — `GET /feed.xml` (`src/app/feed.xml/route.ts`, a plain App Router route handler, not a Next metadata-route convention like `sitemap.ts`/`robots.ts` since Next has no built-in RSS one) lists both daily and weekly posts together, newest first, from the same `blog_posts` query `sitemap.ts` already uses (`status = 'published'`, `published_at` not null) so a feed item never points at a post the site itself would 404 on. Hand-rolled RSS 2.0 XML string, no dependency — matches `newsletter.ts`'s own choice to parse third-party RSS with regex rather than add a library. `<description>` is `meta_description` (falling back to `excerpt`), never the full rendered `body` (Markdown, would need its own render+sanitize pass to embed safely — not worth it for a feed). Discoverable via `layout.tsx`'s `alternates.types["application/rss+xml"]` (renders the `<link rel="alternate">` autodiscovery tag site-wide) and a small "RSS feed" link on `/blog`.
-
-**Scheduled/future-dated publishing** — `blog_posts.status` gained a third value, `'scheduled'` (migration 054, widens the CHECK constraint). An admin creating/editing a post can set `status: "scheduled"` with a future `published_at` (validated server-side in both `POST /api/admin/blog` and `PATCH /api/admin/blog/[slug]` — a missing or past `published_at` is rejected with 400); the admin editor (`src/app/admin/page.tsx`'s `BlogEditor`) shows a `datetime-local` input once "Schedule" is picked. **No RLS or public-query change was needed**: every public read (`blog/page.tsx`, `blog/[slug]/page.tsx`, `sitemap.ts`, `feed.xml/route.ts`, and the RLS policy itself) already filters on `status = 'published'` by exact match, so a `'scheduled'` row is excluded everywhere automatically — the opposite ("let `status='published'` carry a future `published_at`") would have leaked immediately, since nothing anywhere checks the date boundary; confirmed by inspection before building this, not assumed. `.github/workflows/publish-scheduled-posts.yml` (hourly, same "script runs directly against Supabase" pattern as `deletion-requests.yml`) runs `npm run blog:publish-scheduled`, which calls `src/lib/blogSchedule.ts`'s `publishDuePosts()` — fetches every `status:"scheduled"` row and flips the ones whose `published_at` has passed (`isPostDue`, pure/unit-tested, same "pure due-check fed a `now`" model as `scanCadence.ts`'s `isScanDue`) to `'published'`, leaving `published_at` exactly as the admin set it.
-
-### Sign-up, password reset, and auto-provisioned profiles
-
-`/signup` (P1-2 from `docs/PRODUCT-REVIEW-2026-10.md`) is mechanically the same magic-link call as `/login` — Supabase's `signInWithOtp` creates a new `auth.users` row on first use by default — but gives a brand-new visitor a discoverable URL, "create an account" copy, and an optional company-name field. `src/lib/auth.ts`'s `signInWithMagicLink(email, metadata?)` now takes an optional `metadata` object passed through as `options.data`, which Supabase writes into the new user's `raw_user_meta_data`.
-
-Fixing the real underlying gap the review found: **nothing in the app ever created a `public.users` profile row for a real sign-up** — only `seed-users.ts` did (via `upsert`). A customer's first magic-link sign-in got an `auth.users` row with no matching `public.users` row, so `company_name`/`is_admin` reads came back null, and the Stripe webhook's welcome-email guard (`if (profile && !profile.onboarding_email_sent)`) silently never fired for a single first-time customer. Migration 059 adds `handle_new_user()`, a `SECURITY DEFINER` trigger function (`search_path` pinned, same convention as `caller_team_ids()` in `007_teams.sql`) that fires `after insert on auth.users` and inserts the matching `public.users` row — reading `company_name` out of `raw_user_meta_data` when the sign-up page supplied it — plus a one-time backfill for every pre-existing account. Because the trigger now does this, the three `tests/db/*.ts` files that used to manually `insert into public.users` right after `insert into auth.users` had that line removed — it would otherwise collide with the trigger's own insert.
-
-Password reset (`/forgot-password` → email → `/reset-password`) only matters for the secondary password sign-in path (seeded demo accounts, or any customer who sets one) — the default magic-link flow has no password to forget. `requestPasswordReset(email)` calls `resetPasswordForEmail` with a redirect through the existing `/auth/callback?next=/reset-password` (the same server-side PKCE code exchange the magic link already uses, just a different landing page); `/reset-password` checks for a session on mount — no session means an expired/invalid link, shown with a link back to request a new one — then calls `updatePassword(newPassword)` (`supabase.auth.updateUser({ password })`). `/forgot-password` always shows the same "if an account exists…" message regardless of whether the email was found, since Supabase itself doesn't distinguish the two either.
-
-All three new routes are disallowed in `robots.ts` alongside `/login` — auth-flow pages with no SEO value.
-
-### Account erasure (30-day promise)
-
-/privacy promises erasure within 30 days of a request. `POST /api/account/request-deletion` (session only, never an API key) records it in `deletion_requests` (`048_deletion_requests.sql`: one pending row per owner, `due_at` = +30 days, **no foreign key** so the record of fulfilment survives the erasure, owner-read, service-role-write) via `src/lib/accountErasure.ts`'s `recordDeletionRequest`, audits it and emails the operator; a repeat request returns the same deadline and sends nothing. Erasure stays a deliberate operator step: `npm run account:erase -- <email or user id> [--confirm] [--keep-stripe-subscription]` (dry run by default) runs `planErasure`/`eraseAccount`, which cancels a still-billing Stripe subscription first (if that fails nothing else happens), deletes report PDFs, deletes the auth user (ON DELETE CASCADE does the rest) and marks the request completed. `.github/workflows/deletion-requests.yml` runs `npm run account:deletion-reminders` daily: `runDeletionReminder` emails the operator about requests due within 7 days or overdue and stamps `reminded_at` only after a successful send (a due reminder that can't be sent fails the run). Before 048 every path falls back to the audit row and email.
-
-### Secrets at rest (customer credentials)
-
-Every live secret a customer gives us is encrypted at the application layer with AES-256-GCM (`src/lib/credentialEncryption.ts`, key `CREDENTIALS_ENC_KEY`, server-only). It started with cloud-posture credentials (review finding S-1) and now covers all of them: `cloud_credentials.credentials_encrypted` (object form, `encryptCredentials`), and in single-string form (`enc:v1:<iv>:<tag>:<data>`, `encryptSecret`/`sealSecrets`) the ticket-tracker tokens (`jira_api_token`, `linear_api_key`, `servicenow_password`, `github_token`) and on-call keys (`pagerduty_routing_key`, `opsgenie_api_key`) in `ticket_integrations`, and the authenticated-scan `cookie_value`/`basic_password` in `target_auth_credentials`.
-
-- **Writes seal, and fail closed.** `ticket-integration`, `oncall-integration`, `target-auth`, `record-login` and `cloud-credentials` check `isCredentialEncryptionConfigured()` *before* contacting the customer's system and answer 503 (`ENCRYPTION_NOT_CONFIGURED_MESSAGE`) when there is no key — never a plaintext fallback. Disconnect (DELETE) and the auto-close toggle don't need the key.
-- **Reads reveal at the point of use.** `ticketLinks.ts`'s `buildProviderClient`, `oncallAlerts.ts`'s `fetchOncallIntegrations` and `authenticatedCheck.ts`'s `resolveAuthCredential` call `revealSecrets`. A value that can't be decrypted (key missing or rotated, tampered ciphertext) makes that one integration unusable — skipped and logged, never used as ciphertext, never an exception inside a scan. Legacy plaintext (no `enc:v1:` prefix) passes straight through, so nothing breaks before a row is migrated. `GET` on the ticket integration deliberately does *not* decrypt (it only reports a summary).
-- **The scan workers need the key too.** They run in GitHub Actions and decrypt cloud, authenticated-scan and on-call credentials, so `CREDENTIALS_ENC_KEY` is passed to both `scheduled-scans.yml` and `on-demand-scan.yml` (`scanWorkerEnv.test.ts` enforces it). It must be the same value as the app's setting. It was missing from the workers until 2026-10-14, so every encrypted credential would have been skipped there.
-- **Legacy rows** are rewritten by `npm run secrets:encrypt-existing` (`src/lib/secretMigration.ts`; dry run unless `--confirm`; idempotent) or the manual "Encrypt stored secrets" workflow.
-- **Deliberately not encrypted:** the Slack/Teams webhook URLs in `subscriptions` (post-only capability, and `AppShell.tsx` reads them in the browser under RLS) and webhook signing secrets. Revisit if those need the same treatment. Browser code must never select a secret column (the UI selects only `provider`, `region`, `auth_type` and similar).
-- Adding a new stored secret: seal it on write behind the 503 guard, `revealSecrets` where it is used, and add its table/columns to `STRING_SECRET_TARGETS` in `secretMigration.ts`.
-
-### Audit log
-
-`src/lib/audit.ts`'s `logAuditEvent(supabaseAdmin, event)` is the one shared writer for the `audit_logs` table, called from `scanExecution.ts` (`scan.started`/`scan.completed`/`scan.failed`) and the Stripe webhook (which also (ab)uses the same table as an idempotency ledger for Stripe event ids). Best-effort by design — logging a security event must never be the reason the action it describes fails, so every call site `await`s it but never lets its result gate anything. `action` values follow a stable `"<resource>.<verb>"` vocabulary since the admin Audit tab's search filters on it — keep new call sites consistent with existing ones rather than inventing new verb shapes.
-
-### Vertical landing pages
-
-`src/app/{tourism,churches,local-trades}/page.tsx` — SEO/positioning content, not scanner or pricing logic. Reuses the same components and CSS tokens as the rest of the marketing site; no new abstractions were introduced for these.
+### Scan flow, in one paragraph
+
+`/api/run-scan` is two steps: create a `scans` row and return a proof token,
+then verify domain ownership and **enqueue** a `scan_jobs` row, answering
+`202 { status: "queued" }`. Nothing calls `executeScan()` synchronously from an
+HTTP request — a real scan once exceeded Azure SWA's Free-tier Functions
+execution ceiling. `executeScan()` (`src/lib/scanExecution.ts`) is the single
+implementation, called only by the queue workers
+(`src/scripts/run-queued-scan-jobs.ts`) running in GitHub Actions. It always
+runs the base passive suite; active tools run per the resolved profile, which
+in practice means scheduled jobs only. Full detail, including the queue and
+cadence: `docs/ARCHITECTURE-NOTES.md`.
 
 ### Theme system
 
-Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark` to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`. Default is dark (cyber theme).
+Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark`
+to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`.
+Default is dark (cyber theme).
 
-**The cyber tokens are CSS variables, not fixed hex.** `tailwind.config.cjs` maps them to `rgb(var(--c-*) / <alpha-value>)`, and the `:root` / `.dark` blocks in `src/app/globals.css` hold the two palettes. This is what makes light mode work: any surface built from these tokens re-themes automatically, with no `dark:` variant on any of the ~700 usages.
+**The cyber tokens are CSS variables, not fixed hex.** `tailwind.config.cjs`
+maps them to `rgb(var(--c-*) / <alpha-value>)`, and the `:root` / `.dark` blocks
+in `src/app/globals.css` hold the two palettes. This is what makes light mode
+work: any surface built from these tokens re-themes automatically, with no
+`dark:` variant on any of the ~700 usages.
 
 | Token | Role | Light | Dark |
 |-------|------|-------|------|
@@ -310,21 +237,50 @@ Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark` 
 
 Rules when adding UI:
 
-- **Never use `text-white` on a themed surface** — it cannot follow the theme and turns invisible in light mode. Use `text-cybertext`. `text-white` is correct only on a permanently dark background such as `bg-atlantic`.
+- **Never use `text-white` on a themed surface** — it cannot follow the theme
+  and turns invisible in light mode. Use `text-cybertext`. `text-white` is
+  correct only on a permanently dark background such as `bg-atlantic`.
 - Same for `bg-white/N` and `border-white/N` overlays — use `bg-cybertext/N`.
-- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`, `slatelight`) do not change between themes. Pair them with an explicit text colour rather than letting text inherit.
-- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode (the parity block in `globals.css`). Alpha tuned for white-on-black reads far too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
-- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled right down in light mode.
+- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`,
+  `slatelight`) do not change between themes. Pair them with an explicit text
+  colour rather than letting text inherit.
+- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode
+  (the parity block in `globals.css`). Alpha tuned for white-on-black reads far
+  too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
+- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled
+  right down in light mode.
 
-Three more per-theme tokens meet WCAG AA without the parity overrides above — prefer them over alpha steps in new code: `cybermuted` (secondary text), `danger`, `warning`. The shadcn/ui names (`bg-primary`, `text-muted-foreground`, `border-input`, …) are aliases onto the same variables so CLI-generated components render on-brand; don't use them in hand-written code.
+Three more per-theme tokens meet WCAG AA without the parity overrides above —
+prefer them over alpha steps in new code: `cybermuted` (secondary text),
+`danger`, `warning`. The shadcn/ui names (`bg-primary`,
+`text-muted-foreground`, `border-input`, …) are aliases onto the same variables
+so CLI-generated components render on-brand; don't use them in hand-written
+code.
 
 ### UI primitives
 
-New UI is composed from `src/components/ui/` — the shadcn/ui pattern, hand-written against the cyber tokens (lowercase filenames there, matching shadcn). `components.json` is configured so `npx shadcn@2 add <component>` works for Radix-backed pieces (dialog, dropdown, tooltip); **never run `shadcn init`**, it overwrites `globals.css` and `tailwind.config.cjs`. Current set: `button` (primary/secondary/ghost/danger; `asChild` to style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the `// section` overline with the `//` hidden from screen readers), `input`/`label` (every input gets a label, `sr-only` if visually redundant), `alert` (danger → `role="alert"`, else `role="status"`), `stat-card`, `segmented-control` (`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()` (`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another panel/button/input — the older feature components still do, and migrate incrementally.
+New UI is composed from `src/components/ui/` — the shadcn/ui pattern,
+hand-written against the cyber tokens (lowercase filenames there, matching
+shadcn). Current set: `button` (primary/secondary/ghost/danger; `asChild` to
+style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the
+`// section` overline with the `//` hidden from screen readers), `input`/`label`
+(every input gets a label, `sr-only` if visually redundant), `alert` (danger →
+`role="alert"`, else `role="status"`), `stat-card`, `segmented-control`
+(`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()`
+(`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another
+panel/button/input — the older feature components still do, and migrate
+incrementally.
 
 ### App shell
 
-`src/components/app-shell/AppShell.tsx`, mounted by `src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+) or scrolling section tabs, plus one session + subscription load exposed through `useAppSession()`. Use its `plan` for feature gating (the stored plan only while `status === "active"`, else `"none"`) and `billingPlan` for billing display. It also runs the MFA (AAL2) step-up redirect for every route it wraps — `middleware.ts` only checks authentication. Pages inside it render content only: no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
+`src/components/app-shell/AppShell.tsx`, mounted by
+`src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+)
+or scrolling section tabs, plus one session + subscription load exposed through
+`useAppSession()`. Use its `plan` for feature gating (the stored plan only while
+`status === "active"`, else `"none"`) and `billingPlan` for billing display. It
+also runs the MFA (AAL2) step-up redirect for every route it wraps —
+`middleware.ts` only checks authentication. Pages inside it render content only:
+no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
 
 | Route | Holds |
 |---|---|
@@ -332,75 +288,96 @@ New UI is composed from `src/components/ui/` — the shadcn/ui pattern, hand-wri
 | `/dashboard/scans` | `RunScanForm` + paginated scan list |
 | `/dashboard/scans/history` | Trends (per-site score/category history) |
 | `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
-| `/dashboard/sla` | remediation SLAs — open-finding deadlines, time-to-fix, targets (Agency) |
-| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` rather than disappearing |
+| `/dashboard/findings` | every open finding across all sites (E-74) |
+| `/dashboard/sla` | remediation SLAs — deadlines, time-to-fix, targets (Agency) |
+| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` |
 | `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
 
-Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`, `activeNavHref` — longest segment-prefix wins).
-
-### Mobile & PWA
-
-The nav stays a flat pill-row with no hamburger/drawer — a deliberate choice kept on review, not revisited by adding a few items. What mobile actually needed fixing was the dashboard's data tables: `ScanList.tsx`, `FleetOverview.tsx`, `SlaDashboard.tsx` and `ScanReportView.tsx`'s two tables used to force horizontal scrolling below the `sm:` breakpoint (640px). Each now uses the same CSS pattern — no markup duplication, no separate mobile component: `<table>`/`<thead>`/`<tr>` get `block sm:table`/`hidden sm:table-header-group`/`block sm:table-row` so each row becomes its own card, and every `<td>` whose column needs a visible label on mobile carries `data-label="..."` plus `before:content-[attr(data-label)] sm:before:hidden`. `ScanReportView.tsx`'s two tables also carry `print:table`/`print:table-row` etc. so the PDF/print path still renders a real table regardless of viewport. `tests/e2e/mobile-tables.mobile.spec.ts` covers this at a phone viewport (via a dedicated `"mobile"` Playwright project — `devices["Pixel 7"]`, Chromium-based rather than an iPhone/WebKit preset, since the install steps in `deploy.yml`/`scheduled-scans.yml`/`on-demand-scan.yml` only fetch the chromium browser), checking both that the stacked data renders and that nothing forces the viewport to scroll sideways.
-
-A web app manifest (`src/app/manifest.ts`), `viewport`/`themeColor` export (`layout.tsx`) and real PWA icons (`public/icon-192.png`, `public/icon-512.png`, `public/touch-icon-180.png`) were added so "Add to Home Screen" gets a standalone app shell instead of a plain bookmark. The icons are static files, not Next's `app/icon.tsx`/`app/apple-icon.tsx` dynamic-image-generation convention — that convention's file-system auto-discovery didn't register either file in this Next.js version (16.3.1) under either `next dev` or a production build, silently leaving `metadata.icons.apple` empty with no error. The PNGs were captured once from those same dynamic routes (confirmed working when fetched directly) and committed as plain static files instead — same mechanism `favicon.svg` already uses successfully. One more trap if this is revisited: a static file at `public/apple-icon.png` 404s even though the path isn't a route — Next reserves that exact filename for the (non-functioning, in this version) app-convention icon regardless of whether an `app/apple-icon.*` file exists, which is why the real file is named `touch-icon-180.png` instead.
-
-### Database schema
-
-Key tables (all in `sql/migrations/`):
-- `users` — profile data keyed to `auth.users`; `is_admin` grants admin panel access. Auto-created by migration 059's `handle_new_user()` trigger (`after insert on auth.users`) — see "Sign-up, password reset" below
-- `subscriptions` — plan, status, slack_webhook_url, ms_teams_webhook_url (`src/lib/msTeams.ts` — independent of Slack, either/both/neither), brand_logo_url/brand_name (white-label, Agency-gated in app code not schema); kept in sync by Stripe webhooks
-- `ticket_integrations` — one row per owner+provider: trackers (`jira`/`linear`/`servicenow`/`github`) **and** on-call rows (`pagerduty`/`opsgenie`, 028) share this table, so a ticketing read must filter on `TICKET_PROVIDERS` — use `findTicketIntegration()` (ticketLinks.ts) rather than querying it directly; no client-writable RLS policy, only `src/pages/api/account/ticket-integration.ts` writes a row, and only after validating the credentials against the real API (`013_ticket_integrations.sql`). `auto_close_enabled` (`016_ticket_links.sql`) opts into auto-close, default false. Because the table is unique on `(owner, provider)`, an owner can have **two** rows — every read must `.order("created_at", { ascending: false }).limit(1)` before `.maybeSingle()`, which would otherwise throw on exactly those accounts
-- `ticket_links` — finding→issue ledger for dedupe and auto-close (`016_ticket_links.sql`); owner-readable, service-role-write-only (a forgeable row could suppress ticketing for a real finding)
-- `deletion_requests` — account erasure requests and their 30-day deadline (`048_deletion_requests.sql`); no FK to the user on purpose, owner-readable, service-role-write-only — see "Account erasure"
-- `asset_inventory` — every hostname a scan has seen per owner (`022_asset_inventory.sql`, unique owner+hostname, filled by `assetInventory.ts`); `notified_at` (049) records when it stopped being pending (reported, or recorded as known). `dns_snapshots` — last NS/MX/SPF/DMARC per owner + Public Suffix List domain, with `known_fields` (049). Both owner-readable, service-role-write-only — see "Attack-surface change alerts"
-- `lookalike_domain_sweeps` — one row per owner + domain, recording only when the last full lookalike-domain sweep ran (`053_lookalike_domains.sql`). `lookalike_domains` — candidate domains crt.sh confirmed are actually registered, unique on owner+candidate, `notified_at` null meaning found-not-yet-reported. Both owner-readable, service-role-write-only — see "Lookalike-domain / phishing monitoring"
-- `emerging_threat_alerts` — newly-exploited-CVE matches per (owner, host, CVE) and when each was notified (`045_emerging_threat_alerts.sql`); owner-readable, service-role-write-only — see "Emerging-threat alerts"
-- `finding_lifecycle` + `sla_policies` — per-site first-seen/resolved per checkId, and per-account SLA targets (`043_finding_lifecycle_sla.sql`); owner-readable, service-role-write-only — see "Finding lifecycle and remediation SLAs"
-- `api_keys` — hashed keys; `allowed_cidrs` (042) is the per-key IP allowlist enforced in `apiAuth.ts`
-- `scans` + `scan_results` — scan records and findings/score; RLS-protected by owner
-- `scan_jobs` — the on-demand + scheduled queue (`008_scan_jobs.sql`); `claim_scan_job()` RPC does the `SKIP LOCKED` claim
-- `repo_connections` — GitHub repos per user (unique on owner + repo; the most recently connected one is scanned until targets map to repos), gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)
-- `monitored_targets` — agency-tier sites for nightly scheduled scans
-- `contact_enquiries` — contact form submissions; service-role only (no browser RLS policy)
-- `verifications` — domain ownership tokens
-- `blog_posts` — both the daily blog and weekly newsletter live here, differentiated only by slug prefix (`cyber-brief-` vs `week-of-`); a row needs both `status = 'published'` and `published_at` non-null to be publicly visible
-- `audit_logs` — see "Audit log" below
-
-RLS is enabled on all tables. The only code path that bypasses it is server-side code using the service role key.
+Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`,
+`activeNavHref` — longest segment-prefix wins).
 
 ### Rate limiting
 
-`src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) for shared-state rate limiting across Function instances. Falls back to an in-memory `Map` in dev — not safe across instances; don't rely on it in production.
-
-**Client IP: always `getClientIp(req)`, never a header directly.** Azure Static Web Apps *appends* to a client-supplied `X-Forwarded-For` (`<forged…>, <client>:<port>, <edge>:<port>`, measured in production), so the leftmost entry is attacker-controlled, and `X-Client-IP`/`X-Azure-ClientIP`/`X-Real-IP` are the edge's address or client pass-through. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2) from the right and strips the port. It feeds both per-IP rate limits and API-key IP allowlists (`apiAuth.ts`), so a forgeable value would be an auth bypass, not just a rate-limit one. `GET /api/client-ip` returns what it resolves — probe it with a forged `X-Forwarded-For` after any hosting change.
+`src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN`) for shared state across Function instances. Falls
+back to an in-memory `Map` in dev — not safe across instances; don't rely on it
+in production. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2)
+from the right of `X-Forwarded-For` and strips the port; `GET /api/client-ip`
+returns what it resolves — probe it with a forged header after any hosting
+change. See rule 18.
 
 ### Payments
 
-Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on `checkout.session.completed`, `invoice.payment_failed`, and `customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the three `STRIPE_PRICE_*` env vars (see `.env.example`). Until the price IDs are set, checkout answers 503 `checkout_unavailable` (customer wording plus a contact link on /pricing; the missing variable is logged server-side, never sent to the browser).
-
-**Plan gating: always `src/lib/planAccess.ts`** (`planGate(db, ownerId, "pro" | "agency" | "tier_a")` → `ok`/`denied`/`error`, or `hasProAccess`/`hasAgencyAccess`/`hasTierAAccess`). The webhook marks a lapsed or cancelled subscription `past_due`/`cancelled` but leaves `plan` unchanged, so never gate on `plan` alone: only `status === "active"` grants a tier (admins exempt). The tiers nest upward: Agency includes Pro, and **Tier A** (top) includes Agency and Pro. `PLANS_FOR_TIER` is the single hierarchy table. `plan` is free-text (`subscriptions.plan`), so adding a tier is a code change (Stripe `STRIPE_PRICE_TIER_A`, `PRICE_IDS`, the pricing card), not a schema one.
+Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on
+`checkout.session.completed`, `invoice.payment_failed` and
+`customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the
+`STRIPE_PRICE_*` vars. Until the price IDs are set, checkout answers 503
+`checkout_unavailable` (customer wording plus a contact link on /pricing; the
+missing variable is logged server-side, never sent to the browser). `plan` is
+free-text, so adding a tier is a code change, not a schema one. Gating: rule 17.
 
 ### Tier A offensive scanning
 
-Tier A unlocks the opt-in **`offensive` scan profile** (`scanProfiles.ts`) — the only profile that enables the `OFFENSIVE_ONLY_TOOLS` (brute-force / real-attack: `contentDiscovery`, `credentialSpray`, `strix`, `cairn`), which are excluded from `full` and every other profile. Being on Tier A is necessary but not sufficient: `run-queued-scan-jobs.ts` is the authoritative gate — an `offensive` job runs only when the owner is on Tier A AND has a current `offensive_scan_authorizations` row for the target (recorded via `POST /api/account/offensive-authorization` with an explicit acknowledgement; `src/lib/offensiveAuthorization.ts`, migration 051) AND the domain is verified. Otherwise it is downgraded to `safe` and audited (`offensive_scan.refused`); a permitted run audits `offensive_scan.ran`. This reverses the default "no destructive payloads" posture for Tier A only, per-scan and per-target — see `docs/USER-GUIDE.md` §6. `contentDiscovery` (ffuf, bounded) is live; `credentialSpray`/`strix`/`cairn` stay `not_configured` until their inputs (a sacrificial test account / an LLM key) are supplied and are UNVERIFIED in CI (no real target). **Owner action before enabling the destructive tools: customer contracts/ToS must authorise real attack traffic.**
+Tier A unlocks the opt-in **`offensive` profile** — the only one enabling
+`OFFENSIVE_ONLY_TOOLS` (`contentDiscovery`, `credentialSpray`, `strix`,
+`cairn`). Being on Tier A is necessary but not sufficient:
+`run-queued-scan-jobs.ts` is the authoritative gate — an `offensive` job runs
+only when the owner is on Tier A **and** has a current
+`offensive_scan_authorizations` row for the target **and** the domain is
+verified. Otherwise it is downgraded to `safe` and audited
+(`offensive_scan.refused`). This reverses the default "no destructive payloads"
+posture for Tier A only, per-scan and per-target. **Owner action before
+enabling the destructive tools: customer contracts/ToS must authorise real
+attack traffic.**
 
-### Testing strategy
+## Testing strategy
 
-Four independent gates, all run by `deploy.yml` in this exact order before every deploy — reproduce locally with the matching command from "Commands" above rather than inventing a different check:
+Four independent gates, run by `deploy.yml` in this exact order before every
+deploy. Reproduce locally with the matching command above (or `/verify`) rather
+than inventing a different check.
 
-1. **Lint** (`npm run lint`) — ESLint, zero-tolerance for errors; pre-existing `react-hooks/set-state-in-effect` warnings on a handful of components are known and not a regression signal.
-2. **Type check** (`npx tsc --noEmit`) — `next build` does **not** run this itself, so a type error can pass a build and still be wrong; always run it separately.
-3. **Unit/integration tests** (`npm run test:unit`, or `:coverage` for the report) — Vitest, colocated as `*.test.ts`/`*.test.tsx` next to the module they cover (e.g. `src/lib/scanCadence.test.ts`), except API-route tests under `src/__tests__/api/` (Next.js's Pages Router would otherwise treat a colocated test file under `src/pages/api/` as a route and break `npm run build`). Favour pure, dependency-free functions where the logic allows it — `scanCadence.ts`'s `isScanDue()` and `ticketLinks.ts`'s `decideTicketAction()` are the model to follow, unit-testable without a mocked Supabase/Jira. Coverage thresholds in `vitest.config.mts` are a calibrated **floor** (71/64/72/72 statements/branches/functions/lines as of 2026-10-06, up from 18–19% at the first test-writing pass), not a target. Check the command's **exit code**, not just the "N passed" line: an unhandled error fails the run while every test still reports passing, and a function returned from a `beforeEach` arrow is run as a cleanup hook (use a block body) — CI fails on any regression below it; raise the numbers to match (never exceed) whatever a PR's `test:unit:coverage` run actually reports, never lower them.
-4. **E2E** (`npm test`) — Playwright, builds the app and starts its own server automatically (slow, hermetic — no separate dev server or real Supabase project needed for the unauthenticated flows covered, see `tests/e2e/`). `playwright.config.ts` hardcodes `NEXT_PUBLIC_SUPABASE_URL=https://example-project.supabase.co` for every run — tests seed `localStorage` with `sb-example-project-auth-token` and mock `*.example-project.supabase.co` network requests. Never use real Supabase credentials in e2e tests; the hardcoded project ref must stay `example-project`.
+1. **Lint** (`npm run lint`) — ESLint, zero tolerance for errors. Pre-existing
+   `react-hooks/set-state-in-effect` warnings on a handful of components are
+   known and not a regression signal.
+2. **Type check** (`npx tsc --noEmit`) — `next build` does **not** run this, so
+   a type error can pass a build and still be wrong.
+3. **Unit/integration** (`npm run test:unit`) — Vitest, colocated as
+   `*.test.ts(x)` next to the module, except API-route tests under
+   `src/__tests__/api/` (the Pages Router would otherwise treat a colocated test
+   under `src/pages/api/` as a route and break `npm run build`). Favour pure,
+   dependency-free functions — `scanCadence.ts`'s `isScanDue()` and
+   `ticketLinks.ts`'s `decideTicketAction()` are the model, unit-testable
+   without a mocked Supabase/Jira. See rules 1, 2, 4.
+4. **E2E** (`npm test`) — Playwright, builds the app and starts its own server
+   (slow, hermetic). See rule 30.
 
-**Database tests** (`tests/db/`, `npm run test:db`, `.github/workflows/db-tests.yml`) apply every `sql/migrations/*.sql` in order to a throwaway database on a real Postgres and test RLS as the `anon`/`authenticated`/`service_role` roles, `claim_scan_job()` under concurrent claimers, and migration idempotency. They need `DATABASE_URL` (a superuser connection, default `postgres://postgres:postgres@localhost:5432/postgres`); each run creates and drops its own database. They are a separate vitest config (`vitest.db.config.mts`), so `test:unit[:coverage]` never needs a database and the coverage floor is unaffected. `tests/db/shim.sql` stands in for Supabase (roles, `auth.users`, `auth.uid()` reading the `request.jwt.claim.sub` GUC, default grants). Adding a migration: it must apply cleanly and re-apply idempotently (the known exceptions are listed in `migrations.db.test.ts` and may only shrink); a new client-readable table needs an entry in `rls.db.test.ts`. A policy must never sub-select its own table inline (Postgres fails it with 42P17 "infinite recursion"): put the read in a `SECURITY DEFINER` function as 047 does. `findingsView.db.test.ts` and `attackSurfaceMonitor.db.test.ts` run their modules through a real PostgREST (set `POSTGREST_BIN`; the workflow downloads a pinned, checksum-verified release) via supabase-js, behind a small `/rest/v1` proxy (`tests/db/postgrest.ts`'s `startPostgrest`, one port pair per file), confirming query shapes a fake can't (embedded JSON paths, `.or()` patterns, `.range()` paging, update-returning claims, exact timestamptz matches); they skip without that binary.
+**Database tests** (`tests/db/`, `npm run test:db`) apply every
+`sql/migrations/*.sql` in order to a throwaway database on real Postgres and
+test RLS as the `anon`/`authenticated`/`service_role` roles. Separate vitest
+config, so `test:unit` never needs a database. See rules 24, 25.
 
-When adding a new scanner check or API route: a unit test belongs alongside it per the pattern above; there's no requirement to add e2e coverage for server-only logic the Playwright suite doesn't already touch.
+A new scanner check or API route needs a unit test alongside it; there's no
+requirement to add e2e coverage for server-only logic.
 
-**Signed-in e2e** (`tests/e2e/*-auth.spec.ts`, helpers in `tests/e2e/helpers/`): the browser Supabase client stores its session in the **cookie** `sb-example-project-auth-token` (`@supabase/ssr`, not localStorage), so `signIn(context)` seeds that cookie with an unsigned test JWT. `src/middleware.ts` validates the session *server-side*, which `page.route()` cannot intercept, and it runs in Next's Edge sandbox, which ignores a patched `globalThis.fetch` — so `playwright.config.ts` loads `helpers/supabase-auth-preload.cjs` via `NODE_OPTIONS`; it hooks `tls.connect()` for the fake host only and answers `GET /auth/v1/user` for the test JWT (`iss: "e2e-test"`) from a local server. Everything the page itself loads is mocked in the browser: `mockSupabase()` serves `/rest/v1/<table>` from fixtures (with eq/neq/lt/in, order, limit), and `mockApi()` serves `/api/*`, answering anything unmocked with 501 and recording calls (`api.to("PUT", path)`). A page whose data is fetched server-side (none today) could not be tested this way. With `reuseExistingServer`, stop any server already on :3000 or it will lack the preload.
+## Where to read what
 
-### Deployment
+Read the one entry that matches the task. Don't read these up front.
 
-Azure Static Web Apps hybrid mode (not pure static export) is the default, live path. Every route (App Router pages, `pages/api/*`) is served by the managed Next.js server (Oryx-provisioned Functions), which bypasses `staticwebapp.config.json`'s `globalHeaders` entirely — confirmed by curling production and finding CSP/X-Frame-Options/etc. absent even on a 404, with only platform-level HSTS coming through. **Security headers are set in `next.config.mjs`'s own `headers()`**, which runs inside the Next.js response path and is what actually applies in production; `staticwebapp.config.json`'s `globalHeaders` is kept in sync as a fallback for any file served as a pure static asset without hitting the Next server, but is not load-bearing. Keep both files in sync if the header policy changes. `next.config.mjs` also sets `poweredByHeader: false`.
-
-**Alternate path: Azure Container Apps** (`Dockerfile`, `.github/workflows/deploy-containerapp.yml`, the `azurerm_container_registry`/`azurerm_container_app*` resources in `azure/terraform/main.tf`) — exists to get off SWA's Free-tier Functions execution ceiling (the same ceiling that already forced the queue-worker architecture above) without adopting a second cloud. Deliberately parallel, not a migration: `deploy.yml` still owns the live push-to-master deploy; `deploy-containerapp.yml` is `workflow_dispatch`-only. `next.config.mjs`'s `output: 'standalone'` only activates when the Dockerfile's build stage sets `NEXT_OUTPUT_MODE=standalone` — Oryx's SWA build never sets that var, so its build output is untouched by this path's existence. Not yet applied anywhere; see that Terraform block's own comments for the TODOs (globally-unique names, secret values) before a real `terraform apply`.
+| Task | Read |
+|---|---|
+| Adding/changing a scanner check | `/new-scanner-check` skill, then `docs/SCANNER-CONVENTIONS.md` |
+| What a specific check does, how it's gated | `docs/SCANNER-INVENTORY.md`, `docs/FUNCTIONALITY-MATRIX.md` |
+| A database migration | `/migration` skill |
+| Opening and landing a PR | `/ship` skill |
+| Running the pre-deploy gate | `/verify` skill |
+| Container Apps deploy path | `/deploy-containerapp` skill |
+| Scan flow, queue, cadence internals | `docs/ARCHITECTURE-NOTES.md` |
+| Remediation PRs / AI fixes / tickets / SLAs / alerts / admin panel | `docs/ARCHITECTURE-NOTES.md` |
+| Content generation, sign-up, erasure, secrets at rest, audit log | `docs/ARCHITECTURE-NOTES.md` |
+| Mobile table pattern, PWA icon traps, full table list | `docs/ARCHITECTURE-NOTES.md` |
+| System diagrams, data flow, C4 | `docs/architecture.md` |
+| Tables, ER diagram, RLS tiers | `docs/DATA-MODEL.md` |
+| Public API shapes | `docs/API.md` |
+| Authenticated/signed-in crawl design + safety | `docs/AUTHENTICATED-CRAWL.md` |
+| Current state, in-flight plan, owner actions | `docs/NEXT-STEPS.md` |
+| Security posture, threat model | `docs/security.md`, `SECURITY.md` |
