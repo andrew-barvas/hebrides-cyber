@@ -319,7 +319,7 @@ function ExportButton({
 // Only rendered when the user has a connected repo (repo_connections).
 function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; token: string | null; githubRepo: string }) {
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prs, setPrs] = useState<Array<{ label: string; url: string }>>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function generate() {
@@ -334,7 +334,13 @@ function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; to
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not generate fix PR");
-      setPrUrl(body.prUrl);
+      // The main recommendations PR always opens; the dependency-bump and
+      // config-header PRs open only when there's something to change, so show
+      // whichever ones came back.
+      const opened: Array<{ label: string; url: string }> = [{ label: "Recommendations", url: body.prUrl }];
+      if (body.dependencyBumpPrUrl) opened.push({ label: "Dependency bumps", url: body.dependencyBumpPrUrl });
+      if (body.configFixPrUrl) opened.push({ label: "Security headers", url: body.configFixPrUrl });
+      setPrs(opened);
       setState("done");
     } catch (err) {
       setErrorMsg((err as Error).message);
@@ -342,16 +348,21 @@ function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; to
     }
   }
 
-  if (state === "done" && prUrl) {
+  if (state === "done" && prs.length > 0) {
     return (
-      <a
-        href={prUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-md border border-neon/40 bg-neon/10 px-4 py-2 text-sm font-medium text-neon hover:bg-neon/20 transition-colors"
-      >
-        PR created — view ↗
-      </a>
+      <div className="inline-flex flex-wrap items-center gap-2">
+        {prs.map((pr) => (
+          <a
+            key={pr.url}
+            href={pr.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-neon/40 bg-neon/10 px-4 py-2 text-sm font-medium text-neon hover:bg-neon/20 transition-colors"
+          >
+            {pr.label} PR ↗
+          </a>
+        ))}
+      </div>
     );
   }
 
