@@ -3,9 +3,10 @@
 // (all-or-nothing) with a named profile plus optional per-tool overrides —
 // see scanExecution.ts's runExtendedTools() for where this is consumed.
 //
-// Deliberately excludes tools that don't exist in this codebase yet
-// (Kiterunner, Arjun, Dalfox, WPScan CLI, CMSmap, Gospider, Photon,
-// WhatWaf — see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Each
+// Deliberately excludes Dalfox, which doesn't exist in this codebase yet
+// (see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Kiterunner, Arjun,
+// WPScan, CMSmap, Gospider, Photon and WhatWaf, once on that same list, now
+// all exist in src/worker/tools/ and have their own keys below. Each
 // future tool's own PR adds its own key here, in whichever profile(s) it
 // belongs — additive, no restructuring, same precedent compliance.ts and
 // fixDifficulty.ts already set for their own tables.
@@ -159,7 +160,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
 
 /**
  * Resolves a profile (plus optional bundle overrides) into a full,
- * all-14-keys-present tool-enable map. bundleOverrides, when given, win
+ * tool-enable map with every EXTENDED_TOOL_NAMES key present. bundleOverrides, when given, win
  * over the base profile's own tool list — see scan_bundles (Item 3).
  */
 export function resolveToolConfig(
