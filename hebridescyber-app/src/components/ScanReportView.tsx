@@ -15,7 +15,7 @@ import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
 import { COMPLIANCE_FRAMEWORK_LABELS, ALL_CONTROLS_BY_FRAMEWORK, type ComplianceRef, type ComplianceFramework } from "@/lib/scanners/compliance";
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
-import { computeCriticalPaths } from "@/lib/attackPathAnalysis";
+import { computeCriticalPaths, computeChokepoints, type CriticalPath } from "@/lib/attackPathAnalysis";
 import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
 import { corroboratingTools } from "@/lib/findingConsolidation";
@@ -839,17 +839,113 @@ export function ComplianceSummary({ findings }: { findings: ViewFinding[] }) {
  * same reason ComplianceSummary does: a chain built from a since-resolved
  * finding would be misleading, not just stale.
  */
+/** Role → node border/arrow colour, as cyber-token Tailwind fill/stroke classes
+ *  so the diagram re-themes in light and dark with no `dark:` variant. */
+const STEP_ROLE_STROKE: Record<"entry" | "pivot" | "impact", string> = {
+  entry: "stroke-neon",
+  pivot: "stroke-warning",
+  impact: "stroke-danger",
+};
+const STEP_ROLE_CAPTION: Record<"entry" | "pivot" | "impact", string> = {
+  entry: "Entry point",
+  pivot: "Pivot",
+  impact: "Impact",
+};
+
+const NODE_W = 150;
+const NODE_H = 42;
+const GAP = 46;
+const DIAGRAM_H = 62;
+
+/** Inline-SVG entry → pivot → impact chain. No diagramming library (per the
+ *  spec); horizontally scrollable on narrow screens so labels stay legible
+ *  rather than shrinking away. Labels are short and carry the full text in a
+ *  <title> for hover. */
+function AttackPathDiagram({ path }: { path: CriticalPath }) {
+  const n = path.steps.length;
+  const width = n * NODE_W + (n - 1) * GAP;
+  return (
+    <div className="mt-2 overflow-x-auto">
+      <svg
+        width={width}
+        height={DIAGRAM_H}
+        viewBox={`0 0 ${width} ${DIAGRAM_H}`}
+        role="img"
+        aria-label={`Attack path: ${path.steps.map((s) => s.label).join(" then ")}`}
+        className="block"
+      >
+        <defs>
+          <marker id="atkArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" className="fill-cyberborder" />
+          </marker>
+        </defs>
+        {path.steps.map((step, i) => {
+          const x = i * (NODE_W + GAP);
+          const cx = x + NODE_W / 2;
+          return (
+            <g key={i}>
+              {i < n - 1 && (
+                <line
+                  x1={x + NODE_W}
+                  y1={16 + NODE_H / 2}
+                  x2={x + NODE_W + GAP}
+                  y2={16 + NODE_H / 2}
+                  className="stroke-cyberborder"
+                  strokeWidth={1.5}
+                  markerEnd="url(#atkArrow)"
+                />
+              )}
+              <text x={cx} y={10} textAnchor="middle" className="fill-cybermuted" style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {STEP_ROLE_CAPTION[step.role]}
+              </text>
+              <rect x={x} y={16} width={NODE_W} height={NODE_H} rx={8} className={`fill-cyberpanel ${STEP_ROLE_STROKE[step.role]}`} strokeWidth={1.5} />
+              <text x={cx} y={16 + NODE_H / 2 + 4} textAnchor="middle" className="fill-cybertext" style={{ fontSize: 11, fontWeight: 500 }}>
+                {step.label.length > 24 ? `${step.label.slice(0, 23)}…` : step.label}
+                <title>{step.label}</title>
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 export function CriticalPaths({ findings }: { findings: ViewFinding[] }) {
   const open = findings.filter((f) => f.status !== "fixed");
   const paths = computeCriticalPaths(open);
   if (paths.length === 0) return null;
 
+  // "Fix these first": findings that sit on more than one chain, so resolving
+  // one of them collapses several paths at once. Only shown when at least one
+  // finding is a genuine multi-chain lever — a single-path chokepoint is just
+  // "the finding in that chain" and adds nothing over the chain card itself.
+  const titleByCheckId = new Map(open.filter((f) => f.checkId).map((f) => [f.checkId as string, f.title]));
+  const chokepoints = computeChokepoints(paths).filter((c) => c.pathCount > 1);
+
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <p className="mb-1 text-sm font-semibold text-cybertext">Attack chains</p>
       <p className="mb-4 text-xs text-cybertext/50">
-        Combinations of this scan&rsquo;s findings that are worse together than either is alone — not a new scan, just a different read of what&rsquo;s already been found.
+        Combinations of this scan&rsquo;s findings that are worse together than any is alone — not a new scan, just a different read of what&rsquo;s already been found.
       </p>
+
+      {chokepoints.length > 0 && (
+        <div className="mb-4 rounded-lg border border-neon/40 bg-neon/5 p-3">
+          <p className="mb-1.5 text-xs font-semibold text-cybertext">Fix these first — each one breaks more than one chain</p>
+          <ul className="space-y-1">
+            {chokepoints.map((c) => (
+              <li key={c.checkId} className="flex items-start gap-2 text-xs text-cybertext/70">
+                <span className="mt-px shrink-0 rounded-full border border-neon/40 px-1.5 py-0.5 text-[10px] font-medium text-neon">
+                  breaks {c.pathCount}
+                </span>
+                <span>{titleByCheckId.get(c.checkId) ?? c.checkId}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="space-y-3">
         {paths.map((path) => {
           const meta = SEVERITY_META[path.severity];
@@ -859,7 +955,8 @@ export function CriticalPaths({ findings }: { findings: ViewFinding[] }) {
                 <span className={`rounded-full border ${meta.border} px-1.5 py-0.5 text-[10px] font-medium ${meta.text}`}>{meta.label}</span>
                 <p className="text-sm font-medium text-cybertext">{path.title}</p>
               </div>
-              <p className="text-xs text-cybertext/60">{path.narrative}</p>
+              <AttackPathDiagram path={path} />
+              <p className="mt-2 text-xs text-cybertext/60">{path.narrative}</p>
             </div>
           );
         })}
