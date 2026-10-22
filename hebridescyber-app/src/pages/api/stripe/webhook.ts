@@ -142,8 +142,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const owner = session.client_reference_id;
-        const plan = (session.metadata?.plan as "basic" | "pro" | "agency" | "tier_a") ?? "basic";
         if (!owner) break;
+
+        // Validate the plan from metadata — never default to "basic" if absent,
+        // which would silently activate the wrong plan for Pro/Agency checkouts.
+        const VALID_PLANS = ["basic", "pro", "agency", "tier_a"] as const;
+        type ValidPlan = (typeof VALID_PLANS)[number];
+        const rawPlan = session.metadata?.plan;
+        const plan: ValidPlan | undefined = VALID_PLANS.includes(rawPlan as ValidPlan)
+          ? (rawPlan as ValidPlan)
+          : undefined;
+
+        if (plan === undefined) {
+          // Unresolvable plan — audit the gap and bail. The session is genuine
+          // (Stripe verified it), but we can't determine which tier to activate.
+          // Ops can replay the event once the plan is known.
+          console.error(
+            "[stripe webhook] checkout.session.completed: plan could not be determined for owner",
+            owner,
+            "session",
+            session.id,
+            "— raw metadata.plan was:",
+            rawPlan,
+          );
+          await markProcessed(event.id, "stripe.checkout.completed", {
+            actor: owner,
+            metadata: { plan: null, plan_missing: true },
+          });
+          break;
+        }
 
         let currentPeriodEnd: string | null = null;
         let stripeSubscriptionId: string | null = null;
@@ -199,22 +226,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
-        const plan = (sub.metadata?.plan as "basic" | "pro" | "agency" | "tier_a" | undefined) ?? "basic";
+        const VALID_PLANS = ["basic", "pro", "agency", "tier_a"] as const;
+        type ValidPlan = (typeof VALID_PLANS)[number];
+        const rawPlan = sub.metadata?.plan;
+        const plan: ValidPlan | undefined = VALID_PLANS.includes(rawPlan as ValidPlan)
+          ? (rawPlan as ValidPlan)
+          : undefined;
         const status = sub.status === "active" ? "active"
           : sub.status === "past_due" ? "past_due"
           : sub.status === "canceled" ? "cancelled"
           : "inactive";
 
+        // When plan metadata is absent or unrecognised, update ONLY status and
+        // current_period_end — never default to "basic", which would silently
+        // downgrade a Pro/Agency/Tier-A customer on renewal or proration.
+        // Omitting plan/source means the existing values are preserved.
+        const updatePayload: Record<string, unknown> = {
+          status,
+          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        if (plan !== undefined) {
+          updatePayload.plan = plan;
+          // A real subscription update with a known plan supersedes a prior
+          // admin plan override.
+          updatePayload.source = "stripe";
+        }
+
         await supabaseAdmin
           .from("subscriptions")
-          .update({
-            plan,
-            status,
-            // A real subscription update always supersedes a prior admin plan override.
-            source: "stripe",
-            current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("stripe_subscription_id", sub.id);
 
         {
@@ -222,7 +263,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await markProcessed(event.id, "stripe.subscription.updated", {
             actor: owner,
             actorEmail: email,
-            metadata: { plan, status },
+            metadata: { plan: plan ?? null, plan_missing: plan === undefined, status },
           });
         }
         break;
