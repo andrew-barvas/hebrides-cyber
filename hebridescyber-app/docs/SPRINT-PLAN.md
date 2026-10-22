@@ -524,3 +524,115 @@ Deferred long-horizon items (explicitly not forgotten):
 
 Re-run `docs/FUNCTIONALITY-MATRIX.md`'s audit and re-check `docs/ROADMAP.md`
 Scale criteria before committing to Sprint 19 scope.
+
+---
+
+## Harden-then-launch plan — 2026-10-22 (Sprints H1–H7)
+
+Grounded in a full evidence pass (code + git history + CI), not an estimate.
+Each sprint is blocked by the global gate: `npm run lint` → `npx tsc --noEmit`
+→ `npm run test:unit:coverage` → `npm test`. DB changes also run `npm run test:db`.
+
+### H1 — Payments live & safe ✅ in progress
+
+**Blocker**: `webhook.ts:145,202` defaulted any missing `metadata.plan` to
+`"basic"`, silently downgrading Pro/Agency customers on renewal (every
+`customer.subscription.updated` event that lacked plan metadata wrote
+`plan:"basic"` and `source:"stripe"`).
+
+**What landed (2026-10-22)**:
+- `checkout.session.completed` now validates `metadata.plan` against
+  `["basic","pro","agency","tier_a"]`; if absent, audits `plan_missing:true`
+  and bails rather than activating basic.
+- `customer.subscription.updated` now omits `plan` and `source` entirely when
+  plan metadata is absent — updates only `status` and `current_period_end`.
+  Both fix `?? "basic"` fallbacks with conditional payload construction.
+- `webhook.test.ts` `makeBuilder` now captures `upsertedSubscriptions` and
+  `updatedSubscriptions` payloads; two new no-downgrade tests confirm the above.
+- `planAccess.test.ts` gains an explicit "billing safety contract" describe
+  block pinning `subscriptionGrants({plan:"basic",status:"active"},"pro") === false`.
+- New e2e `tests/e2e/pricing-checkout.spec.ts`: pricing render, CTA → API call
+  shape, bearer token assertion, active-subscription dashboard state, 503 contract.
+
+**Gate**: 30/30 unit tests pass, TypeScript clean, lint pending.
+
+**Owner (manual)**: set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_PRICE_BASIC/PRO/AGENCY/TIER_A` in Azure + GitHub secrets; test in
+Stripe test mode first.
+
+---
+
+### H2 — Reliability & observability
+
+Wire Sentry into the scan worker (`run-queued-scan-jobs.ts` has zero Sentry
+today). New `src/sentry.worker.config.ts` (`@sentry/node` + `scrubSentryEvent`);
+`Sentry.init()` at top of `main()`; `captureException` in `failJob()`,
+top-level `.catch`, claim/reset error paths; `await Sentry.flush()` before
+`process.exit`. Correlation id via `crypto.randomUUID()` at top of `runOne()`.
+
+**Owner (manual)**: create Sentry account; set `SENTRY_DSN` +
+`NEXT_PUBLIC_SENTRY_DSN`; set `UPSTASH_REDIS_REST_URL` + `_TOKEN` for
+cross-instance rate limiting.
+
+---
+
+### H3 — Prove scans run in prod
+
+Add a `verify` job to `scheduled-scans.yml` (runs after the 3 shards):
+asserts ≥1 `results->'extended'->'<tool>'->>'status'==="completed"`; uploads
+a per-tool-status artifact; alerts on failure. Lock in `totalChecks === 58`
+unit test. Health smoke step in `deploy.yml`.
+
+**Owner (manual)**: provision the owned, intentionally-vulnerable staging target.
+
+---
+
+### H4 — Finding evidence + report PDF
+
+Add bounded, redacted `evidence` field to `Finding`/`ViewFinding`; populate
+in `httpProbe.ts`-based checks with secret/cookie stripping; render in
+`FindingCard`; include in CSV/JSON/PDF exports; delete with scan.
+
+Fix scheduled-report PDF gap: `send-scheduled-reports.ts:71-73` only branches
+csv/json — `format:"pdf"` currently emails JSON labelled "pdf". Add
+`formatReportPdf`/HTML builder + `pdf` branch calling `htmlToPdf()`.
+
+---
+
+### H5 — Launch readiness: gating decision, integrity, branches
+
+- Decide genuinely-open routes (`ai-fix.ts`, `keys.ts`, `shares.ts`, tickets):
+  gate or formally document as free, pinned in tests.
+- Finish & merge PR #88 (verdict: safe — nonce CSP, zero violations, GA/Stripe
+  allow-listed); post-deploy checks: COEP vs live GA/Stripe; SSG `/blog/[slug]`.
+- Reconcile stale docs: CMS-SEO (fixed), progress-total (fixed),
+  partner-portal/fix-PR (gated), dedup/findings/e2e (shipped).
+- Prune 20 stale merged remote branches.
+
+**Owner (manual)**: GitHub branch protection requiring `Lint, typecheck, test`
+(needs GitHub Pro for private repo); marketing/grant integrity pass (remove
+SSO/SAML, RBAC, SCIM, MSP, "autonomous AI pen-test", unsourced stats).
+
+---
+
+### H6 — Offensive tier: hidden, admin-only, experimental
+
+Make strix/cairn real (fix nonexistent pins + SHA-256 hard-fail; verify CLI
+contracts; `os.tmpdir()`). credentialSpray: CI end-to-end against owned lab.
+Admin-only gate in `run-queued-scan-jobs.ts:223-251` (`is_admin` check). Lock
+consent route to `is_admin`. Server-side scan_profile validation in
+`MonitoredTargets.tsx:421`. Foundation for future `pentest.hebridescyber.co.uk`.
+
+**Owner (manual)**: ToS + PI insurance before any real attack traffic.
+
+---
+
+### H7 — Programmatic admin & pentest API access
+
+Extend `apiKeys.ts`/`authenticateApiRequest` to resolve `users.is_admin`;
+add `profile` param to `POST /api/v1/scans` (admin keys may request
+`offensive`/`ai-pentest`); programmatic offensive authorization; update
+`docs/API.md`. Future surface for `pentest.hebridescyber.co.uk`.
+
+**Owner (manual)**: mint admin API key for `admin@hebridescyber.co.uk` once
+scope exists.
