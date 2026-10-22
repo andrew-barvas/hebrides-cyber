@@ -240,7 +240,7 @@ export default function ApiKeys({ token }: { token: string }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Key name (e.g. GitHub Actions)"
-          className="min-w-[200px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="min-w-0 flex-1 sm:min-w-[200px] rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
         />
         <button
           type="submit"

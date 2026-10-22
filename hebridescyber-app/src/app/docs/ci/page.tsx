@@ -109,7 +109,8 @@ export default function CiDocsPage() {
             snoozed (until the snooze ends) is listed but not counted. Gating on every finding would turn the pipeline red on
             its first run, and a check like that gets switched off the same day.
           </p>
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-left text-sm">
             <caption className="sr-only">Exit codes</caption>
             <thead>
               <tr className="border-b border-cyberborder font-mono text-xs text-cybertext/50">
@@ -126,6 +127,7 @@ export default function CiDocsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
 
         <section aria-labelledby="settings">

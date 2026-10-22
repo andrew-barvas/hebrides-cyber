@@ -31,7 +31,9 @@ export default async function BlogIndexPage({ searchParams }: Props) {
       .select("slug, title, excerpt, published_at, tags, cover_image_url")
       .eq("status", "published")
       .not("published_at", "is", null)
-      .order("published_at", { ascending: false });
+      .order("published_at", { ascending: false })
+      // Bounded: the index renders every card, so an unbounded select grows with the archive.
+      .limit(100);
 
     if (tag) {
       query = query.contains("tags", [tag]);
@@ -120,6 +122,10 @@ export default async function BlogIndexPage({ searchParams }: Props) {
                 <img
                   src={post.cover_image_url}
                   alt={post.title}
+                  width={112}
+                  height={80}
+                  loading="lazy"
+                  decoding="async"
                   className="h-20 w-28 shrink-0 rounded-lg object-cover"
                 />
               )}

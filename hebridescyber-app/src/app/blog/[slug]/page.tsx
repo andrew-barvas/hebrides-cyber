@@ -126,7 +126,7 @@ export default async function BlogPostPage({ params }: Props) {
                 <Link
                   key={tag}
                   href={`/blog?tag=${encodeURIComponent(tag)}`}
-                  className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-0.5 font-mono text-[10px] text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-neon/70 dark:hover:border-neon dark:hover:text-neon transition-colors"
+                  className="inline-flex min-h-8 items-center rounded-full border border-slate-200 dark:border-cyberborder px-3 py-1 font-mono text-xs text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-neon/70 dark:hover:border-neon dark:hover:text-neon transition-colors"
                 >
                   {tag}
                 </Link>
@@ -164,6 +164,9 @@ export default async function BlogPostPage({ params }: Props) {
           <img
             src={post.cover_image_url}
             alt={post.title}
+            width={768}
+            height={288}
+            decoding="async"
             className="w-full rounded-xl object-cover max-h-72 border border-slate-200 dark:border-cyberborder"
           />
         </div>
