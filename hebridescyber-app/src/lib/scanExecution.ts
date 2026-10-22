@@ -45,7 +45,7 @@ import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
 import { runBadsecrets } from "../worker/tools/badsecrets";
 import { runKatana } from "../worker/tools/katana";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -775,12 +775,13 @@ async function runExtendedTools(
       "no-rate-limit": NO_RATE_LIMIT,
       "session-fixation": SESSION_FIXATION,
       "idor-indicator": IDOR_INDICATOR,
+      "weak-session-token": WEAK_SESSION_TOKEN,
     };
     for (const f of sessionFindings) {
       findings.push({
         checkId: `sessionCheck.${f.type}:${f.url}`,
         severity: f.type === "idor-indicator" ? "high" : f.type === "session-fixation" ? "high" : "medium",
-        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
+        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type === "weak-session-token" ? `Session cookie "${f.url}" looks predictable` : f.type}`,
         detail: f.detail,
         remediation: remediationMap[f.type],
       });
