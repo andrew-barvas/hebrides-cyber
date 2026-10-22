@@ -154,6 +154,20 @@ const ENDPOINT_RE = /https?:\/\/((?:api|internal|admin|staging|dev|test|gateway|
 // Private/RFC1918/localhost hosts referenced from the client are also worth noting.
 const PRIVATE_HOST_RE = /https?:\/\/((?:localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::\d+)?)/gi;
 
+/**
+ * Library defaults that look like a leaked dev endpoint but ship in every
+ * build that bundles the library. @supabase/auth-js hard-codes
+ * `GOTRUE_URL = 'http://localhost:9999'` as the fallback when no URL is
+ * passed — present in every Supabase-using site, never a debug build. Only
+ * ignored when the same source also carries the library's own marker, so a
+ * bare localhost:9999 elsewhere is still reported.
+ */
+const LIBRARY_DEFAULT_HOSTS: { host: string; marker: RegExp }[] = [{ host: "localhost:9999", marker: /gotrue/i }];
+
+function isLibraryDefault(host: string, text: string): boolean {
+  return LIBRARY_DEFAULT_HOSTS.some((d) => d.host === host && d.marker.test(text));
+}
+
 /** First/last chars only — enough to recognise, never the whole value. */
 export function redact(value: string): string {
   const flat = value.replace(/\s+/g, "");
@@ -197,6 +211,7 @@ export function discoverJsSecrets(sources: Source[]): { secrets: JsSecretHit[]; 
       re.lastIndex = 0;
       for (const m of text.matchAll(re)) {
         const host = m[1].toLowerCase();
+        if (isLibraryDefault(host, text)) continue;
         if (!endpoints.has(host)) endpoints.set(host, { host, sample: m[0].slice(0, 120) });
       }
     }

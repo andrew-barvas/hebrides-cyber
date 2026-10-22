@@ -87,6 +87,13 @@ describe("discoverJsSecrets", () => {
     expect(hosts.some((h) => h.includes("jsdelivr"))).toBe(false);
   });
 
+  it("ignores the Supabase auth-js GOTRUE_URL default but still reports a bare localhost:9999", () => {
+    const bundled = [{ label: "chunk.js", text: `var GOTRUE_URL="http://localhost:9999";` }];
+    expect(discoverJsSecrets(bundled).endpoints).toEqual([]);
+    const bare = [{ label: "app.js", text: `fetch("http://localhost:9999/debug")` }];
+    expect(discoverJsSecrets(bare).endpoints.map((e) => e.host)).toEqual(["localhost:9999"]);
+  });
+
   describe("expanded provider catalogue", () => {
     it("flags an npm token (distinctive prefix, no co-occurrence needed)", () => {
       const src = [{ label: "app.js", text: `const t = "npm_${"a".repeat(36)}";` }];
