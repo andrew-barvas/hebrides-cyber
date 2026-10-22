@@ -134,7 +134,7 @@ export function ScoreGauge({ score }: { score: number }) {
   return (
     <div className={`inline-flex flex-col items-center justify-center rounded-full border-4 ${ring} h-28 w-28 flex-shrink-0`}>
       <span className={`text-4xl font-bold ${colour}`}>{score}</span>
-      <span className="text-xs text-cybertext/40">/100 · {label}</span>
+      <span className="text-xs text-cybermuted">/100 · {label}</span>
     </div>
   );
 }
@@ -325,7 +325,7 @@ function AiTailoredFix({ scanId, token, checkId }: { scanId: string; token: stri
   return (
     <div className="mt-3 border-l-2 border-neon/30 pl-3 print:hidden">
       <p className="mb-2 text-xs font-semibold text-neon">✨ AI-tailored fix</p>
-      {status === "loading" && <p className="text-xs text-cybertext/40">Generating…</p>}
+      {status === "loading" && <p className="text-xs text-cybermuted">Generating…</p>}
       {status === "error" && (
         <div>
           <p className="text-xs text-red-400">{error}</p>
@@ -379,7 +379,7 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
     );
   }
   if (status === "loading") {
-    return <p className="mt-3 ml-4 text-xs text-cybertext/40 print:hidden">Creating ticket…</p>;
+    return <p className="mt-3 ml-4 text-xs text-cybermuted print:hidden">Creating ticket…</p>;
   }
   if (status === "error") {
     return (
@@ -478,7 +478,7 @@ function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token
     );
   }
   if (state === "checking") {
-    return <p className="mt-3 ml-4 text-xs text-cybertext/40 print:hidden">{message}</p>;
+    return <p className="mt-3 ml-4 text-xs text-cybermuted print:hidden">{message}</p>;
   }
   if (state === "error") {
     return (
@@ -540,7 +540,7 @@ export function FindingCard({
       <div className="rounded-lg border border-cyberborder bg-cyberbg/40 p-4">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-sm text-neon">✓</span>
-          <span className="text-xs font-semibold uppercase tracking-wide text-cybertext/40">Fixed</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-cybermuted">Fixed</span>
         </div>
         <p className="text-sm text-cybertext/50 line-through decoration-cybertext/30">{finding.title}</p>
       </div>
@@ -810,7 +810,7 @@ export function ComplianceSummary({ findings }: { findings: ViewFinding[] }) {
       </div>
       <p className="mb-4 text-xs text-cybertext/50">{FRAMEWORK_DISCLAIMER[activeFramework] ?? DEFAULT_DISCLAIMER}</p>
       {controls.length === 0 ? (
-        <p className="text-xs text-cybertext/40">No controls mapped to {COMPLIANCE_FRAMEWORK_LABELS[activeFramework]} for this scan&rsquo;s findings yet.</p>
+        <p className="text-xs text-cybermuted">No controls mapped to {COMPLIANCE_FRAMEWORK_LABELS[activeFramework]} for this scan&rsquo;s findings yet.</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           {controls.map((control) => {
@@ -1186,7 +1186,7 @@ export function CheckRow({ label, pass, detail }: { label: string; pass: boolean
       </span>
       <div>
         <p className="text-sm font-medium text-cybertext/80">{label}</p>
-        <p className="text-xs text-cybertext/40">{detail}</p>
+        <p className="text-xs text-cybermuted">{detail}</p>
       </div>
     </div>
   );

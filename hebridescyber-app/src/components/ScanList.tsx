@@ -53,17 +53,17 @@ export default function ScanList({ scans, onDelete }: Props) {
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
       <div className="px-5 py-3 border-b border-cyberborder">
-        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent scans</h2>
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// recent scans</h2>
         {deleteError && <p className="mt-1.5 text-xs text-red-400">{deleteError}</p>}
       </div>
       <div className="sm:overflow-x-auto">
         <table className="block w-full border-collapse text-sm sm:table">
           <thead className="hidden sm:table-header-group">
             <tr className="border-b border-cyberborder text-left bg-cyberbg/50">
-              <th className="px-5 py-2.5 text-xs font-medium text-cybertext/40">Target</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Score</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Status</th>
-              <th className="px-4 py-2.5 text-xs font-medium text-cybertext/40">Date</th>
+              <th className="px-5 py-2.5 text-xs font-medium text-cybermuted">Target</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybermuted">Score</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybermuted">Status</th>
+              <th className="px-4 py-2.5 text-xs font-medium text-cybermuted">Date</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -81,35 +81,35 @@ export default function ScanList({ scans, onDelete }: Props) {
                 <td className="block py-1 font-mono text-xs text-neon/80 break-all sm:table-cell sm:min-w-[140px] sm:px-5 sm:py-3">
                   {scan.target_url}
                   {scan.sharedByEmail && (
-                    <span className="mt-0.5 block font-sans text-[10px] font-normal text-cybertext/40">
+                    <span className="mt-0.5 block font-sans text-[10px] font-normal text-cybermuted">
                       shared by {scan.sharedByEmail}
                     </span>
                   )}
                 </td>
                 <td
                   data-label="Score"
-                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
                 >
                   {scan.score != null ? (
                     <ScoreBadge score={scan.score} />
                   ) : (
-                    <span className="text-xs text-cybertext/20">—</span>
+                    <span className="text-xs text-cybermuted">—</span>
                   )}
                 </td>
                 <td
                   data-label="Status"
-                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-1 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:px-4 sm:py-3 sm:before:hidden"
                 >
                   <StatusBadge status={scan.status} neverStarted={isNeverStarted(scan)} />
                 </td>
                 <td
                   data-label="Date"
-                  className="flex items-center justify-between gap-3 py-1 text-xs text-cybertext/40 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-1 text-xs text-cybermuted before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-3 sm:before:hidden"
                 >
                   <span>
                     {new Date(scan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                     {(scan.status === "queued" || scan.status === "running") && (
-                      <span className="block text-[10px] text-cybertext/30 mt-0.5">
+                      <span className="block text-[10px] text-cybermuted mt-0.5">
                         {formatElapsed(scan.created_at)} ago
                       </span>
                     )}
@@ -132,11 +132,11 @@ export default function ScanList({ scans, onDelete }: Props) {
                         Verify domain →
                       </Link>
                     ) : (
-                      <span className="text-xs text-cybertext/20">—</span>
+                      <span className="text-xs text-cybermuted">—</span>
                     )}
                     {onDelete && (
                       deletingId === scan.id ? (
-                        <span className="text-xs text-cybertext/40">Deleting…</span>
+                        <span className="text-xs text-cybermuted">Deleting…</span>
                       ) : confirmId === scan.id ? (
                         <span className="flex items-center gap-1.5">
                           <button
@@ -145,10 +145,10 @@ export default function ScanList({ scans, onDelete }: Props) {
                           >
                             Confirm
                           </button>
-                          <span className="text-cybertext/20" aria-hidden="true">|</span>
+                          <span className="text-cybermuted" aria-hidden="true">|</span>
                           <button
                             onClick={() => setConfirmId(null)}
-                            className="text-xs text-cybertext/40 hover:text-cybertext/70"
+                            className="text-xs text-cybermuted hover:text-cybertext/70"
                           >
                             Cancel
                           </button>
@@ -156,7 +156,7 @@ export default function ScanList({ scans, onDelete }: Props) {
                       ) : (
                         <button
                           onClick={() => handleDelete(scan.id)}
-                          className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
+                          className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                           title="Delete scan"
                         >
                           Delete

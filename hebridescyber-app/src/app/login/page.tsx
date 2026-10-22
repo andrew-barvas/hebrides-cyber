@@ -78,23 +78,31 @@ function LoginForm() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <label htmlFor="email" className="sr-only">Email address</label>
             <input
+              id="email"
+              autoComplete="email"
               type="email"
               required
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
             />
             {usePassword && (
+              <>
+              <label htmlFor="password" className="sr-only">Password</label>
               <input
+                id="password"
+                autoComplete="current-password"
                 type="password"
                 required
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
               />
+              </>
             )}
             {error && (
               <p role="alert" className="text-sm text-red-400">{error}</p>
@@ -109,14 +117,14 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => setUsePassword((v) => !v)}
-              className="w-full text-center text-xs text-cybertext/40 hover:text-cybertext/70 underline"
+              className="w-full text-center text-xs text-cybermuted hover:text-cybertext/70 underline"
             >
               {usePassword ? "Use a magic link instead" : "Have a password? Sign in with it"}
             </button>
             {usePassword && (
               <Link
                 href="/forgot-password"
-                className="block w-full text-center text-xs text-cybertext/40 hover:text-cybertext/70 underline"
+                className="block w-full text-center text-xs text-cybermuted hover:text-cybertext/70 underline"
               >
                 Forgot your password?
               </Link>
@@ -124,12 +132,12 @@ function LoginForm() {
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-cybertext/40">
+        <p className="mt-6 text-center text-xs text-cybermuted">
           New here?{" "}
           <Link href="/signup" className="text-neon hover:underline">Create an account</Link>
         </p>
 
-        <p className="mt-10 text-center text-xs text-cybertext/30">
+        <p className="mt-10 text-center text-xs text-cybermuted">
           Demo accounts: run <code className="text-neon">npm run seed:users</code> then sign in with the
           printed credentials.
         </p>

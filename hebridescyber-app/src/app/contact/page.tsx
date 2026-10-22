@@ -157,7 +157,7 @@ function SelectField({
   return (
     <div>
       <label htmlFor={name} className="mb-1.5 block font-mono text-xs text-cybertext/60 uppercase tracking-wider">
-        {label} <span className="normal-case text-cybertext/30">(optional)</span>
+        {label} <span className="normal-case text-cybermuted">(optional)</span>
       </label>
       <select
         id={name}
