@@ -205,3 +205,11 @@ into sprints yet — they depend on Live criteria being green first.
 IAST/RASP (requires application instrumentation), attack path analysis
 (enterprise network complexity), autonomous pen testing (too early, too
 expensive). See `docs/COMPETITIVE-ANALYSIS.md` §10 for the full reasoning.
+
+**Added 2026-10-22 (Burp-parity review, see `BURP-PARITY.md`):** bounded replay, AI triage
+(off by default, `AI-TRIAGE-DESIGN.md`), session-token entropy and a configurable OOB server
+are built. Still open and unscheduled: Dalfox, own-probe OOB, OAuth/MFA flows, two-session IDOR,
+triage precision/recall benchmark. Positioning follows the review: compete on evidence,
+continuity and fixes, not tool count, and do not claim autonomous AI pentesting until a CI job
+proves it.
+

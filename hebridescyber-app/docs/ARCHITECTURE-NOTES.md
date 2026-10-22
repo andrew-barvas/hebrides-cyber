@@ -104,6 +104,18 @@ Import the base pipeline as `@/lib/scanners` (the directory). A single-file
 resolution**, so every entry point silently ran an old 4-check version. It has been
 deleted — do not recreate a file at that path.
 
+## Replay, AI triage and token entropy
+
+After the deterministic proofs (`confirmExploitable`) `executeScan` calls `triageIfEnabled`
+(`scanners/aiTriage.ts`). It is a no-op unless `AI_TRIAGE=1`. For each eligible unproven finding
+a model proposes one request, `replayProbe.ts` (GET/HEAD, same site, allowlisted headers, no
+redirects, 16 KB cap, shared budget) runs it, and the model judges the response; `confirmed`
+survives only with a quote found in the response and a non-catch-all page. The result is
+`metadata.aiTriage`, read by `proofEvidence.ts`'s `aiTriageView` and shown by `ScanReportView`.
+It never changes severity, score or `findingLifecycle`. Full design: `AI-TRIAGE-DESIGN.md`.
+`sessionCheck.ts` also samples session tokens and `tokenEntropy.ts` (pure) judges them. Burp
+comparison: `BURP-PARITY.md`.
+
 ## Pull-request dependency checks (E-71)
 
 `POST /api/v1/dependency-diff` (`src/pages/api/v1/dependency-diff.ts`; API key or session, rate limited under namespace `dependency-diff`, Pro/Agency via `planAccess.ts`'s `hasProAccess`, admins exempt) takes base and head lockfile contents and returns only the vulnerable packages the head **introduces**. All logic is in `src/lib/dependencyDiff.ts`: `diffLockfiles()` (pure) parses both sides with E-67's `parseLockfile()` and keeps head packages whose name+version base lacks; `computeDependencyDiff()` queries OSV (`queryOsvBatch`/`fetchOsvVulnDetails`, same severity/fixed-version logic as `dependencyManifest.ts`). Parsing is guarded: 5 MB per file and 20 MB per request (400 above), a 20 s `PARSE_BUDGET_MS` checked between files (parsers measured at ≤1 s per 5 MB, pathological nesting is caught as a per-file error). Evidence discipline: an unparseable lockfile, an unsupported file name, or more than 2000 introduced packages sets `complete: false`; an OSV failure is `status: "error"` (HTTP 502 `lookup_failed`) — never an empty clean result. A lockfile new in the PR (`base: null`) counts every package as introduced; deleted (`head: null`) introduces nothing. The packaged Action (`action/index.js`, `mode: dependencies`) runs `git merge-base`/`git diff`/`git show` for each changed lockfile (and its companion manifest), calls the endpoint, fails on `fail-on` (and on `complete: false`), writes the job summary and upserts one PR comment identified by `<!-- hebrides-cyber-dependency-check -->` using the workflow's `GITHUB_TOKEN` (no GitHub App). `LOCKFILE_COMPANIONS` in the Action mirrors `LOCKFILES` in `dependencyLockfiles.ts`; `githubAction.test.ts` fails if they drift — add a new lockfile to both.
