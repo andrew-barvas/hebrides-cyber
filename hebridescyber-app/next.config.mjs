@@ -22,17 +22,9 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-  {
-    key: "Content-Security-Policy",
-    // connect-src includes https://*.sentry.io for E-03 (docs/ENHANCEMENTS.md)
-    // -- the browser-side Sentry SDK (instrumentation-client.ts) posts
-    // directly to Sentry's ingest endpoint from the client; without this the
-    // existing strict CSP would silently block every client-side error
-    // report with no visible error beyond a CSP console warning. Harmless
-    // to keep even before SENTRY_DSN is actually configured.
-    value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in; connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in https://www.google-analytics.com https://region1.google-analytics.com https://*.sentry.io; font-src 'self' data:; frame-src https://js.stripe.com https://checkout.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com",
-  },
+  // Content-Security-Policy is deliberately NOT here: pages get a per-request
+  // nonce policy from src/middleware.ts (src/lib/csp.ts), which is what lets
+  // script-src drop 'unsafe-inline'. API routes get API_CSP below.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   // require-corp is the strict setting our own headers.ts check wants —
@@ -47,6 +39,9 @@ const SECURITY_HEADERS = [
   // this app," so confirm with a real browser load, not just curl -I.
   { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
 ];
+
+// API responses are JSON/redirects, never documents: nothing may load or frame.
+const API_CSP = "default-src 'none'; frame-ancestors 'none'";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -64,7 +59,10 @@ const nextConfig = {
     root: __dirname,
   },
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      { source: "/api/:path*", headers: [{ key: "Content-Security-Policy", value: API_CSP }] },
+    ];
   },
   // Deployed as Azure Static Web Apps "hybrid" mode (managed Functions) by
   // default — not a pure static export — see CLAUDE.md's Deployment

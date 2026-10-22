@@ -164,11 +164,17 @@ without needing to be asked.
 
 27. **Generate `www` URLs** — `process.env.NEXT_PUBLIC_SITE_URL ??
     "https://www.hebridescyber.co.uk"`. The bare domain only redirects.
-28. **Security headers are set in `next.config.mjs`'s own `headers()`.** Azure
-    SWA hybrid mode serves every route through the managed Next.js server, which
-    bypasses `staticwebapp.config.json`'s `globalHeaders` entirely (confirmed by
-    curling production). That file is kept in sync as a fallback for pure static
-    assets but is not load-bearing — **keep both in sync** if the policy changes.
+28. **Security headers are set by the Next server, not Azure SWA.** SWA hybrid
+    mode serves every route through the managed Next.js server, which bypasses
+    `staticwebapp.config.json`'s `globalHeaders` entirely (confirmed by curling
+    production). Static headers live in `next.config.mjs`'s `headers()`; keep
+    `staticwebapp.config.json` in sync as a fallback for pure static assets. The
+    **CSP is the exception: it is per-request** (`src/middleware.ts` +
+    `src/lib/csp.ts`) with a nonce and `'strict-dynamic'`, so `script-src` has no
+    `'unsafe-inline'` — our own scanner grades it A (`csp.test.ts` asserts this).
+    Any new inline `<script>` or `next/script` must take the nonce from
+    `headers().get("x-nonce")`, and every page renders dynamically as a result.
+    `tests/e2e/csp.spec.ts` fails on a browser-reported violation.
 29. **Never run `shadcn init`** — it overwrites `globals.css` and
     `tailwind.config.cjs`. `npx shadcn@2 add <component>` is fine.
 30. **E2E tests must never use real Supabase credentials.**

@@ -508,7 +508,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     if (!results.dns.caa.present) {
       findings.push({ checkId: "dns.caa-missing", severity: "low", title: "No CAA records", detail: "Any CA can issue certificates for this domain. Add CAA records to restrict to your provider.", remediation: FIX.CAA_MISSING });
     }
-    if (!results.dns.dnssec.likelySigned) {
+    if (!results.dns.dnssec.likelySigned && !results.dns.dnssec.inconclusive) {
       findings.push({ checkId: "dns.dnssec-missing", severity: "info", title: "DNSSEC not detected", detail: results.dns.dnssec.note, remediation: FIX.DNSSEC_MISSING });
     }
     // MTA-STS/TLS-RPT only get evaluated when the domain has MX records (see

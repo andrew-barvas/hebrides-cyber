@@ -25,7 +25,7 @@ const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
  * script load only catches the very first page — the pathname/searchParams
  * effect below sends the rest manually.
  */
-export default function GoogleAnalytics() {
+export default function GoogleAnalytics({ nonce }: { nonce?: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -44,8 +44,8 @@ export default function GoogleAnalytics() {
 
   return (
     <>
-      <Script src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`} strategy="afterInteractive" />
-      <Script id="ga4-init" strategy="afterInteractive">
+      <Script src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`} strategy="afterInteractive" nonce={nonce} />
+      <Script id="ga4-init" strategy="afterInteractive" nonce={nonce}>
         {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
