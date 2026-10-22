@@ -62,6 +62,7 @@ import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { triageIfEnabled } from "./scanners/aiTriage";
 import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
@@ -1083,7 +1084,11 @@ export async function executeScan(
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
     // Proof of exploit: a handful of harmless re-checks mark which findings
     // reproduce. Never changes severity or the score; it only adds evidence.
-    if (options.confirmExploits ?? profile !== "safe") findings = await confirmExploitable(targetUrl, findings);
+    if (options.confirmExploits ?? profile !== "safe") {
+      findings = await confirmExploitable(targetUrl, findings);
+      // Runs after the deterministic proofs so it only sees what they couldn't prove.
+      findings = await triageIfEnabled(targetUrl, findings);
+    }
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and
