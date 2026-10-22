@@ -205,3 +205,34 @@ into sprints yet — they depend on Live criteria being green first.
 IAST/RASP (requires application instrumentation), attack path analysis
 (enterprise network complexity), autonomous pen testing (too early, too
 expensive). See `docs/COMPETITIVE-ANALYSIS.md` §10 for the full reasoning.
+
+---
+
+## Harden-then-launch stage-gates — 2026-10-22
+
+Stage-gates for the H1–H7 sprint block. A gate is green when **every** listed
+check passes, not "mostly." Execute in sprint order; see `docs/SPRINT-PLAN.md`
+§ "Harden-then-launch plan" for the full sprint briefs.
+
+| Gate | Sprint | Criterion | Verification |
+|---|---|---|---|
+| **H1-1** | H1 | `customer.subscription.updated` with absent metadata never writes `plan:"basic"` | `webhook.test.ts` "no-downgrade safety" describe passes |
+| **H1-2** | H1 | `checkout.session.completed` with absent plan does not activate a subscription | `webhook.test.ts` "checkout.session.completed with no metadata.plan" test passes |
+| **H1-3** | H1 | `subscriptionGrants({plan:"basic",status:"active"},"pro") === false` | `planAccess.test.ts` billing-safety describe passes |
+| **H1-4** | H1 (owner) | Stripe Price IDs set in Azure + GitHub secrets | `GET /api/health` → `"stripe":{"ok":true}` |
+| **H2-1** | H2 | Worker produces a Sentry event on a synthetic failing job | Sentry dashboard shows event with correlation id |
+| **H2-2** | H2 (owner) | `SENTRY_DSN` set + `UPSTASH_REDIS_REST_URL`/`_TOKEN` set | `/api/health` shows sentry + redis healthy |
+| **H3-1** | H3 | CI `verify` job passes and publishes the tool-status artifact | GitHub Actions run shows green `verify` job |
+| **H3-2** | H3 | `totalChecks === 58` unit test passes | `npm run test:unit` green |
+| **H3-3** | H3 | Health smoke step in `deploy.yml` passes on every deploy | `/api/health` → 200 `ok` in deploy log |
+| **H4-1** | H4 | Every probe-based finding carries bounded evidence; no credential/cookie values appear | `httpProbe` evidence tests pass |
+| **H4-2** | H4 | `format:"pdf"` scheduled report emails a real PDF attachment, not JSON labelled "pdf" | Send-script test passes |
+| **H5-1** | H5 | All open routes have explicit tests pinning their gating decision | Route tests green |
+| **H5-2** | H5 | PR #88 merged and CI green; COEP + `/blog/[slug]` post-deploy checks pass | GitHub Actions deploy green |
+| **H5-3** | H5 (owner) | Branch protection rule added; marketing/grant integrity pass done | GitHub settings show required check; no unsourced stats in live copy |
+| **H6-1** | H6 | Non-admin Tier-A `offensive` job downgrades to `safe` + audits `offensive_scan.refused` | Unit test asserting downgrade |
+| **H6-2** | H6 | Non-admin → 403 on `offensive-authorization` consent route | API test passes |
+| **H6-3** | H6 | No `offensive`/`ai-pentest`/`Strix`/`Cairn` strings in `src/app`/`src/components` | `grep` returns empty |
+| **H7-1** | H7 | Admin API key posts a scan with `profile:"offensive"` and it runs (given authorization + verified domain) | API route test passes |
+| **H7-2** | H7 | Non-admin key requesting `offensive` → 403 | API route test passes |
+| **H7-3** | H7 (owner) | Admin API key minted for `admin@hebridescyber.co.uk` | Key exists in `api_keys` table |
