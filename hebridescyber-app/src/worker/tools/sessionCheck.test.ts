@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { runSessionCheck } from "./sessionCheck";
+import { checkSessionTokenQuality, runSessionCheck } from "./sessionCheck";
 
 const fetchMock = vi.fn();
 
@@ -117,5 +117,77 @@ describe("runSessionCheck", () => {
     expect(result.status).toBe("completed");
     if (result.status !== "completed") return;
     expect(result.findings).toEqual([]);
+  });
+});
+
+describe("checkSessionTokenQuality", () => {
+  /** A site whose home page sets one session cookie, with the value chosen per request. */
+  function siteIssuing(cookieName: string, valueFor: (n: number) => string, extra: string[] = []) {
+    let n = 0;
+    fetchMock.mockImplementation(async () => {
+      const i = n++;
+      return { status: 200, headers: { getSetCookie: () => [`${cookieName}=${valueFor(i)}; Path=/; HttpOnly`, ...extra], get: () => null, has: () => false } };
+    });
+  }
+
+  it("flags a session cookie that counts up", async () => {
+    siteIssuing("PHPSESSID", (i) => String(90000 + i));
+    const findings = await checkSessionTokenQuality("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ type: "weak-session-token", url: "PHPSESSID" });
+    expect(findings[0].detail).toContain("count up in small steps");
+  });
+
+  it("flags a short session id", async () => {
+    const alphabet = "0123456789abcdef";
+    siteIssuing("sid", (i) => Array.from({ length: 6 }, (_, k) => alphabet[(i * 7 + k * 5 + i * k) % 16]).join(""));
+    const findings = await checkSessionTokenQuality("https://example.com");
+    expect(findings.map((f) => f.type)).toEqual(["weak-session-token"]);
+  });
+
+  it("leaves a long random session id alone", async () => {
+    const chars = "0123456789abcdef";
+    let seed = 12345;
+    const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    siteIssuing("session", () => Array.from({ length: 40 }, () => chars[Math.floor(rand() * 16)]).join(""));
+    expect(await checkSessionTokenQuality("https://example.com")).toEqual([]);
+  });
+
+  it("ignores cookies that are not session cookies, and JWT-shaped values", async () => {
+    siteIssuing("_ga", (i) => String(i), ["sessionToken=eyJhbGciOiJIUzI1NiJ9.e30.abc"]);
+    expect(await checkSessionTokenQuality("https://example.com")).toEqual([]);
+  });
+
+  it("reports nothing when no cookie is set, or when the requests fail", async () => {
+    fetchMock.mockImplementation(async () => ({ status: 200, headers: { getSetCookie: () => [], get: () => null, has: () => false } }));
+    expect(await checkSessionTokenQuality("https://example.com")).toEqual([]);
+    fetchMock.mockImplementation(async () => {
+      throw new Error("down");
+    });
+    expect(await checkSessionTokenQuality("https://example.com")).toEqual([]);
+  });
+
+  it("does not judge a cookie seen too few times", async () => {
+    let n = 0;
+    fetchMock.mockImplementation(async () => ({ status: 200, headers: { getSetCookie: () => (n++ < 3 ? ["sid=1" + n] : []), get: () => null, has: () => false } }));
+    expect(await checkSessionTokenQuality("https://example.com")).toEqual([]);
+  });
+
+  it("does not put a token value in the finding", async () => {
+    siteIssuing("PHPSESSID", (i) => String(90000 + i));
+    const [finding] = await checkSessionTokenQuality("https://example.com");
+    expect(JSON.stringify(finding)).not.toMatch(/9000\d/);
+  });
+});
+
+describe("runSessionCheck token sampling", () => {
+  it("includes a weak-session-token finding in the combined result", async () => {
+    let n = 0;
+    fetchMock.mockImplementation(async (url: string) => ({
+      status: 404,
+      headers: { getSetCookie: () => (url === "https://example.com" ? [`sid=${70000 + n++}`] : []), get: () => null, has: () => false },
+    }));
+    const result = await runSessionCheck("https://example.com");
+    expect(result.status === "completed" && result.findings.map((f) => f.type)).toContain("weak-session-token");
   });
 });

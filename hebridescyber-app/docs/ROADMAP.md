@@ -236,3 +236,11 @@ check passes, not "mostly." Execute in sprint order; see `docs/SPRINT-PLAN.md`
 | **H7-1** | H7 | Admin API key posts a scan with `profile:"offensive"` and it runs (given authorization + verified domain) | API route test passes |
 | **H7-2** | H7 | Non-admin key requesting `offensive` → 403 | API route test passes |
 | **H7-3** | H7 (owner) | Admin API key minted for `admin@hebridescyber.co.uk` | Key exists in `api_keys` table |
+
+**Added 2026-10-22 (Burp-parity review, see `BURP-PARITY.md`):** bounded replay, AI triage
+(off by default, `AI-TRIAGE-DESIGN.md`), session-token entropy and a configurable OOB server
+are built. Still open and unscheduled: Dalfox, own-probe OOB, OAuth/MFA flows, two-session IDOR,
+triage precision/recall benchmark. Positioning follows the review: compete on evidence,
+continuity and fixes, not tool count, and do not claim autonomous AI pentesting until a CI job
+proves it.
+

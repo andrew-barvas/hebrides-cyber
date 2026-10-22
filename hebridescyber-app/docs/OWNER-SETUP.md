@@ -118,3 +118,15 @@ protection) for `master`:
   / `WPSCAN_API_TOKEN` (extra scan coverage), `GITHUB_PAT` or GitHub App (customer-repo scanning).
 
 All env-var names are documented in `.env.example`.
+
+## Optional: AI triage and out-of-band server
+
+Both off or default until you choose. In GitHub **Settings → Secrets and variables → Actions**:
+
+- Variable `AI_TRIAGE` = `1` to let the scan workers triage unproven findings with Azure OpenAI
+  (needs the three `AZURE_OPENAI_*` secrets). Read `AI-TRIAGE-DESIGN.md` (data handling) first and
+  evaluate the output by hand on a few of your own sites.
+- Variable `INTERACTSH_SERVER` (a bare host) and secret `INTERACTSH_TOKEN` to point nuclei's
+  SSRF/OAST templates at your own interactsh server instead of ProjectDiscovery's public pool;
+  variable `DISABLE_OAST` = `1` to send nothing out-of-band at all (loses blind-SSRF coverage).
+
