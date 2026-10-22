@@ -144,7 +144,7 @@ describe("toRepoRelativePath", () => {
 });
 
 describe("excludes", () => {
-  it.each(["node_modules/x/index.js", "vendor/lib/a.php", "dist/app.js", "build/a.js", ".next/server/a.js", "tests/test_app.py", "src/__tests__/a.ts", "spec/fixtures/a.js", "public/app.min.js", "src/a.test.ts", "app/test_views.py"])(
+  it.each(["node_modules/x/index.js", "vendor/lib/a.php", "dist/app.js", "build/a.js", ".next/server/a.js", "tests/test_app.py", "src/__tests__/a.ts", "spec/fixtures/a.js", "public/app.min.js", "src/a.test.ts", "app/test_views.py", "sast-rules/php/rule.php"])(
     "excludes %s",
     (p) => expect(isExcludedPath(p)).toBe(true)
   );
