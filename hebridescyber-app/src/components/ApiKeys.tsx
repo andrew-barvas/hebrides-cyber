@@ -192,7 +192,7 @@ export default function ApiKeys({ token }: { token: string }) {
 
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// api keys</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// api keys</h2>
 
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Use an API key to run scans from CI or scripts:{" "}
@@ -223,7 +223,7 @@ export default function ApiKeys({ token }: { token: string }) {
           </div>
           <button
             onClick={() => setFreshKey(null)}
-            className="mt-3 text-xs text-cybertext/40 hover:text-cybertext/70"
+            className="mt-3 text-xs text-cybermuted hover:text-cybertext/70"
           >
             I&apos;ve saved it — dismiss
           </button>
@@ -252,16 +252,16 @@ export default function ApiKeys({ token }: { token: string }) {
       </form>
 
       {loading ? (
-        <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+        <p className="font-mono text-xs text-cybermuted">// loading…</p>
       ) : active.length === 0 ? (
-        <p className="text-xs text-cybertext/40">No active keys.</p>
+        <p className="text-xs text-cybermuted">No active keys.</p>
       ) : (
         <ul className="divide-y divide-cyberborder rounded-lg border border-cyberborder">
           {active.map((k) => (
             <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-cybertext/80">{k.name}</p>
-                <p className="font-mono text-xs text-cybertext/40 break-all">
+                <p className="font-mono text-xs text-cybermuted break-all">
                   {k.key_prefix}…
                   {k.last_used_at ? ` · last used ${formatDate(k.last_used_at)}` : " · never used"}
                 </p>
@@ -280,13 +280,13 @@ export default function ApiKeys({ token }: { token: string }) {
                 <button
                   onClick={() => setEditingId(editingId === k.id ? null : k.id)}
                   aria-expanded={editingId === k.id}
-                  className="text-xs text-cybertext/40 hover:text-neon transition-colors"
+                  className="text-xs text-cybermuted hover:text-neon transition-colors"
                 >
                   IP allowlist
                 </button>
                 <button
                   onClick={() => revoke(k.id)}
-                  className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                  className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                 >
                   Revoke
                 </button>

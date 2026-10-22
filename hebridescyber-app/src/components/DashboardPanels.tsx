@@ -54,7 +54,7 @@ export function WafIndicator({ results }: { results: ScanResults }) {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">WAF protection</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybermuted">WAF protection</p>
       <div className="flex items-center gap-3">
         <span className={`text-2xl font-bold ${detected ? "text-neon" : "text-red-400"}`}>
           {detected ? "✓" : "✗"}
@@ -67,7 +67,7 @@ export function WafIndicator({ results }: { results: ScanResults }) {
             <p className="text-xs text-cybertext/50">{w.vendor}</p>
           )}
           {detected && (
-            <p className="text-xs text-cybertext/40">Confidence: {Math.round(w.confidence)}%</p>
+            <p className="text-xs text-cybermuted">Confidence: {Math.round(w.confidence)}%</p>
           )}
         </div>
       </div>
@@ -90,7 +90,7 @@ export function CmsStatusPanel({ results }: { results: ScanResults }) {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">CMS security</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybermuted">CMS security</p>
       {cms && (
         <div className="mb-2 flex items-center gap-2">
           <span className="text-sm font-bold text-neon">{cms.cmsType}</span>
@@ -118,7 +118,7 @@ export function TechStackPanel({ results }: { results: ScanResults }) {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">Detected technologies</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybermuted">Detected technologies</p>
       <div className="flex flex-wrap gap-1.5">
         {techs.slice(0, 12).map((tech) => (
           <span
@@ -129,7 +129,7 @@ export function TechStackPanel({ results }: { results: ScanResults }) {
           </span>
         ))}
         {techs.length > 12 && (
-          <span className="rounded-full border border-cyberborder bg-cyberbg/60 px-2 py-0.5 text-[10px] text-cybertext/40">
+          <span className="rounded-full border border-cyberborder bg-cyberbg/60 px-2 py-0.5 text-[10px] text-cybermuted">
             +{techs.length - 12} more
           </span>
         )}
@@ -154,7 +154,7 @@ export function SeverityBreakdown({ findings }: { findings: ViewFinding[] }) {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
-      <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">Severity breakdown</p>
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-cybermuted">Severity breakdown</p>
       <div className="space-y-1.5">
         {bars.map((b) => (
           <div key={b.sev} className="flex items-center gap-2">
@@ -205,12 +205,12 @@ export function OsintSummaryPanel({ results }: { results: ScanResults }) {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybertext/40">Attack surface discovery</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cybermuted">Attack surface discovery</p>
       <div className="grid grid-cols-2 gap-2">
         {stats.map((s) => (
           <div key={s.label} className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2 text-center">
             <p className="text-lg font-bold text-cybertext">{s.count}</p>
-            <p className="text-[10px] text-cybertext/40">{s.label}</p>
+            <p className="text-[10px] text-cybermuted">{s.label}</p>
           </div>
         ))}
       </div>

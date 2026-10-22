@@ -191,7 +191,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <p className="text-2xl font-bold text-neon">{value}</p>
       <p className="mt-0.5 text-sm font-medium text-cybertext/70">{label}</p>
-      {sub && <p className="mt-1 text-xs text-cybertext/40">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-cybermuted">{sub}</p>}
     </div>
   );
 }
@@ -200,7 +200,7 @@ const CAP_STATUS_STYLE: Record<string, string> = {
   ok: "text-cybertext/50",
   near: "text-amber-400",
   at: "text-red-400",
-  unknown: "text-cybertext/30",
+  unknown: "text-cybermuted",
 };
 
 /** One "N of cap used" line, flagged amber/red once a real plan ceiling is close or reached. */
@@ -256,7 +256,7 @@ function OverviewTab({ token }: { token: string }) {
   }, [token]);
 
   if (err) return <p className="text-red-400 text-sm">{err}</p>;
-  if (!metrics) return <p className="text-cybertext/40 text-sm font-mono">// loading…</p>;
+  if (!metrics) return <p className="text-cybermuted text-sm font-mono">// loading…</p>;
 
   return (
     <div className="space-y-8">
@@ -275,7 +275,7 @@ function OverviewTab({ token }: { token: string }) {
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// revenue &amp; churn</h3>
+        <h3 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// revenue &amp; churn</h3>
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
           <div>
             <p className="text-xl font-bold text-neon">£{metrics.revenue.payingMrrGbp.toLocaleString()}</p>
@@ -299,7 +299,7 @@ function OverviewTab({ token }: { token: string }) {
           </div>
         </div>
         {(metrics.revenue.compedCount > 0 || metrics.revenue.bespokeCount > 0 || metrics.revenue.pastDueCount > 0) && (
-          <p className="mt-3 border-t border-cyberborder/50 pt-3 text-xs text-cybertext/40">
+          <p className="mt-3 border-t border-cyberborder/50 pt-3 text-xs text-cybermuted">
             {metrics.revenue.pastDueCount > 0 && <span className="text-amber-400">{metrics.revenue.pastDueCount} past-due (at risk)</span>}
             {metrics.revenue.pastDueCount > 0 && (metrics.revenue.compedCount > 0 || metrics.revenue.bespokeCount > 0) && " · "}
             {metrics.revenue.compedCount > 0 && `${metrics.revenue.compedCount} admin-comped (£0)`}
@@ -311,7 +311,7 @@ function OverviewTab({ token }: { token: string }) {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-          <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// plans</h3>
+          <h3 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// plans</h3>
           <div className="space-y-2">
             {metrics.planBreakdown.map((p) => (
               <div key={p.plan} className="flex items-center justify-between">
@@ -320,13 +320,13 @@ function OverviewTab({ token }: { token: string }) {
               </div>
             ))}
             {metrics.planBreakdown.length === 0 && (
-              <p className="text-xs text-cybertext/30">No active subscriptions</p>
+              <p className="text-xs text-cybermuted">No active subscriptions</p>
             )}
           </div>
         </div>
 
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-          <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// scan status</h3>
+          <h3 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// scan status</h3>
           <div className="space-y-2">
             {Object.entries(metrics.scansByStatus).map(([status, count]) => (
               <div key={status} className="flex items-center justify-between">
@@ -339,11 +339,11 @@ function OverviewTab({ token }: { token: string }) {
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// recent signups</h3>
+        <h3 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// recent signups</h3>
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
+            <tr className="border-b border-cyberborder text-left text-xs text-cybermuted">
               <th className="pb-2 pr-4">Email</th>
               <th className="pb-2 pr-4">Company</th>
               <th className="pb-2">Joined</th>
@@ -354,7 +354,7 @@ function OverviewTab({ token }: { token: string }) {
               <tr key={u.id} className="border-b border-cyberborder/50">
                 <td className="py-1.5 pr-4 font-mono text-xs text-cybertext">{u.email}</td>
                 <td className="py-1.5 pr-4 text-cybertext/50">{u.company_name ?? "—"}</td>
-                <td className="py-1.5 text-cybertext/40">{reltime(u.created_at)}</td>
+                <td className="py-1.5 text-cybermuted">{reltime(u.created_at)}</td>
               </tr>
             ))}
           </tbody>
@@ -414,13 +414,13 @@ function CustomersTab({ token }: { token: string }) {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
         />
-        <span className="font-mono text-xs text-cybertext/40">{total} customers</span>
+        <span className="font-mono text-xs text-cybermuted">{total} customers</span>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybermuted">
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Company</th>
               <th className="px-4 py-3">Plan</th>
@@ -432,9 +432,9 @@ function CustomersTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center font-mono text-sm text-cybermuted">// loading…</td></tr>
             ) : customers.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-cybertext/30">No customers found</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-cybermuted">No customers found</td></tr>
             ) : (
               customers.map((c) => (
                 <tr key={c.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
@@ -453,7 +453,7 @@ function CustomersTab({ token }: { token: string }) {
                   </td>
                   <td className="px-4 py-2.5">{c.subscription_status ? statusBadge(c.subscription_status) : "—"}</td>
                   <td className="px-4 py-2.5 text-cybertext/70">{c.scan_count}</td>
-                  <td className="px-4 py-2.5 text-cybertext/40">{reltime(c.created_at)}</td>
+                  <td className="px-4 py-2.5 text-cybermuted">{reltime(c.created_at)}</td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => setViewingId(c.id)} className="rounded border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors">
                       View
@@ -469,7 +469,7 @@ function CustomersTab({ token }: { token: string }) {
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
           <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
           <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
@@ -529,7 +529,7 @@ function CustomerDetailPanel({
   };
 
   if (error) return <p className="text-sm text-red-400">{error}</p>;
-  if (!detail) return <p className="font-mono text-sm text-cybertext/40">// loading…</p>;
+  if (!detail) return <p className="font-mono text-sm text-cybermuted">// loading…</p>;
 
   const { user, subscription, scans, scanCount, usage } = detail;
 
@@ -540,17 +540,17 @@ function CustomerDetailPanel({
       </button>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="font-mono text-xs uppercase tracking-wide text-cybertext/40">// profile</h3>
+        <h3 className="font-mono text-xs uppercase tracking-wide text-cybermuted">// profile</h3>
         <p className="mt-2 text-sm text-cybertext">
           <span className="font-mono text-neon">{user.email}</span>
           {user.is_admin && <span className="ml-1 rounded bg-neon/10 px-1 text-[10px] text-neon">admin</span>}
         </p>
         <p className="text-sm text-cybertext/60">{user.company_name ?? "No company set"}</p>
-        <p className="mt-1 text-xs text-cybertext/40">Joined {reltime(user.created_at)} · {scanCount} total scans</p>
+        <p className="mt-1 text-xs text-cybermuted">Joined {reltime(user.created_at)} · {scanCount} total scans</p>
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="font-mono text-xs uppercase tracking-wide text-cybertext/40">// subscription</h3>
+        <h3 className="font-mono text-xs uppercase tracking-wide text-cybermuted">// subscription</h3>
         <div className="mt-2 flex items-center gap-3 text-sm">
           <span className="capitalize text-cybertext/80">{subscription?.plan ?? "none"}</span>
           {subscription?.status && statusBadge(subscription.status)}
@@ -559,10 +559,10 @@ function CustomerDetailPanel({
           )}
         </div>
         {subscription?.grant_reason && (
-          <p className="mt-1 text-xs text-cybertext/40">Reason on file: {subscription.grant_reason}</p>
+          <p className="mt-1 text-xs text-cybermuted">Reason on file: {subscription.grant_reason}</p>
         )}
         {subscription?.stripe_customer_id && (
-          <p className="mt-1 font-mono text-xs text-cybertext/30">Stripe: {subscription.stripe_customer_id}</p>
+          <p className="mt-1 font-mono text-xs text-cybermuted">Stripe: {subscription.stripe_customer_id}</p>
         )}
 
         <div className="mt-4 space-y-3 border-t border-cyberborder/50 pt-4">
@@ -596,7 +596,7 @@ function CustomerDetailPanel({
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-2 font-mono text-xs uppercase tracking-wide text-cybertext/40">// usage vs plan limits</h3>
+        <h3 className="mb-2 font-mono text-xs uppercase tracking-wide text-cybermuted">// usage vs plan limits</h3>
         <div className="space-y-1">
           <UsageRow label="Monitored sites" count={usage.monitoredTargets.count} cap={usage.monitoredTargets.cap} />
           {usage.teamMembers && <UsageRow label="Team members" count={usage.teamMembers.count} cap={usage.teamMembers.cap} />}
@@ -607,14 +607,14 @@ function CustomerDetailPanel({
       </div>
 
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-3 font-mono text-xs uppercase tracking-wide text-cybertext/40">// recent scans</h3>
+        <h3 className="mb-3 font-mono text-xs uppercase tracking-wide text-cybermuted">// recent scans</h3>
         {scans.length === 0 ? (
-          <p className="text-sm text-cybertext/30">No scans yet</p>
+          <p className="text-sm text-cybermuted">No scans yet</p>
         ) : (
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
+              <tr className="border-b border-cyberborder text-left text-xs text-cybermuted">
                 <th className="pb-2 pr-4">Target</th>
                 <th className="pb-2 pr-4">Status</th>
                 <th className="pb-2 pr-4">Score</th>
@@ -629,7 +629,7 @@ function CustomerDetailPanel({
                   </td>
                   <td className="py-1.5 pr-4">{statusBadge(s.status)}</td>
                   <td className="py-1.5 pr-4 font-mono text-xs">{s.score ?? "—"}</td>
-                  <td className="py-1.5 text-xs text-cybertext/40">{reltime(s.createdAt)}</td>
+                  <td className="py-1.5 text-xs text-cybermuted">{reltime(s.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
@@ -699,7 +699,7 @@ function ScansTab({ token }: { token: string }) {
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybermuted">
               <th className="px-4 py-3">Target</th>
               <th className="px-4 py-3">Owner</th>
               <th className="px-4 py-3">Status</th>
@@ -710,9 +710,9 @@ function ScansTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// loading…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-sm text-cybermuted">// loading…</td></tr>
             ) : scans.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-cybertext/30">No scans found</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-cybermuted">No scans found</td></tr>
             ) : (
               scans.map((s) => (
                 <tr key={s.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
@@ -731,7 +731,7 @@ function ScansTab({ token }: { token: string }) {
                       </span>
                     ) : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-cybertext/40">{reltime(s.createdAt)}</td>
+                  <td className="px-4 py-2.5 text-xs text-cybermuted">{reltime(s.createdAt)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
                       {(s.status === "running" || s.status === "pending") && (
@@ -755,7 +755,7 @@ function ScansTab({ token }: { token: string }) {
 
       <div className="flex justify-end gap-2">
         <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-        <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+        <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
         <button disabled={scans.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
       </div>
     </div>
@@ -805,7 +805,7 @@ function QueueTab({ token }: { token: string }) {
     }
   };
 
-  if (!data) return <p className="font-mono text-sm text-cybertext/30">// loading…</p>;
+  if (!data) return <p className="font-mono text-sm text-cybermuted">// loading…</p>;
 
   if (!data.configured) {
     return (
@@ -821,7 +821,7 @@ function QueueTab({ token }: { token: string }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs text-cybertext/30">// auto-refreshes every 5 s</p>
+        <p className="font-mono text-xs text-cybermuted">// auto-refreshes every 5 s</p>
         <div className="flex items-center gap-2">
           {recoverMsg && <span className="text-xs text-cybertext/50">{recoverMsg}</span>}
           <button
@@ -850,14 +850,14 @@ function QueueTab({ token }: { token: string }) {
             if (list.length === 0) return null;
             return (
               <div key={state} className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
-                <div className="border-b border-cyberborder bg-cyberbg px-4 py-2.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">
+                <div className="border-b border-cyberborder bg-cyberbg px-4 py-2.5 font-mono text-xs text-cybermuted uppercase tracking-wide">
                   {state} ({list.length})
                 </div>
                 {list.map((j) => (
                   <div key={j.id} className="flex items-center gap-4 border-b border-cyberborder/40 px-4 py-3 last:border-0">
                     <div className="flex-1 min-w-0">
                       <p className="truncate font-mono text-xs text-neon">{j.targetUrl}</p>
-                      <p className="text-xs text-cybertext/40">scan: {j.scanId?.slice(0, 8)}…</p>
+                      <p className="text-xs text-cybermuted">scan: {j.scanId?.slice(0, 8)}…</p>
                     </div>
                     {state === "active" && (
                       <div className="w-24">
@@ -867,10 +867,10 @@ function QueueTab({ token }: { token: string }) {
                             style={{ width: `${j.progress ?? 0}%` }}
                           />
                         </div>
-                        <p className="mt-0.5 text-right font-mono text-xs text-cybertext/40">{j.progress ?? 0}%</p>
+                        <p className="mt-0.5 text-right font-mono text-xs text-cybermuted">{j.progress ?? 0}%</p>
                       </div>
                     )}
-                    <p className="text-xs text-cybertext/30 whitespace-nowrap">
+                    <p className="text-xs text-cybermuted whitespace-nowrap">
                       {state === "active" && j.startedAt ? `claimed ${reltime(j.startedAt)}` : j.addedAt ? reltime(j.addedAt) : ""}
                     </p>
                     {state === "failed" && j.scanId && (
@@ -965,9 +965,9 @@ function BlogTab({ token }: { token: string }) {
       </div>
 
       {loading ? (
-        <p className="font-mono text-sm text-cybertext/30">// loading…</p>
+        <p className="font-mono text-sm text-cybermuted">// loading…</p>
       ) : posts.length === 0 ? (
-        <p className="font-mono text-sm text-cybertext/30">// no posts found</p>
+        <p className="font-mono text-sm text-cybermuted">// no posts found</p>
       ) : (
         <div className="rounded-xl border border-cyberborder bg-cyberpanel overflow-hidden">
           {posts.map((p) => (
@@ -977,8 +977,8 @@ function BlogTab({ token }: { token: string }) {
                   <p className="font-medium text-cybertext">{p.title}</p>
                   {statusBadge(p.status)}
                 </div>
-                <p className="mt-0.5 text-xs text-cybertext/40 truncate">{p.excerpt || "No excerpt"}</p>
-                <div className="mt-1 flex items-center gap-2 font-mono text-xs text-cybertext/30">
+                <p className="mt-0.5 text-xs text-cybermuted truncate">{p.excerpt || "No excerpt"}</p>
+                <div className="mt-1 flex items-center gap-2 font-mono text-xs text-cybermuted">
                   <span>/{p.slug}</span>
                   <span>·</span>
                   <span>Updated {reltime(p.updated_at)}</span>
@@ -1142,7 +1142,7 @@ function BlogEditor({
         <h2 className="text-lg font-semibold text-cybertext">{post ? "Edit post" : "New post"}</h2>
         {isDirty && <span className="font-mono text-xs text-amber-400">// unsaved changes</span>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs text-cybertext/30">{wordCount} words · {readMins} min read</span>
+          <span className="font-mono text-xs text-cybermuted">{wordCount} words · {readMins} min read</span>
           <button
             onClick={() => setShowSeo((v) => !v)}
             className="rounded border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
@@ -1190,9 +1190,9 @@ function BlogEditor({
       {/* SEO panel */}
       {showSeo && (
         <div className="rounded-xl border border-cyberborder bg-cyberpanel p-4 space-y-3">
-          <h3 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// SEO & Open Graph</h3>
+          <h3 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// SEO & Open Graph</h3>
           <div>
-            <label className="mb-1 block font-mono text-xs text-cybertext/40">Meta description (155 chars max)</label>
+            <label className="mb-1 block font-mono text-xs text-cybermuted">Meta description (155 chars max)</label>
             <AdminTextarea
               value={metaDescription}
               onChange={(e) => { setMetaDescription(e.target.value); markDirty(); }}
@@ -1201,10 +1201,10 @@ function BlogEditor({
               placeholder="Override the excerpt for search engines…"
               className="w-full"
             />
-            <p className="text-right font-mono text-xs text-cybertext/30">{metaDescription.length}/155</p>
+            <p className="text-right font-mono text-xs text-cybermuted">{metaDescription.length}/155</p>
           </div>
           <div>
-            <label className="mb-1 block font-mono text-xs text-cybertext/40">OG image URL (overrides cover image for social sharing)</label>
+            <label className="mb-1 block font-mono text-xs text-cybermuted">OG image URL (overrides cover image for social sharing)</label>
             <AdminInput
               type="url"
               value={ogImage}
@@ -1238,7 +1238,7 @@ function BlogEditor({
           />
 
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-cybertext/40 shrink-0">Slug:</span>
+            <span className="font-mono text-xs text-cybermuted shrink-0">Slug:</span>
             <input
               type="text"
               value={slug}
@@ -1253,7 +1253,7 @@ function BlogEditor({
           {/* Cover image */}
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-cybertext/40">Cover image</span>
+              <span className="font-mono text-xs text-cybermuted">Cover image</span>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -1371,21 +1371,21 @@ function AuditTab({ token }: { token: string }) {
           <option value="">All categories</option>
           {AUDIT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </AdminSelect>
-        <label className="flex items-center gap-1 text-xs text-cybertext/40">
+        <label className="flex items-center gap-1 text-xs text-cybermuted">
           From
           <AdminInput type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
         </label>
-        <label className="flex items-center gap-1 text-xs text-cybertext/40">
+        <label className="flex items-center gap-1 text-xs text-cybermuted">
           To
           <AdminInput type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
         </label>
-        <span className="font-mono text-xs text-cybertext/40">{total} events</span>
+        <span className="font-mono text-xs text-cybermuted">{total} events</span>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
+            <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybermuted">
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Actor</th>
               <th className="px-4 py-3">Action</th>
@@ -1394,11 +1394,11 @@ function AuditTab({ token }: { token: string }) {
           </thead>
           <tbody>
             {logs.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center font-mono text-sm text-cybertext/30">// no audit events found</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center font-mono text-sm text-cybermuted">// no audit events found</td></tr>
             ) : (
               logs.map((l) => (
                 <tr key={l.id} className="border-b border-cyberborder/50 hover:bg-cybertext/5 transition-colors">
-                  <td className="px-4 py-2 font-mono text-xs text-cybertext/40 whitespace-nowrap">{reltime(l.created_at)}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-cybermuted whitespace-nowrap">{reltime(l.created_at)}</td>
                   <td className="px-4 py-2 font-mono text-xs text-cybertext/70 max-w-40 truncate">{l.actor_email}</td>
                   <td className="px-4 py-2 font-mono text-xs text-neon">{l.action}</td>
                   <td className="px-4 py-2 text-xs text-cybertext/50">
@@ -1414,7 +1414,7 @@ function AuditTab({ token }: { token: string }) {
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
           <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
           <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
@@ -1460,7 +1460,7 @@ function ToolsTab({ token }: { token: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="font-mono text-xs uppercase tracking-wide text-cybertext/40">// scan-tool kill switches</h3>
+        <h3 className="font-mono text-xs uppercase tracking-wide text-cybermuted">// scan-tool kill switches</h3>
         <p className="mt-2 text-xs text-cybertext/50">
           Disable an extended-scan tool globally — it stops running on every scan immediately, no deploy needed.
           Use this to stop a tool that&apos;s misbehaving or flooding targets. {disabledCount > 0 && (
@@ -1486,7 +1486,7 @@ function ToolsTab({ token }: { token: string }) {
             </button>
           </div>
         ))}
-        {tools.length === 0 && !err && <p className="font-mono text-sm text-cybertext/30">// loading…</p>}
+        {tools.length === 0 && !err && <p className="font-mono text-sm text-cybermuted">// loading…</p>}
       </div>
     </div>
   );
@@ -1517,12 +1517,12 @@ function DeletionRequestsTab({ token }: { token: string }) {
   }, [token]);
 
   if (err) return <p className="text-sm text-red-400">{err}</p>;
-  if (!loaded) return <p className="font-mono text-sm text-cybertext/40">// loading…</p>;
+  if (!loaded) return <p className="font-mono text-sm text-cybermuted">// loading…</p>;
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="font-mono text-xs uppercase tracking-wide text-cybertext/40">// right-to-erasure queue</h3>
+        <h3 className="font-mono text-xs uppercase tracking-wide text-cybermuted">// right-to-erasure queue</h3>
         <p className="mt-2 text-xs text-cybertext/50">
           Pending erasure requests, soonest deadline first (/privacy promises action within 30 days).
           {overdue > 0 ? <span className="text-red-400"> {overdue} overdue.</span> : " None overdue."} Run
@@ -1531,12 +1531,12 @@ function DeletionRequestsTab({ token }: { token: string }) {
       </div>
 
       {requests.length === 0 ? (
-        <p className="rounded-xl border border-cyberborder bg-cyberpanel p-8 text-center text-sm text-cybertext/30">No pending erasure requests.</p>
+        <p className="rounded-xl border border-cyberborder bg-cyberpanel p-8 text-center text-sm text-cybermuted">No pending erasure requests.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
+              <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybermuted">
                 <th className="px-4 py-3">Account</th>
                 <th className="px-4 py-3">Requested</th>
                 <th className="px-4 py-3">Deadline</th>
@@ -1546,7 +1546,7 @@ function DeletionRequestsTab({ token }: { token: string }) {
               {requests.map((r) => (
                 <tr key={r.id} className="border-b border-cyberborder/50">
                   <td className="px-4 py-2.5 font-mono text-xs text-cybertext/70">{r.email ?? r.owner}</td>
-                  <td className="px-4 py-2.5 text-xs text-cybertext/40">{reltime(r.requestedAt)}</td>
+                  <td className="px-4 py-2.5 text-xs text-cybermuted">{reltime(r.requestedAt)}</td>
                   <td className={`px-4 py-2.5 text-xs font-medium ${r.overdue ? "text-red-400" : "text-cybertext/60"}`}>{r.wording}</td>
                 </tr>
               ))}
@@ -1580,15 +1580,15 @@ function EmailHealthTab({ token }: { token: string }) {
   }, [token]);
 
   if (err) return <p className="text-sm text-red-400">{err}</p>;
-  if (!health) return <p className="font-mono text-sm text-cybertext/40">// loading…</p>;
+  if (!health) return <p className="font-mono text-sm text-cybermuted">// loading…</p>;
 
   const rate = health.failureRatePct;
-  const rateColor = rate === null ? "text-cybertext/40" : rate >= 20 ? "text-red-400" : rate > 0 ? "text-amber-400" : "text-neon";
+  const rateColor = rate === null ? "text-cybermuted" : rate >= 20 ? "text-red-400" : rate > 0 ? "text-amber-400" : "text-neon";
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-        <h3 className="mb-3 font-mono text-xs uppercase tracking-wide text-cybertext/40">// email deliverability · last {health.windowHours}h</h3>
+        <h3 className="mb-3 font-mono text-xs uppercase tracking-wide text-cybermuted">// email deliverability · last {health.windowHours}h</h3>
         <div className="grid grid-cols-3 gap-4">
           <div>
             <p className="text-2xl font-bold text-cybertext">{health.total}</p>
@@ -1603,14 +1603,14 @@ function EmailHealthTab({ token }: { token: string }) {
             <p className="text-xs text-cybertext/50">Failure rate ({health.failed} failed)</p>
           </div>
         </div>
-        {health.total === 0 && <p className="mt-3 text-xs text-cybertext/40">No send attempts recorded in this window (or migration 056 not yet applied).</p>}
+        {health.total === 0 && <p className="mt-3 text-xs text-cybermuted">No send attempts recorded in this window (or migration 056 not yet applied).</p>}
       </div>
 
       {health.recentFailures.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-cyberborder bg-cyberpanel">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybertext/40">
+              <tr className="border-b border-cyberborder bg-cyberbg text-left text-xs text-cybermuted">
                 <th className="px-4 py-3">When</th>
                 <th className="px-4 py-3">Recipient domain</th>
                 <th className="px-4 py-3">Subject</th>
@@ -1620,7 +1620,7 @@ function EmailHealthTab({ token }: { token: string }) {
             <tbody>
               {health.recentFailures.map((f, i) => (
                 <tr key={i} className="border-b border-cyberborder/50">
-                  <td className="px-4 py-2 font-mono text-xs text-cybertext/40 whitespace-nowrap">{reltime(f.at)}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-cybermuted whitespace-nowrap">{reltime(f.at)}</td>
                   <td className="px-4 py-2 font-mono text-xs text-cybertext/70">{f.domain ?? "—"}</td>
                   <td className="px-4 py-2 text-xs text-cybertext/60 max-w-48 truncate">{f.subject ?? "—"}</td>
                   <td className="px-4 py-2 text-xs text-red-400 max-w-64 truncate">{f.error ?? "—"}</td>
@@ -1663,12 +1663,12 @@ function ContactsTab({ token }: { token: string }) {
     } catch { /* best-effort */ }
   }
 
-  if (loading) return <p className="text-cybertext/40 text-sm font-mono">// loading…</p>;
+  if (loading) return <p className="text-cybermuted text-sm font-mono">// loading…</p>;
   if (err) return <p className="text-red-400 text-sm">{err}</p>;
   if (total === 0)
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-8 text-center">
-        <p className="text-cybertext/40 text-sm">No contact enquiries yet.</p>
+        <p className="text-cybermuted text-sm">No contact enquiries yet.</p>
       </div>
     );
 
@@ -1677,7 +1677,7 @@ function ContactsTab({ token }: { token: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <p className="font-mono text-xs text-cybertext/40">{total} enquiries</p>
+        <p className="font-mono text-xs text-cybermuted">{total} enquiries</p>
         {unread > 0 && (
           <span className="rounded-full bg-neon/20 px-2 py-0.5 text-xs font-medium text-neon">
             {unread} unread
@@ -1699,12 +1699,12 @@ function ContactsTab({ token }: { token: string }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   {!e.read && <span className="h-2 w-2 rounded-full bg-neon flex-shrink-0" />}
                   <span className="font-medium text-cybertext text-sm">{e.name}</span>
-                  <span className="font-mono text-xs text-cybertext/40">{e.email}</span>
+                  <span className="font-mono text-xs text-cybermuted">{e.email}</span>
                 </div>
                 <p className="mt-1 text-xs text-cybertext/50 truncate max-w-lg">{e.message}</p>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className="text-xs text-cybertext/30">{reltime(e.created_at)}</p>
+                <p className="text-xs text-cybermuted">{reltime(e.created_at)}</p>
                 {e.url && (
                   <p className="mt-0.5 font-mono text-xs text-neon/60 truncate max-w-[160px]">{e.url}</p>
                 )}
@@ -1762,7 +1762,7 @@ function ContactsTab({ token }: { token: string }) {
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
           <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
-          <span className="px-2 py-1 font-mono text-xs text-cybertext/40">Page {page}</span>
+          <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
           <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
@@ -1811,7 +1811,7 @@ export default function AdminPage() {
   if (authState === "loading") {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-cybertext/30">// authenticating…</p>
+        <p className="font-mono text-sm text-cybermuted">// authenticating…</p>
       </div>
     );
   }
@@ -1874,7 +1874,7 @@ export default function AdminPage() {
             <p className="font-mono text-xs text-neon/50">$ sudo hebrides-cyber --admin</p>
             <h1 className="text-2xl font-bold text-cybertext">Admin</h1>
           </div>
-          <Link href="/dashboard" className="font-mono text-sm text-cybertext/40 hover:text-neon transition-colors">← Dashboard</Link>
+          <Link href="/dashboard" className="font-mono text-sm text-cybermuted hover:text-neon transition-colors">← Dashboard</Link>
         </div>
 
         {/* Tabs — horizontally scrollable on narrow screens so the 10 tabs
@@ -1888,7 +1888,7 @@ export default function AdminPage() {
               className={`shrink-0 px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === t.key
                   ? "border-b-2 border-neon text-neon"
-                  : "text-cybertext/40 hover:text-cybertext"
+                  : "text-cybermuted hover:text-cybertext"
               }`}
             >
               {t.label}

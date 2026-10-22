@@ -146,7 +146,7 @@ export default async function BlogPostPage({ params }: Props) {
                 year: "numeric",
               })}
             </span>
-            <span className="text-slatedark/30 dark:text-cybertext/20">·</span>
+            <span className="text-slatedark/30 dark:text-cybermuted">·</span>
             <span>{mins} min read</span>
           </div>
 
@@ -209,8 +209,8 @@ export default async function BlogPostPage({ params }: Props) {
 
         {/* CTA */}
         <div className="mt-10 rounded-xl border border-slate-200 dark:border-cyberborder bg-white dark:bg-cyberpanel p-6">
-          <p className="font-mono text-xs text-slatedark/50 dark:text-cybertext/40 mb-1">
-            <span className="text-slatedark/30 dark:text-cybertext/20">$</span> ./get-your-score
+          <p className="font-mono text-xs text-slatedark/50 dark:text-cybermuted mb-1">
+            <span className="text-slatedark/30 dark:text-cybermuted">$</span> ./get-your-score
           </p>
           <p className="text-sm font-semibold text-slatedark dark:text-cybertext">
             Get a free Security Score for your site

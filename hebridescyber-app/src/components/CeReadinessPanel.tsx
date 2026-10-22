@@ -30,7 +30,7 @@ function ControlCard({ assessment }: { assessment: CeControlAssessment }) {
           <StatusBadge status={assessment.status} />
           <span className="font-semibold text-sm text-cybertext">{assessment.control}</span>
         </div>
-        <span className="text-cybertext/40 text-xs">{open ? "Hide" : "Details"}</span>
+        <span className="text-cybermuted text-xs">{open ? "Hide" : "Details"}</span>
       </button>
       {open && (
         <div className="mt-3 space-y-2 border-t border-cyberborder pt-3">
@@ -55,7 +55,7 @@ function ControlCard({ assessment }: { assessment: CeControlAssessment }) {
             </div>
           )}
           {assessment.findings.length > 0 && (
-            <p className="text-[10px] text-cybertext/40 mt-2">
+            <p className="text-[10px] text-cybermuted mt-2">
               {assessment.findings.length} related finding{assessment.findings.length !== 1 ? "s" : ""} from scan
             </p>
           )}
@@ -112,7 +112,7 @@ export default function CeReadinessPanel({ report }: { report: CeReadinessReport
         ))}
       </div>
 
-      <p className="mt-4 text-[10px] text-cybertext/40 leading-relaxed">
+      <p className="mt-4 text-[10px] text-cybermuted leading-relaxed">
         This is an automated readiness indicator based on external scanning, not a certification.
         The formal Cyber Essentials self-assessment also covers internal controls (endpoint security, access policies, staff training)
         that require a full questionnaire at{" "}

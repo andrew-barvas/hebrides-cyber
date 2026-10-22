@@ -15,7 +15,7 @@ const PAD_Y = 12;
 export default function ScoreTrend({ points }: { points: ScorePoint[] }) {
   if (points.length < 2) {
     return (
-      <p className="text-xs text-cybertext/40">
+      <p className="text-xs text-cybermuted">
         Not enough scan history yet for a trend — run at least one more scan of this target.
       </p>
     );
@@ -66,7 +66,7 @@ export default function ScoreTrend({ points }: { points: ScorePoint[] }) {
           </circle>
         ))}
       </svg>
-      <div className="mt-1 flex justify-between text-[10px] text-cybertext/40">
+      <div className="mt-1 flex justify-between text-[10px] text-cybermuted">
         <span>{new Date(first.date).toLocaleDateString("en-GB")}</span>
         <span>{new Date(last.date).toLocaleDateString("en-GB")}</span>
       </div>
