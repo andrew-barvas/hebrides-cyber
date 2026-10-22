@@ -29,6 +29,8 @@ export default defineConfig({
       exclude: [
         "src/app/**/layout.tsx",
         "src/app/**/page.tsx", // route entrypoints — thin composition, exercised by e2e instead
+        "src/app/admin/_tabs/**", // admin tabs were part of admin/page.tsx until the code-split; same exclusion
+        "src/app/admin/_shared.tsx",
         "src/**/*.d.ts",
         "src/scripts/**", // standalone GitHub Actions scripts — need real Supabase, out of unit scope
       ],
