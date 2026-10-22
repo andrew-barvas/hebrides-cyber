@@ -169,7 +169,7 @@ without needing to be asked.
     `staticwebapp.config.json`'s `globalHeaders` entirely (confirmed by curling
     production). Static headers live in `next.config.mjs`'s `headers()`; keep
     `staticwebapp.config.json` in sync as a fallback for pure static assets. The
-    **CSP is the exception: it is per-request** (`src/middleware.ts` +
+    **CSP is the exception: it is per-request** (`src/proxy.ts` +
     `src/lib/csp.ts`) with a nonce and `'strict-dynamic'`, so `script-src` has no
     `'unsafe-inline'` — our own scanner grades it A (`csp.test.ts` asserts this).
     Any new inline `<script>` or `next/script` must take the nonce from
@@ -285,7 +285,7 @@ or scrolling section tabs, plus one session + subscription load exposed through
 `useAppSession()`. Use its `plan` for feature gating (the stored plan only while
 `status === "active"`, else `"none"`) and `billingPlan` for billing display. It
 also runs the MFA (AAL2) step-up redirect for every route it wraps —
-`middleware.ts` only checks authentication. Pages inside it render content only:
+`proxy.ts` only checks authentication. Pages inside it render content only:
 no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
 
 | Route | Holds |
