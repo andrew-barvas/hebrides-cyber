@@ -1,6 +1,6 @@
 # Next steps — session handoff
 
-**Last updated: 2026-10-06.** Read this first in any new session (local or
+**Last updated: 2026-10-22.** Read this first in any new session (local or
 cloud), after `CLAUDE.md` and `docs/SCANNER-CONVENTIONS.md`. It says where
 things stand, the rules that kept biting, the plan in order, and what only
 the owner can do.
@@ -8,6 +8,66 @@ the owner can do.
 To resume in a cloud session: open the repo `andrew-barvas/hebrides-cyber`,
 branch from `master`, and prompt *"Read hebridescyber-app/docs/NEXT-STEPS.md
 and implement plan item N."* Do one item per session.
+
+## Session handover — 2026-10-22
+
+A long interactive session reviewed `master`, landed/verified work, and wrote a
+full 7+6 sprint plan to `~/.claude/plans/pull-from-master-review-eventual-beaver.md`
+(Part A harden-then-launch Sprints 1–7; Part B Burp/peer capability track C1–C6;
+launch-readiness ≈ **58/100** — reliability + payments are the gating
+weaknesses). That plan file is **outside the repo**; the Done/Todo below is the
+in-repo summary.
+
+**Done (merged / pushed):**
+- **Sprint 1 / H1** — Stripe webhook silent-downgrade fix: **merged as #89**
+  (`webhook.ts` never defaults a metadata-less event to `basic`; audits
+  `plan_missing`; added no-downgrade tests + `pricing-checkout.spec.ts` +
+  `planAccess` assertion).
+- **PR #88** (nonce CSP / DNSSEC-via-DoH / set-plan): CI green, **still draft**.
+  Verified safe on a local prod build (per-request nonce CSP, no `unsafe-inline`,
+  zero violations, GA/Stripe allow-listed). The Next 16.4 `middleware`→`proxy`
+  deprecation migration was added on its branch (commit `05605dd`, pushed).
+- Config-remediation + attack-path + scanner work (#79–#87) already on master.
+
+**Todo (next session, in order):**
+1. **Merge #88** (verdict: safe), then run the two post-deploy checks the local
+   preview couldn't: COEP `require-corp` vs live GA/Stripe, and the SSG
+   `/blog/[slug]` route under the strict CSP.
+2. **Sprint 2 (next undone, code-only)** — reliability/observability: add
+   `src/sentry.worker.config.ts` (`@sentry/node`, reuse `scrubSentryEvent` as
+   `beforeSend`); wire `Sentry.init`/`captureException`/`await Sentry.flush()`
+   into `src/scripts/run-queued-scan-jobs.ts` (`main`, `failJob`, `main().catch`,
+   the claim/reset error paths); add a `crypto.randomUUID()` correlation id
+   threaded into the `[job …]` logs + the `executeScan()` call + `Sentry.setTag`;
+   add a no-op-without-DSN unit test. No schema change for v1.
+3. **Sprint 3** — a `verify` job in `scheduled-scans.yml` asserting ≥1 extended
+   tool `status === "completed"` + per-tool artifact + alert; a progress-total
+   unit test (non-safe `totalChecks === 58`); a controlled vulnerable staging
+   target + bench fixture; a `/api/health` smoke step in `deploy.yml`; confirm a
+   Basic subscriber receives a scheduled scan (POC-1).
+4. **Sprint 4** — bounded, redacted `evidence` field on findings; fix the
+   scheduled-report `pdf` branch (today emits JSON — `send-scheduled-reports.ts`).
+5. **Sprint 5** — gating decision for the open routes
+   (`ai-fix`/`keys`/`shares`/tickets); reconcile stale docs; prune ~20 merged
+   remote branches; branch protection (owner).
+6. **Sprint 6** — make the offensive tier real **and admin-only** (real
+   `strix`/`cairn` pins + SHA-256; `is_admin` runtime gate; lock the consent
+   route).
+7. **Sprint 7** — admin-scoped API key + `profile` param on `POST /api/v1/scans`.
+8. **Part B (post-launch)** — capability track C1–C6 (token/JWT → GraphQL/API
+   depth → authenticated scanning → DOM-XSS → OAST → custom-checks/MCP).
+- *Minor:* Sprint 1's price-ID fallback on `checkout.session.completed` was not
+  implemented (the core silent-downgrade safety is).
+
+**Owner (manual, non-code) — these gate launch:**
+- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*`
+  (unblocks billing + flips `/api/health` to `ok`).
+- `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN`; `UPSTASH_REDIS_REST_URL`/`_TOKEN`
+  (rate limiting **fails open** without it).
+- GitHub branch protection requiring the `Lint, typecheck, test` check (needs
+  GitHub Pro for a private repo).
+- A controlled vulnerable staging target (Sprint 3); customer ToS + PI insurance
+  before any offensive traffic (Sprint 6).
 
 ## Where things stand
 
