@@ -235,6 +235,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "sessionCheck.no-rate-limit": "moderate",
   "sessionCheck.session-fixation": "hard",
   "sessionCheck.idor-indicator": "hard",
+  "sessionCheck.weak-session-token": "moderate",
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": "hard",

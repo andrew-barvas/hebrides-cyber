@@ -396,6 +396,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "sessionCheck.no-rate-limit": [OWASP_A07, CIS_16],
   "sessionCheck.session-fixation": [OWASP_A07, CIS_16],
   "sessionCheck.idor-indicator": [OWASP_A01, CIS_3],
+  "sessionCheck.weak-session-token": [OWASP_A07, CIS_16],
 
   // --- Cloud posture (E-32) ---
   "cloudPosture.awsPublicS3": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],

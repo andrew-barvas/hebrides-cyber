@@ -85,6 +85,10 @@ Database migrations: files exist through **059**; the next free number is **060*
 | Next.js route discovery in the crawler | `readNextRoutes` reads `/_next/static/<id>/_buildManifest.js` (`sortedPages`, static routes only, same site) and seeds the crawl with pages nothing links to. A passive Next.js middleware-bypass check was considered and not built: the version isn't exposed, so any finding would be a guess |
 | GraphQL exposure check in every scan | `graphql.ts` rewritten (it existed but was never wired in, and its checks were unevidenced) and wired into `runAllChecks`: open introspection (`graphql.introspection:<path>`, with type count), field-suggestion leakage when introspection is off (`graphql.suggestions`), public GraphiQL/Playground/Sandbox (`graphql.ide`). An endpoint counts only if the response has GraphQL's own shape; "no auth" and "no depth limit" findings were dropped as unevidenced. Bench: `graphql-open`, `graphql-locked`, and every SPA/catch-all trap must not report `graphql.*` |
 | Confirmed-exploitable findings | `enrichWithProofOfExploit` now runs in `executeScan()` for every profile except `safe` (cap 20 per scan; `DISABLE_PROOF_OF_EXPLOIT=1` turns it off): open redirect, CORS, exposed file and reflected XSS (api-spec and ZAP alerts, which now carry url+parameter metadata). "Confirmed exploitable" badge, sort rank, `proof_of_exploit` in the API, flag in the executive report |
+| Bounded replay + AI triage (off by default) | `replayProbe.ts` (allowlisted read-only request) and `aiTriage.ts`: a model proposes one request, the replay runs it, the model judges the response; `confirmed` needs a quote verified in the response and a non-catch-all page. Annotates `metadata.aiTriage` only (never severity or lifecycle); "AI-verified" badge in `ScanReportView`. `AI_TRIAGE=1` to enable; design in `AI-TRIAGE-DESIGN.md`. **Before enabling for customers:** benchmark precision/recall by hand, use a UK/EU Azure OpenAI deployment, update the privacy notice |
+| Session-token entropy ("sequencer") | `tokenEntropy.ts` + `sessionCheck.ts`: twelve cookie-less home-page requests, statistical checks, `sessionCheck.weak-session-token:<cookie>`; measurements only, never token values |
+| Configurable out-of-band server | `nuclei.ts`: `INTERACTSH_SERVER`/`INTERACTSH_TOKEN`, `DISABLE_OAST=1`; passed through `scheduled-scans.yml` and `on-demand-scan.yml` (repo vars `AI_TRIAGE`, `INTERACTSH_SERVER`, `DISABLE_OAST`; secret `INTERACTSH_TOKEN`) |
+| Burp parity audit | `BURP-PARITY.md`: Burp MCP is not used in the product (interactive, per-seat); capability-by-capability gap table |
 | "Fixed" needs coverage | `diffFindings(…, { canDetect })` + `canDetectFromResults()`: a scan that couldn't have run a finding's tool (passive scan after a full scan, errored base check) no longer reports it fixed, which also stops ticket auto-close firing on it |
 | Scanner inventory | `docs/SCANNER-INVENTORY.md`: every tool, service and check family, derived from the code, with the discrepancies found against the docs |
 | Executive PDF report | `executiveReport.ts` (pure HTML: score, severity counts, top priorities, compliance snapshot incl. SOC 2/HIPAA, all findings, accepted risks, checks that did not finish; false positives left out; white label removes every "Hebrides Cyber"), rendered by `/api/generate-report`, "↓ Executive PDF" button on the scan page (`executiveReportClient.ts`). Not plan-gated yet (the route never was) |
@@ -231,3 +235,12 @@ In order of impact:
 7. **ToS solicitor review** (BETA-B1).
 8. **NCSC replacement campaign**: run `sql/seed/002_ncsc_web_check_retirement_post.sql` in the Supabase SQL editor (publishes the blog post), then send/post the drafts in `marketing/16-ncsc-replacement-campaign.md` (email sequence, LinkedIn, Google Ads, agency outreach).
 9. DNS **CAA** record at GoDaddy (`0 issue "digicert.com"`), then replay the own-site scan; optional `NVD_API_KEY`; staging Supabase; branch protection (needs GitHub Pro).
+
+## Deferred from the Burp-parity review (2026-10-22)
+
+- **Dalfox** (XSS depth): wire with a pinned, SHA-256-verified binary and a parser built from a real run's output, with a `tool-integration.yml` job. Not started: no verified output to build on.
+- **strix / cairn / credentialSpray**: either pin real versions and verify in CI or leave as `not_configured`; do not market. Owner decision.
+- **Own-probe OOB**: a native interactsh client (RSA key exchange, AES polling) so `replayProbe` can confirm blind SSRF.
+- **Triage benchmark in CI**: needs a model credential in CI; until then evaluate by hand.
+- **OAuth/MFA flows, two-session IDOR, further logic checks**: design against real test targets first.
+

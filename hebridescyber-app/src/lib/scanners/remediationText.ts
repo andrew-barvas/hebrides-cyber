@@ -2079,6 +2079,15 @@ the victim authenticates. Ensure your application always generates a
 new session ID upon successful authentication, invalidating any
 previously issued session tokens.`;
 
+export const WEAK_SESSION_TOKEN = `Session identifiers sampled from fresh visits look predictable
+(short, from a small alphabet, repeated, or counting up). An attacker who can
+guess a valid identifier takes over that user's session without a password.
+Generate session IDs with your framework's built-in session handler, which uses
+a cryptographically secure random source, and make them at least 128 bits
+(about 32 hex or 22 base64url characters). Never build them from a counter, a
+timestamp, a user ID or Math.random(). If you wrote your own session code,
+replace it with the framework's.`;
+
 export const IDOR_INDICATOR = `An API endpoint returned data when accessed with a sequential numeric
 ID without requiring authentication. This may indicate an Insecure
 Direct Object Reference (IDOR) vulnerability where users can access
