@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
+import { headers } from "next/headers";
 import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
@@ -60,8 +61,9 @@ export const viewport: Viewport = {
 // Runs before React hydrates — reads saved preference from localStorage and
 // applies the `dark` class to <html> immediately, preventing a flash of the
 // wrong theme. Default is dark (cyber theme) unless the user has saved "light".
-const ThemeScript = () => (
+const ThemeScript = ({ nonce }: { nonce?: string }) => (
   <script
+    nonce={nonce}
     dangerouslySetInnerHTML={{
       __html: `(function(){
   try {
@@ -112,11 +114,15 @@ function LocalBusinessJsonLd() {
   );
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// async + headers(): the per-request CSP nonce (src/middleware.ts) is read here,
+// which also opts every page into dynamic rendering — a nonce cannot be baked
+// into a statically generated page.
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="en" className={jetbrainsMono.variable}>
       <head>
-        <ThemeScript />
+        <ThemeScript nonce={nonce} />
         <LocalBusinessJsonLd />
       </head>
       <body className="flex min-h-screen flex-col">
@@ -130,7 +136,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to main content
         </a>
         <Suspense fallback={null}>
-          <GoogleAnalytics />
+          <GoogleAnalytics nonce={nonce} />
         </Suspense>
         <Header />
         <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">

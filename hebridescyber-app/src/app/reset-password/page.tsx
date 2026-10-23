@@ -51,7 +51,7 @@ export default function ResetPasswordPage() {
         <h1 className="mb-2 text-2xl font-bold text-cybertext">Set a new password</h1>
 
         {!ready ? (
-          <p className="text-sm text-cybertext/40">Loading…</p>
+          <p className="text-sm text-cybermuted">Loading…</p>
         ) : !hasSession ? (
           <div className="space-y-4">
             <p className="text-sm text-cybertext/60">
@@ -70,23 +70,29 @@ export default function ResetPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <label htmlFor="new-password" className="sr-only">New password</label>
             <input
+              id="new-password"
+              autoComplete="new-password"
               type="password"
               required
               minLength={8}
               placeholder="New password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
             />
+            <label htmlFor="confirm-password" className="sr-only">Confirm new password</label>
             <input
+              id="confirm-password"
+              autoComplete="new-password"
               type="password"
               required
               minLength={8}
               placeholder="Confirm new password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
             />
             {error && (
               <p role="alert" className="text-sm text-red-400">{error}</p>

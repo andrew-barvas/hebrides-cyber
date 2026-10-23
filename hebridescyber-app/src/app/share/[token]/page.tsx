@@ -53,7 +53,7 @@ export default function SharedReportPage() {
   if (loading) {
     return (
       <div className="bg-cyberbg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-sm text-cybertext/30">// loading shared report…</p>
+        <p className="font-mono text-sm text-cybermuted">// loading shared report…</p>
       </div>
     );
   }
@@ -106,7 +106,7 @@ export default function SharedReportPage() {
         <div>
           <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./report --shared</p>
           <h1 className="text-2xl font-bold text-cybertext break-all">{report.target_url}</h1>
-          <p className="mt-1 text-sm text-cybertext/40">Security scan report · {checkedAt}</p>
+          <p className="mt-1 text-sm text-cybermuted">Security scan report · {checkedAt}</p>
         </div>
 
         <div className="flex flex-col items-start gap-6 rounded-xl border border-cyberborder bg-cyberpanel p-6 sm:flex-row sm:items-center">
@@ -123,7 +123,7 @@ export default function SharedReportPage() {
 
         {findings.length > 0 ? (
           <div>
-            <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
+            <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// findings</h2>
             <div className="space-y-3">
               {findings.map((f, i) => <FindingCard key={f.checkId ?? i} finding={f} />)}
             </div>
@@ -134,7 +134,7 @@ export default function SharedReportPage() {
           </div>
         )}
 
-        <div className="pt-4 border-t border-cyberborder text-xs text-cybertext/40 text-center">
+        <div className="pt-4 border-t border-cyberborder text-xs text-cybermuted text-center">
           <p>
             Powered by <Link href="/" className="text-neon hover:underline">Hebrides Cyber</Link> · Findings
             represent a point-in-time snapshot and should be verified before remediation.

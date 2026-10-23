@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       <div className="relative mx-auto max-w-3xl px-6 py-16">
         <Link
           href="/"
-          className="mb-8 inline-block font-mono text-xs text-slatedark/50 hover:text-atlantic dark:text-cybertext/40 dark:hover:text-neon transition-colors"
+          className="mb-8 inline-block font-mono text-xs text-slatedark/50 hover:text-atlantic dark:text-cybermuted dark:hover:text-neon transition-colors"
         >
           ← Back to home
         </Link>
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         <div className="mb-10">
           <p className="font-mono text-xs text-neon mb-2" aria-hidden="true">// privacy-policy.md</p>
           <h1 className="text-3xl font-bold text-slatedark dark:text-cybertext">Privacy Policy</h1>
-          <p className="mt-2 text-sm text-slatedark/50 dark:text-cybertext/40">Last updated: {LAST_UPDATED}</p>
+          <p className="mt-2 text-sm text-slatedark/50 dark:text-cybermuted">Last updated: {LAST_UPDATED}</p>
         </div>
 
         <div className="prose prose-slate max-w-none dark:prose-invert dark:prose-headings:text-neon dark:prose-a:text-neon dark:prose-strong:text-cybertext dark:prose-code:text-neon dark:prose-code:bg-cyberpanel">
@@ -86,6 +86,7 @@ export default function PrivacyPage() {
           </p>
 
           <h2>3. Why we process your data (legal basis)</h2>
+          <div className="overflow-x-auto">
           <table>
             <thead>
               <tr><th>Data</th><th>Purpose</th><th>Lawful basis</th></tr>
@@ -99,6 +100,7 @@ export default function PrivacyPage() {
               <tr><td>Server logs</td><td>Security and operations</td><td>Legitimate interests</td></tr>
             </tbody>
           </table>
+          </div>
 
           <h2>4. Who we share data with</h2>
           <p>We do not sell personal data. We share data with the following service providers:</p>
@@ -147,6 +149,7 @@ export default function PrivacyPage() {
 
           <h2>8. Cookies</h2>
           <p>We use the following cookies:</p>
+          <div className="overflow-x-auto">
           <table>
             <thead>
               <tr><th>Cookie</th><th>Purpose</th><th>Duration</th><th>Consent required</th></tr>
@@ -158,6 +161,7 @@ export default function PrivacyPage() {
               <tr><td>Google Analytics (<code>_ga</code>, <code>_gid</code>)</td><td>Usage analytics</td><td>Up to 2 years</td><td>Yes</td></tr>
             </tbody>
           </table>
+          </div>
 
           <h2>9. Security</h2>
           <p>

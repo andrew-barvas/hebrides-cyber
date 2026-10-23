@@ -76,7 +76,7 @@ function CategoryBreakdown({ findings }: { findings: FindingLike[] }) {
 
   const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   if (rows.length === 0) {
-    return <p className="text-xs text-cybertext/40">No open findings in the latest scan — nothing to break down.</p>;
+    return <p className="text-xs text-cybermuted">No open findings in the latest scan — nothing to break down.</p>;
   }
 
   const max = rows[0][1];
@@ -99,7 +99,7 @@ function CategoryBreakdown({ findings }: { findings: FindingLike[] }) {
 function CoverageTrend({ history }: { history: CompliancePoint[] }) {
   if (history.length < 2) {
     return (
-      <p className="text-xs text-cybertext/40">
+      <p className="text-xs text-cybermuted">
         Not enough scan history yet for a coverage trend — run at least one more scan of this target.
       </p>
     );
@@ -133,7 +133,7 @@ function CoverageTrend({ history }: { history: CompliancePoint[] }) {
           </div>
         );
       })}
-      <p className="text-[10px] text-cybertext/40">
+      <p className="text-[10px] text-cybermuted">
         Coverage = % of controls this app checks for with zero open findings, from {new Date(first.date).toLocaleDateString("en-GB")}{" "}
         to {new Date(last.date).toLocaleDateString("en-GB")}.
       </p>

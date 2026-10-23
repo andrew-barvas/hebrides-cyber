@@ -3,7 +3,7 @@
 // authorisation (CAA), and DNSSEC deployment signals. Uses Node's built-in
 // dns/promises for DNS lookups — no external tools or API keys needed. The
 // MTA-STS policy-file fetch is the one exception, a plain HTTPS GET.
-import { resolveTxt, resolveCaa, resolve6, resolveMx, resolve } from "node:dns/promises";
+import { resolveTxt, resolveCaa, resolve6, resolveMx } from "node:dns/promises";
 import type { CaaRecord } from "node:dns";
 import { registrableDomain } from "./registrableDomain";
 
@@ -422,25 +422,33 @@ function analyseCaa(caaRecords: CaaRecord[]): CaaAnalysis {
 
 type DnssecAnalysis = {
   likelySigned: boolean;
+  /** True when the DS lookup itself failed: no evidence either way, so no finding is raised. */
+  inconclusive?: boolean;
   note: string;
 };
 
+const DS_RR_TYPE = 43;
+
 async function checkDnssec(domain: string): Promise<DnssecAnalysis> {
-  // Node's dns module doesn't support DNSSEC validation directly. We probe
-  // for DS records (the parent-zone delegation signer) as a signal that the
-  // zone is likely DNSSEC-signed. A missing DS record does not prove the
-  // zone is unsigned — it may just mean the parent hasn't published it yet.
+  // Node's dns module has no DS record type (dns.resolve throws on it), so ask
+  // Cloudflare's DNS-over-HTTPS JSON API for the parent-zone delegation signer,
+  // as recon.ts does for A records. A DS record at the parent is what makes a
+  // zone DNSSEC-signed; NOERROR with no DS answer means the parent publishes
+  // none. Any transport or resolver failure is inconclusive, never "unsigned".
   try {
-    const ds = await resolve(domain, "DS").catch(() => []);
-    if (Array.isArray(ds) && ds.length > 0) {
-      return { likelySigned: true, note: `DS record present — domain appears to be DNSSEC-signed` };
+    const res = await fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=DS`,
+      { headers: { Accept: "application/dns-json" }, signal: AbortSignal.timeout(6_000) }
+    );
+    if (!res.ok) return { likelySigned: false, inconclusive: true, note: "DNSSEC check inconclusive — DS lookup failed" };
+    const body = (await res.json()) as { Status?: number; Answer?: { type: number }[] };
+    if (body.Status !== 0) return { likelySigned: false, inconclusive: true, note: "DNSSEC check inconclusive — DS lookup failed" };
+    if (body.Answer?.some((r) => r.type === DS_RR_TYPE)) {
+      return { likelySigned: true, note: "DS record present — domain is DNSSEC-signed" };
     }
-    return {
-      likelySigned: false,
-      note: "No DS record found — domain does not appear to be DNSSEC-signed",
-    };
+    return { likelySigned: false, note: "No DS record found — domain does not appear to be DNSSEC-signed" };
   } catch {
-    return { likelySigned: false, note: "DNSSEC check inconclusive — DS lookup failed" };
+    return { likelySigned: false, inconclusive: true, note: "DNSSEC check inconclusive — DS lookup failed" };
   }
 }
 

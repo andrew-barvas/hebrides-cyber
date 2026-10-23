@@ -47,14 +47,23 @@ function routeResolveTxt(byName: Record<string, string[][] | "reject">) {
   });
 }
 
+// checkDnssec asks Cloudflare DoH for the DS record; route that by URL so the
+// MTA-STS tests (which stub fetch themselves) are unaffected.
+function stubDoh(body: unknown, status = 200) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify(body), { status }))
+  );
+}
+
 describe("checkDns", () => {
   beforeEach(() => {
     resolveTxtMock.mockReset().mockRejectedValue(new Error("ENOTFOUND"));
     resolveCaaMock.mockReset().mockResolvedValue([]);
     resolve6Mock.mockReset().mockRejectedValue(new Error("ENOTFOUND"));
     resolveMxMock.mockReset().mockResolvedValue([]); // no MX by default — MTA-STS/TLS-RPT skipped
-    resolveMock.mockReset().mockResolvedValue([]); // DS lookup — DNSSEC
     vi.unstubAllGlobals();
+    stubDoh({ Status: 0 }); // DNSSEC DS lookup (DNS-over-HTTPS) — no DS answer by default
   });
 
   afterEach(() => {
@@ -324,18 +333,30 @@ describe("checkDns", () => {
   });
 
   describe("DNSSEC", () => {
-    it("reports likelySigned when a DS record is present", async () => {
-      resolveMock.mockResolvedValue([{ keyTag: 1, algorithm: 8, digestType: 2, digest: "abc" }]);
+    it("reports signed when the parent zone publishes a DS record", async () => {
+      stubDoh({ Status: 0, Answer: [{ type: 43, data: "2371 13 2 abc" }] });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.dnssec.likelySigned).toBe(true);
     });
 
-    it("reports not signed (but inconclusive, not asserted) when the DS lookup fails", async () => {
-      resolveMock.mockRejectedValue(new Error("ENODATA"));
+    it("reports unsigned (a real finding) on NOERROR with no DS answer", async () => {
+      stubDoh({ Status: 0 });
       const result = await checkDns("https://example.com");
       if (result.status !== "checked") throw new Error("expected checked");
       expect(result.dnssec.likelySigned).toBe(false);
+      expect(result.dnssec.inconclusive).toBeUndefined();
+    });
+
+    it.each([
+      ["a resolver error status", () => stubDoh({ Status: 2 })],
+      ["an HTTP failure", () => stubDoh({}, 503)],
+      ["a network error", () => vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")))],
+    ])("is inconclusive, not unsigned, on %s", async (_name, arrange) => {
+      arrange();
+      const result = await checkDns("https://example.com");
+      if (result.status !== "checked") throw new Error("expected checked");
+      expect(result.dnssec.inconclusive).toBe(true);
     });
   });
 
@@ -354,7 +375,11 @@ describe("checkDns", () => {
       routeResolveTxt({ "_mta-sts.example.com": [["v=STSv1; id=1"]] });
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValue(new Response("version: STSv1\nmode: testing\nmx: mail.example.com\n", { status: 200 }))
+        vi.fn(async (url: string) =>
+          url.includes("cloudflare-dns.com")
+            ? new Response(JSON.stringify({ Status: 0 }))
+            : new Response("version: STSv1\nmode: testing\nmx: mail.example.com\n", { status: 200 })
+        )
       );
 
       const result = await checkDns("https://example.com");

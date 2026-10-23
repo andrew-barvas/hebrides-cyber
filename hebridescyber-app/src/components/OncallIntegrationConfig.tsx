@@ -117,7 +117,7 @@ export default function OncallIntegrationConfig() {
   return (
     <details className="rounded-lg border border-cyberborder bg-cyberpanel">
       <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
-        On-call alerting <span className="font-normal text-cybertext/40">(page PagerDuty/Opsgenie on new critical findings)</span>
+        On-call alerting <span className="font-normal text-cybermuted">(page PagerDuty/Opsgenie on new critical findings)</span>
       </summary>
       <div className="px-5 pb-5 pt-1 space-y-4">
         <p className="text-sm text-cybertext/60">
@@ -127,7 +127,7 @@ export default function OncallIntegrationConfig() {
         </p>
 
         {loading ? (
-          <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+          <p className="font-mono text-xs text-cybermuted">// loading…</p>
         ) : connections.length > 0 ? (
           <ul className="space-y-2">
             {connections.map((c) => (
@@ -138,13 +138,13 @@ export default function OncallIntegrationConfig() {
                 <div className="text-sm text-cybertext/70">
                   Connected to <span className="font-semibold text-neon">{PROVIDER_LABELS[c.provider]}</span>
                   {c.provider === "opsgenie" && c.region && (
-                    <span className="text-cybertext/40"> — {c.region.toUpperCase()} region</span>
+                    <span className="text-cybermuted"> — {c.region.toUpperCase()} region</span>
                   )}
                 </div>
                 <button
                   onClick={() => disconnect(c.provider)}
                   disabled={busy}
-                  className="text-xs text-cybertext/40 hover:text-red-400 disabled:opacity-40 transition-colors"
+                  className="text-xs text-cybermuted hover:text-red-400 disabled:opacity-40 transition-colors"
                 >
                   Disconnect
                 </button>

@@ -62,7 +62,10 @@ export default function MfaChallengePage() {
       <h1 className="mb-2 text-2xl font-bold text-atlantic">Enter your 2FA code</h1>
       <p className="mb-8 text-sm text-slatedark/80">Open your authenticator app for the current code.</p>
       <form onSubmit={submit} className="space-y-4">
+        <label htmlFor="mfa-code" className="sr-only">6-digit code</label>
         <input
+          id="mfa-code"
+          autoComplete="one-time-code"
           type="text"
           inputMode="numeric"
           autoFocus

@@ -151,11 +151,11 @@ export default function FleetOverview() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// fleet overview ({rows.length} sites)</h2>
+      <h2 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// fleet overview ({rows.length} sites)</h2>
       <div className="sm:overflow-x-auto">
         <table className="block w-full text-sm sm:table">
           <thead className="hidden sm:table-header-group">
-            <tr className="border-b border-cyberborder text-left text-xs text-cybertext/40">
+            <tr className="border-b border-cyberborder text-left text-xs text-cybermuted">
               <th className="pb-2 font-normal">Site</th>
               <th className="pb-2 font-normal">Score</th>
               <th className="pb-2 font-normal">Trend</th>
@@ -172,29 +172,29 @@ export default function FleetOverview() {
                 <td className="py-0.5 font-mono text-xs text-cybertext/80 break-all sm:table-cell sm:max-w-[180px] sm:py-2.5 sm:pr-3">{row.targetUrl}</td>
                 <td
                   data-label="Score"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
                 >
                   {row.latestScore !== null ? (
                     <span className={`font-semibold ${scoreColor(row.latestScore)}`}>{row.latestScore}/100</span>
                   ) : (
-                    <span className="text-cybertext/30">—</span>
+                    <span className="text-cybermuted">—</span>
                   )}
                 </td>
                 <td
                   data-label="Trend"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
                 >
                   <MiniSparkline points={row.scoreHistory} />
                 </td>
                 <td
                   data-label="Open findings"
-                  className="flex items-center justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
                 >
-                  {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybertext/30">—</span>}
+                  {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybermuted">—</span>}
                 </td>
                 <td
                   data-label="Last scanned"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybertext/40 before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden"
+                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden"
                 >
                   {row.lastScannedAt ? (
                     row.latestScanId ? (
@@ -205,7 +205,7 @@ export default function FleetOverview() {
                       relativeTime(row.lastScannedAt)
                     )
                   ) : (
-                    <span className="text-cybertext/30">Never scanned</span>
+                    <span className="text-cybermuted">Never scanned</span>
                   )}
                 </td>
               </tr>

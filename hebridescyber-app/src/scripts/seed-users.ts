@@ -31,12 +31,16 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 type SeedUser = {
   email: string;
   isAdmin: boolean;
-  plan: "none" | "basic" | "pro" | "agency";
+  plan: "none" | "basic" | "pro" | "agency" | "tier_a";
   companyName: string;
 };
 
 const users: SeedUser[] = [
-  { email: "admin@hebridescyber.co.uk", isAdmin: true, plan: "agency", companyName: "Hebrides Cyber (staff)" },
+  // Staff account: Tier A (top tier) so a fresh seed mirrors production, where
+  // staff get the full feature set. The is_admin flag already exempts this
+  // account from plan gating everywhere (planAccess.ts), so the plan value is
+  // belt-and-braces for anything that reads the subscription row directly.
+  { email: "admin@hebridescyber.co.uk", isAdmin: true, plan: "tier_a", companyName: "Hebrides Cyber (staff)" },
   { email: "no-plan-customer@example.com", isAdmin: false, plan: "none", companyName: "Lewis Crafts Co." },
   { email: "basic-customer@example.com", isAdmin: false, plan: "basic", companyName: "Stornoway Guesthouse" },
   { email: "pro-customer@example.com", isAdmin: false, plan: "pro", companyName: "Outer Hebrides SaaS Ltd" },
@@ -90,9 +94,13 @@ async function seedOne(user: SeedUser) {
   // empty on first login. Inserted directly (not via run-scan) — this is
   // seed data, not a real scan, so it skips ownership verification,
   // rate limiting, and actually calling any scanner.
+  // Tier A sits above Agency, so it gets the multi-site / monitored-target
+  // demo data Agency does.
+  const atLeastAgency = user.plan === "agency" || user.plan === "tier_a";
+
   if (user.plan !== "none") {
     const demoTargets = [`https://${user.companyName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.example.com`];
-    if (user.plan === "agency") demoTargets.push("https://client-site-two.example.com");
+    if (atLeastAgency) demoTargets.push("https://client-site-two.example.com");
 
     for (const targetUrl of demoTargets) {
       const { data: scan } = await supabaseAdmin
@@ -125,7 +133,7 @@ async function seedOne(user: SeedUser) {
       }
     }
 
-    if (user.plan === "agency") {
+    if (atLeastAgency) {
       await supabaseAdmin.from("monitored_targets").upsert(
         [
           { owner: userId, target_url: "https://client-site-one.example.com" },

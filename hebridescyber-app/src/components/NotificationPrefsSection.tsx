@@ -67,7 +67,7 @@ export default function NotificationPrefsSection() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-1 font-mono text-xs text-cybertext/40 uppercase tracking-wide">
+      <h2 className="mb-1 font-mono text-xs text-cybermuted uppercase tracking-wide">
         // email notifications
       </h2>
       <p className="mb-4 text-xs text-cybertext/60">
@@ -106,7 +106,7 @@ export default function NotificationPrefsSection() {
                   placeholder="Any score"
                   className="w-28 rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
                 />
-                <span className="text-xs text-cybertext/40">
+                <span className="text-xs text-cybermuted">
                   {scoreThreshold != null
                     ? `Alert when score < ${scoreThreshold}`
                     : "Alert on every scan"}

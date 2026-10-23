@@ -27,6 +27,7 @@
     "blog:publish-scheduled": "tsx src/scripts/publish-scheduled-posts.ts",
     "retention:cleanup": "tsx src/scripts/cleanup-retention.ts",
     "account:erase": "tsx src/scripts/erase-user-data.ts",
+    "account:set-plan": "tsx src/scripts/set-plan.ts",
     "account:deletion-reminders": "tsx src/scripts/check-deletion-requests.ts",
     "secrets:encrypt-existing": "tsx src/scripts/encrypt-existing-secrets.ts",
     "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",

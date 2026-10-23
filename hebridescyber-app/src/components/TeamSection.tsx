@@ -127,7 +127,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
 
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// team</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// team</h2>
 
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Share your scans, reports, and monitored targets with colleagues,
@@ -138,7 +138,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
       {error && <p className="mb-3 text-xs text-red-400" role="alert">{error}</p>}
 
       {loading ? (
-        <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+        <p className="font-mono text-xs text-cybermuted">// loading…</p>
       ) : (
         <>
           {!ownedTeam && (
@@ -192,12 +192,12 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                   {inviting ? "Adding…" : "Add"}
                 </button>
               </form>
-              <p className="mb-4 -mt-2 text-xs text-cybertext/40">
+              <p className="mb-4 -mt-2 text-xs text-cybermuted">
                 They need an existing Hebrides Cyber account — ask them to sign up first if adding fails.
               </p>
 
               {ownedTeam.members.length === 0 ? (
-                <p className="text-xs text-cybertext/40">No members yet — it&apos;s just you.</p>
+                <p className="text-xs text-cybermuted">No members yet — it&apos;s just you.</p>
               ) : (
                 <ul className="divide-y divide-cyberborder rounded-lg border border-cyberborder">
                   {ownedTeam.members.map((m) => (
@@ -216,7 +216,7 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                         </select>
                         <button
                           onClick={() => removeMember(ownedTeam.id, m.user_id)}
-                          className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                          className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                         >
                           Remove
                         </button>
@@ -238,13 +238,13 @@ export default function TeamSection({ token, currentUserId }: { token: string; c
                   <li key={m.team_id} className="flex flex-wrap items-center justify-between gap-2 p-3">
                     <div>
                       <p className="text-sm text-cybertext/80">{m.team_name}</p>
-                      <p className="text-xs text-cybertext/40">
+                      <p className="text-xs text-cybermuted">
                         owned by {m.owner_email} · {m.role}
                       </p>
                     </div>
                     <button
                       onClick={() => removeMember(m.team_id, currentUserId)}
-                      className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                      className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                     >
                       Leave
                     </button>

@@ -36,7 +36,7 @@ function Sparkline({ points, max }: { points: number[]; max: number }) {
 
 export default function CategorySparklines({ history }: { history: CategoryCountPoint[] }) {
   if (history.length < 2) {
-    return <p className="text-xs text-cybertext/40">Not enough scan history yet for category trends — run at least one more scan of this target.</p>;
+    return <p className="text-xs text-cybermuted">Not enough scan history yet for category trends — run at least one more scan of this target.</p>;
   }
 
   const totals = new Map<string, number>();
@@ -48,7 +48,7 @@ export default function CategorySparklines({ history }: { history: CategoryCount
   const topCategories = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_CATEGORIES).map(([category]) => category);
 
   if (topCategories.length === 0) {
-    return <p className="text-xs text-cybertext/40">No open findings across this history — nothing to break down by category.</p>;
+    return <p className="text-xs text-cybermuted">No open findings across this history — nothing to break down by category.</p>;
   }
 
   return (
