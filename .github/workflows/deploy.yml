@@ -230,6 +230,9 @@ jobs:
           NODE_VERSION: '20'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          # Browser-side Sentry: NEXT_PUBLIC_* is inlined at build time, and SWA app settings
+          # are not visible to this Oryx build, so it has to be passed here. Blank = no browser reporting.
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
 
       # E-57: post-deploy health check — curls /api/health on the live site
       # to catch runtime failures that pass the build. Waits 45s for Azure
