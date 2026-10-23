@@ -130,3 +130,12 @@ Both off or default until you choose. In GitHub **Settings → Secrets and varia
   SSRF/OAST templates at your own interactsh server instead of ProjectDiscovery's public pool;
   variable `DISABLE_OAST` = `1` to send nothing out-of-band at all (loses blind-SSRF coverage).
 
+## Uptime monitoring (free)
+
+Sentry reports errors the code catches; it cannot tell you the site is completely down. Two layers, both free:
+
+1. **Built in, nothing to sign up for:** `.github/workflows/uptime.yml` probes `/api/health` every 10 minutes and opens a GitHub issue labelled `uptime` (GitHub emails repository watchers) when the site is down or degraded, and closes it on recovery. Make sure you are **watching** the repo (Watch → All Activity, or Custom → Issues) so the email reaches you. Actions cron is best-effort, so treat it as a backstop.
+2. **Primary pager, 5 minutes to set up:** create a free account at uptimerobot.com (check its pricing page for the current free limits), choose **Add New Monitor → HTTP(s)**, URL `https://www.hebridescyber.co.uk/api/health`, interval 5 minutes (the shortest on the free plan, as far as I know), and add your email as the alert contact. Optionally add a keyword monitor for `"status":"ok"`. `/api/health` answers HEAD as well as GET, because HEAD-only monitors otherwise read the 405 as down. Better Stack has a comparable free plan if you prefer it.
+
+`/api/health` makes a real Stripe call and a Supabase query per probe and is limited to 120 requests per IP per hour, so keep monitors at 5 minutes or slower.
+
