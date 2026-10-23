@@ -326,6 +326,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "commix.command-injection": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "dalfox.reflected-xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "nmap.dangerous-port": [CE_FIREWALLS, OWASP_A05, CIS_12, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "network-exposure.open-port": [CE_FIREWALLS, OWASP_A05, CIS_12, CIS_4, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "secretScan.exposed-secret": [OWASP_A02, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ8, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
