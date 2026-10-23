@@ -28,6 +28,12 @@ in-repo summary.
   zero violations, GA/Stripe allow-listed). The Next 16.4 `middleware`→`proxy`
   deprecation migration was added on its branch (commit `05605dd`, pushed).
 - Config-remediation + attack-path + scanner work (#79–#87) already on master.
+- **#90** (`feat/ai-triage-and-burp-parity`) merged — **token entropy** (via
+  `sessionCheck`), **bounded replay** (`replayProbe`), **configurable OOB**
+  (nuclei/sessionCheck), and **AI triage** (`aiTriage`, **off unless
+  `AI_TRIAGE=1`** + Azure OpenAI configured); each with tests + docs
+  (`BURP-PARITY.md`, `AI-TRIAGE-DESIGN.md`). Verified wired + green.
+- **#92** strategy addendum (Burp/AI review) merged.
 
 **Todo (next session, in order):**
 1. **Merge #88** (verdict: safe), then run the two post-deploy checks the local
@@ -54,8 +60,12 @@ in-repo summary.
    `strix`/`cairn` pins + SHA-256; `is_admin` runtime gate; lock the consent
    route).
 7. **Sprint 7** — admin-scoped API key + `profile` param on `POST /api/v1/scans`.
-8. **Part B (post-launch)** — capability track C1–C6 (token/JWT → GraphQL/API
-   depth → authenticated scanning → DOM-XSS → OAST → custom-checks/MCP).
+8. **Part B (post-launch)** — capability track. **C1 (token/JWT entropy) and
+   much of C5 (configurable OOB + bounded replay) are now delivered by #90**,
+   and AI triage shipped off-by-default. Remaining: **C2** GraphQL/API depth →
+   **C3** authenticated scanning depth → **C4** DOM-XSS engine → **C6**
+   custom-checks + MCP (and full OAST callback confirmation on top of #90's
+   configurable OOB).
 - *Minor:* Sprint 1's price-ID fallback on `checkout.session.completed` was not
   implemented (the core silent-downgrade safety is).
 
