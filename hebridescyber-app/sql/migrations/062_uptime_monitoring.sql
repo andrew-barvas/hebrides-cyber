@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS public.uptime_monitors (
   last_status_at timestamptz,
   state_duration_seconds integer CHECK (state_duration_seconds IS NULL OR state_duration_seconds >= 0),
   last_checked_at timestamptz,
+  -- Set when a "down" alert has been sent for the current outage, cleared on recovery,
+  -- so one outage produces exactly one down message and one recovered message.
+  down_alerted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (owner, target_url, provider)
 );
