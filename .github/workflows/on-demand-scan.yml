@@ -84,6 +84,8 @@ jobs:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          # Worker failures reach Sentry (src/lib/workerSentry.ts); blank means no reporting.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # AI triage of unproven findings (aiTriage.ts): off unless the repo variable is 1.
           AI_TRIAGE: ${{ vars.AI_TRIAGE }}
           # Out-of-band (interactsh) for nuclei's ssrf/oast templates: blank keeps the public
