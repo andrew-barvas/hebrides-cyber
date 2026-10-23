@@ -51,7 +51,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -107,7 +107,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -208,7 +208,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -222,12 +222,12 @@ jobs:
           action: upload
           app_location: "hebridescyber-app"
           output_location: ".next"
-          # Let Oryx build the app — .nvmrc pins Node 20 so Oryx doesn't
+          # Let Oryx build the app — .nvmrc pins Node 22 so Oryx doesn't
           # pick up the runner's system Node (previously 24.x, unsupported).
           # Env vars are passed here so Oryx's build has the Supabase keys
           # needed for generateStaticParams() at build time.
         env:
-          NODE_VERSION: '20'
+          NODE_VERSION: '22'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           # Browser-side Sentry: NEXT_PUBLIC_* is inlined at build time, and SWA app settings
