@@ -17,9 +17,14 @@
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/run-queued-scan-jobs.ts
 
+// Must be the first import so Sentry is initialised before any async code
+// runs. Silent no-op when SENTRY_DSN is unset — see sentry.worker.config.ts.
+import "../sentry.worker.config";
+import * as Sentry from "@sentry/node";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
@@ -59,6 +64,7 @@ async function main() {
   const { data: resetCount, error: resetError } = await supabaseAdmin.rpc("reset_stale_scan_jobs");
   if (resetError) {
     console.warn(`[${workerId}] reset_stale_scan_jobs: ${resetError.message}`);
+    Sentry.captureException(new Error(resetError.message), { tags: { worker_id: workerId, rpc: "reset_stale_scan_jobs" } });
   } else if ((resetCount as number) > 0) {
     console.log(`[${workerId}] reset ${resetCount} stale job(s) to pending — they will be re-claimed now.`);
   }
@@ -73,7 +79,8 @@ async function main() {
     });
 
     if (claimError) {
-      console.error("claim_scan_job RPC failed:", claimError.message);
+      console.error(`[${workerId}] claim_scan_job RPC failed: ${claimError.message}`);
+      Sentry.captureException(new Error(claimError.message), { tags: { worker_id: workerId, rpc: "claim_scan_job" } });
       break;
     }
 
@@ -91,6 +98,10 @@ async function main() {
   }
 
   console.log(`[${workerId}] done — processed ${processed}, succeeded ${succeeded}, failed ${failed}.`);
+  // Flush Sentry before the process exits — the runner is ephemeral (GitHub
+  // Actions), so any buffered events would be lost if we don't drain first.
+  // No-op when SENTRY_DSN is unset. Cap at 5 s to not delay clean exit.
+  await Sentry.flush(5000).catch(() => {});
 }
 
 type ScanConfig = { profile: ScanProfile; toolOverrides?: Partial<Record<ExtendedToolName, boolean>> };
@@ -153,8 +164,20 @@ async function runOne(
   supabaseAdmin: SupabaseClient,
   job: { id: string; owner: string; target_url: string; scan_id: string | null; scan_profile: string | null }
 ): Promise<boolean> {
+  // Per-job correlation id: ties log lines and Sentry events together across
+  // the worker process, scanExecution.ts, and any downstream logging. Only
+  // the first 8 hex chars appear in log prefixes (enough to distinguish jobs
+  // in a run); Sentry gets the full UUID as a tag for exact search.
+  const correlationId = randomUUID();
+  const tag = `[job ${job.id} corr:${correlationId.slice(0, 8)}]`;
+  Sentry.setTag("correlation_id", correlationId);
+  Sentry.setTag("job_id", job.id);
+
   async function failJob(message: string) {
-    console.error(`[job ${job.id}] failed: ${message}`);
+    console.error(`${tag} failed: ${message}`);
+    Sentry.captureException(new Error(message), {
+      extra: { job_id: job.id, target_url: job.target_url, owner: job.owner, correlation_id: correlationId },
+    });
     await supabaseAdmin.from("scan_jobs").update({ status: "failed", last_error: message }).eq("id", job.id);
     if (job.scan_id) {
       // Mirror the reason onto the scan the owner/admin see (migration 058).
@@ -199,7 +222,7 @@ async function runOne(
     const { data: existing } = await supabaseAdmin.from("scans").select("status").eq("id", scanId).maybeSingle();
     if (existing?.status === "completed") {
       await supabaseAdmin.from("scan_jobs").update({ status: "completed" }).eq("id", job.id);
-      console.log(`[job ${job.id}] skipped — scan ${scanId} already completed`);
+      console.log(`${tag} skipped — scan ${scanId} already completed`);
       return true;
     }
   }
@@ -228,7 +251,7 @@ async function runOne(
     ]);
     if (!tierOk || !authorized) {
       const reason = !tierOk ? "owner is not on Tier A" : "no current offensive-scan authorization for this target";
-      console.warn(`[job ${job.id}] offensive tools refused for profile "${requestedProfile}" (${reason}); downgrading to safe`);
+      console.warn(`${tag} offensive tools refused for profile "${requestedProfile}" (${reason}); downgrading to safe`);
       await logAuditEvent(supabaseAdmin, {
         actorId: job.owner,
         action: "offensive_scan.refused",
@@ -290,6 +313,7 @@ async function runOne(
   const outcome = await executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
     profile: scanConfig.profile,
     toolOverrides: scanConfig.toolOverrides,
+    correlationId,
   });
   if (!outcome.ok) {
     await failJob(outcome.error);
@@ -297,7 +321,7 @@ async function runOne(
   }
 
   await supabaseAdmin.from("scan_jobs").update({ status: "completed" }).eq("id", job.id);
-  console.log(`[job ${job.id}] completed — score ${outcome.score}`);
+  console.log(`${tag} completed — score ${outcome.score}`);
   return true;
 }
 
@@ -309,7 +333,9 @@ async function runOne(
 // Windows, where a naive concatenation gets the drive-letter path format
 // and separators wrong.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((err) => {
+  main().catch(async (err) => {
+    Sentry.captureException(err);
+    await Sentry.flush(5000).catch(() => {});
     console.error("run-queued-scan-jobs failed:", err);
     process.exit(1);
   });

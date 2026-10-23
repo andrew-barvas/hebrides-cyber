@@ -1,6 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { decideScanConfig } from "./run-queued-scan-jobs";
 import { enablesOffensiveTools } from "../lib/scanProfiles";
+
+// Stub out @sentry/node so the side-effect import of sentry.worker.config
+// in run-queued-scan-jobs.ts doesn't attempt a real network init, and so
+// we can spy on captureException in the Sentry tests below.
+vi.mock("@sentry/node", () => ({
+  init: vi.fn(),
+  captureException: vi.fn(),
+  setTag: vi.fn(),
+  flush: vi.fn().mockResolvedValue(true),
+}));
 
 describe("decideScanConfig", () => {
   it("an explicit per-job override wins outright, even over a target's own profile", () => {
@@ -109,5 +119,28 @@ describe("decideScanConfig + the offensive-tools gate", () => {
       );
       expect(enablesOffensiveTools(config.profile, config.toolOverrides), profile).toBe(false);
     }
+  });
+});
+
+describe("Sentry worker wiring", () => {
+  it("Sentry.init is called when the module loads (via sentry.worker.config side-effect import)", async () => {
+    // The vi.mock() above stubs @sentry/node before any imports run.
+    // Importing the worker module triggers the side-effect import of
+    // sentry.worker.config, which calls Sentry.init(). If init throws for
+    // any reason (e.g. bad config, missing dep) this test catches it.
+    const Sentry = await import("@sentry/node");
+    expect(Sentry.init).toHaveBeenCalled();
+  });
+
+  it("Sentry.init is called with dsn: undefined when SENTRY_DSN is unset (silent no-op)", async () => {
+    const Sentry = await import("@sentry/node");
+    const calls = (Sentry.init as ReturnType<typeof vi.fn>).mock.calls;
+    // At least one call; the most recent one reflects the env at module load.
+    const lastCall = calls[calls.length - 1]?.[0] as { dsn: unknown } | undefined;
+    // SENTRY_DSN is unset in the test environment — dsn should be undefined,
+    // which makes @sentry/node initialise into a true no-op (no network calls,
+    // no throws). This is the key contract: missing DSN ≠ broken worker.
+    expect(process.env.SENTRY_DSN).toBeUndefined();
+    expect(lastCall?.dsn).toBeUndefined();
   });
 });

@@ -124,6 +124,12 @@ export type ExecuteScanOptions = {
    * `DISABLE_PROOF_OF_EXPLOIT=1` turns it off everywhere. See proofOfExploit.ts.
    */
   confirmExploits?: boolean;
+  /**
+   * Worker-generated correlation id (crypto.randomUUID()) for tying a scan's
+   * log lines and any Sentry events together across the worker's own logging
+   * and the scan pipeline. Logged at the start of executeScan when present.
+   */
+  correlationId?: string;
 };
 
 /** Best-effort: never fails a scan, and a failed or skipped check leaves a finding unconfirmed (never "disproved"). */
@@ -882,6 +888,10 @@ export async function executeScan(
   targetUrl: string,
   options: ExecuteScanOptions = {}
 ): Promise<ScanExecutionResult> {
+  if (options.correlationId) {
+    console.log(`[scan ${scanId}] correlation_id=${options.correlationId}`);
+  }
+
   // Phase 1: the part that determines success/failure. Anything thrown here
   // means the scan itself didn't complete, so marking the row 'failed' is
   // correct.
