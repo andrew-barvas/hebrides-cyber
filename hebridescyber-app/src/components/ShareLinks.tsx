@@ -88,7 +88,7 @@ export default function ShareLinks({ scanId, token }: { scanId: string; token: s
 
   return (
     <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// share this report</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// share this report</h2>
 
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Anyone with a share link can view a read-only copy of this report — no
@@ -117,16 +117,16 @@ export default function ShareLinks({ scanId, token }: { scanId: string; token: s
       </div>
 
       {loading ? (
-        <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+        <p className="font-mono text-xs text-cybermuted">// loading…</p>
       ) : active.length === 0 ? (
-        <p className="text-xs text-cybertext/40">No share links yet.</p>
+        <p className="text-xs text-cybermuted">No share links yet.</p>
       ) : (
         <ul className="divide-y divide-cyberborder rounded-lg border border-cyberborder">
           {active.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
               <div className="min-w-0">
                 <code className="block break-all font-mono text-xs text-neon/80">{s.share_url}</code>
-                <p className="mt-0.5 text-xs text-cybertext/40">
+                <p className="mt-0.5 text-xs text-cybermuted">
                   {s.view_count} view{s.view_count !== 1 ? "s" : ""}
                   {s.expires_at
                     ? ` · expires ${new Date(s.expires_at).toLocaleDateString("en-GB")}`
@@ -142,7 +142,7 @@ export default function ShareLinks({ scanId, token }: { scanId: string; token: s
                 </button>
                 <button
                   onClick={() => remove(s.id)}
-                  className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                  className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                 >
                   Revoke
                 </button>

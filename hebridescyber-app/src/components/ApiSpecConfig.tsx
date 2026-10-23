@@ -159,7 +159,7 @@ export default function ApiSpecConfig() {
               required
               className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext"
             />
-            <p className="mt-1 text-xs text-cybertext/40">
+            <p className="mt-1 text-xs text-cybermuted">
               The base URL of the API this spec describes. Must match a monitored target.
             </p>
           </div>
@@ -203,7 +203,7 @@ export default function ApiSpecConfig() {
                 required
                 className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
               />
-              <p className="mt-1 text-xs text-cybertext/40">
+              <p className="mt-1 text-xs text-cybermuted">
                 Must serve JSON. YAML is not currently supported.
               </p>
             </div>
@@ -218,7 +218,7 @@ export default function ApiSpecConfig() {
                 rows={8}
                 className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
               />
-              <p className="mt-1 text-xs text-cybertext/40">
+              <p className="mt-1 text-xs text-cybermuted">
                 Paste the full OpenAPI/Swagger spec as a JSON object. Max 5MB.
               </p>
             </div>
@@ -235,9 +235,9 @@ export default function ApiSpecConfig() {
       )}
 
       {loading ? (
-        <p className="text-xs text-cybertext/40">Loading...</p>
+        <p className="text-xs text-cybermuted">Loading...</p>
       ) : specs.length === 0 ? (
-        <p className="text-xs text-cybertext/40">
+        <p className="text-xs text-cybermuted">
           No API specs imported. Import a spec to enable spec-aware endpoint testing during scans.
         </p>
       ) : (
@@ -254,15 +254,15 @@ export default function ApiSpecConfig() {
                 <span className="text-sm text-cybertext truncate max-w-[200px]" title={spec.target_url}>
                   {spec.target_url}
                 </span>
-                <span className="text-xs text-cybertext/40">
+                <span className="text-xs text-cybermuted">
                   {spec.endpoint_count} endpoint{spec.endpoint_count !== 1 ? "s" : ""}
                 </span>
                 {spec.source_url && (
-                  <span className="text-xs text-cybertext/40 truncate max-w-[150px]" title={spec.source_url}>
+                  <span className="text-xs text-cybermuted truncate max-w-[150px]" title={spec.source_url}>
                     via {new URL(spec.source_url).hostname}
                   </span>
                 )}
-                <span className="text-xs text-cybertext/40">
+                <span className="text-xs text-cybermuted">
                   Updated {new Date(spec.updated_at).toLocaleDateString()}
                 </span>
               </div>

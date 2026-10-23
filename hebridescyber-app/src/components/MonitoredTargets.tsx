@@ -97,7 +97,7 @@ export default function MonitoredTargets() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-0.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// monitored sites</h2>
+      <h2 className="mb-0.5 font-mono text-xs text-cybermuted uppercase tracking-wide">// monitored sites</h2>
       <p className="mb-4 text-xs text-cybertext/50">
         Scanned automatically on your plan&apos;s schedule (weekly on Basic, daily on Pro/Agency)
         {cap !== null && (
@@ -130,9 +130,9 @@ export default function MonitoredTargets() {
       {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-cybertext/40">Loading…</p>
+        <p className="text-sm text-cybermuted">Loading…</p>
       ) : targets.length === 0 ? (
-        <p className="text-sm text-cybertext/40">No monitored sites yet — add one above.</p>
+        <p className="text-sm text-cybermuted">No monitored sites yet — add one above.</p>
       ) : (
         <ul className="divide-y divide-cyberborder text-sm">
           {targets.map((t) => (
@@ -141,7 +141,7 @@ export default function MonitoredTargets() {
                 <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
                 <button
                   onClick={() => removeTarget(t.id)}
-                  className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
+                  className="text-xs text-cybermuted hover:text-red-400 transition-colors"
                 >
                   Remove
                 </button>
@@ -256,11 +256,11 @@ function AuthenticatedScanConfig({
 
   if (status) {
     return (
-      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-cybertext/40">
+      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-cybermuted">
         <span>
           Authenticated scan connected ({status.auth_type === "cookie" ? "session cookie" : "Basic Auth"})
         </span>
-        <button onClick={remove} disabled={busy} className="text-cybertext/30 hover:text-red-400 disabled:opacity-40 transition-colors">
+        <button onClick={remove} disabled={busy} className="text-cybermuted hover:text-red-400 disabled:opacity-40 transition-colors">
           Disconnect
         </button>
       </div>
@@ -269,7 +269,7 @@ function AuthenticatedScanConfig({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="mt-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+      <button onClick={() => setOpen(true)} className="mt-1.5 text-[11px] text-cybermuted hover:text-neon transition-colors">
         + Add authenticated scan credential
       </button>
     );
@@ -428,7 +428,7 @@ function ScanProfileConfig({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+      <button onClick={() => setOpen(true)} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybermuted hover:text-neon transition-colors">
         <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-[10px]">{label}</span>
         scan profile
       </button>

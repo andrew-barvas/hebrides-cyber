@@ -117,7 +117,7 @@ export default function ScheduledReportsConfig() {
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// scheduled reports</h2>
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// scheduled reports</h2>
         <button
           onClick={() => setShowForm(!showForm)}
           className="rounded-md border border-cyberborder px-3 py-1.5 text-xs text-cybertext/70 hover:border-neon hover:text-neon transition-colors"
@@ -176,7 +176,7 @@ export default function ScheduledReportsConfig() {
       {message && <p className="mb-3 text-xs text-neon">{message}</p>}
 
       {reports.length === 0 ? (
-        <p className="text-xs text-cybertext/40">No scheduled reports yet. Create one to receive periodic security summaries by email.</p>
+        <p className="text-xs text-cybermuted">No scheduled reports yet. Create one to receive periodic security summaries by email.</p>
       ) : (
         <div className="space-y-2">
           {reports.map((r) => (
@@ -185,7 +185,7 @@ export default function ScheduledReportsConfig() {
                 <div className="flex items-center gap-2">
                   <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${r.enabled ? "bg-neon" : "bg-cybertext/20"}`} />
                   <span className="text-sm text-cybertext font-medium capitalize">{r.frequency}</span>
-                  <span className="text-xs text-cybertext/40 uppercase">{r.format}</span>
+                  <span className="text-xs text-cybermuted uppercase">{r.format}</span>
                 </div>
                 <p className="text-xs text-cybertext/50 mt-0.5 truncate">
                   {r.recipients.join(", ")}
@@ -197,7 +197,7 @@ export default function ScheduledReportsConfig() {
                 className={`rounded-md border px-3 py-1 text-xs transition-colors ${
                   r.enabled
                     ? "border-neon/30 text-neon hover:bg-neon/10"
-                    : "border-cyberborder text-cybertext/40 hover:border-neon hover:text-neon"
+                    : "border-cyberborder text-cybermuted hover:border-neon hover:text-neon"
                 }`}
               >
                 {r.enabled ? "Pause" : "Resume"}

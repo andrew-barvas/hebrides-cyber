@@ -19,7 +19,7 @@ export default function HomePage() {
             Automated scanning. Real expertise. Clear fixes. Know your attack
             surface and stay ahead of threats — from the Isle of Lewis.
           </p>
-          <p className="mt-4 font-mono text-xs uppercase tracking-wide text-cybertext/40">
+          <p className="mt-4 font-mono text-xs uppercase tracking-wide text-cybermuted">
             OWASP-aligned checks &middot; Powered by Azure &middot; UK-based, GDPR compliant
           </p>
           <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
@@ -170,7 +170,7 @@ const trustBadges = [
 function TrustBadges() {
   return (
     <section className="border-t border-cyberborder bg-cyberbg px-6 py-12">
-      <p className="mx-auto mb-6 max-w-5xl text-center font-mono text-xs uppercase tracking-widest text-cybertext/40">
+      <p className="mx-auto mb-6 max-w-5xl text-center font-mono text-xs uppercase tracking-widest text-cybermuted">
         Compliance frameworks we map to
       </p>
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-8 gap-y-4">
@@ -179,7 +179,7 @@ function TrustBadges() {
             <span className="rounded border border-neon/30 bg-neon/10 px-3 py-1 font-mono text-xs font-semibold text-neon">
               {b.label}
             </span>
-            <span className="text-[10px] text-cybertext/40">{b.desc}</span>
+            <span className="text-[10px] text-cybermuted">{b.desc}</span>
           </div>
         ))}
       </div>

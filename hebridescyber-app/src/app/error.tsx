@@ -42,7 +42,7 @@ export default function ErrorPage({
           </Link>
         </div>
         {error.digest && (
-          <p className="mt-6 font-mono text-xs text-cybertext/20">
+          <p className="mt-6 font-mono text-xs text-cybermuted">
             ref: {error.digest}
           </p>
         )}

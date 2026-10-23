@@ -111,7 +111,7 @@ export default function OnboardingChecklist({
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">
           // getting started ({completedCount}/{steps.length})
         </h2>
         <button
@@ -119,7 +119,7 @@ export default function OnboardingChecklist({
             writeDismissed();
             setDismissed(true);
           }}
-          className="text-xs text-cybertext/40 hover:text-cybertext/70 transition-colors"
+          className="text-xs text-cybermuted hover:text-cybertext/70 transition-colors"
         >
           Dismiss
         </button>
