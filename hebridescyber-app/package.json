@@ -32,6 +32,7 @@
     "secrets:encrypt-existing": "tsx src/scripts/encrypt-existing-secrets.ts",
     "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",
     "reports:send": "tsx src/scripts/send-scheduled-reports.ts",
+    "uptime:sync": "tsx src/scripts/sync-uptime-monitors.ts",
     "threats:check": "tsx src/scripts/check-emerging-threats.ts",
     "easm:discover": "tsx src/scripts/run-easm-discovery.ts",
     "docs:diagrams": "tsx src/scripts/render-diagrams.ts"
