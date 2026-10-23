@@ -18,6 +18,7 @@ for (const name of [
   "OncallIntegrationConfig",
   "ScheduledReportsConfig",
   "TicketIntegration",
+  "UptimeMonitoringConfig",
   "Webhooks",
 ]) {
   vi.doMock(`@/components/${name}`, () => ({ default: () => <div data-testid={name} /> }));
@@ -50,7 +51,7 @@ describe("Integrations page", { timeout: 20_000 }, () => {
   it("shows the real forms on Agency", async () => {
     session.plan = "agency";
     await renderPage();
-    for (const id of ["channel-slack", "channel-teams", "NotificationPrefsSection", "ScheduledReportsConfig", "CloudCredentialsConfig"]) {
+    for (const id of ["channel-slack", "channel-teams", "NotificationPrefsSection", "ScheduledReportsConfig", "CloudCredentialsConfig", "UptimeMonitoringConfig"]) {
       expect(screen.getByTestId(id)).toBeInTheDocument();
     }
     expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
@@ -60,10 +61,11 @@ describe("Integrations page", { timeout: 20_000 }, () => {
     await renderPage();
     expect(screen.queryByTestId("channel-slack")).not.toBeInTheDocument();
     expect(screen.queryByTestId("CloudCredentialsConfig")).not.toBeInTheDocument();
-    for (const locked of ["slack & microsoft teams alerts", "email notifications", "scheduled reports", "cloud posture scanning"]) {
+    for (const locked of ["slack & microsoft teams alerts", "email notifications", "uptime monitoring", "scheduled reports", "cloud posture scanning"]) {
       expect(screen.getByRole("heading", { name: locked })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(4);
+    expect(screen.queryByTestId("UptimeMonitoringConfig")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(5);
   });
 
   it("unlocks chat alerts on Pro but keeps cloud posture Agency-only", async () => {
@@ -71,6 +73,7 @@ describe("Integrations page", { timeout: 20_000 }, () => {
     await renderPage();
     expect(screen.getByTestId("channel-slack")).toBeInTheDocument();
     expect(screen.getByTestId("ScheduledReportsConfig")).toBeInTheDocument();
+    expect(screen.getByTestId("UptimeMonitoringConfig")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "cloud posture scanning" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(1);
   });
