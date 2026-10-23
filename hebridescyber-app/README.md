@@ -23,7 +23,7 @@ pricing, and branding source material.
 ## Local Development
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 22+
 - A Supabase project (free tier is fine) — [supabase.com](https://supabase.com)
 
 ### Setup
