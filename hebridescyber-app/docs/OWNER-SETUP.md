@@ -130,3 +130,7 @@ Both off or default until you choose. In GitHub **Settings → Secrets and varia
   SSRF/OAST templates at your own interactsh server instead of ProjectDiscovery's public pool;
   variable `DISABLE_OAST` = `1` to send nothing out-of-band at all (loses blind-SSRF coverage).
 
+## Sentry for the scan worker
+
+The same `SENTRY_DSN` now also covers the GitHub Actions scan worker. Add it as a repository **secret** named `SENTRY_DSN` (in addition to the Azure setting) or worker failures stay invisible. Filter by tag `correlation_id` (the scan id) or `scan_id` to follow one scan from the API request to the worker.
+
