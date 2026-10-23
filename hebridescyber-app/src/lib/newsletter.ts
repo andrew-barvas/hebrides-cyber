@@ -190,59 +190,179 @@ export type NvdCve = {
  *
  * Never throws, same degrade-to-empty contract as the rest of this file.
  */
-export async function fetchRecentHighSeverityCves(daysBack = 1): Promise<NvdCve[]> {
-  try {
-    const end = new Date();
-    const start = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
-    const url =
-      `https://services.nvd.nist.gov/rest/json/cves/2.0` +
-      `?pubStartDate=${encodeURIComponent(start.toISOString())}` +
-      `&pubEndDate=${encodeURIComponent(end.toISOString())}` +
-      `&resultsPerPage=200`;
+type NvdMetrics = {
+  cvssMetricV40?: Array<{ cvssData?: { baseScore?: number; baseSeverity?: string } }>;
+  cvssMetricV31?: Array<{ cvssData?: { baseScore?: number; baseSeverity?: string } }>;
+  cvssMetricV30?: Array<{ cvssData?: { baseScore?: number; baseSeverity?: string } }>;
+  cvssMetricV2?: Array<{ cvssData?: { baseScore?: number } }>;
+};
 
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(15_000),
-      headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)" },
-    });
-    if (!res.ok) return [];
-
-    const json = (await res.json()) as {
-      vulnerabilities?: Array<{
-        cve?: {
-          id?: string;
-          published?: string;
-          descriptions?: Array<{ lang?: string; value?: string }>;
-          metrics?: {
-            cvssMetricV31?: Array<{ cvssData?: { baseScore?: number; baseSeverity?: string } }>;
-            cvssMetricV30?: Array<{ cvssData?: { baseScore?: number; baseSeverity?: string } }>;
-            cvssMetricV2?: Array<{ cvssData?: { baseScore?: number } }>;
-          };
-        };
-      }>;
-    };
-
-    const parsed: NvdCve[] = (json.vulnerabilities ?? [])
-      .map((v) => {
-        const cve = v.cve;
-        const cvssV31 = cve?.metrics?.cvssMetricV31?.[0]?.cvssData;
-        const cvssV30 = cve?.metrics?.cvssMetricV30?.[0]?.cvssData;
-        const cvssV2 = cve?.metrics?.cvssMetricV2?.[0]?.cvssData;
-        const score = cvssV31?.baseScore ?? cvssV30?.baseScore ?? cvssV2?.baseScore ?? null;
-        const severity = cvssV31?.baseSeverity ?? cvssV30?.baseSeverity ?? (score !== null ? severityFromScore(score) : null);
-        return {
-          cveId: cve?.id ?? "",
-          description: (cve?.descriptions ?? []).find((d) => d.lang === "en")?.value ?? "",
-          cvssScore: score,
-          severity,
-          published: cve?.published ?? "",
-        };
-      })
-      .filter((c) => c.cveId && c.cvssScore !== null && c.cvssScore >= 7.0);
-
-    return parsed.sort((a, b) => (b.cvssScore ?? 0) - (a.cvssScore ?? 0)).slice(0, 6);
-  } catch {
-    return [];
+/**
+ * Highest CVSS base score NVD lists for a CVE, across v4.0, v3.1, v3.0 and v2.
+ * v4.0 has to be read: a CVE scored only under v4 used to look unscored and was
+ * dropped, and the PHP2Shell flaws (October 2026) carry a v4.0 9.2 alongside
+ * their v3.1 9.8. Taking the highest across all of them errs towards surfacing.
+ */
+export function extractCvssScore(metrics: NvdMetrics | undefined): { score: number | null; severity: string | null } {
+  const candidates: Array<{ score: number; severity: string | null }> = [];
+  for (const list of [metrics?.cvssMetricV40, metrics?.cvssMetricV31, metrics?.cvssMetricV30, metrics?.cvssMetricV2]) {
+    for (const m of list ?? []) {
+      const score = m.cvssData?.baseScore;
+      if (typeof score === "number") candidates.push({ score, severity: (m.cvssData as { baseSeverity?: string }).baseSeverity ?? null });
+    }
   }
+  if (candidates.length === 0) return { score: null, severity: null };
+  const best = candidates.reduce((a, b) => (b.score > a.score ? b : a));
+  return { score: best.score, severity: best.severity ?? severityFromScore(best.score) };
+}
+
+type NvdResponse = {
+  vulnerabilities?: Array<{
+    cve?: {
+      id?: string;
+      published?: string;
+      descriptions?: Array<{ lang?: string; value?: string }>;
+      metrics?: NvdMetrics;
+    };
+  }>;
+};
+
+/** Parse an NVD 2.0 response into scored CVEs at or above `minScore`. */
+export function parseNvdCves(json: NvdResponse, minScore = 7.0, includeUnscored = false): NvdCve[] {
+  return (json.vulnerabilities ?? [])
+    .map((v) => {
+      const cve = v.cve;
+      const { score, severity } = extractCvssScore(cve?.metrics);
+      return {
+        cveId: cve?.id ?? "",
+        description: (cve?.descriptions ?? []).find((d) => d.lang === "en")?.value ?? "",
+        cvssScore: score,
+        severity,
+        published: cve?.published ?? "",
+      };
+    })
+    .filter((c) => c.cveId && (c.cvssScore === null ? includeUnscored : c.cvssScore >= minScore));
+}
+
+/**
+ * Software a small business's website or office network is likely to run. A
+ * CVE naming one of these is worth more to this audience than an unrelated
+ * product with the same score: ten CVSS-10 entries in obscure products had
+ * pushed the PHP2Shell flaws (9.8) out of a six-item list.
+ */
+const SMB_STACK_TERMS =
+  /\b(php|wordpress|woocommerce|joomla|drupal|magento|shopify|apache|nginx|openssl|openssh|mysql|mariadb|postgres(?:ql)?|node\.js|next\.js|laravel|wp-|microsoft exchange|office 365|windows|fortinet|fortigate|citrix|sonicwall|palo alto|cisco|vpn|router|firewall|chrome|firefox|log4j|spring)\b/i;
+
+/** Sort key for a CVE: its score, plus a boost when it names common small-business software. */
+export function cveRankScore(c: NvdCve): number {
+  return (c.cvssScore ?? 0) + (SMB_STACK_TERMS.test(c.description) ? 2.5 : 0);
+}
+
+/** De-duplicate by CVE id (keeping the highest score), most relevant first, capped. */
+export function mergeNvdCves(lists: NvdCve[][], cap = 6): NvdCve[] {
+  const byId = new Map<string, NvdCve>();
+  for (const c of lists.flat()) {
+    const existing = byId.get(c.cveId);
+    if (!existing || (c.cvssScore ?? 0) > (existing.cvssScore ?? 0)) byId.set(c.cveId, c);
+  }
+  return [...byId.values()].sort((a, b) => cveRankScore(b) - cveRankScore(a)).slice(0, cap);
+}
+
+// NVD publishes hundreds of CVEs a day (495 in one 24 hours in October 2026) and
+// returns them unsorted, 200 to a page. Reading the first page and sorting it
+// meant a critical CVE was missed whenever it fell past the first 200 (PHP2Shell,
+// CVE-2026-109618, was). NVD can filter by severity server-side, so ask for the
+// severe ones directly. NVD allows one CVSS version filter per request, hence
+// one request per entry here; without an API key the limit is 5 requests per
+// 30 seconds, so they are spaced out.
+const NVD_QUERIES: Array<{ param: string; label: string }> = [
+  { param: "cvssV3Severity=CRITICAL", label: "v3 critical" },
+  { param: "cvssV4Severity=CRITICAL", label: "v4 critical" },
+  { param: "cvssV3Severity=HIGH", label: "v3 high" },
+];
+// NVD_PAUSE_MS overrides the spacing (tests set 0); with an NVD API key it could be shortened.
+const nvdPauseMs = (): number => Number(process.env.NVD_PAUSE_MS ?? 6_500);
+
+export async function fetchRecentHighSeverityCves(daysBack = 2, options: { pauseMs?: number } = {}): Promise<NvdCve[]> {
+  const pauseMs = options.pauseMs ?? nvdPauseMs();
+  const end = new Date();
+  const start = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const lists: NvdCve[][] = [];
+
+  for (let i = 0; i < NVD_QUERIES.length; i++) {
+    if (i > 0 && pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    try {
+      const url =
+        `https://services.nvd.nist.gov/rest/json/cves/2.0` +
+        `?pubStartDate=${encodeURIComponent(start.toISOString())}` +
+        `&pubEndDate=${encodeURIComponent(end.toISOString())}` +
+        `&${NVD_QUERIES[i].param}&resultsPerPage=100`;
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
+        headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)" },
+      });
+      // One failed query costs that slice only; the others still count.
+      if (!res.ok) continue;
+      lists.push(parseNvdCves((await res.json()) as NvdResponse));
+    } catch {
+      continue;
+    }
+  }
+  return mergeNvdCves(lists);
+}
+
+/** CVE ids named in the titles and summaries of news items, upper-cased, de-duplicated, in first-seen order. */
+export function citedCveIds(news: NewsArticle[]): string[] {
+  const ids: string[] = [];
+  for (const n of news) {
+    for (const id of `${n.title} ${n.summary}`.match(/CVE-\d{4}-\d{4,}/gi) ?? []) {
+      const upper = id.toUpperCase();
+      if (!ids.includes(upper)) ids.push(upper);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Look up specific CVEs by id. Used for CVEs the news is already talking about:
+ * ranking CVEs by score alone filled the list with unrelated CVSS 10.0 entries
+ * and left out the widely reported PHP2Shell flaws (9.8), so a CVE a reputable
+ * outlet names is added regardless of its score or whether NVD has scored it.
+ * Never throws; a failed lookup is just absent.
+ */
+export async function fetchCvesByIds(ids: string[], options: { pauseMs?: number } = {}): Promise<NvdCve[]> {
+  const pauseMs = options.pauseMs ?? nvdPauseMs();
+  const out: NvdCve[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    try {
+      const res = await fetch(`https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${encodeURIComponent(ids[i])}`, {
+        signal: AbortSignal.timeout(15_000),
+        headers: { "User-Agent": "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)" },
+      });
+      if (!res.ok) continue;
+      out.push(...parseNvdCves((await res.json()) as NvdResponse, 0, true));
+    } catch {
+      continue;
+    }
+  }
+  return out;
+}
+
+/** The score-ranked list, with CVEs the news cites placed first and the whole list capped. */
+export function withCitedCves(ranked: NvdCve[], cited: NvdCve[], cap = 8): NvdCve[] {
+  const citedIds = new Set(cited.map((c) => c.cveId));
+  return [...cited, ...ranked.filter((c) => !citedIds.has(c.cveId))].slice(0, cap);
+}
+
+async function attachCitedCves(nvdCves: NvdCve[], news: NewsArticle[]): Promise<NvdCve[]> {
+  const known = new Set(nvdCves.map((c) => c.cveId));
+  const cited = citedCveIds(news).slice(0, 4);
+  // Already in the list: keep, but move to the front as "cited".
+  const alreadyHave = nvdCves.filter((c) => cited.includes(c.cveId));
+  const missing = cited.filter((id) => !known.has(id)).slice(0, 3);
+  const fetched = missing.length > 0 ? await fetchCvesByIds(missing) : [];
+  return withCitedCves(nvdCves, [...fetched, ...alreadyHave]);
 }
 
 function severityFromScore(score: number): string {
@@ -262,6 +382,8 @@ export type NewsArticle = {
   source: string;
   publishedAt: string;
   summary: string;
+  /** "status" for a cloud provider's own incident feed; absent or "news" for articles. */
+  kind?: "news" | "status";
 };
 
 // Deliberately not a huge list — a handful of established, high-signal
@@ -271,6 +393,19 @@ const SECURITY_NEWS_FEEDS: Array<{ name: string; url: string }> = [
   { name: "The Hacker News", url: "https://feeds.feedburner.com/TheHackersNews" },
   { name: "BleepingComputer", url: "https://www.bleepingcomputer.com/feed/" },
   { name: "Krebs on Security", url: "https://krebsonsecurity.com/feed/" },
+  { name: "SecurityWeek", url: "https://www.securityweek.com/feed/" },
+  { name: "Help Net Security", url: "https://www.helpnetsecurity.com/feed/" },
+  { name: "The Register (security)", url: "https://www.theregister.com/security/headlines.atom" },
+];
+
+// Official cloud status feeds. A multi-hour Google Cloud outage that took down UK
+// banks and public services (20 October 2026) was missed entirely because the
+// pipeline only read vulnerability and breach news. These are the providers'
+// own incident feeds, so the post can cite the primary source.
+const CLOUD_STATUS_FEEDS: Array<{ name: string; url: string }> = [
+  { name: "Google Cloud status", url: "https://status.cloud.google.com/en/feed.atom" },
+  { name: "Azure status", url: "https://azure.status.microsoft/en-gb/status/feed/" },
+  { name: "AWS status", url: "https://status.aws.amazon.com/rss/all.rss" },
 ];
 
 function extractTag(block: string, tag: string): string | null {
@@ -297,29 +432,31 @@ function decodeXmlEntities(s: string): string {
 }
 
 /**
- * Minimal, dependency-free RSS 2.0 item extractor — regex-based rather than
- * pulling in an XML parsing library, matching this codebase's established
- * preference (see action/index.js's header comment for the same reasoning
- * applied to the packaged GitHub Action). Good enough for the small, stable
- * set of well-formed feeds this queries; a malformed or unexpected item is
- * simply skipped rather than throwing.
+ * Minimal, dependency-free feed item extractor for RSS 2.0 (`<item>`) and Atom
+ * (`<entry>`) — regex-based rather than pulling in an XML parsing library,
+ * matching this codebase's established preference (see action/index.js's
+ * header comment for the same reasoning applied to the packaged GitHub
+ * Action). Good enough for the small, stable set of well-formed feeds this
+ * queries; a malformed or unexpected item is simply skipped rather than
+ * throwing. Atom was added for Google Cloud's status feed.
  */
-function parseRssItems(xml: string, sourceName: string, daysBack: number): NewsArticle[] {
+export function parseFeedItems(xml: string, sourceName: string, daysBack: number, kind: "news" | "status" = "news"): NewsArticle[] {
   const items: NewsArticle[] = [];
   const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  const itemRegex = /<(item|entry)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g;
 
   let match: RegExpExecArray | null;
   while (items.length < 20 && (match = itemRegex.exec(xml)) !== null) {
-    const block = match[1];
+    const isAtom = match[1] === "entry";
+    const block = match[2];
     const rawTitle = extractTag(block, "title");
-    const rawLink = extractTag(block, "link");
-    const rawPubDate = extractTag(block, "pubDate");
-    const rawDescription = extractTag(block, "description");
+    const rawDate = isAtom ? (extractTag(block, "updated") ?? extractTag(block, "published")) : extractTag(block, "pubDate");
+    const rawBody = isAtom ? (extractTag(block, "summary") ?? extractTag(block, "content")) : extractTag(block, "description");
+    const rawLink = isAtom ? (/<link\b[^>]*\bhref="([^"]+)"/i.exec(block)?.[1] ?? null) : extractTag(block, "link");
 
-    if (!rawTitle || !rawPubDate) continue;
+    if (!rawTitle || !rawDate) continue;
 
-    const published = Date.parse(rawPubDate);
+    const published = Date.parse(rawDate);
     if (Number.isNaN(published) || published < cutoff) continue;
 
     items.push({
@@ -327,14 +464,15 @@ function parseRssItems(xml: string, sourceName: string, daysBack: number): NewsA
       link: rawLink ? decodeXmlEntities(stripCdata(rawLink)) : "",
       source: sourceName,
       publishedAt: new Date(published).toISOString(),
-      summary: rawDescription ? decodeXmlEntities(stripHtmlTags(stripCdata(rawDescription))).slice(0, 300) : "",
+      summary: rawBody ? decodeXmlEntities(stripHtmlTags(stripCdata(rawBody))).slice(0, 300) : "",
+      kind,
     });
   }
 
   return items;
 }
 
-async function fetchOneFeed(name: string, url: string, daysBack: number): Promise<NewsArticle[]> {
+async function fetchOneFeed(name: string, url: string, daysBack: number, kind: "news" | "status"): Promise<NewsArticle[]> {
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(10_000),
@@ -342,36 +480,70 @@ async function fetchOneFeed(name: string, url: string, daysBack: number): Promis
     });
     if (!res.ok) return [];
     const xml = await res.text();
-    return parseRssItems(xml, name, daysBack);
+    return parseFeedItems(xml, name, daysBack, kind);
   } catch {
     return [];
   }
 }
 
-/**
- * Fetches recent items across all configured security-news feeds, de-duped
- * by normalised title (the same real story often runs on multiple outlets),
- * newest first, capped. One dead feed never blocks the others —
- * Promise.allSettled, not allSettled-then-throw.
- */
-export async function fetchRecentSecurityNews(daysBack = 2, cap = 8): Promise<NewsArticle[]> {
-  const results = await Promise.allSettled(
-    SECURITY_NEWS_FEEDS.map((f) => fetchOneFeed(f.name, f.url, daysBack))
-  );
+const SEVERE_TERMS = /\b(zero-day|0-day|actively exploited|exploited in the wild|remote code execution|rce|unauthenticated|critical|emergency|ransomware|supply[- ]chain|data breach|breach|leaked)\b/i;
+const OUTAGE_TERMS = /\b(outage|disruption|degraded|unavailable|multiple services|service health)\b/i;
+/** Status-feed entries that mean nothing happened (AWS publishes these routinely). */
+const ROUTINE_STATUS = /operating normally|no issues|informational message/i;
 
-  const articles = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-  articles.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+/**
+ * How much a story deserves a place in a capped list. The old behaviour was
+ * newest-first, so a major story from yesterday lost its slot to eight minor
+ * items from today. CVE ids, exploitation/RCE language and real outages now
+ * count for more than recency; recency is only a tie-breaker and a small boost.
+ * Returns a negative score for routine status noise so it is dropped.
+ */
+export function scoreNewsArticle(a: NewsArticle, now: number = Date.now()): number {
+  const text = `${a.title} ${a.summary}`;
+  if (a.kind === "status" && ROUTINE_STATUS.test(text)) return -1;
+  let score = 0;
+  const cves = new Set(text.match(/CVE-\d{4}-\d{4,}/gi) ?? []);
+  score += Math.min(cves.size, 3) * 3;
+  if (SEVERE_TERMS.test(text)) score += 3;
+  if (a.kind === "status") score += 5 + (OUTAGE_TERMS.test(text) ? 2 : 0);
+  else if (OUTAGE_TERMS.test(text)) score += 2;
+  const ageHours = (now - Date.parse(a.publishedAt)) / 3_600_000;
+  if (ageHours < 24) score += 2;
+  else if (ageHours < 48) score += 1;
+  return score;
+}
+
+/** Highest-scoring first (ties newest first), de-duplicated by normalised title, routine status noise dropped, capped. */
+export function rankNews(articles: NewsArticle[], cap: number, now: number = Date.now()): NewsArticle[] {
+  const scored = articles
+    .map((a) => ({ a, score: scoreNewsArticle(a, now) }))
+    .filter((x) => x.score >= 0)
+    .sort((x, y) => y.score - x.score || Date.parse(y.a.publishedAt) - Date.parse(x.a.publishedAt));
 
   const seen = new Set<string>();
-  const deduped: NewsArticle[] = [];
-  for (const a of articles) {
+  const ranked: NewsArticle[] = [];
+  for (const { a } of scored) {
     const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    deduped.push(a);
+    ranked.push(a);
   }
+  return ranked.slice(0, cap);
+}
 
-  return deduped.slice(0, cap);
+/**
+ * Fetches recent items across all configured security-news and cloud-status
+ * feeds, then keeps the ones that matter most (rankNews) rather than just the
+ * newest. One dead feed never blocks the others — Promise.allSettled.
+ */
+export async function fetchRecentSecurityNews(daysBack = 3, cap = 10): Promise<NewsArticle[]> {
+  const results = await Promise.allSettled([
+    ...SECURITY_NEWS_FEEDS.map((f) => fetchOneFeed(f.name, f.url, daysBack, "news")),
+    // Status feeds: at most three entries each, so a chatty feed can't flood the list.
+    ...CLOUD_STATUS_FEEDS.map((f) => fetchOneFeed(f.name, f.url, daysBack, "status").then((items) => items.slice(0, 3))),
+  ]);
+  const articles = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  return rankNews(articles, cap);
 }
 
 // ---------------------------------------------------------------------------
@@ -417,12 +589,14 @@ async function collectRecentScanStats(supabaseAdmin: SupabaseClient): Promise<Ag
  * not a replacement for it — narrower lookback window, day-by-day framing.
  */
 export async function generateDailyBlogPost(supabaseAdmin: SupabaseClient): Promise<NewsletterPost> {
-  const [stats, kevEntries, nvdCves, news] = await Promise.all([
+  const [stats, kevEntries, rankedCves, news] = await Promise.all([
     collectRecentScanStats(supabaseAdmin),
     fetchRecentKevEntries(7), // KEV entries are sparse day-to-day; keep a wider net so a real one isn't missed
-    fetchRecentHighSeverityCves(1),
-    fetchRecentSecurityNews(2, 8),
+    // Two days, not one: the run time drifts, and a one-day window left gaps a CVE could fall through.
+    fetchRecentHighSeverityCves(2),
+    fetchRecentSecurityNews(3, 10),
   ]);
+  const nvdCves = await attachCitedCves(rankedCves, news);
   const kevMatches = correlateKevWithFingerprint(kevEntries);
 
   const dateLabel = new Date().toISOString().slice(0, 10);
@@ -451,12 +625,13 @@ export async function generateDailyBlogPost(supabaseAdmin: SupabaseClient): Prom
  * on the same day.
  */
 export async function generateWeeklyNewsletterPost(supabaseAdmin: SupabaseClient): Promise<NewsletterPost> {
-  const [stats, kevEntries, nvdCves, news] = await Promise.all([
+  const [stats, kevEntries, rankedCves, news] = await Promise.all([
     collectRecentScanStats(supabaseAdmin),
     fetchRecentKevEntries(7),
     fetchRecentHighSeverityCves(7),
     fetchRecentSecurityNews(7, 12),
   ]);
+  const nvdCves = await attachCitedCves(rankedCves, news);
   const kevMatches = correlateKevWithFingerprint(kevEntries);
 
   const weekLabel = new Date().toISOString().slice(0, 10);
