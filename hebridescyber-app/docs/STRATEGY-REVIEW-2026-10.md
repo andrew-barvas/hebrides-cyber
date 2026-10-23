@@ -206,7 +206,7 @@ with what's already wired.
 ### DAST / web app (have: ZAP, nuclei, sqlmap, ffuf, arjun, katana, gospider, kiterunner)
 14. **Dalfox** — ✅ dedicated XSS scanner (inventory notes you *don't* have it); high-signal, evidence-rich.
 15. **Corsy** — ✅ CORS misconfig; cheap, common SMB issue, clear evidence.
-16. **interactsh** (self-host) — ✅ out-of-band interaction server for blind SSRF/RCE/XXE via nuclei; big accuracy win.
+16. **interactsh** (self-host) — ✅ out-of-band interaction server for blind SSRF/RCE/XXE via nuclei; big accuracy win. *Update 2026-10-22: nuclei already uses the public interactsh pool for `ssrf`/`oast` templates, so the gain is privacy and control; the server is now configurable (`INTERACTSH_SERVER`, `DISABLE_OAST`). See `BURP-PARITY.md`.*
 17. **jwt_tool** — ✅ JWT weaknesses (alg=none, weak secret) for token-based apps.
 18. **Nuclei fuzzing + headless templates** — ✅ config, not a new tool: enable param-fuzzing and DOM-XSS templates.
 19. **XSStrike** — ❌ dalfox is better maintained; redundant.
@@ -284,3 +284,10 @@ CE-relevant.
 3. Begin Week-1 code work (§4): webhook guard + checkout e2e, finish #88, fix the two bugs.
 4. Agree which §6 tools to add in Week 3 and fold the chosen ones into `SCANNER-INVENTORY.md` + profiles.
 5. Fold §4/§2 into `ROADMAP.md` and `SPRINT-PLAN.md` once agreed.
+
+---
+
+## 9. Addendum 2026-10-22: AI and Burp review
+
+Shipped in PR #90. See `BURP-PARITY.md` (Burp MCP is not used in the product; capability gap table, with the out-of-band row corrected) and `AI-TRIAGE-DESIGN.md`. Net effect on this plan: deprioritise raw tool count, treat AI as an evidence-gated validation layer (off by default until hand-evaluated), and settle the offensive tier (strix/cairn) before any "AI pen-test" wording appears in product or grant copy. Still open: Dalfox, own-probe OOB client, OAuth/MFA flows, two-session IDOR, triage benchmark in CI (`NEXT-STEPS.md`, "Deferred from the Burp-parity review").
+
