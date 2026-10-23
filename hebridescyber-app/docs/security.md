@@ -81,6 +81,17 @@ interactive request:
   internet egress by default — revisit if that becomes a real concern
   (e.g. via self-hosted runners with a locked-down network policy).
 
+## AI triage data flow
+
+With `AI_TRIAGE=1`, `aiTriage.ts` sends to the Azure OpenAI deployment the finding's title, check id,
+severity, truncated detail and metadata hints, plus the replay request and up to 16 KB of the
+response it captured from the customer's own site. It never sends credentials, cookies (request
+cookies are not allowed and `Set-Cookie` is redacted), stored secrets or the target host. The model's
+output is schema-checked and can only annotate a finding. Replay requests are constrained by
+`replayProbe.ts` (read-only, same site, budgeted). Use a UK/EU-region deployment and reflect this in
+the privacy notice before enabling it for customers. Off by default; `DISABLE_AI_TRIAGE=1` forces it
+off.
+
 ## Secrets Handling
 
 - Set production secrets (Supabase service role key, Stripe secret key,

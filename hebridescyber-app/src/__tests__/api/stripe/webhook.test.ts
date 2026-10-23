@@ -23,14 +23,24 @@ vi.mock("@/lib/stripeClient", () => ({
 type QueueMap = Record<string, unknown[]>;
 let queues: QueueMap = {};
 const insertedAuditLogs: unknown[] = [];
+// Capture the payloads passed to upsert/update on subscriptions so tests
+// can assert that plan:"basic" is never written on a missing-metadata event.
+const upsertedSubscriptions: unknown[] = [];
+const updatedSubscriptions: unknown[] = [];
 
 function makeBuilder(table: string) {
   const next = () => Promise.resolve(queues[table]?.shift() ?? { data: null, error: null });
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
-    upsert: () => builder,
-    update: () => builder,
+    upsert: (payload: unknown) => {
+      if (table === "subscriptions") upsertedSubscriptions.push(payload);
+      return builder;
+    },
+    update: (payload: unknown) => {
+      if (table === "subscriptions") updatedSubscriptions.push(payload);
+      return builder;
+    },
     insert: (payload: unknown) => {
       if (table === "audit_logs") insertedAuditLogs.push(payload);
       return builder;
@@ -77,6 +87,8 @@ describe("POST /api/stripe/webhook", () => {
   beforeEach(() => {
     queues = {};
     insertedAuditLogs.length = 0;
+    upsertedSubscriptions.length = 0;
+    updatedSubscriptions.length = 0;
     constructEventMock.mockReset();
     subscriptionsRetrieveMock.mockReset();
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
@@ -120,6 +132,57 @@ describe("POST /api/stripe/webhook", () => {
     expect(res._getStatusCode()).toBe(200);
     expect(res._getJSONData()).toEqual({ received: true, skipped: true });
     expect(insertedAuditLogs).toHaveLength(0);
+  });
+
+  describe("no-downgrade safety", () => {
+    it("subscription.updated with no metadata.plan updates status but NOT plan or source", async () => {
+      constructEventMock.mockReturnValue(
+        stripeEvent("evt_nd1", "customer.subscription.updated", {
+          id: "sub_1",
+          status: "active",
+          current_period_end: 1_700_000_000,
+          metadata: {}, // plan absent
+        })
+      );
+      queues.audit_logs = [{ data: null }]; // not already processed
+      queues.subscriptions = [{ data: { owner: "owner-1" } }];
+      queues.users = [{ data: { email: "owner@example.com" } }];
+
+      const { req, res } = mockReqRes();
+      await callHandler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      // plan and source must NOT appear — they would overwrite the existing plan with "basic"
+      expect(updatedSubscriptions).toHaveLength(1);
+      expect(updatedSubscriptions[0]).not.toHaveProperty("plan");
+      expect(updatedSubscriptions[0]).not.toHaveProperty("source");
+      // status and period still update
+      expect(updatedSubscriptions[0]).toMatchObject({ status: "active" });
+      // audit log records the gap
+      expect(insertedAuditLogs[0]).toMatchObject({ metadata: { plan_missing: true } });
+    });
+
+    it("checkout.session.completed with no metadata.plan does NOT upsert a subscription", async () => {
+      constructEventMock.mockReturnValue(
+        stripeEvent("evt_nd2", "checkout.session.completed", {
+          client_reference_id: "owner-1",
+          metadata: {}, // plan absent — must NOT activate basic
+          subscription: null,
+          customer: "cus_123",
+        })
+      );
+      queues.audit_logs = [{ data: null }]; // not already processed
+
+      const { req, res } = mockReqRes();
+      await callHandler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      // No subscription row should have been written
+      expect(upsertedSubscriptions).toHaveLength(0);
+      // Audit log should record plan_missing
+      expect(insertedAuditLogs).toHaveLength(1);
+      expect(insertedAuditLogs[0]).toMatchObject({ metadata: { plan_missing: true } });
+    });
   });
 
   describe("checkout.session.completed", () => {
