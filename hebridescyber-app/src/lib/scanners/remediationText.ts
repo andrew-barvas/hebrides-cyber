@@ -1224,6 +1224,31 @@ export function commixRemediation(): string {
   return COMMIX_COMMAND_INJECTION_BASE;
 }
 
+export const DALFOX_REFLECTED_XSS_BASE = `Dalfox confirmed this parameter's value is reflected into the page in a
+position where it executes as script — a real, exploitable cross-site
+scripting (XSS) issue, not a theoretical one. An attacker who gets a victim
+to follow a crafted link can run arbitrary JavaScript in that victim's
+session: steal cookies/tokens, act as them, or deface the page.
+
+**The fix:**
+
+- Encode output for the context it lands in — HTML-encode for HTML body
+  text, attribute-encode for attribute values, JS-string-encode inside
+  \`<script>\`. Use your framework's templating (React/JSX, Vue, a
+  server-side templating engine with auto-escaping) rather than building
+  HTML by string concatenation, which is almost always how this happens.
+- Add a Content-Security-Policy that restricts \`script-src\` — it does not
+  fix the injection, but it blocks the payload from running even if encoding
+  is missed somewhere else.
+- Validate and reject unexpected input server-side (allowlist expected
+  shapes) in addition to output encoding; encoding alone is the fix for this
+  reflection, validation narrows the attack surface further.`;
+
+/** Same as DALFOX_REFLECTED_XSS_BASE — no per-target variant. */
+export function dalfoxRemediation(): string {
+  return DALFOX_REFLECTED_XSS_BASE;
+}
+
 /**
  * The small fixed set of ports scanExecution.ts's DANGEROUS_TOOL_PORTS
  * escalates to critical regardless of nmap's service-guess — each one is
