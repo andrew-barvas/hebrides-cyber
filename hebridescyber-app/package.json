@@ -16,6 +16,7 @@
     "test:unit:coverage": "vitest run --coverage",
     "bench": "tsx bench/run.ts",
     "bench:network": "tsx bench/network.ts",
+    "bench:triage": "tsx bench/triage/run.ts",
     "bench:test": "vitest run --config bench/vitest.config.mts",
     "test:db": "RUN_DB_TESTS=1 vitest run --config vitest.db.config.mts",
     "scan:local": "tsx src/scripts/scan-local.ts",
