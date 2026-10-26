@@ -41,7 +41,8 @@ jobs:
             state=down
             rm -f /tmp/health.json
             # curl's -w already prints 000 when it gets no answer; `|| true` only stops -e from exiting.
-            code=$(curl -s -m 20 -o /tmp/health.json -w "%{http_code}" "$base/api/health" || true)
+            # -L: the bare domain 301s to www, and a redirect is not an outage. The code is the final hop's.
+            code=$(curl -s -L --max-redirs 3 -m 20 -o /tmp/health.json -w "%{http_code}" "$base/api/health" || true)
             code="${code:-000}"
             if [ "$code" = "200" ]; then state=ok; break; fi
             if [ "$code" = "503" ] && grep -q '"status":"degraded"' /tmp/health.json 2>/dev/null; then state=degraded; fi
