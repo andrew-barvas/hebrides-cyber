@@ -77,7 +77,7 @@ describe("POST /api/uptime/monitors", () => {
   it("returns per-target results and audits only when something was created", async () => {
     const res = await call("POST", body);
     expect(res.statusCode).toBe(200);
-    expect(res._getJSONData().results).toEqual([{ targetUrl: "https://shop.example.co.uk", result: "created" }]);
+    expect((res._getJSONData() as { results: unknown[] }).results).toEqual([{ targetUrl: "https://shop.example.co.uk", result: "created" }]);
     expect(m.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "uptime.monitor_created", metadata: expect.objectContaining({ count: 1 }) }));
 
     m.audit.mockReset();
