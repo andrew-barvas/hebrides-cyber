@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MAX_MONITORS_PER_REQUEST,
   createMonitorsForTargets,
   decideUptimeAlert,
   planSync,
+  syncAllOwners,
   syncOwnerMonitors,
   type StoredUptimeMonitor,
 } from "./uptimeService";
@@ -12,31 +13,36 @@ import type { ProviderResult, UptimeMonitor, UptimeProvider } from "./uptimeProv
 
 type Row = Record<string, unknown>;
 
-/** Minimal chainable Supabase fake: eq filters, select/insert/update/delete over in-memory tables. */
-function fakeDb(tables: Record<string, Row[]>, opts: { failInsert?: boolean } = {}) {
+/** Minimal chainable Supabase fake: eq/is filters, select/insert/update/delete over in-memory tables. */
+function fakeDb(tables: Record<string, Row[]>, opts: { failInsert?: boolean; failSelect?: string } = {}) {
   const ops: Array<{ table: string; op: string; payload?: unknown; filters?: Array<[string, unknown]> }> = [];
   const db = {
     from(table: string) {
       const filters: Array<[string, unknown]> = [];
       let mode: "select" | "update" | "delete" = "select";
       let patch: Row = {};
-      const matching = () => (tables[table] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
+      let returning = false;
+      const matching = () => (tables[table] ?? []).filter((r) => filters.every(([c, v]) => (r[c] ?? null) === v));
       const exec = () => {
         if (mode === "update") {
-          matching().forEach((r) => Object.assign(r, patch));
+          const hit = matching();
+          hit.forEach((r) => Object.assign(r, patch));
           ops.push({ table, op: "update", payload: patch, filters: [...filters] });
-          return { data: null, error: null };
+          return { data: returning ? hit.map((r) => ({ id: r.id })) : null, error: null };
         }
         if (mode === "delete") {
           tables[table] = (tables[table] ?? []).filter((r) => !matching().includes(r));
           return { data: null, error: null };
         }
-        return { data: matching(), error: null };
+        if (opts.failSelect === table) return { data: null, error: { message: `${table} read failed` } };
+        // Copies, like a real read: a later write must not change what an earlier read saw.
+        return { data: matching().map((r) => ({ ...r })), error: null };
       };
       const b: Record<string, unknown> = {
-        select: () => b,
+        select: () => ((returning = mode === "update"), b),
         order: () => b,
         eq: (c: string, v: unknown) => (filters.push([c, v]), b),
+        is: (c: string, v: unknown) => (filters.push([c, v]), b),
         update: (p: Row) => ((mode = "update"), (patch = p), b),
         delete: () => ((mode = "delete"), b),
         insert: (row: Row) => {
@@ -111,7 +117,7 @@ describe("planSync", () => {
 
   it("opens an outage on down and remembers it", () => {
     const plan = planSync([row()], [monitor({ status: "down" })], NOW);
-    expect(plan.alerts).toEqual([{ kind: "down", targetUrl: "https://shop.example.co.uk" }]);
+    expect(plan.alerts).toEqual([{ kind: "down", targetUrl: "https://shop.example.co.uk", monitorId: "r1", previousDownAlertedAt: null }]);
     expect(plan.updates[0]).toMatchObject({ last_status: "down", last_status_at: NOW.toISOString(), down_alerted_at: NOW.toISOString() });
   });
 
@@ -123,7 +129,7 @@ describe("planSync", () => {
 
   it("closes the outage on up", () => {
     const plan = planSync([row({ last_status: "down", down_alerted_at: "2026-10-23T11:00:00Z" })], [monitor({ status: "up" })], NOW);
-    expect(plan.alerts).toEqual([{ kind: "recovered", targetUrl: "https://shop.example.co.uk" }]);
+    expect(plan.alerts).toEqual([{ kind: "recovered", targetUrl: "https://shop.example.co.uk", monitorId: "r1", previousDownAlertedAt: "2026-10-23T11:00:00Z" }]);
     expect(plan.updates[0].down_alerted_at).toBeNull();
   });
 
@@ -154,6 +160,25 @@ describe("syncOwnerMonitors", () => {
     expect(r).toMatchObject({ ok: true, updated: 1, alerts: [{ kind: "down" }] });
     expect(tables.uptime_monitors[0]).toMatchObject({ last_status: "down" });
     expect(tables.uptime_integrations[0]).toMatchObject({ last_sync_at: NOW.toISOString(), last_error: null });
+  });
+
+  it("announces an outage once when the cron and a dashboard refresh sync at the same moment", async () => {
+    const { db, tables } = fakeDb(stored());
+    const p = provider({ listMonitors: vi.fn(async () => ({ ok: true, value: [monitor({ status: "down" })] })) } as never);
+    const [a, b] = await Promise.all([syncOwnerMonitors(db, "o1", "i1", p, NOW), syncOwnerMonitors(db, "o1", "i1", p, NOW)]);
+    const alerts = [a, b].flatMap((r) => (r.ok ? r.alerts : []));
+    expect(alerts).toEqual([expect.objectContaining({ kind: "down", targetUrl: "https://shop.example.co.uk" })]);
+    expect(tables.uptime_monitors[0].down_alerted_at).toBe(NOW.toISOString());
+  });
+
+  it("announces recovery once, and only for the outage it read", async () => {
+    const t = stored();
+    Object.assign(t.uptime_monitors[0], { last_status: "down", down_alerted_at: "2026-10-23T11:00:00Z" });
+    const { db, tables } = fakeDb(t);
+    const p = provider({ listMonitors: vi.fn(async () => ({ ok: true, value: [monitor({ status: "up" })] })) } as never);
+    const [a, b] = await Promise.all([syncOwnerMonitors(db, "o1", "i1", p, NOW), syncOwnerMonitors(db, "o1", "i1", p, NOW)]);
+    expect([a, b].flatMap((r) => (r.ok ? r.alerts.map((x) => x.kind) : []))).toEqual(["recovered"]);
+    expect(tables.uptime_monitors[0].down_alerted_at).toBeNull();
   });
 
   it("on a provider failure records last_error and changes no status", async () => {
@@ -240,6 +265,16 @@ describe("createMonitorsForTargets", () => {
     expect(tables.uptime_monitors).toHaveLength(0);
   });
 
+  it("reports a failed read of their sites as an error, not 'not one of your sites'", async () => {
+    const { db, tables } = fakeDb(base(), { failSelect: "monitored_targets" });
+    const p = provider();
+    const r = await createMonitorsForTargets(db, "o1", p, ["https://shop.example.co.uk", "https://blog.example.co.uk"]);
+    expect(r.map((x) => x.result)).toEqual(["error", "error"]);
+    expect(r[0]).toMatchObject({ kind: "database", error: "monitored_targets read failed" });
+    expect(p.listMonitors).not.toHaveBeenCalled();
+    expect(tables.uptime_monitors).toHaveLength(0);
+  });
+
   it("surfaces a database failure instead of claiming success", async () => {
     const { db } = fakeDb(base(), { failInsert: true });
     const r = await createMonitorsForTargets(db, "o1", provider(), ["https://shop.example.co.uk"]);
@@ -252,5 +287,54 @@ describe("createMonitorsForTargets", () => {
     const r = await createMonitorsForTargets(db, "o1", provider(), urls);
     expect(r).toHaveLength(MAX_MONITORS_PER_REQUEST + 2);
     expect(r.slice(MAX_MONITORS_PER_REQUEST).every((x) => x.result === "skipped")).toBe(true);
+  });
+});
+
+describe("syncAllOwners", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const tables = () => ({
+    uptime_integrations: [
+      { id: "i1", owner: "o1", provider: "uptimerobot", api_key: "key-o1", last_sync_at: null, last_error: null },
+      { id: "i2", owner: "o2", provider: "uptimerobot", api_key: "key-o2", last_sync_at: null, last_error: null },
+      { id: "i3", owner: "o3", provider: "uptimerobot", api_key: "key-o3", last_sync_at: null, last_error: null },
+    ],
+    uptime_monitors: [
+      { id: "r1", owner: "o1", provider: "uptimerobot", target_url: "https://shop.example.co.uk", external_id: "1", last_status: "up", last_status_at: null, down_alerted_at: null },
+      { id: "r2", owner: "o2", provider: "uptimerobot", target_url: "https://lapsed.example.co.uk", external_id: "2", last_status: "up", last_status_at: null, down_alerted_at: null },
+    ] as Row[],
+  });
+
+  function stubUptimeRobot() {
+    const keys: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        keys.push(String((init.headers as Record<string, string>).Authorization));
+        return new Response(JSON.stringify({ data: [{ id: 1, friendlyName: "m", url: "https://shop.example.co.uk", status: "DOWN" }] }), { status: 200 });
+      }),
+    );
+    return keys;
+  }
+
+  it("syncs Pro owners, skips lapsed ones without touching their key, and counts plan-check failures", async () => {
+    const keys = stubUptimeRobot();
+    const { db, tables: t } = fakeDb(tables());
+    const sendAlert = vi.fn(async () => {});
+    const gate = vi.fn(async (_db: SupabaseClient, owner: string) => (owner === "o1" ? "ok" : owner === "o2" ? "denied" : "error") as "ok" | "denied" | "error");
+    const r = await syncAllOwners(db, { gate, sendAlert });
+    expect(r).toEqual({ ok: true, summary: { synced: 1, failed: 1, lapsed: 1, alerts: 1 } });
+    expect(sendAlert).toHaveBeenCalledWith(db, "o1", "down", "https://shop.example.co.uk");
+    expect(keys).toEqual(["Bearer key-o1"]);
+    // The lapsed owner's stored status is left exactly as it was.
+    expect(t.uptime_monitors[1]).toMatchObject({ last_status: "up", down_alerted_at: null });
+  });
+
+  it("reports a failure to list connections instead of a clean run", async () => {
+    const { db } = fakeDb(tables(), { failSelect: "uptime_integrations" });
+    const r = await syncAllOwners(db, { gate: vi.fn(), sendAlert: vi.fn() });
+    expect(r).toEqual({ ok: false, error: "uptime_integrations read failed" });
   });
 });
