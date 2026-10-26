@@ -33,6 +33,8 @@ vi.mock("@/lib/uptimeService", async (orig) => ({ ...(await orig<typeof import("
 
 import handler from "@/pages/api/uptime/status";
 
+type StatusBody = { allowed: boolean; connected: boolean; monitors: unknown[]; unmonitored: string[]; refreshError?: string };
+
 function call(method = "GET") {
   const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: method as "GET" });
   return handler(req, res).then(() => res);
@@ -76,7 +78,7 @@ describe("GET /api/uptime/status", () => {
   });
 
   it("returns cached monitors and the targets that still have none, without refreshing a fresh cache", async () => {
-    const data = (await call())._getJSONData();
+    const data = (await call())._getJSONData() as StatusBody;
     expect(data.connected).toBe(true);
     expect(data.monitors).toHaveLength(1);
     expect(data.unmonitored).toEqual(["https://blog.example.co.uk/"]);
@@ -102,7 +104,7 @@ describe("GET /api/uptime/status", () => {
   it("returns the cached rows plus refreshError when the refresh fails", async () => {
     m.load.mockResolvedValue({ status: "ok", id: "i1", provider: {}, lastSyncAt: null });
     m.sync.mockResolvedValue({ ok: false, kind: "unavailable", error: "UptimeRobot returned 503." });
-    const data = (await call())._getJSONData();
+    const data = (await call())._getJSONData() as StatusBody;
     expect(data.refreshError).toBe("UptimeRobot returned 503.");
     expect(data.monitors).toHaveLength(1);
     expect(m.alert).not.toHaveBeenCalled();
@@ -110,7 +112,7 @@ describe("GET /api/uptime/status", () => {
 
   it("explains an unreadable saved key", async () => {
     m.load.mockResolvedValue({ status: "undecryptable" });
-    const data = (await call())._getJSONData();
+    const data = (await call())._getJSONData() as StatusBody;
     expect(data.refreshError).toMatch(/no longer be read/);
     expect(m.sync).not.toHaveBeenCalled();
   });
