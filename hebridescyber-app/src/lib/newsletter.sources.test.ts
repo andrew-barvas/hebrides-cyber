@@ -5,6 +5,7 @@ import {
   extractCvssScore,
   fetchCvesByIds,
   generateDailyBlogPost,
+  MAX_STATUS_ITEMS,
   withCitedCves,
   fetchRecentHighSeverityCves,
   fetchRecentSecurityNews,
@@ -161,6 +162,16 @@ describe("scoreNewsArticle / rankNews", () => {
     const minor = Array.from({ length: 12 }, (_, i) => article({ title: `Minor ${i}` }));
     const outage = article({ kind: "status", source: "Google Cloud status", title: "Multiple services experiencing issues in europe-west2", publishedAt: iso(40) });
     expect(rankNews([...minor, outage], 5, NOW).map((a) => a.source)).toContain("Google Cloud status");
+  });
+
+  it("never lets cloud status entries crowd out the news", () => {
+    const incidents = ["Google Cloud status", "Azure status", "AWS status"].flatMap((source) =>
+      Array.from({ length: 3 }, (_, i) => article({ kind: "status", source, title: `${source} degraded performance in region ${i}` })),
+    );
+    const news = Array.from({ length: 10 }, (_, i) => article({ title: `Story ${i}` }));
+    const ranked = rankNews([...incidents, ...news], 10, NOW);
+    expect(ranked.filter((a) => a.kind === "status")).toHaveLength(MAX_STATUS_ITEMS);
+    expect(ranked).toHaveLength(10);
   });
 
   it("de-duplicates by title and applies the cap", () => {

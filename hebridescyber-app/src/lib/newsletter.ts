@@ -513,6 +513,14 @@ export function scoreNewsArticle(a: NewsArticle, now: number = Date.now()): numb
   return score;
 }
 
+/**
+ * Cloud status entries one post may cite. Every non-routine status entry
+ * outscores ordinary news (the boost that makes a real outage surface), and the
+ * three feeds post minor regional incidents most days, so without a limit they
+ * could fill nine of ten slots.
+ */
+export const MAX_STATUS_ITEMS = 2;
+
 /** Highest-scoring first (ties newest first), de-duplicated by normalised title, routine status noise dropped, capped. */
 export function rankNews(articles: NewsArticle[], cap: number, now: number = Date.now()): NewsArticle[] {
   const scored = articles
@@ -522,10 +530,13 @@ export function rankNews(articles: NewsArticle[], cap: number, now: number = Dat
 
   const seen = new Set<string>();
   const ranked: NewsArticle[] = [];
+  let statusItems = 0;
   for (const { a } of scored) {
     const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (seen.has(key)) continue;
+    if (a.kind === "status" && statusItems >= MAX_STATUS_ITEMS) continue;
     seen.add(key);
+    if (a.kind === "status") statusItems++;
     ranked.push(a);
   }
   return ranked.slice(0, cap);
