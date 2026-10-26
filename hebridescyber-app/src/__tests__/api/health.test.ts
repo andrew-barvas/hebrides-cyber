@@ -43,7 +43,19 @@ describe("GET /api/health", () => {
     balanceRetrieveMock.mockReset().mockResolvedValue({ available: [] });
   });
 
-  it("rejects non-GET methods with 405", async () => {
+  it("answers HEAD with the same status as GET, so HEAD-only monitors work", async () => {
+    responses["users.select"] = { data: [{ id: "u1" }], error: null };
+    const ok = mockReqRes("HEAD");
+    await handler(ok.req, ok.res);
+    expect(ok.res._getStatusCode()).toBe(200);
+
+    balanceRetrieveMock.mockRejectedValue(new Error("stripe down"));
+    const degraded = mockReqRes("HEAD");
+    await handler(degraded.req, degraded.res);
+    expect(degraded.res._getStatusCode()).toBe(503);
+  });
+
+  it("rejects methods other than GET and HEAD with 405", async () => {
     const { req, res } = mockReqRes("POST");
     await handler(req, res);
     expect(res._getStatusCode()).toBe(405);
