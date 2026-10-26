@@ -11,7 +11,8 @@ const API_DIR = join(process.cwd(), "src", "pages", "api");
 
 // Each of these establishes who the caller is before any work happens.
 // constructEvent is Stripe's signature verification — only Stripe can call.
-const AUTH_MARKERS = [/\bauthenticateApiRequest\(/, /\brequireAdmin\(/, /\.auth\.getUser\(/, /\.webhooks\.constructEvent\(/];
+// guardV1 is the /api/v1 front door: it authenticates and scope-checks before returning a caller.
+const AUTH_MARKERS = [/\bauthenticateApiRequest\(/, /\bguardV1\(/, /\brequireAdmin\(/, /\.auth\.getUser\(/, /\.webhooks\.constructEvent\(/];
 const RATE_LIMIT_MARKER = /\bcheckRateLimit\(/;
 
 // Route (relative to src/pages/api, forward slashes) → why it is allowed to

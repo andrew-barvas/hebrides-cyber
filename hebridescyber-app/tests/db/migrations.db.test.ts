@@ -144,6 +144,35 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
     expect(rows[0]).toEqual({ email: "newsignup@example.test", company_name: "Acme Ltd" });
   });
 
+  describe("api_keys.scopes (migration 062)", () => {
+    const owner = "eeeeeeee-0000-0000-0000-000000000010";
+    const insertKey = (suffix: string, scopes?: string[]) =>
+      scopes
+        ? db.pool.query("insert into api_keys (owner, name, key_hash, key_prefix, scopes) values ($1, 'k', $2, 'hc_x', $3)", [owner, `h-${suffix}`, scopes])
+        : db.pool.query("insert into api_keys (owner, name, key_hash, key_prefix) values ($1, 'k', $2, 'hc_x')", [owner, `h-${suffix}`]);
+
+    beforeAll(async () => {
+      await db.pool.query("insert into auth.users (id, email) values ($1, 'scopes@example.test') on conflict do nothing", [owner]);
+    });
+
+    it("defaults a key to every scope, so keys that predate scoping keep working", async () => {
+      await insertKey("default");
+      const { rows } = await db.pool.query<{ scopes: string[] }>("select scopes from api_keys where key_hash = 'h-default'");
+      expect([...rows[0].scopes].sort()).toEqual(["dependency:check", "scans:read", "scans:write"]);
+    });
+
+    it("accepts a narrowed key", async () => {
+      await insertKey("narrow", ["scans:read"]);
+      const { rows } = await db.pool.query<{ scopes: string[] }>("select scopes from api_keys where key_hash = 'h-narrow'");
+      expect(rows[0].scopes).toEqual(["scans:read"]);
+    });
+
+    it("rejects an unknown scope and an empty scope list", async () => {
+      await expect(insertKey("bad", ["scans:read", "admin:everything"])).rejects.toThrow();
+      await expect(insertKey("empty", [])).rejects.toThrow();
+    });
+  });
+
   it("leaves company_name null when no metadata was supplied at sign-up", async () => {
     const id = "eeeeeeee-0000-0000-0000-000000000002";
     await db.pool.query("insert into auth.users (id, email) values ($1, $2)", [id, "plain@example.test"]);

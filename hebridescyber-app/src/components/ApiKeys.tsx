@@ -14,6 +14,7 @@ type ApiKey = {
   created_at: string;
   /** Empty = any address. */
   allowed_cidrs: string[];
+  scopes?: string[];
   last_blocked_ip: string | null;
   last_blocked_at: string | null;
 };
@@ -118,6 +119,7 @@ export default function ApiKeys({ token }: { token: string }) {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
+  const [preset, setPreset] = useState<"full" | "ci" | "read_only">("ci");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held in component state only, never persisted — the server cannot return
@@ -151,7 +153,7 @@ export default function ApiKeys({ token }: { token: string }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, preset }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not create key");
@@ -242,6 +244,17 @@ export default function ApiKeys({ token }: { token: string }) {
           placeholder="Key name (e.g. GitHub Actions)"
           className="min-w-0 flex-1 sm:min-w-[200px] rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
         />
+        <label htmlFor="key-preset" className="sr-only">Access level</label>
+        <select
+          id="key-preset"
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as typeof preset)}
+          className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none"
+        >
+          <option value="ci">CI: scan, read results, dependency check</option>
+          <option value="read_only">Read-only: results and exports</option>
+          <option value="full">Full access</option>
+        </select>
         <button
           type="submit"
           disabled={creating || !name.trim()}
@@ -266,6 +279,7 @@ export default function ApiKeys({ token }: { token: string }) {
                   {k.last_used_at ? ` · last used ${formatDate(k.last_used_at)}` : " · never used"}
                 </p>
                 <p className="mt-0.5 text-xs text-cybermuted break-all">
+                  {(k.scopes ?? []).length > 0 ? `Can: ${(k.scopes ?? []).join(", ")}. ` : ""}
                   {k.allowed_cidrs.length === 0
                     ? "Usable from any IP address"
                     : `Only from ${k.allowed_cidrs.slice(0, 3).join(", ")}${k.allowed_cidrs.length > 3 ? ` +${k.allowed_cidrs.length - 3} more` : ""}`}

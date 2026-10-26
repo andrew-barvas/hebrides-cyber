@@ -7,7 +7,8 @@
 // Agency plans; API key or session auth; rate limited per account.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
-import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { supabaseAdmin } from "@/lib/apiAuth";
+import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
 import { hasProAccess } from "@/lib/planAccess";
@@ -37,10 +38,15 @@ const schema = z.object({
 export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    setV1Headers(res);
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed", code: "method_not_allowed" });
+  }
 
-  const caller = await authenticateApiRequest(req);
-  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <api-key>" });
+  // Has its own per-account budget below, so skip the shared read budget.
+  const caller = await guardV1(req, res, "dependency:check", { rateLimit: false });
+  if (!caller) return;
 
   if (!(await hasProAccess(supabaseAdmin, caller.ownerId))) {
     return res.status(403).json({ error: "Pull-request dependency checks need a Pro or Agency plan.", code: "plan_required" });
@@ -49,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const limit = await checkRateLimit(caller.ownerId, "dependency-diff");
   if (!limit.allowed) {
     res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
-    return res.status(429).json({ error: "Rate limit exceeded", retry_after_seconds: limit.retryAfterSeconds });
+    return res.status(429).json({ error: "Rate limit exceeded", code: "rate_limited", retry_after_seconds: limit.retryAfterSeconds });
   }
 
   const parsed = parseBody(schema, req.body, res);

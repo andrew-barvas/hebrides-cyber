@@ -26,12 +26,13 @@ const SCAN_ID = {
 
 const COMMON_ERRORS = {
   "401": { $ref: "#/components/responses/Unauthorized" },
+  "403": { $ref: "#/components/responses/InsufficientScope" },
   "429": { $ref: "#/components/responses/RateLimited" },
 } as const;
 
 const OWNED_SCAN_ERRORS = {
   ...COMMON_ERRORS,
-  "403": errorResponse("The scan belongs to another account."),
+  "403": errorResponse("The API key lacks the `scans:read` scope (`code: insufficient_scope`), or the scan belongs to another account."),
   "404": errorResponse("No such scan, or it has no results yet."),
 } as const;
 
@@ -108,8 +109,8 @@ export function buildOpenApiSpec(serverUrl: string) {
               description: "The free scan has been used. `code` is `free_tier_exhausted`.",
               content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
             },
-            "403": errorResponse("The target's domain is not verified for this account. The body includes `domain`."),
             ...COMMON_ERRORS,
+            "403": errorResponse("The key lacks the `scans:write` scope (`code: insufficient_scope`), or the target's domain is not verified for this account (the body then includes `domain`)."),
           },
         },
       },
@@ -253,17 +254,17 @@ export function buildOpenApiSpec(serverUrl: string) {
             },
           },
           responses: {
+            ...COMMON_ERRORS,
             "200": { description: "Completed check.", content: { "application/json": { schema: { $ref: "#/components/schemas/DependencyDiff" } } } },
             "400": errorResponse("Invalid body."),
             "403": {
-              description: "Needs a Pro or Agency plan. `code` is `plan_required`.",
+              description: "The key lacks the `dependency:check` scope (`code: insufficient_scope`), or the plan is not Pro/Agency (`code: plan_required`).",
               content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
             },
             "502": {
               description: "The vulnerability lookup failed. `code` is `lookup_failed`.",
               content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
             },
-            ...COMMON_ERRORS,
           },
         },
       },
@@ -275,10 +276,11 @@ export function buildOpenApiSpec(serverUrl: string) {
           scheme: "bearer",
           bearerFormat: "API key (hc_live_…)",
           description:
-            "An API key from the dashboard. Keys currently carry full access to the owning account (no scopes yet). A key may have an IP allowlist; a blocked request gets the same 401 as an unknown key.",
+            "An API key from the dashboard (`hc_live_…`). Each key carries scopes — `scans:read` (read scans, exports, trends), `scans:write` (queue scans), `dependency:check` (PR dependency checks) — chosen when the key is created; create the narrowest key your integration needs. Keys created before scopes existed have all three. A key may also have an IP allowlist; a blocked request gets the same 401 as an unknown key.",
         },
       },
       responses: {
+        InsufficientScope: errorResponse("The API key does not have the scope this operation needs. The body carries `code: insufficient_scope` and `required_scope`."),
         Unauthorized: errorResponse("Missing or invalid `Authorization` header (or the caller's IP is not on the key's allowlist)."),
         RateLimited: {
           description: "Too many requests. Wait `Retry-After` seconds.",
@@ -292,9 +294,10 @@ export function buildOpenApiSpec(serverUrl: string) {
           required: ["error"],
           properties: {
             error: { type: "string", description: "Human-readable message." },
-            code: { type: "string", description: "Machine-readable code, present on a few responses (`free_tier_exhausted`, `plan_required`, `lookup_failed`)." },
+            code: { type: "string", description: "Machine-readable code, present on a few responses (`free_tier_exhausted`, `plan_required`, `lookup_failed`, `insufficient_scope`)." },
             retry_after_seconds: { type: "integer", description: "On 429." },
             domain: { type: "string", description: "On 403 for an unverified domain." },
+            required_scope: { type: "string", enum: ["scans:read", "scans:write", "dependency:check"], description: "On 403 `insufficient_scope`." },
           },
         },
         Severity: SEVERITY,

@@ -4,16 +4,21 @@
 // stored before that inventory existed fall back to their dependency
 // findings. 404 only when the scan has no dependency data at all.
 import type { NextApiRequest, NextApiResponse } from "next";
-import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { supabaseAdmin } from "@/lib/apiAuth";
+import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import type { Finding } from "@/lib/scanners";
 import { collectVexSignals, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory } from "@/lib/sbomExport";
 import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET") {
+    setV1Headers(res);
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "Method not allowed", code: "method_not_allowed" });
+  }
 
-  const caller = await authenticateApiRequest(req);
-  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  const caller = await guardV1(req, res, "scans:read");
+  if (!caller) return;
 
   const scanId = req.query.id as string;
 

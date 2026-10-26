@@ -9,6 +9,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { mintApiKey } from "@/lib/apiKeys";
+import { API_KEY_PRESETS, scopesFromRow } from "@/lib/apiScopes";
 import { logAuditEvent } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { validateAllowlist } from "@/lib/ipAllowlist";
@@ -16,6 +17,8 @@ import { parseBody } from "@/lib/validate";
 
 const createSchema = z.object({
   name: z.string().min(1, "name is required").max(60, "name must be 60 characters or fewer"),
+  // Least privilege on request; omitted keeps the historical full-access key so existing scripts and docs still work.
+  preset: z.enum(["full", "ci", "read_only"]).default("full"),
 });
 
 const deleteSchema = z.object({
@@ -36,6 +39,7 @@ type ApiKeyRow = {
   revoked_at: string | null;
   created_at: string;
   allowed_cidrs?: string[];
+  scopes?: string[];
   last_blocked_ip?: string | null;
   last_blocked_at?: string | null;
 };
@@ -51,6 +55,7 @@ function toClientKey(row: ApiKeyRow) {
     revoked_at: row.revoked_at,
     created_at: row.created_at,
     allowed_cidrs: Array.isArray(row.allowed_cidrs) ? row.allowed_cidrs : [],
+    scopes: scopesFromRow(row.scopes),
     last_blocked_ip: row.last_blocked_ip ?? null,
     last_blocked_at: row.last_blocked_at ?? null,
   };
@@ -128,25 +133,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const minted = mintApiKey();
-    const { data, error } = await supabaseAdmin
+    const base = {
+      owner: caller.ownerId,
+      name: keyName,
+      key_hash: minted.key_hash,
+      key_prefix: minted.key_prefix,
+    };
+    let { data, error } = await supabaseAdmin
       .from("api_keys")
-      .insert({
-        owner: caller.ownerId,
-        name: keyName,
-        key_hash: minted.key_hash,
-        key_prefix: minted.key_prefix,
-      })
-      .select("id, name, key_prefix, created_at")
+      .insert({ ...base, scopes: API_KEY_PRESETS[parsed.preset].scopes })
+      .select("id, name, key_prefix, created_at, scopes")
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    // Migration 062 not applied yet: a full-access key is exactly what a row
+    // without the column means, so mint it. A narrowed preset must never
+    // silently become a full-access key, so refuse instead.
+    if (error && isMissingSchemaError(error)) {
+      if (parsed.preset !== "full") {
+        return res.status(503).json({ error: "Scoped API keys aren't enabled on this server yet (database migration 062 pending)." });
+      }
+      ({ data, error } = await supabaseAdmin
+        .from("api_keys")
+        .insert(base)
+        .select("id, name, key_prefix, created_at")
+        .single());
+    }
+
+    if (error || !data) return res.status(500).json({ error: error?.message ?? "Could not create key" });
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
       action: "api_key.created",
       resourceType: "api_key",
       resourceId: data.id,
-      metadata: { name: keyName, key_prefix: data.key_prefix },
+      metadata: { name: keyName, key_prefix: data.key_prefix, scopes: API_KEY_PRESETS[parsed.preset].scopes },
     });
 
     // The only time the plaintext is ever returned. It is not stored, so it

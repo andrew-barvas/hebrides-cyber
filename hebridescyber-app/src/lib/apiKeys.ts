@@ -9,6 +9,7 @@
 // dictionary to attack, so a slow KDF would only add latency to every request.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { scopesFromRow, type ApiScope } from "./apiScopes";
 
 const LIVE_PREFIX = "hc_live_";
 const PREFIX_DISPLAY_LENGTH = 16;
@@ -43,6 +44,8 @@ export type ApiKeyOwner = {
   keyId: string;
   /** Empty = any address. See src/lib/ipAllowlist.ts. */
   allowedCidrs: string[];
+  /** What the key may do. A row from before migration 062 has none stored and keeps every scope. */
+  scopes: ApiScope[];
 };
 
 /**
@@ -95,6 +98,7 @@ export async function resolveApiKey(
     ownerId: data.owner,
     keyId: data.id,
     allowedCidrs: Array.isArray(data.allowed_cidrs) ? (data.allowed_cidrs as string[]) : [],
+    scopes: scopesFromRow(data.scopes),
   };
 }
 

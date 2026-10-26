@@ -11,6 +11,9 @@ type Result = { data: unknown; error: { code?: string; message: string } | null 
 let listResult: Result = { data: [], error: null };
 let updateResult: Result = { data: null, error: null };
 let lastUpdate: { values: Record<string, unknown>; filters: string[] } | null = null;
+// Each insert consumes the next result; the last one repeats.
+let insertResults: Result[] = [];
+let inserts: Record<string, unknown>[] = [];
 
 function makeBuilder() {
   const filters: string[] = [];
@@ -24,6 +27,11 @@ function makeBuilder() {
       return builder;
     },
     maybeSingle: () => Promise.resolve(updateResult),
+    insert: (values: Record<string, unknown>) => {
+      inserts.push(values);
+      return builder;
+    },
+    single: () => Promise.resolve(insertResults[Math.min(inserts.length, insertResults.length) - 1]),
   };
   return builder;
 }
@@ -48,6 +56,8 @@ describe("/api/keys", () => {
     listResult = { data: [], error: null };
     updateResult = { data: { id: "key-1" }, error: null };
     lastUpdate = null;
+    insertResults = [];
+    inserts = [];
   });
 
   // A key that could edit its own allowlist could simply remove it.
@@ -85,6 +95,43 @@ describe("/api/keys", () => {
       };
       const [key] = ((await call("GET"))._getJSONData() as { keys: Record<string, unknown>[] }).keys;
       expect(key).toMatchObject({ allowed_cidrs: ["203.0.113.0/24"], last_blocked_ip: "198.51.100.9" });
+    });
+  });
+
+  describe("POST", () => {
+    const created = { id: "k1", name: "CI", key_prefix: "hc_live_abcdefgh", created_at: "2026-10-26" };
+
+    it("stores the preset's scopes", async () => {
+      insertResults = [{ data: { ...created, scopes: ["scans:read"] }, error: null }];
+      const res = await call("POST", { name: "CI", preset: "read_only" });
+      expect(res._getStatusCode()).toBe(201);
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].scopes).toEqual(["scans:read"]);
+      expect((res._getJSONData() as { key: string }).key).toBeTruthy();
+    });
+
+    it("before migration 062, still mints a full-access key without the scopes column", async () => {
+      insertResults = [
+        { data: null, error: { code: "PGRST204", message: "column not found" } },
+        { data: created, error: null },
+      ];
+      const res = await call("POST", { name: "CI" });
+      expect(res._getStatusCode()).toBe(201);
+      expect(inserts).toHaveLength(2);
+      expect(inserts[1]).not.toHaveProperty("scopes");
+    });
+
+    it("before migration 062, refuses a narrowed preset rather than minting a full-access key", async () => {
+      insertResults = [{ data: null, error: { code: "PGRST204", message: "column not found" } }];
+      const res = await call("POST", { name: "CI", preset: "read_only" });
+      expect(res._getStatusCode()).toBe(503);
+      expect((res._getJSONData() as { error: string }).error).toContain("062");
+      expect(inserts).toHaveLength(1);
+    });
+
+    it("500s on any other insert error", async () => {
+      insertResults = [{ data: null, error: { code: "XX000", message: "boom" } }];
+      expect((await call("POST", { name: "CI" }))._getStatusCode()).toBe(500);
     });
   });
 

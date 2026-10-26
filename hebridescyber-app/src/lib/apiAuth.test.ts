@@ -72,7 +72,7 @@ describe("authenticateApiRequest", () => {
 
   it("resolves an unrestricted key and records last_used_at", async () => {
     state.row = keyRow({ allowed_cidrs: [] });
-    expect(await authenticateApiRequest(request(KEY))).toEqual({ ownerId: "owner-1", via: "key" });
+    expect(await authenticateApiRequest(request(KEY))).toEqual({ ownerId: "owner-1", via: "key", scopes: ["scans:read", "scans:write", "dependency:check"] });
     await flush();
     // Regression: this write was `void builder` and never ran.
     const touch = state.updates.find((u) => "last_used_at" in u.values);
@@ -82,7 +82,7 @@ describe("authenticateApiRequest", () => {
   // Before migration 042 the row has no allowed_cidrs at all.
   it("treats a row without the allowlist column as unrestricted", async () => {
     state.row = keyRow();
-    expect(await authenticateApiRequest(request(KEY))).toEqual({ ownerId: "owner-1", via: "key" });
+    expect(await authenticateApiRequest(request(KEY))).toEqual({ ownerId: "owner-1", via: "key", scopes: ["scans:read", "scans:write", "dependency:check"] });
   });
 
   it("rejects a revoked key", async () => {
@@ -92,7 +92,7 @@ describe("authenticateApiRequest", () => {
 
   it("accepts a key from an allowed address", async () => {
     state.row = keyRow({ allowed_cidrs: ["203.0.113.0/24"] });
-    expect(await authenticateApiRequest(request(KEY, "203.0.113.7"))).toEqual({ ownerId: "owner-1", via: "key" });
+    expect(await authenticateApiRequest(request(KEY, "203.0.113.7"))).toEqual({ ownerId: "owner-1", via: "key", scopes: ["scans:read", "scans:write", "dependency:check"] });
     expect(state.updates.some((u) => "last_blocked_ip" in u.values)).toBe(false);
   });
 
@@ -103,6 +103,28 @@ describe("authenticateApiRequest", () => {
     expect(blocked?.executed).toBe(true);
     expect(blocked?.values.last_blocked_ip).toBe("198.51.100.9");
     expect(blocked?.eq).toContainEqual(["id", "key-1"]);
+  });
+
+  it("carries a narrowed key's scopes on the caller", async () => {
+    state.row = keyRow({ scopes: ["scans:read"] });
+    const req = request(KEY);
+    req.url = "/api/v1/scans";
+    expect(await authenticateApiRequest(req)).toEqual({ ownerId: "owner-1", via: "key", scopes: ["scans:read"] });
+  });
+
+  // Routes outside /api/v1 predate scopes and don't check them, so a key that isn't full-access must not work there.
+  it("refuses a narrowed key outside /api/v1, but accepts a full-access one", async () => {
+    state.row = keyRow({ scopes: ["scans:read"] });
+    const outside = request(KEY);
+    outside.url = "/api/run-scan";
+    expect(await authenticateApiRequest(outside)).toBeNull();
+    state.row = keyRow();
+    expect(await authenticateApiRequest(outside)).not.toBeNull();
+  });
+
+  it("session callers have no scopes (they are unscoped)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: "owner-1" } }, error: null });
+    expect((await authenticateApiRequest(request("eyJ.jwt")))?.scopes).toBeUndefined();
   });
 
   it("never IP-restricts a session — the allowlist belongs to a key", async () => {

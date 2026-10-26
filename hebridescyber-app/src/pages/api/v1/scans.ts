@@ -20,7 +20,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { validateNoSsrf, hostnameFromUrl, isDomainVerified } from "@/lib/ownership";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { supabaseAdmin } from "@/lib/apiAuth";
+import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { parseBody } from "@/lib/validate";
@@ -32,14 +33,20 @@ const createScanSchema = z.object({
 export const config = { api: { bodyParser: { sizeLimit: "1mb" } } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const caller = await authenticateApiRequest(req);
-  if (!caller) {
-    return res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <api-key>" });
+  if (req.method === "GET") {
+    const caller = await guardV1(req, res, "scans:read");
+    if (!caller) return;
+    return listScans(req, res, caller.ownerId);
   }
-
-  if (req.method === "GET") return listScans(req, res, caller.ownerId);
-  if (req.method === "POST") return createScan(req, res, caller.ownerId);
-  return res.status(405).json({ error: "Method not allowed" });
+  if (req.method === "POST") {
+    // Queueing a scan has its own, stricter per-account budget below (shared with run-scan).
+    const caller = await guardV1(req, res, "scans:write", { rateLimit: false });
+    if (!caller) return;
+    return createScan(req, res, caller.ownerId);
+  }
+  setV1Headers(res);
+  res.setHeader("Allow", "GET, POST");
+  return res.status(405).json({ error: "Method not allowed", code: "method_not_allowed" });
 }
 
 async function listScans(req: NextApiRequest, res: NextApiResponse, ownerId: string) {
@@ -81,7 +88,7 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
   const limit = await checkRateLimit(ownerId);
   if (!limit.allowed) {
     res.setHeader("Retry-After", String(limit.retryAfterSeconds ?? 60));
-    return res.status(429).json({ error: "Rate limit exceeded", retry_after_seconds: limit.retryAfterSeconds });
+    return res.status(429).json({ error: "Rate limit exceeded", code: "rate_limited", retry_after_seconds: limit.retryAfterSeconds });
   }
 
   if (await isFreeTierExhausted(supabaseAdmin, ownerId)) {
