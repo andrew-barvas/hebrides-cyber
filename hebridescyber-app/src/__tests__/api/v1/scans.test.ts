@@ -25,7 +25,7 @@ vi.mock("@/lib/ownership", () => ({
   isDomainVerified: m.verified,
   hostnameFromUrl: (u: string) => new URL(u).hostname,
 }));
-vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: m.rateLimit }));
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: m.rateLimit, getClientIp: () => "1.2.3.4" }));
 vi.mock("@/lib/freeTier", () => ({ isFreeTierExhausted: m.freeTier, FREE_TIER_EXHAUSTED_MESSAGE: "free tier used" }));
 vi.mock("@/lib/onDemandScanTrigger", () => ({ triggerOnDemandWorkflow: m.trigger }));
 vi.mock("@/lib/apiAuth", () => ({
@@ -95,6 +95,24 @@ describe("/api/v1/scans", () => {
 
   it("405s on an unsupported method", async () => {
     expect((await call("DELETE")).statusCode).toBe(405);
+  });
+
+  describe("scopes", () => {
+    it("lets a read-only key list scans but not queue one", async () => {
+      m.auth.mockResolvedValue({ ownerId: "owner-1", via: "key", scopes: ["scans:read"] });
+      expect((await call("GET")).statusCode).toBe(200);
+      const res = await call("POST", { body: { target_url: TARGET } });
+      expect(res.statusCode).toBe(403);
+      expect(res._getJSONData()).toMatchObject({ code: "insufficient_scope", required_scope: "scans:write" });
+      expect(m.scansInserts).toEqual([]);
+    });
+
+    it("stops a write-only key reading scans", async () => {
+      m.auth.mockResolvedValue({ ownerId: "owner-1", via: "key", scopes: ["scans:write"] });
+      const res = await call("GET");
+      expect(res.statusCode).toBe(403);
+      expect(res._getJSONData().required_scope).toBe("scans:read");
+    });
   });
 
   describe("GET", () => {

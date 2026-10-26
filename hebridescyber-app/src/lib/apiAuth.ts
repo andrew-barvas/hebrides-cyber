@@ -13,6 +13,7 @@
 // is recorded on the key (last_blocked_ip/at) for its owner to see instead.
 // Session JWTs are never IP-restricted: the allowlist is a property of a key.
 import type { NextApiRequest } from "next";
+import { API_SCOPES, type ApiScope } from "./apiScopes";
 import { looksLikeApiKey, recordBlockedApiKeyUse, resolveApiKey } from "./apiKeys";
 import { isIpAllowed } from "./ipAllowlist";
 import { getClientIp } from "./rateLimit";
@@ -24,7 +25,13 @@ export type ApiCaller = {
   ownerId: string;
   /** How the caller authenticated — used to gate key management to sessions. */
   via: "key" | "session";
+  /** Present for a key; absent for a session, which is unscoped. See apiScopes.ts. */
+  scopes?: ApiScope[];
 };
+
+function isV1Request(req: NextApiRequest): boolean {
+  return (req.url ?? "").split("?")[0].startsWith("/api/v1/");
+}
 
 export async function authenticateApiRequest(req: NextApiRequest): Promise<ApiCaller | null> {
   const auth = req.headers.authorization;
@@ -46,7 +53,13 @@ export async function authenticateApiRequest(req: NextApiRequest): Promise<ApiCa
           return null;
         }
       }
-      return { ownerId: resolved.ownerId, via: "key" };
+      // Scoping is only enforced per-route on /api/v1. Every other route that
+      // accepts a key predates scopes, so a key narrowed below full access is
+      // refused there outright (same 401 as an unknown key) rather than
+      // silently gaining whatever those routes allow.
+      const isFullAccess = API_SCOPES.every((s) => resolved.scopes.includes(s));
+      if (!isFullAccess && !isV1Request(req)) return null;
+      return { ownerId: resolved.ownerId, via: "key", scopes: resolved.scopes };
     }
 
     const { data, error } = await getSupabaseAdmin().auth.getUser(token);

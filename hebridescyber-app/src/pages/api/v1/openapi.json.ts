@@ -5,6 +5,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { checkRateLimit, getClientIp, type RateLimitPolicy } from "@/lib/rateLimit";
 import { buildOpenApiSpec } from "@/lib/openapi/spec";
+import { API_VERSION } from "@/lib/v1Guard";
 
 const SPEC_RATE_LIMIT: RateLimitPolicy = { max: 60, windowSeconds: 3600 };
 
@@ -21,6 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
+  res.setHeader("X-API-Version", API_VERSION);
   res.setHeader("Cache-Control", "public, max-age=300");
   return res.status(200).json(buildOpenApiSpec(`${siteUrl}/api/v1`));
 }

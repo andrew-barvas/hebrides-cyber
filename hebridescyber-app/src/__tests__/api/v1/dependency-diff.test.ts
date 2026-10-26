@@ -5,7 +5,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 const { authMock, proMock, rateMock, diffMock } = vi.hoisted(() => ({ authMock: vi.fn(), proMock: vi.fn(), rateMock: vi.fn(), diffMock: vi.fn() }));
 vi.mock("@/lib/apiAuth", () => ({ authenticateApiRequest: authMock, supabaseAdmin: {} }));
 vi.mock("@/lib/planAccess", () => ({ hasProAccess: proMock }));
-vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: rateMock }));
+vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: rateMock, getClientIp: () => "1.2.3.4" }));
 vi.mock("@/lib/dependencyDiff", async (orig) => ({ ...(await orig<typeof import("@/lib/dependencyDiff")>()), computeDependencyDiff: diffMock }));
 
 import handler from "@/pages/api/v1/dependency-diff";

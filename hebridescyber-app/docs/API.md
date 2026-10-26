@@ -2,6 +2,14 @@
 
 Trigger scans and read results from CI, scripts, and integrations.
 
+**Machine-readable description:** [`GET /api/v1/openapi.json`](/api/v1/openapi.json) (OpenAPI 3.1, public). Import it into Postman/Insomnia or feed it to an SDK generator. The spec is checked against the code in CI, so it cannot silently drift.
+
+## Versioning
+
+The version is the path prefix: everything here is `/api/v1`. Within `v1` changes are **additive only** — new endpoints, new optional request fields, new response fields, new error `code` values. We will not remove or retype an existing field, or change what an existing value means, inside `v1`. Write clients that ignore fields they do not know and treat unknown `status` values as not yet finished. A breaking change would ship as `/api/v2` alongside `v1`, with `v1` kept running for at least 12 months after `v2` is announced. Every `v1` response carries `X-API-Version: 1`.
+
+Routes under `/api/` that are not under `/api/v1/` are internal to the dashboard and may change without notice; do not build on them.
+
 ## Authentication
 
 Every request needs an API key:
@@ -17,6 +25,18 @@ immediately. Lost keys are revoked and replaced, not recovered.
 Keys can't create or revoke other keys. That's deliberate: a leaked CI secret
 should not be able to mint permanent replacements that survive revoking the
 original. Key management requires a logged-in session.
+
+### Scopes
+
+Each key has scopes that limit what it can do. Pick the narrowest that works when you create it (**Dashboard → Integrations → API keys**):
+
+| Scope | Allows |
+|-------|--------|
+| `scans:read` | `GET` scans, findings, exports, compliance, SBOM, remediation pack, trends |
+| `scans:write` | `POST /api/v1/scans` (queue a scan) |
+| `dependency:check` | `POST /api/v1/dependency-diff` |
+
+Presets: **CI** (all three — what a pipeline needs), **Read-only** (`scans:read` — reporting dashboards, auditors), **Full access**. A request outside a key's scopes gets `403` with `{ "code": "insufficient_scope", "required_scope": "scans:write" }`. Keys created before scopes existed keep all three, so nothing already running changes. A key narrower than full access works only on `/api/v1`; it is refused (`401`) on any other endpoint.
 
 ### IP allowlists
 
@@ -566,14 +586,14 @@ template on `/docs/ci`.
 | Status | Meaning |
 |--------|---------|
 | `400` | Missing/invalid `target_url`, or it failed the SSRF check |
-| `401` | Missing, malformed, revoked, or unknown API key, or a key used from an address outside its IP allowlist |
+| `401` | Missing, malformed, revoked, or unknown API key, or a key used from an address outside its IP allowlist — `{ "code": "unauthorized" }` |
 | `402` | Free-tier scan limit used up — `{ "code": "free_tier_exhausted" }`. Subscribe to a plan to run more; admin accounts are exempt |
-| `403` | Domain not verified for this account, or scan belongs to someone else |
+| `403` | The key lacks the scope (`insufficient_scope`), the plan does not include the feature (`plan_required`), the domain is not verified for this account, or the scan belongs to someone else |
 | `404` | Scan not found |
-| `429` | Rate limit exceeded — see the `Retry-After` header |
+| `429` | Rate limit exceeded — `{ "code": "rate_limited" }`, see the `Retry-After` header |
 | `500` | Could not queue the scan (e.g. a transient database error) — nothing was created, retry the `POST` |
 
-All errors return `{ "error": "..." }`.
+All errors return `{ "error": "..." }`; many also carry a stable machine-readable `code` (`unauthorized`, `insufficient_scope`, `plan_required`, `free_tier_exhausted`, `rate_limited`, `lookup_failed`, `method_not_allowed`). Branch on `code` where there is one, not on the message text, which may be reworded.
 
 A scan that fails **after** being queued doesn't show up as an error from
 `POST` — it queued successfully. Check for it via `GET /api/v1/scans/{id}`
@@ -583,5 +603,15 @@ to detect that case.
 
 ## Rate limits
 
-Enforced per account. On `429`, back off for the seconds given in
-`Retry-After`/`retry_after_seconds` rather than retrying immediately.
+Enforced per account:
+
+| Budget | Limit | Applies to |
+|--------|-------|------------|
+| Reads | 1,200 requests per hour | every `GET` under `/api/v1` |
+| Scan creation | 10 per hour | `POST /api/v1/scans` (shared with the dashboard's Run scan button) |
+| Dependency checks | 10 per hour | `POST /api/v1/dependency-diff` |
+| Failed authentication | 30 per 10 minutes per client IP | requests with a missing or wrong key |
+
+On `429`, back off for the seconds given in `Retry-After` / `retry_after_seconds` rather than retrying immediately. Poll a scan every 5–10 seconds, not in a tight loop. The failed-authentication budget only counts bad credentials, so a client with a valid key is never slowed by it.
+
+Responses are sent with `Cache-Control: no-store`.

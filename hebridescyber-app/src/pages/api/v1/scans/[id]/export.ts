@@ -10,7 +10,8 @@
 // export time, not scan time: the owner's current decision for each finding,
 // as triage_* columns (CSV) or a `triage` object, null when untriaged (JSON).
 import type { NextApiRequest, NextApiResponse } from "next";
-import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { supabaseAdmin } from "@/lib/apiAuth";
+import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
 import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
@@ -42,10 +43,14 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET") {
+    setV1Headers(res);
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "Method not allowed", code: "method_not_allowed" });
+  }
 
-  const caller = await authenticateApiRequest(req);
-  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  const caller = await guardV1(req, res, "scans:read");
+  if (!caller) return;
 
   const scanId = req.query.id as string;
   const format = (req.query.format as string | undefined)?.toLowerCase() === "json" ? "json" : "csv";

@@ -54,7 +54,15 @@ describe("resolveApiKey", () => {
     const row = { owner: "owner-1", id: "key-1", key_hash: hashApiKey(plaintext), revoked_at: null, allowed_cidrs: ["10.0.0.0/8"] };
     const { client } = fakeSupabase(row);
     const result = await resolveApiKey(client, plaintext);
-    expect(result).toEqual({ ownerId: "owner-1", keyId: "key-1", allowedCidrs: ["10.0.0.0/8"] });
+    // No scopes column stored (pre-062 row) → full access, i.e. the behaviour before scopes existed.
+    expect(result).toEqual({ ownerId: "owner-1", keyId: "key-1", allowedCidrs: ["10.0.0.0/8"], scopes: ["scans:read", "scans:write", "dependency:check"] });
+  });
+
+  it("returns the scopes stored on the key, dropping anything unrecognised", async () => {
+    const plaintext = "hc_live_sometoken";
+    const row = { owner: "o", id: "k", key_hash: hashApiKey(plaintext), revoked_at: null, scopes: ["scans:read", "admin:everything"] };
+    const result = await resolveApiKey(fakeSupabase(row).client, plaintext);
+    expect(result?.scopes).toEqual(["scans:read"]);
   });
 
   it("returns null for an unknown key", async () => {

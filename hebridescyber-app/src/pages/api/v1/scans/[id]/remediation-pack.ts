@@ -5,15 +5,20 @@
 // unlike generate-fix-pr.ts (which opens a PR with the same fix content via
 // buildRemediationMarkdown), this is available to every scan.
 import type { NextApiRequest, NextApiResponse } from "next";
-import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { supabaseAdmin } from "@/lib/apiAuth";
+import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import type { Finding } from "@/lib/scanners";
 import { buildRemediationPack } from "@/lib/remediation";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET") {
+    setV1Headers(res);
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "Method not allowed", code: "method_not_allowed" });
+  }
 
-  const caller = await authenticateApiRequest(req);
-  if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  const caller = await guardV1(req, res, "scans:read");
+  if (!caller) return;
 
   const scanId = req.query.id as string;
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner, target_url").eq("id", scanId).maybeSingle();
