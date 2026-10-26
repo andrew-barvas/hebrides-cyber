@@ -1,0 +1,23 @@
+{
+  "findings": [],
+  "meta": {
+    "dalfox_version": "3.2.4",
+    "dedup_mode": "exact",
+    "failed_requests": 0,
+    "findings_count": 0,
+    "incomplete": false,
+    "scan_duration_ms": 53,
+    "target_summary": [
+      {
+        "findings_count": 0,
+        "status": "clean",
+        "target": "http://127.0.0.1:8099/api/health"
+      }
+    ],
+    "targets": [
+      "http://127.0.0.1:8099/api/health"
+    ],
+    "targets_deduplicated": 0,
+    "total_requests": 32
+  }
+}

@@ -250,11 +250,11 @@ In order of impact:
 
 ## Deferred from the Burp-parity review (2026-10-22)
 
-- **Dalfox** (XSS depth): wire with a pinned, SHA-256-verified binary and a parser built from a real run's output, with a `tool-integration.yml` job. Not started: no verified output to build on.
-- **strix / cairn / credentialSpray**: either pin real versions and verify in CI or leave as `not_configured`; do not market. Owner decision.
-- **Own-probe OOB**: a native interactsh client (RSA key exchange, AES polling) so `replayProbe` can confirm blind SSRF.
-- **Triage benchmark in CI**: needs a model credential in CI; until then evaluate by hand.
-- **OAuth/MFA flows, two-session IDOR, further logic checks**: design against real test targets first.
+- **Dalfox** (XSS depth): **done 2026-10-23.** Wired with a pinned, SHA-256-verified `v3.2.4` binary and a parser built from a real run's output (`src/worker/tools/dalfox.ts`, `dalfoxOutput.ts`, fixtures in `fixtures/dalfox/`), plus a `tool-integration.yml` job running the real binary. See `docs/BURP-PARITY.md` for the exit-code bug this caught.
+- **strix / cairn / credentialSpray**: **owner decision made 2026-10-23 — leave `not_configured`, do not market.** Pinning real versions and verifying in CI is deferred again: strix needs Docker + an LLM key and real spend per run; cairn needs its AGPL subprocess-isolation review actually carried out, not just planned; credentialSpray needs a real sacrificial login target. Re-pin `strix.ts`/`cairn.ts` to real existing tags (`v1.x` / `v0.2.1`, not the nonexistent `v0.5.0`/`v1.0.0`) before any future attempt. See `docs/BURP-PARITY.md`.
+- **Triage benchmark**: **harness built 2026-10-23**, still manual. `npm run bench:triage` (`bench/triage/`) runs the real triage pipeline against a labeled fixture set and reports precision/recall; not wired into CI yet (needs a model credential there). See `docs/AI-TRIAGE-DESIGN.md`.
+- **Own-probe OOB**: a native interactsh client (RSA key exchange, AES polling) so `replayProbe` can confirm blind SSRF. Still not started.
+- **OAuth/MFA flows, two-session IDOR, further logic checks**: design against real test targets first. Still not started.
 
 ## Deferred from uptime monitoring
 

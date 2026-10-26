@@ -33,7 +33,7 @@ Largely for the automated half, not for the interactive half.
 | Sequencer (token randomness) | `tokenEntropy.ts` + `sessionCheck.ts`: samples a dozen anonymous sessions and flags counters, repeats, short or low-entropy values. `badsecrets` and `jwtAnalysis` for known-weak secrets | **New (this change)**; an estimate from a small sample, never a proof of strength |
 | Proxy / intercept / history | none | Not applicable to a headless pipeline |
 | Authenticated flows and macros | `loginRecorder.ts`, `authenticatedCrawl.ts`, cookie or Basic credentials | Partial: no OAuth or MFA flows, no deep IDOR |
-| DOM Invader / DOM XSS | `xssConfirm.ts`, `playwright.ts` | Partial; Dalfox is still unwired (below) |
+| DOM Invader / DOM XSS | `xssConfirm.ts`, `playwright.ts`, Dalfox (`dalfox.ts`, wired 2026-10-23) | Covered |
 | Extensions (BApps) | nuclei templates | Equivalent |
 | Business-logic testing | `businessLogic.ts`, `workflowSecurity` | Gap. Narrow, and the area where a human still wins |
 
@@ -52,13 +52,26 @@ confirmation for our own probes, multi-step auth and logic.
 
 ## Not done, and why
 
-- **Dalfox** (XSS depth): a parser written without real tool output would repeat
-  the mistake `tool-integration.yml` exists to prevent. Wire it with a pinned,
-  SHA-256-verified binary and fixtures captured from a real run.
-- **strix / cairn**: not advertised in product copy (the `/ai-threats` page
-  describes the external attack campaign, not our features) and `not_configured`
-  by default, so nothing is claimed that does not run. They remain unverified; do
-  not market them until a CI job proves them (`docs/SCANNER-INVENTORY.md`).
+- **Dalfox** (XSS depth): **done 2026-10-23.** Wired with a pinned, SHA-256-
+  verified binary (`v3.2.4`) and a parser built from a real captured run
+  (`src/worker/tools/fixtures/dalfox/`), with `tool-integration.yml` running
+  the real binary in CI. The capture also caught a real bug before it shipped:
+  Dalfox exits 1 (not 0) when it finds a vulnerability, which an
+  unverified parser would have read as a process failure and silently
+  dropped every real finding.
+- **strix / cairn / credentialSpray**: owner decision — leave `not_configured`
+  and unmarketed rather than rush verification. Each needs a real resource
+  this session doesn't have: strix needs Docker + an LLM API key (~$2-5/scan)
+  and its pinned tag (`v0.5.0`) doesn't exist upstream (real tags are `v1.x`);
+  cairn's pinned tag (`v1.0.0`) doesn't exist either (latest is `v0.2.1`), and
+  it's AGPL — enabling it needs the subprocess-isolation review `cairn.ts`'s
+  header describes to actually be done, not just planned; credentialSpray
+  needs a real designated sacrificial login target to verify hydra's output
+  against (not just the parser fixtures already captured). Not advertised in
+  product copy (the `/ai-threats` page describes the external attack campaign,
+  not our features) and `not_configured` by default, so nothing is claimed
+  that does not run. Re-pin to real tags before ever attempting to verify them
+  (`docs/SCANNER-INVENTORY.md`).
 - **OAuth/MFA, two-session IDOR, more logic checks**: need design with real
   target applications to test against; shipping guesses would add false
   positives.
