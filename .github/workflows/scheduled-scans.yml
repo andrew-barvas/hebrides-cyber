@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
@@ -137,6 +137,24 @@ jobs:
             sudo ln -sf /opt/commix/commix.py /usr/local/bin/commix
             sudo chmod +x /usr/local/bin/commix
           fi
+
+      - name: Install dalfox
+        # Release binary pinned by version AND SHA-256 (checked against the
+        # real asset digest from the GitHub release, 2026-10-23 — dalfox
+        # publishes no separate checksums.txt covering per-platform binaries).
+        # dalfox.ts parses its real v3.2.4 `-f json` output (fixtures/dalfox/).
+        env:
+          DALFOX_VERSION: 3.2.4
+          DALFOX_SHA256: aaef3f3d26d2de6d4e61ef5295151d9de36e111981618136ac7ec54b578582b8
+        run: |
+          curl -fsSL \
+            "https://github.com/hahwul/dalfox/releases/download/v${DALFOX_VERSION}/dalfox-v${DALFOX_VERSION}-linux-x86_64.tar.gz" \
+            -o /tmp/dalfox.tar.gz
+          echo "${DALFOX_SHA256}  /tmp/dalfox.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/dalfox.tar.gz -C /tmp
+          sudo install "/tmp/dalfox-v${DALFOX_VERSION}-linux-x86_64/dalfox" /usr/local/bin/dalfox
+          rm -rf /tmp/dalfox.tar.gz "/tmp/dalfox-v${DALFOX_VERSION}-linux-x86_64"
+          dalfox --version
 
       - name: Install nuclei
         # Release binaries are pinned by version AND SHA-256 (from the

@@ -211,7 +211,7 @@ function ScoreRing({ score }: { score: number }) {
       </svg>
       <div className="-mt-[72px] flex flex-col items-center">
         <span className="text-2xl font-bold" style={{ color }}>{score}</span>
-        <span className="text-xs text-cybertext/40 font-mono -mt-0.5">/100</span>
+        <span className="text-xs text-cybermuted font-mono -mt-0.5">/100</span>
       </div>
       <div className="mt-8" />
     </div>
@@ -268,7 +268,7 @@ function ReportCard({ report }: { report: SampleReport }) {
               </span>
             )}
           </div>
-          <p className="text-xs text-cybertext/40 font-mono mb-2">
+          <p className="text-xs text-cybermuted font-mono mb-2">
             {report.siteType} · illustrative example
           </p>
           <p className="text-sm text-cybertext/70 leading-relaxed">{report.summary}</p>
@@ -306,7 +306,7 @@ function ReportCard({ report }: { report: SampleReport }) {
 
       {/* Findings */}
       <div className="px-6 py-5 space-y-3">
-        <p className="font-mono text-xs text-cybertext/30 uppercase tracking-wide mb-3">// findings</p>
+        <p className="font-mono text-xs text-cybermuted uppercase tracking-wide mb-3">// findings</p>
         {report.findings.map((f) => (
           <FindingRow key={f.id} finding={f} />
         ))}
@@ -351,7 +351,7 @@ export default function SampleReportsPage() {
       {/* Scoring explainer */}
       <div className="border-b border-cyberborder bg-cyberpanel/50">
         <div className="mx-auto max-w-4xl px-6 py-8">
-          <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide mb-4">// how scores work</h2>
+          <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide mb-4">// how scores work</h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
               { sev: "Critical", pts: "−30", color: "text-red-400" },

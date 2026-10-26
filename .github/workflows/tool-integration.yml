@@ -12,6 +12,7 @@ on:
     paths:
       - "hebridescyber-app/src/worker/tools/sqlmap*.ts"
       - "hebridescyber-app/src/worker/tools/commix*.ts"
+      - "hebridescyber-app/src/worker/tools/dalfox*.ts"
       - "hebridescyber-app/src/worker/tools/nuclei*.ts"
       - "hebridescyber-app/src/worker/tools/gospider*.ts"
       - "hebridescyber-app/src/worker/tools/kiterunner*.ts"
@@ -41,7 +42,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - run: npm ci
@@ -59,6 +60,22 @@ jobs:
           sudo /opt/badsecrets/bin/pip install --quiet badsecrets==1.2.0
           sudo ln -sf /opt/badsecrets/bin/badsecrets /usr/local/bin/badsecrets
           badsecrets -l --no-color | tail -5
+
+      - name: Install dalfox (pinned, SHA-256 verified)
+        # Same pin as scheduled-scans.yml, so the integration test exercises
+        # exactly what production installs.
+        env:
+          DALFOX_VERSION: 3.2.4
+          DALFOX_SHA256: aaef3f3d26d2de6d4e61ef5295151d9de36e111981618136ac7ec54b578582b8
+        run: |
+          curl -fsSL \
+            "https://github.com/hahwul/dalfox/releases/download/v${DALFOX_VERSION}/dalfox-v${DALFOX_VERSION}-linux-x86_64.tar.gz" \
+            -o /tmp/dalfox.tar.gz
+          echo "${DALFOX_SHA256}  /tmp/dalfox.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/dalfox.tar.gz -C /tmp
+          sudo install "/tmp/dalfox-v${DALFOX_VERSION}-linux-x86_64/dalfox" /usr/local/bin/dalfox
+          rm -rf /tmp/dalfox.tar.gz "/tmp/dalfox-v${DALFOX_VERSION}-linux-x86_64"
+          dalfox --version
 
       - name: Install nuclei, gospider, kiterunner, httpx, ffuf, katana and naabu (pinned)
         env:
@@ -123,13 +140,14 @@ jobs:
           curl -fs "http://127.0.0.1:8099/item?id=1"
           curl -fs "http://127.0.0.1:8099/api/health"
 
-      - name: Real-binary integration tests (sqlmap, nuclei, gospider, kiterunner)
+      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner)
         env:
           RUN_TOOL_INTEGRATION: "1"
           KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
         run: >
           npx vitest run
           src/worker/tools/sqlmap.integration.test.ts
+          src/worker/tools/dalfox.integration.test.ts
           src/worker/tools/nuclei.integration.test.ts
           src/worker/tools/gospider.integration.test.ts
           src/worker/tools/kiterunner.integration.test.ts

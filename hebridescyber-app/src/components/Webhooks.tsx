@@ -90,7 +90,7 @@ export default function Webhooks({ token }: { token: string }) {
 
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// webhooks</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// webhooks</h2>
 
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Get a signed POST when a scan completes, instead of polling{" "}
@@ -116,7 +116,7 @@ export default function Webhooks({ token }: { token: string }) {
           </div>
           <button
             onClick={() => setFreshSecret(null)}
-            className="mt-3 text-xs text-cybertext/40 hover:text-cybertext/70"
+            className="mt-3 text-xs text-cybermuted hover:text-cybertext/70"
           >
             I&apos;ve saved it — dismiss
           </button>
@@ -152,9 +152,9 @@ export default function Webhooks({ token }: { token: string }) {
       </form>
 
       {loading ? (
-        <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+        <p className="font-mono text-xs text-cybermuted">// loading…</p>
       ) : webhooks.length === 0 ? (
-        <p className="text-xs text-cybertext/40">No webhooks configured.</p>
+        <p className="text-xs text-cybermuted">No webhooks configured.</p>
       ) : (
         <ul className="divide-y divide-cyberborder rounded-lg border border-cyberborder">
           {webhooks.map((w) => (
@@ -164,7 +164,7 @@ export default function Webhooks({ token }: { token: string }) {
                   {w.name ? `${w.name} — ` : ""}
                   {w.url}
                 </p>
-                <p className="font-mono text-xs text-cybertext/40">
+                <p className="font-mono text-xs text-cybermuted">
                   {w.disabled_at ? (
                     <span className="text-red-400/80">
                       disabled after {w.failure_count} failed deliveries
@@ -182,7 +182,7 @@ export default function Webhooks({ token }: { token: string }) {
               </div>
               <button
                 onClick={() => remove(w.id)}
-                className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                className="text-xs text-cybermuted hover:text-red-400 transition-colors"
               >
                 Remove
               </button>

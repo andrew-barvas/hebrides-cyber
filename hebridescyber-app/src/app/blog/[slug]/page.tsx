@@ -126,7 +126,7 @@ export default async function BlogPostPage({ params }: Props) {
                 <Link
                   key={tag}
                   href={`/blog?tag=${encodeURIComponent(tag)}`}
-                  className="rounded-full border border-slate-200 dark:border-cyberborder px-3 py-0.5 font-mono text-[10px] text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-neon/70 dark:hover:border-neon dark:hover:text-neon transition-colors"
+                  className="inline-flex min-h-8 items-center rounded-full border border-slate-200 dark:border-cyberborder px-3 py-1 font-mono text-xs text-slatedark/60 hover:border-atlantic hover:text-atlantic dark:text-neon/70 dark:hover:border-neon dark:hover:text-neon transition-colors"
                 >
                   {tag}
                 </Link>
@@ -146,7 +146,7 @@ export default async function BlogPostPage({ params }: Props) {
                 year: "numeric",
               })}
             </span>
-            <span className="text-slatedark/30 dark:text-cybertext/20">·</span>
+            <span className="text-slatedark/30 dark:text-cybermuted">·</span>
             <span>{mins} min read</span>
           </div>
 
@@ -164,6 +164,9 @@ export default async function BlogPostPage({ params }: Props) {
           <img
             src={post.cover_image_url}
             alt={post.title}
+            width={768}
+            height={288}
+            decoding="async"
             className="w-full rounded-xl object-cover max-h-72 border border-slate-200 dark:border-cyberborder"
           />
         </div>
@@ -209,8 +212,8 @@ export default async function BlogPostPage({ params }: Props) {
 
         {/* CTA */}
         <div className="mt-10 rounded-xl border border-slate-200 dark:border-cyberborder bg-white dark:bg-cyberpanel p-6">
-          <p className="font-mono text-xs text-slatedark/50 dark:text-cybertext/40 mb-1">
-            <span className="text-slatedark/30 dark:text-cybertext/20">$</span> ./get-your-score
+          <p className="font-mono text-xs text-slatedark/50 dark:text-cybermuted mb-1">
+            <span className="text-slatedark/30 dark:text-cybermuted">$</span> ./get-your-score
           </p>
           <p className="text-sm font-semibold text-slatedark dark:text-cybertext">
             Get a free Security Score for your site

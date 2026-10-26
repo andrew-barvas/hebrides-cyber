@@ -50,7 +50,7 @@ export default function PartnerPortalPanel() {
   return (
     <div className="rounded-xl border border-neon/20 bg-cyberpanel p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// partner portal</h2>
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// partner portal</h2>
         <Link
           href="/account"
           className="text-[10px] text-neon hover:underline"
@@ -69,14 +69,14 @@ export default function PartnerPortalPanel() {
           />
         ) : (
           <div className="h-8 w-8 rounded bg-cyberbg border border-cyberborder flex items-center justify-center">
-            <span className="text-xs text-cybertext/30">?</span>
+            <span className="text-xs text-cybermuted">?</span>
           </div>
         )}
         <div>
           <p className="text-sm font-medium text-cybertext">
             {stats.brandName ?? "No brand name set"}
           </p>
-          <p className="text-[10px] text-cybertext/40">
+          <p className="text-[10px] text-cybermuted">
             {stats.brandLogoUrl ? "White-label active" : "No custom branding — reports use HebridesCyber branding"}
           </p>
         </div>
@@ -86,23 +86,23 @@ export default function PartnerPortalPanel() {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2.5 text-center">
           <p className="text-lg font-bold text-cybertext">{stats.monitoredTargetCount}</p>
-          <p className="text-[10px] text-cybertext/40">Monitored sites</p>
+          <p className="text-[10px] text-cybermuted">Monitored sites</p>
         </div>
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2.5 text-center">
           <p className="text-lg font-bold text-cybertext">{stats.totalScans}</p>
-          <p className="text-[10px] text-cybertext/40">Total scans</p>
+          <p className="text-[10px] text-cybermuted">Total scans</p>
         </div>
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2.5 text-center">
           <p className={`text-lg font-bold ${stats.latestScore !== null && stats.latestScore >= 70 ? "text-neon" : stats.latestScore !== null && stats.latestScore >= 40 ? "text-yellow-400" : "text-red-400"}`}>
             {stats.latestScore ?? "—"}
           </p>
-          <p className="text-[10px] text-cybertext/40">Latest score</p>
+          <p className="text-[10px] text-cybermuted">Latest score</p>
         </div>
         <div className="rounded-lg border border-cyberborder bg-cyberbg/50 p-2.5 text-center">
           <p className={`text-lg font-bold ${stats.avgScore !== null && stats.avgScore >= 70 ? "text-neon" : stats.avgScore !== null && stats.avgScore >= 40 ? "text-yellow-400" : "text-red-400"}`}>
             {stats.avgScore ?? "—"}
           </p>
-          <p className="text-[10px] text-cybertext/40">Avg score</p>
+          <p className="text-[10px] text-cybermuted">Avg score</p>
         </div>
       </div>
     </div>
