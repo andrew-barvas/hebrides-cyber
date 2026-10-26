@@ -21,6 +21,10 @@ name: Deploy
 #   SUPABASE_SERVICE_ROLE_KEY          - service role key (for migration check)
 #   DATABASE_URL                       - direct Postgres connection string (for db push)
 #   SITE_URL                           - production URL (for post-deploy health check)
+#
+# Optional (blank = feature off):
+#   NEXT_PUBLIC_SENTRY_DSN             - browser-side error reporting
+#   NEXT_PUBLIC_GA_MEASUREMENT_ID      - Google Analytics 4 id, looks like G-XXXXXXXXXX
 
 on:
   push:
@@ -233,6 +237,9 @@ jobs:
           # Browser-side Sentry: NEXT_PUBLIC_* is inlined at build time, and SWA app settings
           # are not visible to this Oryx build, so it has to be passed here. Blank = no browser reporting.
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          # Google Analytics 4 (consent-gated, see GoogleAnalytics.tsx). Same reason as above: inlined at
+          # build time. Blank = analytics never loads, even after a visitor accepts the cookie banner.
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
 
       # E-57: post-deploy health check — curls /api/health on the live site
       # to catch runtime failures that pass the build. Waits 45s for Azure
