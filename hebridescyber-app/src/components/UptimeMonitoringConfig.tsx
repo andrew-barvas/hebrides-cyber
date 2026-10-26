@@ -11,10 +11,12 @@
 // GET /api/uptime/status, which returns monitor rows and sync times only.
 import { useCallback, useEffect, useState } from "react";
 import { getSession } from "@/lib/auth";
+import { uptimeStatusLabel } from "@/lib/uptimeLabels";
+import type { UptimeStatus } from "@/lib/uptimeProvider";
 
 type Monitor = {
   target_url: string;
-  last_status: "up" | "down" | "seems_down" | "paused" | "unknown" | null;
+  last_status: UptimeStatus | null;
   last_status_at: string | null;
   state_duration_seconds: number | null;
   last_checked_at: string | null;
@@ -33,17 +35,6 @@ type Status = {
 };
 
 type CreateResult = { targetUrl: string; result: string; error?: string };
-
-const STATUS_LABEL: Record<string, { text: string; className: string }> = {
-  up: { text: "Up", className: "text-neon" },
-  down: { text: "Down", className: "text-danger" },
-  seems_down: { text: "Seems down", className: "text-warning" },
-  paused: { text: "Paused", className: "text-cybermuted" },
-  unknown: { text: "Waiting for first check", className: "text-cybermuted" },
-};
-
-// A stale status must not read as current: say we can't see it instead.
-const MISSING_LABEL = { text: "Not found in UptimeRobot", className: "text-warning" };
 
 const RESULT_TEXT: Record<string, string> = {
   created: "monitor created",
@@ -180,7 +171,7 @@ export default function UptimeMonitoringConfig() {
             {status.monitors.length > 0 ? (
               <ul className="space-y-2">
                 {status.monitors.map((m) => {
-                  const label = m.missing ? MISSING_LABEL : (STATUS_LABEL[m.last_status ?? "unknown"] ?? STATUS_LABEL.unknown);
+                  const label = uptimeStatusLabel(m.last_status, m.missing);
                   const since = m.missing ? null : formatDuration(m.state_duration_seconds);
                   return (
                     <li key={m.target_url} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3 text-sm">

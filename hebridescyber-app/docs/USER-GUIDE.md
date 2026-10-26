@@ -172,7 +172,7 @@ neither), critical-finding email alerts (every active plan, including
 Basic), outbound webhooks on scan completion (HMAC-signed, for anyone
 building their own integration), and the monthly digest email.
 
-**Uptime monitoring (Pro and above).** Connect your own UptimeRobot account under Dashboard → Integrations → Uptime monitoring (the free UptimeRobot plan checks every 5 minutes). Hebrides creates monitors for your verified sites in your account, shows whether each is up or down, and sends one message (email, plus Slack/Teams if set) when a site goes down and one when it recovers. Your monitors and UptimeRobot's terms stay with your account; disconnecting here does not delete them.
+**Uptime monitoring (Pro and above).** Connect your own UptimeRobot account under Dashboard → Integrations → Uptime monitoring (the free UptimeRobot plan checks every 5 minutes). Hebrides creates monitors for your verified sites in your account, shows whether each is up or down (on the Integrations card and next to each site under Assets → monitored sites), and sends one message (email, plus Slack/Teams if set) when a site goes down and one when it recovers. Your monitors and UptimeRobot's terms stay with your account; disconnecting here does not delete them.
 
 ### 3.6 Scheduling and the public API
 
