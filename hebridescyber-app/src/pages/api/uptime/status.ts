@@ -58,7 +58,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     supabaseAdmin.from("uptime_integrations").select("last_sync_at, last_error").eq("owner", caller.ownerId).eq("provider", "uptimerobot").maybeSingle(),
   ]);
 
-  const monitors = (monitorRows ?? []) as Array<{ target_url: string }>;
+  // A sync stamps last_checked_at on every monitor UptimeRobot still lists with
+  // the same time it stamps last_sync_at, so a row checked before the last
+  // successful sync is one UptimeRobot no longer has (deleted on their side).
+  // Its stored status is stale, and the card must say so rather than show it as current.
+  const lastSync = fresh?.last_sync_at ? Date.parse(fresh.last_sync_at as string) : NaN;
+  const monitors = ((monitorRows ?? []) as Array<{ target_url: string; last_checked_at: string | null }>).map((m) => ({
+    ...m,
+    missing: Number.isFinite(lastSync) && m.last_checked_at !== null && Date.parse(m.last_checked_at) < lastSync,
+  }));
   const covered = new Set(monitors.map((m) => normaliseMonitorUrl(m.target_url)));
   const unmonitored = ((targetRows ?? []) as Array<{ target_url: string }>).map((t) => t.target_url).filter((u) => !covered.has(normaliseMonitorUrl(u)));
 
