@@ -46,9 +46,17 @@ export type MonitorUpdate = {
   down_alerted_at: string | null;
 };
 
+export type PlannedAlert = {
+  kind: UptimeAlertKind;
+  targetUrl: string;
+  monitorId: string;
+  /** down_alerted_at as this sync read it; the update only lands (and the alert only goes) if it is unchanged. */
+  previousDownAlertedAt: string | null;
+};
+
 export type SyncPlan = {
   updates: MonitorUpdate[];
-  alerts: Array<{ kind: UptimeAlertKind; targetUrl: string }>;
+  alerts: PlannedAlert[];
   /** Stored monitors the provider no longer lists (deleted on their side). Left untouched. */
   missing: string[];
 };
@@ -65,7 +73,7 @@ export function planSync(stored: StoredUptimeMonitor[], live: UptimeMonitor[], n
       continue;
     }
     const alert = decideUptimeAlert(Boolean(row.down_alerted_at), monitor.status);
-    if (alert) plan.alerts.push({ kind: alert, targetUrl: row.target_url });
+    if (alert) plan.alerts.push({ kind: alert, targetUrl: row.target_url, monitorId: row.id, previousDownAlertedAt: row.down_alerted_at });
     plan.updates.push({
       id: row.id,
       last_status: monitor.status,
@@ -123,12 +131,80 @@ export async function syncOwnerMonitors(db: SupabaseClient, ownerId: string, int
   }
 
   const plan = planSync(stored, live.value, now);
+  const alertFor = new Map(plan.alerts.map((a) => [a.monitorId, a]));
+  const alerts: PlannedAlert[] = [];
   for (const { id, ...patch } of plan.updates) {
-    const { error } = await db.from("uptime_monitors").update(patch).eq("id", id);
+    const alert = alertFor.get(id);
+    if (!alert) {
+      const { error } = await db.from("uptime_monitors").update(patch).eq("id", id);
+      if (error) return { ok: false, kind: "database", error: error.message };
+      continue;
+    }
+    // Compare-and-set on the outage marker. The cron and a dashboard refresh
+    // can sync the same owner at the same moment; only the one whose write
+    // lands sends the message, so an outage is announced once.
+    const update = db.from("uptime_monitors").update(patch).eq("id", id);
+    const guarded = alert.previousDownAlertedAt === null ? update.is("down_alerted_at", null) : update.eq("down_alerted_at", alert.previousDownAlertedAt);
+    const { data, error } = await guarded.select("id");
     if (error) return { ok: false, kind: "database", error: error.message };
+    if ((data ?? []).length > 0) alerts.push(alert);
   }
   await db.from("uptime_integrations").update({ last_sync_at: now.toISOString(), last_error: null, updated_at: now.toISOString() }).eq("id", integrationId);
-  return { ok: true, alerts: plan.alerts, missing: plan.missing, updated: plan.updates.length };
+  return { ok: true, alerts, missing: plan.missing, updated: plan.updates.length };
+}
+
+export type SyncAllSummary = { synced: number; failed: number; lapsed: number; alerts: number };
+
+/**
+ * The cron's loop (sync-uptime-monitors.ts): every connected owner, one at a
+ * time. Owners whose plan no longer includes uptime monitoring are skipped:
+ * the dashboard and routes stop serving it when a subscription lapses, and so
+ * must the background sync and its messages. One owner's failure never stops
+ * the others.
+ */
+export async function syncAllOwners(
+  db: SupabaseClient,
+  deps: {
+    gate: (db: SupabaseClient, ownerId: string) => Promise<"ok" | "denied" | "error">;
+    sendAlert: (db: SupabaseClient, ownerId: string, kind: UptimeAlertKind, targetUrl: string) => Promise<void>;
+    log?: (message: string) => void;
+  },
+): Promise<{ ok: true; summary: SyncAllSummary } | { ok: false; error: string }> {
+  const log = deps.log ?? (() => {});
+  const { data: owners, error } = await db.from("uptime_integrations").select("owner").eq("provider", "uptimerobot");
+  if (error) return { ok: false, error: error.message };
+
+  const summary: SyncAllSummary = { synced: 0, failed: 0, lapsed: 0, alerts: 0 };
+  for (const { owner } of (owners ?? []) as Array<{ owner: string }>) {
+    const gate = await deps.gate(db, owner);
+    if (gate === "denied") {
+      summary.lapsed++;
+      continue;
+    }
+    if (gate === "error") {
+      log(`owner ${owner}: could not check plan`);
+      summary.failed++;
+      continue;
+    }
+    const integration = await loadUptimeProvider(db, owner);
+    if (integration.status !== "ok") {
+      log(`owner ${owner}: ${integration.status}`);
+      summary.failed++;
+      continue;
+    }
+    const outcome = await syncOwnerMonitors(db, owner, integration.id, integration.provider);
+    if (!outcome.ok) {
+      log(`owner ${owner}: sync failed (${outcome.kind}): ${outcome.error}`);
+      summary.failed++;
+      continue;
+    }
+    summary.synced++;
+    for (const alert of outcome.alerts) {
+      await deps.sendAlert(db, owner, alert.kind, alert.targetUrl);
+      summary.alerts++;
+    }
+  }
+  return { ok: true, summary };
 }
 
 export type CreateOutcome =
@@ -146,13 +222,20 @@ export const MAX_MONITORS_PER_REQUEST = 8;
  * rate-limit failure and marks the rest `skipped`.
  */
 export async function createMonitorsForTargets(db: SupabaseClient, ownerId: string, provider: UptimeProvider, targetUrls: string[]): Promise<CreateOutcome[]> {
-  const { data: targetRows } = await db.from("monitored_targets").select("target_url").eq("owner", ownerId);
+  const [{ data: targetRows, error: targetsError }, { data: existingRows, error: existingError }] = await Promise.all([
+    db.from("monitored_targets").select("target_url").eq("owner", ownerId),
+    db.from("uptime_monitors").select("target_url").eq("owner", ownerId).eq("provider", provider.id),
+  ]);
+  // Without these we can't tell "not one of your sites" or "already monitored"
+  // from a failed read, so say it failed rather than guess either way.
+  const readError = targetsError ?? existingError;
+  if (readError) return targetUrls.map((targetUrl) => ({ targetUrl, result: "error", kind: "database", error: readError.message }));
+
   const monitored = new Map<string, string>();
   for (const r of (targetRows ?? []) as Array<{ target_url: string }>) {
     const key = normaliseMonitorUrl(r.target_url);
     if (key) monitored.set(key, r.target_url);
   }
-  const { data: existingRows } = await db.from("uptime_monitors").select("target_url").eq("owner", ownerId).eq("provider", provider.id);
   const existing = new Set(((existingRows ?? []) as Array<{ target_url: string }>).map((r) => normaliseMonitorUrl(r.target_url)));
 
   let liveByUrl: Map<string, UptimeMonitor> | null = null;
