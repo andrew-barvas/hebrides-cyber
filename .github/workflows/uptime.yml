@@ -36,12 +36,16 @@ jobs:
         run: |
           base="${SITE_URL:-https://www.hebridescyber.co.uk}"
           base="${base%/}"
-          state=down; code=000
           for attempt in 1 2 3; do
-            code=$(curl -s -m 20 -o /tmp/health.json -w "%{http_code}" "$base/api/health" || echo 000)
+            # The last attempt decides, so clear what an earlier one left behind.
+            state=down
+            rm -f /tmp/health.json
+            # curl's -w already prints 000 when it gets no answer; `|| true` only stops -e from exiting.
+            code=$(curl -s -m 20 -o /tmp/health.json -w "%{http_code}" "$base/api/health" || true)
+            code="${code:-000}"
             if [ "$code" = "200" ]; then state=ok; break; fi
             if [ "$code" = "503" ] && grep -q '"status":"degraded"' /tmp/health.json 2>/dev/null; then state=degraded; fi
-            [ "$attempt" -lt 3 ] && sleep 20
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
           done
           echo "state=$state" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -57,6 +61,8 @@ jobs:
       - name: Open, update or close the incident issue
         env:
           GH_TOKEN: ${{ github.token }}
+          # There is no checkout in this job, so gh can't infer the repository from git.
+          GH_REPO: ${{ github.repository }}
           STATE: ${{ steps.probe.outputs.state }}
           CODE: ${{ steps.probe.outputs.code }}
           BASE: ${{ steps.probe.outputs.base }}
@@ -76,8 +82,15 @@ jobs:
           Sub-checks: \`$(cat /tmp/checks.txt)\`
 
           Next steps: check the Azure Static Web Apps deployment, Supabase and Stripe status, then \`/api/health\` directly."
+          title="Site $STATE: $BASE/api/health"
           if [ -n "$existing" ]; then
+            # One email per change of state, not one every 10 minutes for the length of an outage.
+            if [ "$(gh issue view "$existing" --json title --jq .title)" = "$title" ]; then
+              echo "Still $STATE; issue #$existing already says so."
+              exit 0
+            fi
             gh issue comment "$existing" --body "$body"
+            gh issue edit "$existing" --title "$title"
           else
-            gh issue create --label uptime --title "Site $STATE: $BASE/api/health" --body "$body"
+            gh issue create --label uptime --title "$title" --body "$body"
           fi
