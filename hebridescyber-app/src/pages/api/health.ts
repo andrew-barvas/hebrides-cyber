@@ -53,7 +53,8 @@ async function checkQueue(): Promise<QueueCheckResult> {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  // HEAD too: UptimeRobot's free plan polls with HEAD, and a 405 there reads as "down".
+  if (req.method !== "GET" && req.method !== "HEAD") return res.status(405).json({ error: "Method not allowed" });
 
   // Every call fans out to Supabase and Stripe, so an unthrottled public
   // health endpoint is a cheap way to burn someone else's API quota. 120/h
