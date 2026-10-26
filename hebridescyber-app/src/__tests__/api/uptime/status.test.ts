@@ -87,7 +87,12 @@ describe("GET /api/uptime/status", () => {
 
   it("refreshes a stale cache, and sends the alerts that refresh found", async () => {
     m.load.mockResolvedValue({ status: "ok", id: "i1", provider: {}, lastSyncAt: minutesAgo(30) });
-    m.sync.mockResolvedValue({ ok: true, alerts: [{ kind: "down", targetUrl: "https://shop.example.co.uk" }], missing: [], updated: 1 });
+    m.sync.mockResolvedValue({
+      ok: true,
+      alerts: [{ kind: "down", targetUrl: "https://shop.example.co.uk", monitorId: "r1", previousDownAlertedAt: null }],
+      missing: [],
+      updated: 1,
+    });
     await call();
     expect(m.sync).toHaveBeenCalledTimes(1);
     expect(m.alert).toHaveBeenCalledWith(expect.anything(), "owner-1", "down", "https://shop.example.co.uk");
@@ -108,6 +113,23 @@ describe("GET /api/uptime/status", () => {
     expect(data.refreshError).toBe("UptimeRobot returned 503.");
     expect(data.monitors).toHaveLength(1);
     expect(m.alert).not.toHaveBeenCalled();
+  });
+
+  it("flags a monitor the last sync did not find, so its stale status is not shown as current", async () => {
+    const synced = minutesAgo(1);
+    m.tables.uptime_integrations = [{ last_sync_at: synced, last_error: null }];
+    m.tables.uptime_monitors = [
+      { target_url: "https://shop.example.co.uk", last_status: "up", last_checked_at: synced },
+      { target_url: "https://gone.example.co.uk", last_status: "up", last_checked_at: minutesAgo(90) },
+      // Created after the last sync: not missing, just not synced yet.
+      { target_url: "https://new.example.co.uk", last_status: "unknown", last_checked_at: new Date().toISOString() },
+    ];
+    const data = (await call())._getJSONData() as { monitors: Array<{ target_url: string; missing: boolean }> };
+    expect(data.monitors.map((x) => [x.target_url, x.missing])).toEqual([
+      ["https://shop.example.co.uk", false],
+      ["https://gone.example.co.uk", true],
+      ["https://new.example.co.uk", false],
+    ]);
   });
 
   it("explains an unreadable saved key", async () => {
