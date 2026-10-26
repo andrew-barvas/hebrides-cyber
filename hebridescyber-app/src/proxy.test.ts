@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isProtectedPath } from "./middleware";
+import { isProtectedPath } from "./proxy";
 
 describe("isProtectedPath", () => {
   it.each(["/dashboard", "/dashboard/scans/1", "/admin", "/admin/x", "/account", "/account/security"])("protects %s", (p) =>

@@ -3,19 +3,18 @@
 // (all-or-nothing) with a named profile plus optional per-tool overrides —
 // see scanExecution.ts's runExtendedTools() for where this is consumed.
 //
-// Deliberately excludes Dalfox, which doesn't exist in this codebase yet
-// (see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Each future
-// tool's own PR adds its own key here, in whichever profile(s) it belongs —
-// additive, no restructuring, same precedent compliance.ts and
+// Each tool's own PR adds its own key here, in whichever profile(s) it
+// belongs — additive, no restructuring, same precedent compliance.ts and
 // fixDifficulty.ts already set for their own tables. This list used to also
-// name Kiterunner, Arjun, WPScan CLI, CMSmap, Gospider, Photon and WhatWaf;
-// all seven now exist and are wired, so only Dalfox remains.
+// name Kiterunner, Arjun, WPScan CLI, CMSmap, Gospider, Photon, WhatWaf and
+// Dalfox; all eight now exist and are wired.
 
 export type ExtendedToolName =
   | "nuclei"
   | "zap"
   | "sqlmap"
   | "commix"
+  | "dalfox"
   | "nmap"
   | "subdomains"
   | "deepTls"
@@ -60,6 +59,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "zap",
   "sqlmap",
   "commix",
+  "dalfox",
   "nmap",
   "subdomains",
   "deepTls",
@@ -116,7 +116,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
   safe: {},
   full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
-  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true, badsecrets: true, katana: true },
+  api: { nuclei: true, zap: true, sqlmap: true, commix: true, dalfox: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true, badsecrets: true, katana: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
   // active scan + XSS are the classic CMS admin/comment-form vectors.
   cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true, badsecrets: true },

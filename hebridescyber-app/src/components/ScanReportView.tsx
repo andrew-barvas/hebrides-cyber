@@ -25,7 +25,7 @@ export type { ViewTriage } from "./FindingTriage";
 import type { ScriptFoundBy, ScriptIntegrity, ScriptInventoryResult } from "@/lib/scanners/scriptInventory";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
-import { confirmedProof } from "@/lib/proofEvidence";
+import { aiTriageView, aiVerifiedTitle, confirmedProof } from "@/lib/proofEvidence";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -72,7 +72,7 @@ const FIX_DIFFICULTY_META: Record<FixDifficulty, { label: string; time: string; 
  *  library flaw in CISA's KEV catalog is a more urgent fix than an equally
  *  severe one nobody is using — the order is the prioritisation. */
 function exploitRank(f: { threatIntel?: ViewFinding["threatIntel"]; metadata?: Record<string, unknown> }): number {
-  return (confirmedProof(f) ? 3 : 0) + (f.threatIntel?.knownExploited ? 2 : 0) + (f.threatIntel?.epss ?? 0);
+  return (confirmedProof(f) ? 3 : aiTriageView(f)?.verdict === "confirmed" ? 1 : 0) + (f.threatIntel?.knownExploited ? 2 : 0) + (f.threatIntel?.epss ?? 0);
 }
 
 export function sortFindingsBySeverity<T extends { severity: Severity; threatIntel?: ViewFinding["threatIntel"]; metadata?: Record<string, unknown> }>(list: T[]): T[] {
@@ -571,6 +571,22 @@ export function FindingCard({
             title={`${confirmedProof(finding)!.evidence}${confirmedProof(finding)!.request ? ` (${confirmedProof(finding)!.request})` : ""}`}
           >
             Confirmed exploitable
+          </span>
+        )}
+        {!confirmedProof(finding) && aiTriageView(finding)?.verdict === "confirmed" && (
+          <span
+            className="rounded-full border border-amber-400/40 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-400"
+            title={aiVerifiedTitle(aiTriageView(finding)!)}
+          >
+            AI-verified
+          </span>
+        )}
+        {!confirmedProof(finding) && aiTriageView(finding)?.verdict === "not_confirmed" && (
+          <span
+            className="rounded-full border border-cybermuted/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-cybermuted"
+            title="An AI-assisted check could not reproduce this with one harmless request. That is not evidence it is fixed or absent."
+          >
+            AI: not reproduced
           </span>
         )}
         {finding.threatIntel?.knownExploited && (

@@ -185,6 +185,43 @@ export function parseNucleiOutput(raw: string, targetUrl: string): NucleiFinding
   return findings;
 }
 
+/** A bare hostname (optionally with a port): what nuclei's -iserver takes. */
+const INTERACTSH_HOST = /^(?=.{1,253}(?::\d{1,5})?$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{1,5})?$/i;
+
+/**
+ * Out-of-band (interactsh) settings for the ssrf/oast templates.
+ *
+ * By default nuclei uses ProjectDiscovery's public collaborator pool, which
+ * sees the callback hostname (and so that a scan of that target ran). Two env
+ * switches change that without a code change:
+ *   - INTERACTSH_SERVER (+ optional INTERACTSH_TOKEN): use a self-hosted server.
+ *     An invalid value is ignored rather than passed to a shell tool, and the
+ *     default stays in force.
+ *   - DISABLE_OAST=1: no out-of-band at all (-ni); blind-SSRF templates then
+ *     can't fire, which loses coverage but sends nothing to any third party.
+ */
+export function buildInteractshArgs(env: Record<string, string | undefined> = process.env): string[] {
+  if (env.DISABLE_OAST === "1") return ["-ni"];
+  const server = env.INTERACTSH_SERVER?.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  if (!server || !INTERACTSH_HOST.test(server)) return [];
+  const token = env.INTERACTSH_TOKEN?.trim();
+  return ["-iserver", server, ...(token ? ["-itoken", token] : [])];
+}
+
+export function buildNucleiArgs(targetUrl: string, tags: string, outFile: string, env: Record<string, string | undefined> = process.env): string[] {
+  return [
+    "-target", targetUrl,
+    "-tags", tags,
+    "-json-export", outFile,
+    "-silent",
+    // Per-request timeout in seconds, not the scan's. It used to be 120,
+    // so one unresponsive request could outlast the process timeout
+    // below, which kills nuclei before it has written any results.
+    "-timeout", "10",
+    ...buildInteractshArgs(env),
+  ];
+}
+
 export async function runNuclei(targetUrl: string, detectedTechnologies: string[] = []): Promise<NucleiResult> {
   const tmpFile = `/tmp/nuclei-${randomUUID()}.json`;
   const tags = buildTagArgument(detectedTechnologies);
@@ -192,16 +229,7 @@ export async function runNuclei(targetUrl: string, detectedTechnologies: string[
   try {
     await execFileAsync(
       "nuclei",
-      [
-        "-target", targetUrl,
-        "-tags", tags,
-        "-json-export", tmpFile,
-        "-silent",
-        // Per-request timeout in seconds, not the scan's. It used to be 120,
-        // so one unresponsive request could outlast the process timeout
-        // below, which kills nuclei before it has written any results.
-        "-timeout", "10",
-      ],
+      buildNucleiArgs(targetUrl, tags, tmpFile),
       { timeout: NUCLEI_TIMEOUT_MS }
     );
 

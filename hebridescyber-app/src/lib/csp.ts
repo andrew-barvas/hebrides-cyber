@@ -1,4 +1,4 @@
-// Content-Security-Policy with a per-request nonce. Set from src/middleware.ts
+// Content-Security-Policy with a per-request nonce. Set from src/proxy.ts
 // (the only place a fresh nonce can be minted per request); Next reads the
 // nonce back out of the request's CSP header and stamps it on its own inline
 // bootstrap scripts, so no 'unsafe-inline' is needed in script-src.

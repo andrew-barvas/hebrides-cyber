@@ -47,9 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
@@ -84,6 +84,15 @@ jobs:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          # Worker failures reach Sentry (src/lib/workerSentry.ts); blank means no reporting.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # AI triage of unproven findings (aiTriage.ts): off unless the repo variable is 1.
+          AI_TRIAGE: ${{ vars.AI_TRIAGE }}
+          # Out-of-band (interactsh) for nuclei's ssrf/oast templates: blank keeps the public
+          # pool, a host uses a self-hosted server, DISABLE_OAST=1 turns it off (nuclei.ts).
+          INTERACTSH_SERVER: ${{ vars.INTERACTSH_SERVER }}
+          INTERACTSH_TOKEN: ${{ secrets.INTERACTSH_TOKEN }}
+          DISABLE_OAST: ${{ vars.DISABLE_OAST }}
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
           # The post-scan emails (critical findings, scan complete, SLA, new
           # hostnames and DNS changes) need it; see scheduled-scans.yml.

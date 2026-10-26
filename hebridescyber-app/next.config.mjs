@@ -23,7 +23,7 @@ const SECURITY_HEADERS = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   // Content-Security-Policy is deliberately NOT here: pages get a per-request
-  // nonce policy from src/middleware.ts (src/lib/csp.ts), which is what lets
+  // nonce policy from src/proxy.ts (src/lib/csp.ts), which is what lets
   // script-src drop 'unsafe-inline'. API routes get API_CSP below.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },

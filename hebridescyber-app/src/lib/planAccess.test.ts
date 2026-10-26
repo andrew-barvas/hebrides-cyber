@@ -76,3 +76,26 @@ describe("hasTierAAccess", () => {
     expect(await hasTierAAccess(client({ plan: "tier_a", status: "cancelled" }, null), "o")).toBe(false);
   });
 });
+
+// Billing safety contract: a basic-plan (or inactive) subscription MUST NOT
+// grant access to paid tiers. This is the invariant the webhook's
+// silent-downgrade fix (Sprint 1) is designed to protect — any regression here
+// would mean a customer could access Pro/Agency features without paying.
+describe("billing safety: basic does not grant paid tiers", () => {
+  it("subscriptionGrants({plan:'basic',status:'active'}, 'pro') is false", () => {
+    expect(subscriptionGrants({ plan: "basic", status: "active" }, "pro")).toBe(false);
+  });
+
+  it("subscriptionGrants({plan:'basic',status:'active'}, 'agency') is false", () => {
+    expect(subscriptionGrants({ plan: "basic", status: "active" }, "agency")).toBe(false);
+  });
+
+  it("subscriptionGrants({plan:'basic',status:'active'}, 'tier_a') is false", () => {
+    expect(subscriptionGrants({ plan: "basic", status: "active" }, "tier_a")).toBe(false);
+  });
+
+  it("an inactive pro subscription does not grant pro", () => {
+    expect(subscriptionGrants({ plan: "pro", status: "past_due" }, "pro")).toBe(false);
+    expect(subscriptionGrants({ plan: "pro", status: "cancelled" }, "pro")).toBe(false);
+  });
+});
