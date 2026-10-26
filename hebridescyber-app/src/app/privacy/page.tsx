@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "How Hebrides Cyber collects, uses, and protects your personal data.",
 };
 
-const LAST_UPDATED = "August 2025";
+const LAST_UPDATED = "October 2026";
 const CONTACT_EMAIL = "hello@hebridescyber.co.uk";
 const COMPANY = "Hebrides Cyber";
 const COMPANY_LOCATION = "Isle of Lewis, Scotland, UK";
@@ -85,6 +85,16 @@ export default function PrivacyPage() {
             path, timestamp, HTTP status) for up to 30 days for security and operational purposes.
           </p>
 
+          <h3>2g. Error monitoring</h3>
+          <p>
+            We use <a href="https://sentry.io/privacy/" target="_blank" rel="noreferrer">Sentry</a> to
+            receive a report when something goes wrong on the site or in our background scan jobs, so we can
+            find and fix faults. A report contains technical details of the fault: the error message and
+            stack trace, the page address, your browser and device type, and the request that triggered it.
+            Values that look like credentials (passwords, tokens, API keys) are redacted before a report is
+            sent. Error reports are used only to maintain the service, not for analytics or advertising.
+          </p>
+
           <h2>3. Why we process your data (legal basis)</h2>
           <div className="overflow-x-auto">
           <table>
@@ -98,6 +108,7 @@ export default function PrivacyPage() {
               <tr><td>Billing</td><td>Processing subscription payments</td><td>Contract</td></tr>
               <tr><td>Analytics</td><td>Improving the site</td><td>Consent</td></tr>
               <tr><td>Server logs</td><td>Security and operations</td><td>Legitimate interests</td></tr>
+              <tr><td>Error reports</td><td>Finding and fixing faults</td><td>Legitimate interests</td></tr>
             </tbody>
           </table>
           </div>
@@ -109,6 +120,7 @@ export default function PrivacyPage() {
             <li><strong>Stripe</strong> — payment processing</li>
             <li><strong>Microsoft Azure</strong> — hosting, compute, and blob storage</li>
             <li><strong>Google Analytics</strong> — usage analytics (only with your consent)</li>
+            <li><strong>Sentry</strong> — error monitoring (technical error reports from the site and our scan jobs)</li>
             <li><strong>Resend</strong> — transactional email (contact form notifications)</li>
           </ul>
           <p>All processors are bound by data processing agreements and process data only on our instructions.</p>
