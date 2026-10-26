@@ -59,10 +59,25 @@ mention it in the privacy notice before enabling for customers.
 verified `confirmed` verdict, only when there is no deterministic proof, and ranks it between
 "Confirmed exploitable" and unverified findings. `inconclusive` shows nothing.
 
+## Evaluating the model
+
+`npm run bench:triage` (`bench/triage/run.ts`) runs the real `triageFinding()` pipeline — real
+prompts, real `replayProbe` allowlist, real model call — against the labeled cases in
+`bench/triage/cases.ts`, each a tiny fixture site plus one finding with a known-correct verdict.
+It reports per-case hits/misses and precision/recall for `confirmed` specifically, since a false
+`confirmed` is the costlier mistake.
+
+Needs `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_KEY` / `AZURE_OPENAI_DEPLOYMENT` set; without them it
+exits 2 before scoring anything. **Not wired into CI** — no model credential there yet — so run it
+by hand after touching the prompts in `aiTriage.ts`, and before raising `MAX_TRIAGED_PER_SCAN` or
+otherwise widening triage's role. The seed set is intentionally small; grow it toward 30-50 cases
+as real false positives/negatives turn up, one fixture per case, labeled with the verdict a careful
+human reviewer would reach.
+
 ## Not built / next
 
-- Benchmark gate: measure precision and recall with and without triage in `bench/`. Needs a model
-  in CI, so for now evaluate manually before enabling `AI_TRIAGE=1` for customers.
+- Wire `bench:triage` into CI once a scoped, low-budget model credential exists there (manually
+  triggered or nightly, not on every PR).
 - Two-request probes (for example a baseline plus a mutated request) and POST support. Both widen
   the blast radius; add only with their own review.
 - Using the verdict to rank the executive report or to suppress anything. Do not suppress until a
