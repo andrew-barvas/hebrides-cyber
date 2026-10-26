@@ -120,13 +120,13 @@ describe("parseFeedItems", () => {
     `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="text">Multiple services in europe-west2 are experiencing issues</title><link href="https://status.cloud.google.com/incidents/abc" rel="alternate"/><updated>${updated}</updated><summary type="html">&lt;p&gt;Power event in europe-west2-b&lt;/p&gt;</summary></entry></feed>`;
 
   it("parses RSS items, decoding entities and stripping HTML", () => {
-    const [a] = parseFeedItems(rss(new Date(NOW - 3_600_000).toUTCString()), "Wire", 3, "news");
+    const [a] = parseFeedItems(rss(new Date(Date.now() - 3_600_000).toUTCString()), "Wire", 3, "news");
     expect(a).toMatchObject({ title: "PHP flaws & fixes", link: "https://n.example/php", source: "Wire", kind: "news" });
     expect(a.summary).toBe("Two critical bugs.");
   });
 
   it("parses Atom entries: href link, updated date, summary", () => {
-    const [a] = parseFeedItems(atom(iso(5)), "Google Cloud status", 3, "status");
+    const [a] = parseFeedItems(atom(new Date(Date.now() - 5 * 3_600_000).toISOString()), "Google Cloud status", 3, "status");
     expect(a).toMatchObject({ title: "Multiple services in europe-west2 are experiencing issues", link: "https://status.cloud.google.com/incidents/abc", kind: "status" });
     expect(a.summary).toContain("Power event in europe-west2-b");
   });
