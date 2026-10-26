@@ -79,6 +79,21 @@ describe("UptimeMonitoringConfig", () => {
     expect(screen.getByText("Waiting for first check")).toBeInTheDocument();
   });
 
+  it("shows a monitor UptimeRobot no longer has as not found, not with its stale status", async () => {
+    fetchMock.mockReturnValue(
+      respond(
+        connectedStatus({
+          monitors: [{ target_url: "https://gone.example.co.uk", last_status: "up", state_duration_seconds: 7200, last_status_at: null, last_checked_at: null, missing: true }],
+        }),
+      ),
+    );
+    render(<UptimeMonitoringConfig />);
+    expect(await screen.findByText("Not found in UptimeRobot")).toBeInTheDocument();
+    expect(screen.queryByText("Up")).toBeNull();
+    expect(screen.queryByText(/for 2 h/)).toBeNull();
+    expect(screen.getByText(/disconnect and connect again/)).toBeInTheDocument();
+  });
+
   it("offers to create monitors for sites that have none, and reports each result", async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url === "/api/uptime/monitors") {

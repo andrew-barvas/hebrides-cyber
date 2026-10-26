@@ -18,6 +18,8 @@ type Monitor = {
   last_status_at: string | null;
   state_duration_seconds: number | null;
   last_checked_at: string | null;
+  /** The last sync did not find this monitor in UptimeRobot, so last_status is stale. */
+  missing?: boolean;
 };
 
 type Status = {
@@ -39,6 +41,9 @@ const STATUS_LABEL: Record<string, { text: string; className: string }> = {
   paused: { text: "Paused", className: "text-cybermuted" },
   unknown: { text: "Waiting for first check", className: "text-cybermuted" },
 };
+
+// A stale status must not read as current: say we can't see it instead.
+const MISSING_LABEL = { text: "Not found in UptimeRobot", className: "text-warning" };
 
 const RESULT_TEXT: Record<string, string> = {
   created: "monitor created",
@@ -175,8 +180,8 @@ export default function UptimeMonitoringConfig() {
             {status.monitors.length > 0 ? (
               <ul className="space-y-2">
                 {status.monitors.map((m) => {
-                  const label = STATUS_LABEL[m.last_status ?? "unknown"] ?? STATUS_LABEL.unknown;
-                  const since = formatDuration(m.state_duration_seconds);
+                  const label = m.missing ? MISSING_LABEL : (STATUS_LABEL[m.last_status ?? "unknown"] ?? STATUS_LABEL.unknown);
+                  const since = m.missing ? null : formatDuration(m.state_duration_seconds);
                   return (
                     <li key={m.target_url} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyberborder p-3 text-sm">
                       <span className="break-all text-cybertext/80">{m.target_url}</span>
@@ -190,6 +195,12 @@ export default function UptimeMonitoringConfig() {
               </ul>
             ) : (
               <p className="text-sm text-cybermuted">No monitors yet.</p>
+            )}
+
+            {status.monitors.some((m) => m.missing) && (
+              <p className="text-xs text-cybermuted">
+                A monitor marked &ldquo;not found&rdquo; was deleted or moved in UptimeRobot. To recreate it, disconnect and connect again, then create monitors.
+              </p>
             )}
 
             {status.unmonitored.length > 0 && (
