@@ -18,6 +18,7 @@ import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
+import { runDalfox } from "../worker/tools/dalfox";
 import { runNmap } from "../worker/tools/nmap";
 import { runNetworkExposure } from "../worker/tools/networkExposure";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
@@ -45,7 +46,7 @@ import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
 import { runBadsecrets } from "../worker/tools/badsecrets";
 import { runKatana } from "../worker/tools/katana";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -62,6 +63,7 @@ import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { triageIfEnabled } from "./scanners/aiTriage";
 import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
@@ -176,6 +178,7 @@ async function runExtendedTools(
     zapResult,
     sqlmapResult,
     commixResult,
+    dalfoxResult,
     nmapResult,
     networkExposureResult,
     subdomainsResult,
@@ -216,6 +219,10 @@ async function runExtendedTools(
     toolConfig.commix
       ? runCommix(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
+    // Same precedent: a dedicated tool for XSS depth, beyond ZAP's generic rules.
+    toolConfig.dalfox
+      ? runDalfox(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
     toolConfig.nmap
       ? runNmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
@@ -398,6 +405,7 @@ async function runExtendedTools(
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
     commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
+    dalfox: dalfoxResult.status === "fulfilled" ? dalfoxResult.value : { status: "error", findings: [], note: String(dalfoxResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
     networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error", host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
@@ -475,6 +483,18 @@ async function runExtendedTools(
         title: `[commix] OS command injection — param: ${f.parameter}`,
         detail: `The ${f.place} parameter "${f.parameter}" is vulnerable to OS command injection.`,
         remediation: commixRemediation(),
+      });
+    }
+  }
+
+  if (extended.dalfox.status === "completed") {
+    for (const f of extended.dalfox.findings) {
+      findings.push({
+        checkId: `dalfox.reflected-xss:${f.param}`,
+        severity: f.severity,
+        title: `[dalfox] Reflected XSS — param: ${f.param}`,
+        detail: `The "${f.param}" parameter is reflected in a position where it executes as script. Payload: ${f.payload}. ${f.evidence}`,
+        remediation: dalfoxRemediation(),
       });
     }
   }
@@ -774,12 +794,13 @@ async function runExtendedTools(
       "no-rate-limit": NO_RATE_LIMIT,
       "session-fixation": SESSION_FIXATION,
       "idor-indicator": IDOR_INDICATOR,
+      "weak-session-token": WEAK_SESSION_TOKEN,
     };
     for (const f of sessionFindings) {
       findings.push({
         checkId: `sessionCheck.${f.type}:${f.url}`,
         severity: f.type === "idor-indicator" ? "high" : f.type === "session-fixation" ? "high" : "medium",
-        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
+        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type === "weak-session-token" ? `Session cookie "${f.url}" looks predictable` : f.type}`,
         detail: f.detail,
         remediation: remediationMap[f.type],
       });
@@ -1083,7 +1104,11 @@ export async function executeScan(
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
     // Proof of exploit: a handful of harmless re-checks mark which findings
     // reproduce. Never changes severity or the score; it only adds evidence.
-    if (options.confirmExploits ?? profile !== "safe") findings = await confirmExploitable(targetUrl, findings);
+    if (options.confirmExploits ?? profile !== "safe") {
+      findings = await confirmExploitable(targetUrl, findings);
+      // Runs after the deterministic proofs so it only sees what they couldn't prove.
+      findings = await triageIfEnabled(targetUrl, findings);
+    }
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and

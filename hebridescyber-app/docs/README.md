@@ -27,6 +27,8 @@ entry).
 | ...see architecture / workflow / data-model **diagrams** (Mermaid, renderable to SVG/PNG) | [`diagrams/`](diagrams/README.md) |
 | ...see the data model, ER diagram and RLS/tenant-isolation tiers | [`DATA-MODEL.md`](DATA-MODEL.md) |
 | ...hand a funder/buyer a one-page, claim-verified overview | [`ONE-PAGE-OVERVIEW.md`](ONE-PAGE-OVERVIEW.md) |
+| ...see how we compare with Burp Suite and why Burp MCP is not used | [`BURP-PARITY.md`](BURP-PARITY.md) |
+| ...understand the AI triage layer, its limits and data handling | [`AI-TRIAGE-DESIGN.md`](AI-TRIAGE-DESIGN.md) |
 | ...read the independent critical product/security/UX review (dated) | [`PRODUCT-REVIEW-2026-10.md`](PRODUCT-REVIEW-2026-10.md) |
 | ...understand the security model, threat handling, retention | [`security.md`](security.md) |
 | ...use the public REST API or the packaged GitHub Action | [`API.md`](API.md) |

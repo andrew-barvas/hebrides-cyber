@@ -1224,6 +1224,31 @@ export function commixRemediation(): string {
   return COMMIX_COMMAND_INJECTION_BASE;
 }
 
+export const DALFOX_REFLECTED_XSS_BASE = `Dalfox confirmed this parameter's value is reflected into the page in a
+position where it executes as script — a real, exploitable cross-site
+scripting (XSS) issue, not a theoretical one. An attacker who gets a victim
+to follow a crafted link can run arbitrary JavaScript in that victim's
+session: steal cookies/tokens, act as them, or deface the page.
+
+**The fix:**
+
+- Encode output for the context it lands in — HTML-encode for HTML body
+  text, attribute-encode for attribute values, JS-string-encode inside
+  \`<script>\`. Use your framework's templating (React/JSX, Vue, a
+  server-side templating engine with auto-escaping) rather than building
+  HTML by string concatenation, which is almost always how this happens.
+- Add a Content-Security-Policy that restricts \`script-src\` — it does not
+  fix the injection, but it blocks the payload from running even if encoding
+  is missed somewhere else.
+- Validate and reject unexpected input server-side (allowlist expected
+  shapes) in addition to output encoding; encoding alone is the fix for this
+  reflection, validation narrows the attack surface further.`;
+
+/** Same as DALFOX_REFLECTED_XSS_BASE — no per-target variant. */
+export function dalfoxRemediation(): string {
+  return DALFOX_REFLECTED_XSS_BASE;
+}
+
 /**
  * The small fixed set of ports scanExecution.ts's DANGEROUS_TOOL_PORTS
  * escalates to critical regardless of nmap's service-guess — each one is
@@ -2078,6 +2103,15 @@ session identifier. An attacker could set a victim's session cookie
 the victim authenticates. Ensure your application always generates a
 new session ID upon successful authentication, invalidating any
 previously issued session tokens.`;
+
+export const WEAK_SESSION_TOKEN = `Session identifiers sampled from fresh visits look predictable
+(short, from a small alphabet, repeated, or counting up). An attacker who can
+guess a valid identifier takes over that user's session without a password.
+Generate session IDs with your framework's built-in session handler, which uses
+a cryptographically secure random source, and make them at least 128 bits
+(about 32 hex or 22 base64url characters). Never build them from a counter, a
+timestamp, a user ID or Math.random(). If you wrote your own session code,
+replace it with the framework's.`;
 
 export const IDOR_INDICATOR = `An API endpoint returned data when accessed with a sequential numeric
 ID without requiring authentication. This may indicate an Insecure

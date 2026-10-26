@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 300">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5BFFD0"/>
+      <stop offset="1" stop-color="#20C88E"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="24" y="30" width="240" height="240" rx="52" fill="#070B14"/>
+  <rect x="31" y="37" width="226" height="226" rx="46" fill="none" stroke="#39FFC0" stroke-opacity="0.18" stroke-width="2.5"/>
+  <path d="M96 80 L200 150 L96 220" fill="none" stroke="url(#grad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <g font-family="Consolas, 'Liberation Mono', 'SFMono-Regular', ui-monospace, monospace" font-weight="700" letter-spacing="4">
+    <text x="312" y="142" font-size="92" fill="#FFFFFF">HEBRIDES</text>
+    <text x="312" y="250" font-size="92" fill="#39FFC0">CYBER</text>
+  </g>
+</svg>

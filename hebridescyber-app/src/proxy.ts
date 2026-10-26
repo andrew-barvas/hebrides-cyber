@@ -26,7 +26,7 @@ export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export async function middleware(original: NextRequest) {
+export async function proxy(original: NextRequest) {
   const nonce = generateNonce();
   const csp = buildCsp(nonce);
   const requestHeaders = new Headers(original.headers);
