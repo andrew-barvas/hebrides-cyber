@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CookieSettingsButton } from "./CookieConsent";
 
 // The landing pages a visitor arriving from search or a campaign needs to
 // find from anywhere, not only from a link they were sent.
@@ -49,6 +50,9 @@ export default function Footer() {
             {label}
           </Link>
         ))}
+        {/* The privacy policy (section 2e) promises this control: withdrawing
+            consent has to be as easy as giving it. */}
+        <CookieSettingsButton className="hover:text-neon transition-colors" />
       </nav>
       <p className="font-mono">
         <span aria-hidden="true" className="text-neon">$</span>{" "}
