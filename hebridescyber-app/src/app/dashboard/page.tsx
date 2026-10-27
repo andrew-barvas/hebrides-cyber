@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { ScanSearch } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { deriveOnboardingFlags } from "@/lib/onboardingFlags";
+import { planIncludes } from "@/lib/planAccess";
 import PortfolioReportButton from "@/components/PortfolioReportButton";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import PlanUpsell from "@/components/PlanUpsell";
@@ -238,11 +239,11 @@ export default function DashboardPage() {
 
       <OnboardingChecklist {...flags} />
 
-      {plan === "agency" && <PortfolioReportButton token={sessionToken} />}
+      {planIncludes(plan, "agency") && <PortfolioReportButton token={sessionToken} />}
 
       <FleetOverview />
 
-      <EmergingThreatsPanel token={sessionToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
+      <EmergingThreatsPanel token={sessionToken} paidPlan={planIncludes(plan, "basic")} />
 
       {!loaded ? (
         <OverviewSkeleton />
@@ -384,7 +385,7 @@ export default function DashboardPage() {
         />
       )}
 
-      {plan === "agency" && <PartnerPortalPanel />}
+      {planIncludes(plan, "agency") && <PartnerPortalPanel />}
 
       <PlanUpsell plan={plan} />
     </div>

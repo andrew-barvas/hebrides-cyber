@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import type { Plan } from "@/lib/planAccess";
 
-export type Plan = "none" | "basic" | "pro" | "agency";
+export type { Plan };
 
 const COPY: Record<Plan, { label: string; message: string; cta: string; href: string }> = {
   none: {
@@ -25,6 +26,12 @@ const COPY: Record<Plan, { label: string; message: string; cta: string; href: st
   },
   agency: {
     label: "Agency plan",
+    message: "Want to know how your sites stand up to a real attack? Tier A adds opt-in offensive readiness testing, authorised per target.",
+    cta: "Compare plans",
+    href: "/pricing",
+  },
+  tier_a: {
+    label: "Tier A plan",
     message: "You're on our top tier. Need deeper assurance? Ask about a manual penetration test or an incident response retainer.",
     cta: "Enquire",
     href: "/contact",

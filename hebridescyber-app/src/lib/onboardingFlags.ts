@@ -11,13 +11,15 @@
 //   every paid plan), an outbound webhook, Slack, Teams, or an on-call
 //   integration (PagerDuty, Opsgenie).
 
+import { planIncludes, type Plan } from "./planAccess";
+
 export type OnboardingInput = {
   verifiedDomainCount: number;
   /** Scans past `pending`: queued, running, completed or failed. */
   startedScanCount: number;
   hasCompletedScan: boolean;
   /** The plan while its subscription is active, else "none". */
-  activePlan: "none" | "basic" | "pro" | "agency";
+  activePlan: Plan;
   webhookCount: number;
   slackWebhookUrl: string | null;
   teamsWebhookUrl: string | null;
@@ -29,17 +31,17 @@ export type OnboardingFlags = {
   hasScanned: boolean;
   hasReport: boolean;
   hasAlertChannel: boolean;
-  /** Which alert step to suggest: Slack/Teams on Pro and Agency, a webhook otherwise. */
+  /** Which alert step to suggest: Slack/Teams on Pro and up, a webhook otherwise. */
   alertChannelIsSlackTeams: boolean;
 };
 
 export function deriveOnboardingFlags(input: OnboardingInput): OnboardingFlags {
-  const paid = input.activePlan !== "none";
+  const paid = planIncludes(input.activePlan, "basic");
   return {
     verifiedDomain: input.verifiedDomainCount > 0,
     hasScanned: input.startedScanCount > 0,
     hasReport: input.hasCompletedScan,
     hasAlertChannel: paid || input.webhookCount > 0 || Boolean(input.slackWebhookUrl) || Boolean(input.teamsWebhookUrl) || input.onCallCount > 0,
-    alertChannelIsSlackTeams: input.activePlan === "pro" || input.activePlan === "agency",
+    alertChannelIsSlackTeams: planIncludes(input.activePlan, "pro"),
   };
 }

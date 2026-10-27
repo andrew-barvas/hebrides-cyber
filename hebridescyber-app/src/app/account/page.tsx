@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useBillingPortal } from "@/lib/useBillingPortal";
+import { planIncludes } from "@/lib/planAccess";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import RequestAudit from "@/components/RequestAudit";
 import TeamSection from "@/components/TeamSection";
@@ -25,16 +26,20 @@ const PLAN_LABELS: Record<string, string> = {
   basic: "Basic",
   pro: "Pro",
   agency: "Agency",
+  tier_a: "Tier A",
 };
 
 export default function AccountPage() {
-  const { email, userId, accessToken, billingPlan, planStatus } = useAppSession();
+  const { email, userId, accessToken, plan, billingPlan, planStatus } = useAppSession();
   const billing = useBillingPortal();
   const [branding, setBranding] = useState<{ logoUrl: string | null; name: string | null } | null>(null);
+  // Gated on the active plan, as branding-logo.ts is: a lapsed Agency
+  // account would otherwise get a form whose saves are refused.
+  const brandingEnabled = planIncludes(plan, "agency");
 
-  // White-label branding is Agency-only and not part of the shared session.
+  // White-label branding is Agency and up, and not part of the shared session.
   useEffect(() => {
-    if (billingPlan !== "agency") return;
+    if (!brandingEnabled) return;
     supabase
       .from("subscriptions")
       .select("brand_logo_url, brand_name")
@@ -45,7 +50,7 @@ export default function AccountPage() {
           name: (data?.brand_name as string | null) ?? null,
         })
       );
-  }, [billingPlan]);
+  }, [brandingEnabled]);
 
   return (
     <div className="space-y-8">
@@ -102,7 +107,7 @@ export default function AccountPage() {
         )}
       </Card>
 
-      {billingPlan === "agency" && branding && (
+      {brandingEnabled && branding && (
         <BrandingSection token={accessToken} initialLogoUrl={branding.logoUrl} initialBrandName={branding.name} />
       )}
 

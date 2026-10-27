@@ -8,9 +8,11 @@ import MonitoredTargets from "@/components/MonitoredTargets";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { planIncludes } from "@/lib/planAccess";
 
 export default function AssetsPage() {
   const { plan, accessToken } = useAppSession();
+  const paid = planIncludes(plan, "basic");
 
   return (
     <div className="space-y-6">
@@ -26,10 +28,10 @@ export default function AssetsPage() {
         <DomainVerification />
       </section>
 
-      {/* Basic/Pro/Agency all get scheduled monitoring (E-01) — cadence and
+      {/* Every paid plan gets scheduled monitoring (E-01) — cadence and
           per-plan target caps are enforced server-side (scanCadence.ts,
           018_monitored_targets_plan_cap.sql); this only mirrors that gate. */}
-      {plan !== "none" ? (
+      {paid ? (
         <MonitoredTargets />
       ) : (
         <LockedFeature
@@ -53,7 +55,7 @@ export default function AssetsPage() {
           lookup can't show. Panel self-hides before migration 060 or for a
           free account with no ingest URL set. */}
       <section aria-label="DMARC reports">
-        <DmarcReports token={accessToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
+        <DmarcReports token={accessToken} paidPlan={paid} />
       </section>
     </div>
   );
