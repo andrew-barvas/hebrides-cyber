@@ -1,6 +1,6 @@
 # Next steps — session handoff
 
-**Last updated: 2026-10-26.** Read this first in any new session (local or
+**Last updated: 2026-10-27.** Read this first in any new session (local or
 cloud), after `CLAUDE.md` and `docs/SCANNER-CONVENTIONS.md`. It says where
 things stand, the rules that kept biting, the plan in order, and what only
 the owner can do.
@@ -8,6 +8,38 @@ the owner can do.
 To resume in a cloud session: open the repo `andrew-barvas/hebrides-cyber`,
 branch from `master`, and prompt *"Read hebridescyber-app/docs/NEXT-STEPS.md
 and implement plan item N."* Do one item per session.
+
+## What's next — top 5 (2026-10-27)
+
+1. **Land the open PRs, then this branch.** Merge #109 (uptime redirect fix) and
+   #104 (uptime UI, e2e fixed) once CI is green; #107 (cookie settings) is a draft
+   awaiting ready-for-review. Then open the PR for `feat/platform-strategy-openapi`
+   (OpenAPI, scoped keys, client workspaces). **Before it merges run
+   `npm run test:db`** with a `DATABASE_URL`: migrations 063 (`api_key_scopes`)
+   and 064 (`clients`, with its cross-owner trigger and RLS) have never been run
+   against real Postgres, and they auto-apply on merge to master.
+2. **Unblock paid sign-up (owner).** Set `STRIPE_PRICE_*` (E-07) so checkout stops
+   answering 503 and `/api/health` leaves "degraded"; set `CREDENTIALS_ENC_KEY`
+   first (owner action 0) so stored integration tokens are sealed. This is still
+   the top business blocker.
+3. **Turn on Sentry in production (E-03).** The worker reporting is merged (#95)
+   but failed scans stay invisible until the DSN is set; then run the two
+   outstanding post-deploy checks from the #88 CSP/DoH change (Todo 1).
+4. **Finish client workspaces.** The follow-ups the first slice left out: a
+   per-client SLA policy, alert routing and integrations (all keyed by owner
+   today), a client-facing read-only portal (needs per-client RLS and invites),
+   and a product decision on the 15-site Agency cap. Add a clients section to the
+   Playwright suite for team-member read-only behaviour.
+5. **Restore drill and launch hardening.** Restore a backup into a scratch
+   Supabase project and record it in `BACKUP-RESTORE.md` (E-13), then the
+   remaining owner items (CAA record, ToS solicitor review, publish the GitHub
+   Action). Launch readiness was ≈58/100 at the 2026-10-22 review, gated by
+   reliability and payments.
+
+Housekeeping done 2026-10-27: all branches already merged or superseded were
+deleted (46 stale remote and 4 local); only the four live PR branches and the
+`claude/frosty-golick-eeca03` branch (closed PR #110, Tier A paid-feature
+visibility) remain.
 
 ## Session handover — 2026-10-22
 
