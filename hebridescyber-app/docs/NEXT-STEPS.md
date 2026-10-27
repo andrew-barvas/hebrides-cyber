@@ -194,6 +194,7 @@ each lives in CLAUDE.md and the module's header.
 - **Emerging threats:** WordPress plugin matching; re-alert when "possibly affected" becomes "affected".
 - **RLS tests:** extend the matrix to ticket_integrations, sla_policies, organisations/RBAC, report_shares.
 - **e2e:** `/account`, `/admin`, `/dashboard/assets|sla|integrations`, the Fix Wizard and `/diff` are not covered signed-in.
+- **WhatWaf (2026-10-27):** fixed a fabricated finding. Output whatwaf.ts couldn't read (empty, a crash, a format change, JSON without `is_protected`) became a medium `whatwaf.no-waf`; it is now `error` (not-run, so lifecycle leaves last scan's WAF finding alone), and `no-waf` needs WhatWaf to have said so. The hardcoded "confidence" (85/90%, flagged in `PRODUCT-REVIEW-2026-10.md`) is gone from the result, the finding and the dashboard card: WhatWaf reports none. Still open: the parser was never built from a real run. `--json` may well write to a file rather than stdout, so capture real output into `fixtures/whatwaf/` and add an integration test, as for dalfox, before trusting any whatwaf result.
 
 ## Plan (2026-10-06): DeepSeek/Copilot strategic review, checked against the code
 
