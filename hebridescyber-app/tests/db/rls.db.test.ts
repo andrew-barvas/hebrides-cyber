@@ -50,6 +50,7 @@ const KEY_TABLES: TableSpec[] = [
   { table: "dmarc_reports", ownerCol: "owner", insert: "insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, 'new.test', 'google.com', 'rpt-new')" },
   { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
   { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
+  { table: "clients", ownerCol: "owner", insert: "insert into clients (owner, name) values ($1, 'New client')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -106,6 +107,9 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, $2, 'google.com', $3)", [o, h, `rpt-${h}`]);
       await q("insert into dmarc_ingest_tokens (owner, token) values ($1, $2)", [o, `tok-${h}-0123456789abcdef`]);
       await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
+    }
+    for (const [o, h] of [[A, "a.test"], [B, "b.test"]]) {
+      await q("insert into clients (owner, name) values ($1, $2)", [o, `client-${h}`]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
@@ -352,6 +356,69 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
 
     it("shows anon nothing", async () => {
       expect(await count(anon, "select 1 from users")).toBe(0);
+    });
+  });
+
+  describe("clients (migration 063)", () => {
+    it("lets a team member read the owner's clients but not write or see others'", async () => {
+      expect(await count(asM, "select 1 from clients where owner = $1", [A])).toBe(1);
+      expect(await count(asM, "select 1 from clients where owner = $1", [B])).toBe(0);
+      await asActor(db, asM, async (c) => {
+        expect((await attempt(c, "update clients set notes = 'x' where owner = $1", [A])).rowCount).toBe(0);
+        expect((await attempt(c, "delete from clients where owner = $1", [A])).rowCount).toBe(0);
+        expect((await attempt(c, "insert into clients (owner, name) values ($1, 'forged')", [A])).ok).toBe(false);
+      });
+    });
+
+    it("stops an owner changing or deleting another owner's client, or re-homing their own", async () => {
+      await asActor(db, asB, async (c) => {
+        expect((await attempt(c, "update clients set notes = 'n' where owner = $1", [A])).rowCount).toBe(0);
+        expect((await attempt(c, "delete from clients where owner = $1", [A])).rowCount).toBe(0);
+        expect((await attempt(c, "update clients set owner = $1 where owner = $2", [A, B])).ok).toBe(false);
+      });
+    });
+
+    it("rejects a duplicate name per owner, case-insensitively, but allows it across owners", async () => {
+      const dup = await asActor(db, service, (c) => attempt(c, "insert into clients (owner, name) values ($1, 'CLIENT-A.TEST')", [A]));
+      expect(dup.ok).toBe(false);
+      expect(dup.code).toBe("23505");
+      const other = await asActor(db, service, (c) => attempt(c, "insert into clients (owner, name) values ($1, 'client-a.test')", [B]));
+      expect(other.ok).toBe(true);
+    });
+
+    describe("client_id assignment", () => {
+      let clientA: string;
+      let clientB: string;
+      beforeAll(async () => {
+        clientA = (await db.pool.query<{ id: string }>("select id from clients where owner = $1 and name = 'client-a.test'", [A])).rows[0].id;
+        clientB = (await db.pool.query<{ id: string }>("select id from clients where owner = $1 and name = 'client-b.test'", [B])).rows[0].id;
+      });
+
+      it("rejects assigning a site or domain to another owner's client", async () => {
+        const site = await asActor(db, service, (c) => attempt(c, "update monitored_targets set client_id = $1 where owner = $2", [clientB, A]));
+        expect(site.ok).toBe(false);
+        const ins = await asActor(db, service, (c) => attempt(c, "insert into monitored_targets (owner, target_url, client_id) values ($1, 'https://x-assign.test', $2)", [A, clientB]));
+        expect(ins.ok).toBe(false);
+        const domain = await asActor(db, service, (c) => attempt(c, "update verifications set client_id = $1 where owner = $2", [clientB, A]));
+        expect(domain.ok).toBe(false);
+      });
+
+      it("lets an owner assign their own site to their own client", async () => {
+        const site = await asActor(db, asA, (c) => attempt(c, "update monitored_targets set client_id = $1 where owner = $2", [clientA, A]));
+        expect(site.ok).toBe(true);
+        expect(site.rowCount).toBeGreaterThan(0);
+        const domain = await asActor(db, service, (c) => attempt(c, "update verifications set client_id = $1 where owner = $2", [clientA, A]));
+        expect(domain.ok).toBe(true);
+      });
+
+      it("sets client_id to null, keeping the rows, when the client is deleted", async () => {
+        const before = (await db.pool.query("select count(*)::int n from monitored_targets where client_id = $1", [clientA])).rows[0].n;
+        expect(before).toBeGreaterThan(0);
+        await asActor(db, asA, (c) => attempt(c, "delete from clients where id = $1", [clientA]));
+        expect((await db.pool.query("select count(*)::int n from monitored_targets where client_id = $1", [clientA])).rows[0].n).toBe(0);
+        expect((await db.pool.query("select count(*)::int n from verifications where client_id = $1", [clientA])).rows[0].n).toBe(0);
+        expect((await db.pool.query("select count(*)::int n from monitored_targets where owner = $1 and client_id is null", [A])).rows[0].n).toBe(before);
+      });
     });
   });
 
