@@ -23,7 +23,9 @@ import type { Plan } from "@/components/PlanUpsell";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CLIENT_STORAGE_KEY, parseScope, SCOPE_ALL, type ClientScope, type ClientSummary } from "@/lib/clientRollup";
 import { AppMobileNav, AppSidebar } from "./AppNav";
+import ClientSwitcher from "./ClientSwitcher";
 
 export type AppSession = {
   userId: string;
@@ -40,6 +42,12 @@ export type AppSession = {
   slackWebhookUrl: string;
   teamsWebhookUrl: string;
   refreshSubscription: () => Promise<void>;
+  /** Agency client workspaces (empty for other plans). */
+  clients: ClientSummary[];
+  /** The switcher's selection; pages filter their data by it. */
+  currentClientId: ClientScope;
+  setCurrentClientId: (scope: ClientScope) => void;
+  refreshClients: () => Promise<void>;
 };
 
 const AppSessionContext = createContext<AppSession | null>(null);
@@ -63,6 +71,51 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<"loading" | "signed-out" | "ready">("loading");
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [sub, setSub] = useState<Subscription | null>(null);
+  const [clients, setClients] = useState<ClientSummary[]>([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
+  const [scope, setScope] = useState<ClientScope>(SCOPE_ALL);
+  const agency = sub ? ["agency", "tier_a"].includes(effectivePlan(sub.billingPlan, sub.planStatus)) : false;
+
+  const refreshClients = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("clients").select("id, name").order("name", { ascending: true });
+      setClients((data ?? []) as ClientSummary[]);
+    } catch {
+      setClients([]);
+    }
+    setClientsLoaded(true);
+  }, []);
+
+  const setCurrentClientId = useCallback((next: ClientScope) => {
+    setScope(next);
+    try {
+      window.localStorage.setItem(CLIENT_STORAGE_KEY, next);
+      const url = new URL(window.location.href);
+      if (next === SCOPE_ALL) url.searchParams.delete("client");
+      else url.searchParams.set("client", next);
+      window.history.replaceState(null, "", url);
+    } catch {
+      // Private mode / blocked storage: the selection just won't persist.
+    }
+  }, []);
+
+  // Agency only: load the clients once the plan is known.
+  useEffect(() => {
+    if (agency) void refreshClients();
+  }, [agency, refreshClients]);
+
+  // Restore the selection (URL param wins over localStorage) once clients are known,
+  // dropping a stale id whose client has been deleted.
+  useEffect(() => {
+    if (!clientsLoaded) return;
+    let raw: string | null = null;
+    try {
+      raw = new URLSearchParams(window.location.search).get("client") ?? window.localStorage.getItem(CLIENT_STORAGE_KEY);
+    } catch {
+      raw = null;
+    }
+    setScope(parseScope(raw, clients));
+  }, [clientsLoaded, clients]);
 
   const refreshSubscription = useCallback(async () => {
     const { data } = await supabase
@@ -110,8 +163,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ...sub,
       plan: effectivePlan(sub.billingPlan, sub.planStatus),
       refreshSubscription,
+      clients,
+      currentClientId: scope,
+      setCurrentClientId,
+      refreshClients,
     };
-  }, [identity, sub, refreshSubscription]);
+  }, [identity, sub, refreshSubscription, clients, scope, setCurrentClientId, refreshClients]);
 
   const summary = sub ? { plan: effectivePlan(sub.billingPlan, sub.planStatus), billingPlan: sub.billingPlan, planStatus: sub.planStatus } : null;
 
@@ -122,6 +179,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <AppSidebar summary={summary} className="hidden lg:block print:hidden" />
         <div className="min-w-0 flex-1">
           <AppMobileNav className="mb-6 lg:hidden print:hidden" />
+          {status === "ready" && agency && clients.length > 0 && (
+            <ClientSwitcher clients={clients} value={scope} onChange={setCurrentClientId} className="mb-6 print:hidden" />
+          )}
           {status === "loading" && <ShellLoading />}
           {status === "signed-out" && (
             <EmptyState
