@@ -22,6 +22,9 @@ erDiagram
     users ||--o{ verifications : owns
     users ||--o{ repo_connections : owns
     users ||--o{ api_keys : owns
+    users ||--o{ clients : owns
+    clients ||--o{ monitored_targets : groups
+    clients ||--o{ verifications : groups
     users ||--o{ webhooks : owns
     users ||--o{ teams : owns
     users ||--o{ cloud_credentials : owns
@@ -54,6 +57,15 @@ erDiagram
     scan_jobs {
         uuid scan_id FK "null => scheduled"
         text scan_profile "safe|full|offensive"
+        uuid client_id FK "nullable = Unassigned; ON DELETE SET NULL (063)"
+    }
+    clients {
+        uuid id PK
+        uuid owner FK
+        text name "unique per owner, case-insensitive (063)"
+        text notes
+        text brand_name "per-client override of the account brand"
+        text brand_logo_url "https only"
     }
     api_keys {
         text key_hash "sha-256 only; plaintext shown once at creation"

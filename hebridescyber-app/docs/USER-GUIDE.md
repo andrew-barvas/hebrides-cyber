@@ -286,14 +286,25 @@ management — gated behind `is_admin`, server-side.
 
 ### 4.4 Agency, managing multiple clients
 
-1. Add each client site as a monitored target.
-2. Optionally connect an authenticated-scan credential per site for the
+1. Under **Assets → Clients**, add a client for each of your customers, then add
+   each client site as a monitored target and pick its client (or tick several
+   sites and assign them together). Sites without a client sit under
+   **Unassigned**.
+2. Use the **client** switcher at the top of the dashboard to look at one client
+   at a time: Overview groups sites per client with a roll-up score, open
+   criticals and last scan; Scans, Findings, Trends and SLA follow the
+   selection. Findings can also be grouped by site. Deleting a client keeps its
+   sites (they become Unassigned).
+3. Optionally connect an authenticated-scan credential per site for the
    deeper header/cookie recheck.
-3. Configure Slack and/or Teams webhooks so the team sees alerts where
+4. Configure Slack and/or Teams webhooks so the team sees alerts where
    they already work; connect Jira or Linear so a finding becomes a
-   trackable ticket with one click.
-4. Generate a white-labelled PDF report to hand to the client, with the
-   agency's own logo instead of Hebrides Cyber's.
+   trackable ticket with one click. These, and the SLA targets, apply to the
+   whole account rather than per client.
+5. Generate a white-labelled PDF report to hand to the client, with the
+   agency's own logo instead of Hebrides Cyber's. Add `?client=<id>` to the
+   portfolio report for a single client; a client's own brand name and logo
+   (if set) replace the account brand.
 
 ### 4.5 Developer, CI integration
 

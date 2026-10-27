@@ -108,6 +108,7 @@ Lists your scans, newest first.
 |-------------|---------|-------|
 | `limit` | 20 | Max 100 |
 | `target_url` | — | Exact match filter |
+| `client` | — | Agency client workspaces: only scans of that client's sites (matched by hostname). A client id, or `unassigned`. `404 { "code": "client_not_found" }` for an id that isn't yours; `503 { "code": "client_unavailable" }` before migration 063 |
 
 ### `GET /api/v1/scans/{id}`
 
@@ -381,6 +382,32 @@ curl -o portfolio.pdf https://www.hebridescyber.co.uk/api/portfolio-report \
 
 `403 { "code": "plan_required" }` below an active Agency plan; `404 { "code":
 "no_sites" }` when nothing is monitored yet; `429` when rate-limited.
+
+`?client=<id>` narrows the report to one client's sites and brands it with that
+client's own name and logo (each falls back to the account brand when unset).
+`404 { "code": "client_not_found" }` for a client that isn't yours.
+
+### `/api/clients` — client workspaces (Agency, session only)
+
+Group monitored sites under named clients; the dashboard header switcher scopes
+Overview, Scans, Findings, Trends and SLA to one client. **Session only** like
+`/api/keys`: an API key gets `403`. Below an active Agency plan: `403`.
+Before migration 063: `503`.
+
+| Method | Body | Notes |
+|--------|------|-------|
+| `GET` | — | `{ clients: [{ id, name, notes, brand_name, brand_logo_url, created_at, site_count }], unassigned_sites }` |
+| `POST` | `{ name, notes?, brand_name?, brand_logo_url? }` | `201`. Name 1–80 chars, unique per account ignoring case (`409`); logo must be `https://`; max 100 clients |
+| `PATCH` | `{ id, name?, notes?, brand_name?, brand_logo_url? }` | A blank string or `null` clears a note or brand override. `404` for another account's client |
+| `DELETE` | `{ id }` | Its sites and domains become Unassigned; nothing is deleted |
+
+`POST /api/clients/assign` takes `{ client_id: string | null, target_ids?: string[], verification_ids?: string[] }`
+(up to 200 each) and returns `{ updated: { sites, domains } }`. `client_id: null` unassigns.
+The client must be yours (`404`); ids belonging to other accounts are ignored.
+
+`GET /api/findings` and `GET /api/account/sla` also accept `?client=<id>|unassigned`
+(the SLA policy itself stays account-wide). Audit events: `client.created`,
+`client.updated`, `client.deleted`, `client.sites_assigned`.
 
 ### `GET /api/v1/targets/{host}/trend`
 
