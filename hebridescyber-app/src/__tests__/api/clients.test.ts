@@ -109,6 +109,14 @@ describe("/api/clients", () => {
       expect((await clients("GET"))._getJSONData()).toEqual({ clients: [], unassigned_sites: 0 });
     });
 
+    it("500s when the site count query fails, and tolerates null rows", async () => {
+      results["clients:select"] = { data: null, error: null };
+      results["monitored_targets:select"] = { data: null, error: { message: "sites down" } };
+      expect((await clients("GET"))._getStatusCode()).toBe(500);
+      results["monitored_targets:select"] = { data: null, error: null };
+      expect((await clients("GET"))._getJSONData()).toEqual({ clients: [], unassigned_sites: 0 });
+    });
+
     it("500s when the list query fails", async () => {
       results["clients:select"] = { data: null, error: { message: "db down" } };
       expect((await clients("GET"))._getStatusCode()).toBe(500);
@@ -170,6 +178,20 @@ describe("/api/clients", () => {
       expect(lastOp("clients", "insert")).toBeUndefined();
     });
 
+    it("500s when the client count cannot be read", async () => {
+      results["clients:select"] = { data: null, error: { message: "count failed" }, count: null };
+      expect((await clients("POST", { name: "Acme" }))._getStatusCode()).toBe(500);
+      expect(lastOp("clients", "insert")).toBeUndefined();
+    });
+
+    it("treats a null count as zero and 500s when the insert returns no row and no error", async () => {
+      results["clients:select"] = { data: null, error: null, count: null };
+      results["clients:insert"] = { data: null, error: null };
+      const res = await clients("POST", { name: "Acme" });
+      expect(res._getStatusCode()).toBe(500);
+      expect(res._getJSONData()).toEqual({ error: "Could not create client" });
+    });
+
     it("500s, without auditing, when the insert fails", async () => {
       results["clients:insert"] = { data: null, error: { message: "db down" } };
       expect((await clients("POST", { name: "Acme" }))._getStatusCode()).toBe(500);
@@ -188,6 +210,12 @@ describe("/api/clients", () => {
         expect.anything(),
         expect.objectContaining({ action: "client.updated", resourceId: "c1", metadata: { fields: ["name"] } }),
       );
+    });
+
+    it("sets notes and the brand name and logo, and a null logo clears it", async () => {
+      results["clients:update"] = { data: ROW, error: null };
+      await clients("PATCH", { id: "c1", notes: "Retainer", brand_name: "Acme Ltd", brand_logo_url: "https://x.test/l.png" });
+      expect(lastOp("clients", "update")?.values).toEqual({ notes: "Retainer", brand_name: "Acme Ltd", brand_logo_url: "https://x.test/l.png" });
     });
 
     it("clears a brand override when sent a blank string or null", async () => {
