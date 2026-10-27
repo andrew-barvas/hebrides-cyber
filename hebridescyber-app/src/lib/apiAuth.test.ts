@@ -85,6 +85,16 @@ describe("authenticateApiRequest", () => {
     expect(await authenticateApiRequest(request(KEY))).toEqual({ ownerId: "owner-1", via: "key", scopes: ["scans:read", "scans:write", "dependency:check"] });
   });
 
+  it("fails closed when the session lookup throws", async () => {
+    getUserMock.mockRejectedValue(new Error("network"));
+    expect(await authenticateApiRequest(request("eyJ.jwt"))).toBeNull();
+  });
+
+  it("rejects a session token Supabase doesn't recognise", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: { message: "bad jwt" } });
+    expect(await authenticateApiRequest(request("eyJ.jwt"))).toBeNull();
+  });
+
   it("rejects a revoked key", async () => {
     state.row = keyRow({ revoked_at: "2026-09-01T00:00:00Z" });
     expect(await authenticateApiRequest(request(KEY))).toBeNull();
