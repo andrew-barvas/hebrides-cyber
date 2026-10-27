@@ -116,6 +116,19 @@ describe("AppShell", () => {
     expect(screen.queryByTestId("probe")).not.toBeInTheDocument();
   });
 
+  it("shows the signed-out state when initialisation throws", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    getSessionMock.mockRejectedValue(new Error("network"));
+    render(
+      <AppShell>
+        <SessionProbe />
+      </AppShell>
+    );
+    expect(await screen.findByText("Your session has ended")).toBeInTheDocument();
+    expect(log).toHaveBeenCalledWith("[app-shell] init error:", "network");
+    log.mockRestore();
+  });
+
   it("renders the navigation while the session is still loading", () => {
     getSessionMock.mockReturnValue(new Promise(() => {}));
     render(
@@ -193,6 +206,21 @@ describe("AppShell", () => {
       clientsFail.current = false;
       fireEvent.click(screen.getByText("refresh"));
       await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|Acme,Beta"));
+    });
+
+    it("falls back to all clients when storage is blocked", async () => {
+      const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      renderAgency();
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|Acme,Beta"));
+      fireEvent.click(screen.getByText("pick-c2"));
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("c2|"));
+      spy.mockRestore();
+      set.mockRestore();
     });
 
     it("does not load clients or show a switcher for non-Agency plans", async () => {
