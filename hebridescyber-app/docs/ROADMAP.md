@@ -44,7 +44,7 @@ this section is a dated snapshot, not a live tracker.*
 
 - Live on Azure Static Web Apps, deployed on every push to `master`;
   **migrations auto-apply on deploy** (`DATABASE_URL` set, baseline through
-  047 recorded, files through 059 applied — `src/scripts/apply-migrations.ts`).
+  047 recorded, files through 062 (the 062 scoped-API-keys migration applies on its first deploy) — `src/scripts/apply-migrations.ts`).
 - **Stripe signup still blocked** — `STRIPE_PRICE_*` unset, so `/api/health`
   reads "degraded" (`docs/ENHANCEMENTS.md` E-07, `docs/OWNER-SETUP.md` §2).
   Still the top business blocker.
@@ -239,7 +239,7 @@ check passes, not "mostly." Execute in sprint order; see `docs/SPRINT-PLAN.md`
 
 **Added 2026-10-22 (Burp-parity review, see `BURP-PARITY.md`):** bounded replay, AI triage
 (off by default, `AI-TRIAGE-DESIGN.md`), session-token entropy and a configurable OOB server
-are built. Still open and unscheduled: Dalfox, own-probe OOB, OAuth/MFA flows, two-session IDOR,
+are built, and Dalfox shipped on 2026-10-23. Still open and unscheduled: own-probe OOB, OAuth/MFA flows, two-session IDOR,
 triage precision/recall benchmark. Positioning follows the review: compete on evidence,
 continuity and fixes, not tool count, and do not claim autonomous AI pentesting until a CI job
 proves it.

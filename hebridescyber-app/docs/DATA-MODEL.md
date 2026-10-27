@@ -8,7 +8,7 @@ question, they are the arbiter. Canonical diagram sources:
 [`diagrams/er-core.mmd`](diagrams/er-core.mmd),
 [`diagrams/er-rls-tiers.mmd`](diagrams/er-rls-tiers.mmd).
 
-56 migrations (`sql/migrations/001`–`056`). Every user-data table has RLS enabled;
+Migrations `sql/migrations/001`–`062` (the sequence skips 023). Every user-data table has RLS enabled;
 the only bypass is server-side code using the service-role key. Isolation is
 tested on real Postgres in `tests/db/rls.db.test.ts`.
 
@@ -54,6 +54,11 @@ erDiagram
     scan_jobs {
         uuid scan_id FK "null => scheduled"
         text scan_profile "safe|full|offensive"
+    }
+    api_keys {
+        text key_hash "sha-256 only; plaintext shown once at creation"
+        text_array allowed_cidrs "IP allowlist (042)"
+        text_array scopes "scans:read|scans:write|dependency:check (062)"
     }
     cloud_credentials {
         text provider "aws|azure|gcp"
