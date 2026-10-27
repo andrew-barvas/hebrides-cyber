@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const { getSessionMock, verificationsRows } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
-  verificationsRows: { value: [] as { domain: string; verified_at: string | null }[] },
+  verificationsRows: { value: [] as { domain: string; verified_at: string | null; client_id?: string | null }[] },
 }));
 
 vi.mock("@/lib/auth", () => ({ getSession: getSessionMock }));
@@ -99,5 +99,17 @@ describe("DomainVerification", () => {
     getSessionMock.mockResolvedValue(null);
     fireEvent.click(screen.getByRole("button", { name: "Get instructions" }));
     await waitFor(() => expect(screen.getByText(/session has expired/)).toBeTruthy());
+  });
+});
+
+describe("DomainVerification — client column", () => {
+  it("shows which client each domain belongs to when clients exist", async () => {
+    verificationsRows.value = [
+      { domain: "a.test", verified_at: "2026-01-01", client_id: "c1" },
+      { domain: "b.test", verified_at: null, client_id: null },
+    ];
+    render(<DomainVerification clients={[{ id: "c1", name: "Acme" }]} />);
+    expect(await screen.findByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
   });
 });
