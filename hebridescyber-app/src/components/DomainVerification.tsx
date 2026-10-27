@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { clientName, type ClientSummary } from "@/lib/clientRollup";
 
 type StartResponse = {
   domain: string;
@@ -26,7 +27,7 @@ type StartResponse = {
 
 type CheckResponse = { verified: boolean; hints?: string[] };
 
-type KnownDomain = { domain: string; verified: boolean };
+type KnownDomain = { domain: string; verified: boolean; clientId: string | null };
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -56,7 +57,8 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function DomainVerification() {
+export default function DomainVerification({ clients = [] }: { clients?: ClientSummary[] } = {}) {
+  const hasClients = clients.length > 0;
   const [targetUrl, setTargetUrl] = useState("");
   const [known, setKnown] = useState<KnownDomain[]>([]);
   const [instructions, setInstructions] = useState<StartResponse | null>(null);
@@ -65,9 +67,18 @@ export default function DomainVerification() {
   const [error, setError] = useState<string | null>(null);
 
   const loadKnown = useCallback(async () => {
-    const { data } = await supabase.from("verifications").select("domain, verified_at").order("created_at", { ascending: false });
-    setKnown(((data ?? []) as { domain: string; verified_at: string | null }[]).map((v) => ({ domain: v.domain, verified: Boolean(v.verified_at) })));
-  }, []);
+    const { data } = await supabase
+      .from("verifications")
+      .select(hasClients ? "domain, verified_at, client_id" : "domain, verified_at")
+      .order("created_at", { ascending: false });
+    setKnown(
+      ((data ?? []) as unknown as { domain: string; verified_at: string | null; client_id?: string | null }[]).map((v) => ({
+        domain: v.domain,
+        verified: Boolean(v.verified_at),
+        clientId: v.client_id ?? null,
+      })),
+    );
+  }, [hasClients]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the list once on mount
@@ -135,6 +146,7 @@ export default function DomainVerification() {
             {known.map((d) => (
               <li key={d.domain} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <span className="font-mono text-cybertext/80">{d.domain}</span>
+                {hasClients && <span className="text-xs text-cybermuted">{clientName(d.clientId, clients)}</span>}
                 {d.verified ? (
                   <span className="text-xs font-semibold text-neon">Verified</span>
                 ) : (

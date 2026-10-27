@@ -3,11 +3,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
+import { filterByScope, SCOPE_ALL, type ClientScope, type ClientSummary } from "@/lib/clientRollup";
 
-type Target = { id: string; target_url: string; created_at: string; scan_profile: string };
+type Target = { id: string; target_url: string; created_at: string; scan_profile: string; client_id?: string | null };
 type AuthStatus = { auth_type: "cookie" | "basic" };
 
-export default function MonitoredTargets() {
+type Props = {
+  /** Agency client workspaces; empty/omitted hides every client control. */
+  clients?: ClientSummary[];
+  /** The shell switcher's selection; filters the list. */
+  scope?: ClientScope;
+  /** Called after sites are (re)assigned so the shell can refresh counts. */
+  onAssigned?: () => void;
+};
+
+export default function MonitoredTargets({ clients = [], scope = SCOPE_ALL, onAssigned }: Props = {}) {
+  const hasClients = clients.length > 0;
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkClient, setBulkClient] = useState("");
   const [targets, setTargets] = useState<Target[]>([]);
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus | null>>({});
   const [newUrl, setNewUrl] = useState("");
@@ -26,10 +39,10 @@ export default function MonitoredTargets() {
 
     const { data, error: fetchError } = await supabase
       .from("monitored_targets")
-      .select("id, target_url, created_at, scan_profile")
+      .select(hasClients ? "id, target_url, created_at, scan_profile, client_id" : "id, target_url, created_at, scan_profile")
       .order("created_at", { ascending: false });
     if (fetchError) setError(fetchError.message);
-    const list = (data ?? []) as Target[];
+    const list = (data ?? []) as unknown as Target[];
     setTargets(list);
 
     if (user) {
@@ -61,7 +74,9 @@ export default function MonitoredTargets() {
 
   useEffect(() => {
     load();
-  }, []);
+    // Reload when client workspaces become available so client_id is selected.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasClients]);
 
   async function addTarget(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +104,30 @@ export default function MonitoredTargets() {
   }
 
   const atCap = cap !== null && targets.length >= cap;
+
+  async function assign(ids: string[], clientId: string | null) {
+    setError(null);
+    const session = await getSession();
+    if (!session) {
+      setError("Not signed in.");
+      return;
+    }
+    const res = await fetch("/api/clients/assign", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId, target_ids: ids }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError((body as { error?: string }).error ?? "Could not assign sites");
+      return;
+    }
+    setSelected([]);
+    await load();
+    onAssigned?.();
+  }
+
+  const visible = hasClients ? filterByScope(targets.map((t) => ({ ...t, clientId: t.client_id ?? null })), scope) : targets;
 
   async function removeTarget(id: string) {
     await supabase.from("monitored_targets").delete().eq("id", id);
@@ -134,11 +173,62 @@ export default function MonitoredTargets() {
       ) : targets.length === 0 ? (
         <p className="text-sm text-cybermuted">No monitored sites yet — add one above.</p>
       ) : (
+        <>
+        {hasClients && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-cybermuted">
+            <label htmlFor="bulk-client">Assign {selected.length} selected to</label>
+            <select
+              id="bulk-client"
+              value={bulkClient}
+              onChange={(e) => setBulkClient(e.target.value)}
+              className="rounded-md border border-cyberborder bg-cyberbg px-2 py-1 text-cybertext"
+            >
+              <option value="">Unassigned</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={selected.length === 0}
+              onClick={() => assign(selected, bulkClient || null)}
+              className="rounded-md border border-cyberborder px-2.5 py-1 text-cybertext hover:border-neon disabled:opacity-50"
+            >
+              Apply
+            </button>
+          </div>
+        )}
+        {visible.length === 0 && <p className="text-sm text-cybermuted">No sites for this client yet.</p>}
         <ul className="divide-y divide-cyberborder text-sm">
-          {targets.map((t) => (
+          {visible.map((t) => (
             <li key={t.id} className="py-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
+              <div className="flex items-center justify-between gap-2">
+                {hasClients && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${t.target_url}`}
+                    checked={selected.includes(t.id)}
+                    onChange={(e) => setSelected((prev) => (e.target.checked ? [...prev, t.id] : prev.filter((x) => x !== t.id)))}
+                  />
+                )}
+                <span className="min-w-0 flex-1 break-all font-mono text-xs text-neon/80">{t.target_url}</span>
+                {hasClients && (
+                  <select
+                    aria-label={`Client for ${t.target_url}`}
+                    value={t.client_id ?? ""}
+                    onChange={(e) => assign([t.id], e.target.value || null)}
+                    className="rounded-md border border-cyberborder bg-cyberbg px-2 py-1 text-xs text-cybertext"
+                  >
+                    <option value="">Unassigned</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={() => removeTarget(t.id)}
                   className="text-xs text-cybermuted hover:text-red-400 transition-colors"
@@ -159,6 +249,7 @@ export default function MonitoredTargets() {
             </li>
           ))}
         </ul>
+        </>
       )}
     </div>
   );

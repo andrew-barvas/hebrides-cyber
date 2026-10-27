@@ -200,3 +200,82 @@ describe("AuthenticatedScanConfig — recorded login", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MonitoredTargets — client workspaces", () => {
+  const clients = [
+    { id: "c1", name: "Acme" },
+    { id: "c2", name: "Beta" },
+  ];
+  beforeEach(() => {
+    vi.mocked(getSession).mockResolvedValue({ access_token: "test-token" } as never);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) } as Response));
+    state.cap = 15;
+    state.targets = [
+      { id: "t1", target_url: "https://a.test", created_at: "2026-01-01T00:00:00Z", client_id: "c1" },
+      { id: "t2", target_url: "https://b.test", created_at: "2026-01-01T00:00:00Z", client_id: null },
+    ] as never;
+  });
+
+  it("shows no client controls without clients", async () => {
+    render(<MonitoredTargets />);
+    await screen.findByText("https://a.test");
+    expect(screen.queryByLabelText(/Client for/)).not.toBeInTheDocument();
+  });
+
+  it("filters the list to the selected client scope", async () => {
+    render(<MonitoredTargets clients={clients} scope="c1" />);
+    await screen.findByText("https://a.test");
+    expect(screen.queryByText("https://b.test")).not.toBeInTheDocument();
+  });
+
+  it("filters to Unassigned and explains an empty client", async () => {
+    const { rerender } = render(<MonitoredTargets clients={clients} scope="unassigned" />);
+    await screen.findByText("https://b.test");
+    expect(screen.queryByText("https://a.test")).not.toBeInTheDocument();
+    rerender(<MonitoredTargets clients={clients} scope="c2" />);
+    expect(await screen.findByText("No sites for this client yet.")).toBeInTheDocument();
+  });
+
+  it("assigns one site from its row picker and notifies the parent", async () => {
+    const onAssigned = vi.fn();
+    render(<MonitoredTargets clients={clients} onAssigned={onAssigned} />);
+    fireEvent.change(await screen.findByLabelText("Client for https://b.test"), { target: { value: "c2" } });
+    await waitFor(() => expect(onAssigned).toHaveBeenCalled());
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("/api/clients/assign");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ client_id: "c2", target_ids: ["t2"] });
+  });
+
+  it("bulk-assigns the ticked sites, and unassigns with the blank option", async () => {
+    render(<MonitoredTargets clients={clients} />);
+    const apply = await screen.findByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Select https://a.test"));
+    fireEvent.click(screen.getByLabelText("Select https://b.test"));
+    fireEvent.change(screen.getByLabelText(/Assign 2 selected to/), { target: { value: "c1" } });
+    fireEvent.click(apply);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)).toEqual({ client_id: "c1", target_ids: ["t1", "t2"] });
+
+    fireEvent.click(await screen.findByLabelText("Select https://b.test"));
+    fireEvent.change(screen.getByLabelText(/Assign 1 selected to/), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(JSON.parse((vi.mocked(fetch).mock.calls[1][1] as RequestInit).body as string)).toEqual({ client_id: null, target_ids: ["t2"] });
+  });
+
+  it("shows the server's error when assignment fails, and handles a missing session", async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, json: async () => ({ error: "Client not found" }) } as Response);
+    render(<MonitoredTargets clients={clients} />);
+    fireEvent.change(await screen.findByLabelText("Client for https://b.test"), { target: { value: "c1" } });
+    expect(await screen.findByText("Client not found")).toBeInTheDocument();
+
+    vi.mocked(fetch).mockResolvedValue({ ok: false, json: async () => { throw new Error("bad json"); } } as unknown as Response);
+    fireEvent.change(screen.getByLabelText("Client for https://b.test"), { target: { value: "c2" } });
+    expect(await screen.findByText("Could not assign sites")).toBeInTheDocument();
+
+    vi.mocked(getSession).mockResolvedValue(null);
+    fireEvent.change(screen.getByLabelText("Client for https://b.test"), { target: { value: "c1" } });
+    expect(await screen.findByText("Not signed in.")).toBeInTheDocument();
+  });
+});
