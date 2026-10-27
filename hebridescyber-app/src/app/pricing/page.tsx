@@ -65,6 +65,7 @@ const subscriptions: Array<{
       "Daily automated scans",
       "Dependency & CI/CD scanning",
       "Slack & Microsoft Teams alerts",
+      "Uptime alerts via your UptimeRobot account",
     ],
     highlight: true,
   },
