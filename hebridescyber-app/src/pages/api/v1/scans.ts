@@ -25,6 +25,7 @@ import { guardV1, setV1Headers } from "@/lib/v1Guard";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { parseBody } from "@/lib/validate";
+import { clientParam, resolveClientScope } from "@/lib/clientScope";
 
 const createScanSchema = z.object({
   target_url: z.string().url("target_url must be a valid URL"),
@@ -62,10 +63,31 @@ async function listScans(req: NextApiRequest, res: NextApiResponse, ownerId: str
 
   if (targetUrl) query = query.eq("target_url", targetUrl);
 
+  // ?client=<id>|unassigned narrows to that client's sites. Scans are matched
+  // to sites by hostname, so filter after the query and over-fetch to keep `limit` useful.
+  const client = clientParam(req.query.client);
+  let hosts: Set<string> | null = null;
+  if (client) {
+    const scope = await resolveClientScope(supabaseAdmin, ownerId, client);
+    if (!scope.ok) return res.status(scope.status).json({ error: scope.error, code: scope.status === 404 ? "client_not_found" : "client_unavailable" });
+    hosts = scope.hosts;
+    query = query.limit(500);
+  }
+
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
 
-  const scans = (data ?? []).map((s: Record<string, unknown>) => {
+  const matching = hosts
+    ? (data ?? []).filter((s: Record<string, unknown>) => {
+        try {
+          return hosts.has(hostnameFromUrl(String(s.target_url)).toLowerCase());
+        } catch {
+          return false;
+        }
+      }).slice(0, limit)
+    : (data ?? []);
+
+  const scans = matching.map((s: Record<string, unknown>) => {
     const nested = s.scan_results as { score?: number | null; summary?: string | null }[] | null;
     return {
       scan_id: s.id,

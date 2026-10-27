@@ -176,6 +176,51 @@ describe("GET /api/portfolio-report", () => {
     expect(html).toContain("2 of 2: a.example, b.example");
   });
 
+  describe("?client=", () => {
+    it("404s for a client the caller does not own, and 500s if the lookup fails", async () => {
+      agency();
+      tables.clients = [{ data: null, error: null }];
+      const missing = get({ format: "html", client: "nope" });
+      await handler(missing.req, missing.res);
+      expect(missing.res._getStatusCode()).toBe(404);
+      expect(JSON.parse(missing.res._getData()).code).toBe("client_not_found");
+
+      agency();
+      tables.clients = [{ data: null, error: { message: "down" } }];
+      const failed = get({ format: "html", client: "c1" });
+      await handler(failed.req, failed.res);
+      expect(failed.res._getStatusCode()).toBe(500);
+    });
+
+    it("reports on the client's sites and brands it with the client's override over the account brand", async () => {
+      agency();
+      portfolio({ brand_name: "Agency Co", brand_logo_url: "https://agency.test/logo.png" });
+      tables.clients = [
+        { data: { id: "c1" }, error: null },
+        { data: { brand_name: "Client Brand", brand_logo_url: null }, error: null },
+      ];
+      const { req, res } = get({ format: "html", client: "c1" });
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(200);
+      const html = String(res._getData());
+      expect(html).toContain("Client Brand");
+      expect(html).not.toContain("Agency Co");
+      expect(html).toContain("https://agency.test/logo.png"); // logo falls back to the account's
+    });
+
+    it("falls back to the account brand when the client has no override", async () => {
+      agency();
+      portfolio({ brand_name: "Agency Co" });
+      tables.clients = [
+        { data: { id: "c1" }, error: null },
+        { data: null, error: null },
+      ];
+      const { req, res } = get({ format: "html", client: "c1" });
+      await handler(req, res);
+      expect(String(res._getData())).toContain("Agency Co");
+    });
+  });
+
   it("streams a white-labelled PDF named without our brand", async () => {
     agency();
     portfolio({ brand_name: "Acme Digital" });

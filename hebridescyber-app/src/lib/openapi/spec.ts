@@ -70,6 +70,7 @@ export function buildOpenApiSpec(serverUrl: string) {
           parameters: [
             { name: "limit", in: "query", description: "Page size. Default 20, maximum 100.", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
             { name: "target_url", in: "query", description: "Only scans of exactly this target URL.", schema: { type: "string", format: "uri" } },
+            { name: "client", in: "query", description: "Agency client workspaces: only scans of this client's sites. A client id, or `unassigned` for sites with no client. 404 for an unknown client.", schema: { type: "string" } },
           ],
           responses: {
             "200": {

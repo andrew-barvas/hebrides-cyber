@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, hasSlaAccessMock, logAuditEventMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, hasSlaAccessMock, logAuditEventMock, resolveMock } = vi.hoisted(() => ({
+  resolveMock: vi.fn(),
   authenticateApiRequestMock: vi.fn(),
   hasSlaAccessMock: vi.fn(),
   logAuditEventMock: vi.fn(),
@@ -36,11 +37,12 @@ vi.mock("@/lib/apiAuth", () => ({
 }));
 vi.mock("@/lib/slaAlerts", () => ({ hasSlaAccess: hasSlaAccessMock }));
 vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
+vi.mock("@/lib/clientScope", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/clientScope")>()), resolveClientScope: resolveMock }));
 
 import handler from "@/pages/api/account/sla";
 
-function call(method: RequestMethod, body?: Record<string, unknown>) {
-  const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method, body });
+function call(method: RequestMethod, body?: Record<string, unknown>, query: Record<string, string> = {}) {
+  const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method, body, query });
   return handler(req, res).then(() => res);
 }
 
@@ -90,6 +92,28 @@ describe("/api/account/sla", () => {
     expect(body.summary).toMatchObject({ open: 2, breached: 1, truncated: false });
     expect(body.summary.items.map((i) => i.id)).toEqual(["late", "ok"]);
     expect(body.summary.resolved.high.count).toBe(1);
+  });
+
+  describe("?client= scope", () => {
+    it("narrows open and resolved findings to the client's sites, keeping the account policy", async () => {
+      resolveMock.mockResolvedValue({ ok: true, hosts: new Set(["shop.example"]), urls: [] });
+      const body = (await call("GET", undefined, { client: "c1" }))._getJSONData() as { summary: { open: number } };
+      expect(resolveMock).toHaveBeenCalledWith(expect.anything(), "o1", "c1");
+      expect(body.summary.open).toBe(2);
+    });
+
+    it("drops findings on sites outside the client", async () => {
+      resolveMock.mockResolvedValue({ ok: true, hosts: new Set(["other.example"]), urls: [] });
+      const body = (await call("GET", undefined, { client: "c1" }))._getJSONData() as { summary: { open: number; items: unknown[] } };
+      expect(body.summary.open).toBe(0);
+      expect(body.summary.items).toEqual([]);
+    });
+
+    it("passes through a 404 for an unknown client", async () => {
+      resolveMock.mockResolvedValue({ ok: false, status: 404, error: "Client not found" });
+      const res = await call("GET", undefined, { client: "nope" });
+      expect(res._getStatusCode()).toBe(404);
+    });
   });
 
   it("leaves triaged findings out of SLA tracking and counts them", async () => {
