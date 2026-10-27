@@ -237,6 +237,8 @@ Not doing: MFA bypass, JWT forging, CSRF bypass, gRPC fuzzing (attacks, not scan
 
 ## Owner actions pending (not code)
 
+**The tracked list is now [`OWNER-TODO.md`](OWNER-TODO.md)** (IDs, how-to, raised and actioned dates, verified status as of 2026-10-27). The list below is the original context it was built from; add new owner steps there, not here.
+
 In order of impact:
 
 0. **Turn on secret encryption (do this first, in this order).** Until `CREDENTIALS_ENC_KEY` is set, saving a Jira/Linear/ServiceNow/GitHub token, a PagerDuty/Opsgenie key, an authenticated-scan login or cloud credentials returns 503 by design. (1) Generate a key — `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — and keep a copy in a password manager. (2) Set it as `CREDENTIALS_ENC_KEY` in the Azure Static Web App's configuration **and** as a GitHub repository secret of the same name, with the **same value**. (3) Run Actions → "Encrypt stored secrets" once as a dry run, then again with "confirm" ticked, to encrypt what's already saved. (4) Rotate the Supabase database password (it was pasted into a chat on 2026-10-14) and update `DATABASE_URL`.
