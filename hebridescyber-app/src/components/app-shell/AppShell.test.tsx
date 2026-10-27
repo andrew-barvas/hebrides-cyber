@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { getSessionMock, getMfaMock, replaceMock, subscriptionRow } = vi.hoisted(() => ({
+const { getSessionMock, getMfaMock, replaceMock, subscriptionRow, clientRows, clientsFail } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
   getMfaMock: vi.fn(),
   replaceMock: vi.fn(),
   subscriptionRow: { current: null as Record<string, unknown> | null },
+  clientRows: { current: [] as { id: string; name: string }[] },
+  clientsFail: { current: false },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -20,9 +22,14 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/supabaseClient", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({ maybeSingle: () => Promise.resolve({ data: subscriptionRow.current }) }),
-    }),
+    from: (table: string) =>
+      table === "clients"
+        ? {
+            select: () => ({
+              order: () => (clientsFail.current ? Promise.reject(new Error("boom")) : Promise.resolve({ data: clientRows.current })),
+            }),
+          }
+        : { select: () => ({ maybeSingle: () => Promise.resolve({ data: subscriptionRow.current }) }) },
   },
 }));
 
@@ -118,6 +125,82 @@ describe("AppShell", () => {
     );
     expect(screen.getAllByRole("navigation", { name: "Dashboard" }).length).toBeGreaterThan(0);
     expect(screen.queryByTestId("probe")).not.toBeInTheDocument();
+  });
+
+  describe("client workspaces (Agency)", () => {
+    function ScopeProbe() {
+      const s = useAppSession();
+      return (
+        <div>
+          <p data-testid="scope">{s.currentClientId}|{s.clients.map((c) => c.name).join(",")}</p>
+          <button onClick={() => s.setCurrentClientId("c2")}>pick-c2</button>
+          <button onClick={() => s.setCurrentClientId("all")}>pick-all</button>
+          <button onClick={() => void s.refreshClients()}>refresh</button>
+        </div>
+      );
+    }
+    const renderAgency = () =>
+      render(
+        <AppShell>
+          <ScopeProbe />
+        </AppShell>
+      );
+
+    beforeEach(() => {
+      subscriptionRow.current = { plan: "agency", status: "active" };
+      clientRows.current = [{ id: "c1", name: "Acme" }, { id: "c2", name: "Beta" }];
+      clientsFail.current = false;
+      window.localStorage.clear();
+      window.history.replaceState(null, "", "/dashboard");
+    });
+
+    it("loads clients, shows the switcher and defaults to all clients", async () => {
+      renderAgency();
+      await screen.findByTestId("scope");
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|Acme,Beta"));
+      expect(await screen.findByLabelText(/client/i)).toBeInTheDocument();
+    });
+
+    it("persists a selection to localStorage and the ?client= param, and clears the param for all", async () => {
+      renderAgency();
+      await screen.findByTestId("scope");
+      fireEvent.click(screen.getByText("pick-c2"));
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("c2|"));
+      expect(window.localStorage.getItem("hc-client-scope")).toBe("c2");
+      expect(window.location.search).toBe("?client=c2");
+      fireEvent.click(screen.getByText("pick-all"));
+      await waitFor(() => expect(window.location.search).toBe(""));
+    });
+
+    it("restores the selection from the URL, which wins over localStorage", async () => {
+      window.localStorage.setItem("hc-client-scope", "c1");
+      window.history.replaceState(null, "", "/dashboard?client=c2");
+      renderAgency();
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("c2|Acme,Beta"));
+    });
+
+    it("restores from localStorage, and falls back to all for a deleted client", async () => {
+      window.localStorage.setItem("hc-client-scope", "gone");
+      renderAgency();
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|Acme,Beta"));
+    });
+
+    it("survives a failing clients load and a manual refresh", async () => {
+      clientsFail.current = true;
+      renderAgency();
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|"));
+      expect(screen.queryByLabelText(/client/i)).not.toBeInTheDocument();
+      clientsFail.current = false;
+      fireEvent.click(screen.getByText("refresh"));
+      await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("all|Acme,Beta"));
+    });
+
+    it("does not load clients or show a switcher for non-Agency plans", async () => {
+      subscriptionRow.current = { plan: "pro", status: "active" };
+      renderAgency();
+      expect(await screen.findByTestId("scope")).toHaveTextContent("all|");
+      expect(screen.queryByLabelText(/client/i)).not.toBeInTheDocument();
+    });
   });
 
   it("throws a clear error if a page uses the session outside the shell", () => {
