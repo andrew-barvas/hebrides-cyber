@@ -44,7 +44,7 @@ this section is a dated snapshot, not a live tracker.*
 
 - Live on Azure Static Web Apps, deployed on every push to `master`;
   **migrations auto-apply on deploy** (`DATABASE_URL` set, baseline through
-  047 recorded, files through 062 (the 062 scoped-API-keys migration applies on its first deploy) — `src/scripts/apply-migrations.ts`).
+  047 recorded, files through 063 (062 scoped API keys and 063 client workspaces apply on their first deploy) — `src/scripts/apply-migrations.ts`).
 - **Stripe signup still blocked** — `STRIPE_PRICE_*` unset, so `/api/health`
   reads "degraded" (`docs/ENHANCEMENTS.md` E-07, `docs/OWNER-SETUP.md` §2).
   Still the top business blocker.

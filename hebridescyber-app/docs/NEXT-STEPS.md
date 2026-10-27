@@ -30,6 +30,21 @@ in-repo summary.
   are still outstanding (Todo 1).
 - **Sprint 2** (worker Sentry, correlation ids, per-job crash isolation):
   **merged as #95** — see `workerSentry.ts` in the table below.
+- **Agency client workspaces** (migration 063, `clients` table; branch
+  `feat/platform-strategy-openapi`): `clients` + nullable `client_id` on
+  `monitored_targets`/`verifications` (`ON DELETE SET NULL`, a trigger rejects
+  another owner's client). `/api/clients` + `/api/clients/assign` (session-only,
+  Agency). `AppShell` exposes `clients`/`currentClientId` (localStorage
+  `hc-client-scope` + `?client=`) and a header switcher; Overview groups by
+  client with roll-ups (`clientRollup.ts`), Scans/Trends filter by it, and
+  Findings (`?client=`, plus a "Grouped by site" view), SLA, `GET /api/v1/scans`
+  and `/api/portfolio-report` accept a client (`clientScope.ts`). The dead
+  `organizations`/`org_members` tables (034/035) were confirmed unused and left alone.
+  **Out of scope, still account-wide:** per-client SLA policy, alert routing and
+  integrations (`sla_policies` is keyed by owner); a client-facing read-only
+  portal (needs per-client RLS and invites — clients get share links/PDFs only);
+  one subscription and brand per account. **Product decision:** the Agency cap of
+  15 sites (`monitored_targets_cap`, 018) may be too low for this use.
 - **Scoped API keys** (migration 062, `apiScopes.ts`, `v1Guard.ts`; branch
   `feat/platform-strategy-openapi`): keys carry `scans:read` / `scans:write` /
   `dependency:check`, with presets Full / CI / Read-only. Every `/api/v1` route
@@ -86,7 +101,7 @@ in-repo summary.
 ## Where things stand
 
 Everything below is merged to `master`, passed CI, and is deployed.
-Database migrations: files exist through **062** (060 `dmarc_reports`, 061 `ce_self_assessment`, 062 `api_key_scopes`); the next free number is **063**. The history below is written as of 059. **Auto-apply on deploy is live** (since 2026-10-14): the `DATABASE_URL` secret is set and every push to master applies pending files through `src/scripts/apply-migrations.ts` (ledger table `schema_migrations`, checksum drift check) before the deploy, then re-verifies the schema. The one-time baseline is done — production was migrated by hand through 047 (+050 applied individually), so a `workflow_dispatch` run with `baseline_up_to=047` recorded 001–047 and the same run applied 048–058; the drift check then reported `57 applied, 0 pending` (001–058; the sequence skips 023). **059 merged with PR #55 and applied automatically on the same day** — the first migration to go through the normal push path — so a brand-new sign-up now gets its `public.users` row and the Stripe welcome email. A new migration added in a PR applies automatically when that PR merges — no manual SQL-editor step except in exceptional circumstances. 051 widens the plan CHECK for Tier A + adds the offensive-scan tables; 052 adds admin plan-override columns; 053 the lookalike-domain tables; 054 the `scheduled` blog status; 055 the `tool_kill_switches` table; 056 the `email_events` table; 057 corrects the `cloud_credentials` column comment (S-1 fix, see CLAUDE.md); 058 adds `scans.error_detail`; 059 adds the `handle_new_user()` trigger + backfill that auto-creates a `public.users` row for every `auth.users` row.
+Database migrations: files exist through **063** (060 `dmarc_reports`, 061 `ce_self_assessment`, 062 `api_key_scopes`, 063 `clients`); the next free number is **064**. The history below is written as of 059. **Auto-apply on deploy is live** (since 2026-10-14): the `DATABASE_URL` secret is set and every push to master applies pending files through `src/scripts/apply-migrations.ts` (ledger table `schema_migrations`, checksum drift check) before the deploy, then re-verifies the schema. The one-time baseline is done — production was migrated by hand through 047 (+050 applied individually), so a `workflow_dispatch` run with `baseline_up_to=047` recorded 001–047 and the same run applied 048–058; the drift check then reported `57 applied, 0 pending` (001–058; the sequence skips 023). **059 merged with PR #55 and applied automatically on the same day** — the first migration to go through the normal push path — so a brand-new sign-up now gets its `public.users` row and the Stripe welcome email. A new migration added in a PR applies automatically when that PR merges — no manual SQL-editor step except in exceptional circumstances. 051 widens the plan CHECK for Tier A + adds the offensive-scan tables; 052 adds admin plan-override columns; 053 the lookalike-domain tables; 054 the `scheduled` blog status; 055 the `tool_kill_switches` table; 056 the `email_events` table; 057 corrects the `cloud_credentials` column comment (S-1 fix, see CLAUDE.md); 058 adds `scans.error_detail`; 059 adds the `handle_new_user()` trigger + backfill that auto-creates a `public.users` row for every `auth.users` row.
 
 | Shipped | Where |
 |---|---|
