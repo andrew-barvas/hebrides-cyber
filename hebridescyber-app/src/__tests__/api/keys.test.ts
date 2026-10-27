@@ -12,6 +12,7 @@ let listResult: Result = { data: [], error: null };
 let updateResult: Result = { data: null, error: null };
 let lastUpdate: { values: Record<string, unknown>; filters: string[] } | null = null;
 // Each insert consumes the next result; the last one repeats.
+let existingResult: Result = { data: [], error: null };
 let insertResults: Result[] = [];
 let inserts: Record<string, unknown>[] = [];
 
@@ -32,6 +33,8 @@ function makeBuilder() {
       return builder;
     },
     single: () => Promise.resolve(insertResults[Math.min(inserts.length, insertResults.length) - 1]),
+    // Awaited directly: the active-key count (POST) and the revoking update (DELETE).
+    then: (resolve: (r: Result) => unknown) => resolve(lastUpdate?.filters === filters ? updateResult : existingResult),
   };
   return builder;
 }
@@ -58,6 +61,40 @@ describe("/api/keys", () => {
     lastUpdate = null;
     insertResults = [];
     inserts = [];
+    existingResult = { data: [], error: null };
+  });
+
+  it("401s without credentials", async () => {
+    authenticateApiRequestMock.mockResolvedValue(null);
+    expect((await call("GET"))._getStatusCode()).toBe(401);
+  });
+
+  it("405s on an unsupported method", async () => {
+    expect((await call("PUT"))._getStatusCode()).toBe(405);
+  });
+
+  describe("DELETE", () => {
+    it("revokes the caller's own key (soft, keeping the audit trail) and audits it", async () => {
+      updateResult = { data: null, error: null };
+      const res = await call("DELETE", { id: "key-1" });
+      expect(res._getStatusCode()).toBe(200);
+      expect(lastUpdate?.values).toHaveProperty("revoked_at");
+      expect(lastUpdate?.filters).toEqual(["eq:id=key-1", "eq:owner=owner-1"]);
+      expect(logAuditEventMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: "api_key.revoked", resourceId: "key-1" })
+      );
+    });
+
+    it("500s, without auditing, when the update fails", async () => {
+      updateResult = { data: null, error: { message: "db down" } };
+      expect((await call("DELETE", { id: "key-1" }))._getStatusCode()).toBe(500);
+      expect(logAuditEventMock).not.toHaveBeenCalled();
+    });
+
+    it("400s without an id", async () => {
+      expect((await call("DELETE", {}))._getStatusCode()).toBe(400);
+    });
   });
 
   // A key that could edit its own allowlist could simply remove it.
@@ -81,6 +118,11 @@ describe("/api/keys", () => {
       const [key] = (res._getJSONData() as { keys: Record<string, unknown>[] }).keys;
       expect(key).not.toHaveProperty("key_hash");
       expect(key).toMatchObject({ id: "k1", allowed_cidrs: [], last_blocked_ip: null, last_blocked_at: null });
+    });
+
+    it("500s when the list query fails", async () => {
+      listResult = { data: null, error: { message: "db down" } };
+      expect((await call("GET"))._getStatusCode()).toBe(500);
     });
 
     it("passes a migrated row's allowlist and last refusal through", async () => {
@@ -129,6 +171,18 @@ describe("/api/keys", () => {
       expect(inserts).toHaveLength(1);
     });
 
+    it("refuses a 21st active key without inserting", async () => {
+      existingResult = { data: Array.from({ length: 20 }, (_, i) => ({ id: `k${i}` })), error: null };
+      const res = await call("POST", { name: "CI" });
+      expect(res._getStatusCode()).toBe(400);
+      expect(inserts).toHaveLength(0);
+    });
+
+    it("400s on a blank name", async () => {
+      expect((await call("POST", { name: "   " }))._getStatusCode()).toBe(400);
+      expect(inserts).toHaveLength(0);
+    });
+
     it("500s on any other insert error", async () => {
       insertResults = [{ data: null, error: { code: "XX000", message: "boom" } }];
       expect((await call("POST", { name: "CI" }))._getStatusCode()).toBe(500);
@@ -168,6 +222,11 @@ describe("/api/keys", () => {
       updateResult = { data: null, error: null };
       expect((await call("PATCH", { id: "key-9", allowed_cidrs: [] }))._getStatusCode()).toBe(404);
       expect(logAuditEventMock).not.toHaveBeenCalled();
+    });
+
+    it("500s on any other update error", async () => {
+      updateResult = { data: null, error: { code: "XX000", message: "boom" } };
+      expect((await call("PATCH", { id: "key-1", allowed_cidrs: [] }))._getStatusCode()).toBe(500);
     });
 
     it("says so when migration 042 hasn't been applied", async () => {

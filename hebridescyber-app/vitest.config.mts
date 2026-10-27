@@ -43,10 +43,10 @@ export default defineConfig({
       // the sibling WorldCup2026Predictions project's CLAUDE.md for the
       // same convention this mirrors.
       thresholds: {
-        statements: 76,
-        branches: 68,
+        statements: 77,
+        branches: 69,
         functions: 76,
-        lines: 77,
+        lines: 78,
       },
     },
   },
