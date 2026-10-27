@@ -5,7 +5,7 @@ import FleetOverview from "./FleetOverview";
 const { fromMock, state } = vi.hoisted(() => ({
   fromMock: vi.fn(),
   state: {
-    targets: [] as Array<{ id: string; target_url: string }>,
+    targets: [] as Array<{ id: string; target_url: string; client_id?: string | null }>,
     scans: [] as Array<{
       id: string;
       target_url: string;
@@ -115,5 +115,67 @@ describe("FleetOverview", () => {
     render(<FleetOverview />);
 
     expect(await screen.findByText("Never scanned")).toBeInTheDocument();
+  });
+});
+
+describe("FleetOverview — grouped by client", () => {
+  const clients = [
+    { id: "c1", name: "Acme" },
+    { id: "c2", name: "Beta" },
+  ];
+  const now = new Date().toISOString();
+
+  beforeEach(() => {
+    state.targets = [
+      { id: "t1", target_url: "https://a1.test", client_id: "c1" },
+      { id: "t2", target_url: "https://a2.test", client_id: "c1" },
+      { id: "t3", target_url: "https://b1.test", client_id: "c2" },
+      { id: "t4", target_url: "https://loose.test", client_id: null },
+    ] as never;
+    state.scans = [
+      { id: "s1", target_url: "https://a1.test", created_at: now, scan_results: [{ score: 90, results: { findings: [{ severity: "low" }] } }] },
+      { id: "s2", target_url: "https://a2.test", created_at: now, scan_results: [{ score: 50, results: { findings: [{ severity: "critical" }, { severity: "critical" }] } }] },
+      { id: "s3", target_url: "https://b1.test", created_at: now, scan_results: [{ score: 30, results: { findings: [] } }] },
+    ];
+  });
+
+  it("renders one section per client with a roll-up score and open criticals, plus Unassigned", async () => {
+    render(<FleetOverview clients={clients} />);
+    expect(await screen.findByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+    expect(screen.getByText("70/100")).toBeInTheDocument(); // Acme = (90+50)/2
+    expect(screen.getAllByText("30/100").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("2", { selector: "span.text-danger" })).toBeInTheDocument(); // Acme's open criticals
+    expect(screen.getByRole("link", { name: "Assign them to a client" })).toHaveAttribute("href", "/dashboard/assets");
+    // Worst roll-up first.
+    const order = Array.from(document.querySelectorAll("summary")).map((el) => el.textContent?.split(" · ")[0]);
+    expect(order).toEqual(["Beta", "Acme", "Unassigned"]);
+  });
+
+  it("scopes to one client, and to Unassigned", async () => {
+    const { rerender } = render(<FleetOverview clients={clients} scope="c2" />);
+    expect(await screen.findByText("Beta")).toBeInTheDocument();
+    expect(screen.queryByText("Acme")).not.toBeInTheDocument();
+    rerender(<FleetOverview clients={clients} scope="unassigned" />);
+    expect(await screen.findByText("Unassigned")).toBeInTheDocument();
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty client and still renders with a single site in total", async () => {
+    state.targets = [{ id: "t1", target_url: "https://a1.test", client_id: "c1" }] as never;
+    state.scans = [];
+    render(<FleetOverview clients={clients} />);
+    expect(await screen.findByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.getByText("No sites assigned yet.")).toBeInTheDocument();
+    expect(screen.getAllByText(/Last scan never/).length).toBe(2);
+  });
+
+  it("renders nothing with no sites at all", async () => {
+    state.targets = [];
+    const { container } = render(<FleetOverview clients={clients} />);
+    await waitFor(() => expect(fromMock).toHaveBeenCalledWith("monitored_targets"));
+    expect(container).toBeEmptyDOMElement();
   });
 });
