@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, subscriptionGrants } from "./planAccess";
+import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, planIncludes, subscriptionGrants, type PlanTier } from "./planAccess";
 
 type Reply = { data: unknown; error?: { message: string } | null };
 
@@ -10,7 +10,42 @@ function client(sub: Reply | unknown, user: Reply | unknown): SupabaseClient {
   return { from: (name: string) => (name === "subscriptions" ? table(sub) : table(user)) } as unknown as SupabaseClient;
 }
 
+describe("planIncludes", () => {
+  // Every plan × every tier: Tier A ⊃ Agency ⊃ Pro ⊃ Basic, "none" includes nothing.
+  const TIERS: PlanTier[] = ["basic", "pro", "agency", "tier_a"];
+  const INCLUDED: Record<string, PlanTier[]> = {
+    none: [],
+    basic: ["basic"],
+    pro: ["basic", "pro"],
+    agency: ["basic", "pro", "agency"],
+    tier_a: ["basic", "pro", "agency", "tier_a"],
+  };
+  for (const [plan, included] of Object.entries(INCLUDED)) {
+    it.each(TIERS)(`${plan} → %s`, (tier) => {
+      expect(planIncludes(plan, tier)).toBe(included.includes(tier));
+    });
+  }
+
+  it("includes nothing for a missing or unknown plan", () => {
+    for (const tier of TIERS) {
+      expect(planIncludes(null, tier)).toBe(false);
+      expect(planIncludes(undefined, tier)).toBe(false);
+      expect(planIncludes("", tier)).toBe(false);
+      expect(planIncludes("enterprise", tier)).toBe(false);
+      expect(planIncludes("Agency", tier)).toBe(false);
+    }
+  });
+});
+
 describe("subscriptionGrants", () => {
+  it("grants the basic tier to any active paid plan", () => {
+    for (const plan of ["basic", "pro", "agency", "tier_a"]) {
+      expect(subscriptionGrants({ plan, status: "active" }, "basic")).toBe(true);
+      expect(subscriptionGrants({ plan, status: "past_due" }, "basic")).toBe(false);
+    }
+    expect(subscriptionGrants({ plan: "none", status: "active" }, "basic")).toBe(false);
+  });
+
   it("needs an active subscription; Agency includes Pro", () => {
     expect(subscriptionGrants({ plan: "pro", status: "active" }, "pro")).toBe(true);
     expect(subscriptionGrants({ plan: "agency", status: "active" }, "pro")).toBe(true);

@@ -19,6 +19,7 @@ import TicketIntegration from "@/components/TicketIntegration";
 import Webhooks from "@/components/Webhooks";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
+import { planIncludes } from "@/lib/planAccess";
 
 function Group({ id, title, description, children }: { id: string; title: string; description: string; children: React.ReactNode }) {
   return (
@@ -36,8 +37,8 @@ function Group({ id, title, description, children }: { id: string; title: string
 
 export default function IntegrationsPage() {
   const { plan, accessToken } = useAppSession();
-  const paid = plan !== "none";
-  const chatAlerts = plan === "pro" || plan === "agency";
+  const paid = planIncludes(plan, "basic");
+  const chatAlerts = planIncludes(plan, "pro");
 
   return (
     <div className="space-y-10">
@@ -93,7 +94,7 @@ export default function IntegrationsPage() {
             availableOn="Paid plans"
           />
         )}
-        {plan === "agency" ? (
+        {planIncludes(plan, "agency") ? (
           <CloudCredentialsConfig />
         ) : (
           <LockedFeature

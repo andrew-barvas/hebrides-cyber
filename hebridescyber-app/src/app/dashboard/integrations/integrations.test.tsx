@@ -56,6 +56,21 @@ describe("Integrations page", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
   });
 
+  // Tier A is the top tier: it includes everything Agency and Pro have, which
+  // the API (planGate) already allowed while this page compared plan strings
+  // and showed a Tier A customer every paid integration as locked.
+  it("shows the real forms on Tier A, with nothing locked", async () => {
+    session.plan = "tier_a";
+    await renderPage();
+    for (const id of ["channel-slack", "channel-teams", "NotificationPrefsSection", "ScheduledReportsConfig", "CloudCredentialsConfig"]) {
+      expect(screen.getByTestId(id)).toBeInTheDocument();
+    }
+    for (const locked of ["slack & microsoft teams alerts", "email notifications", "scheduled reports", "cloud posture scanning"]) {
+      expect(screen.queryByRole("heading", { name: locked })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
+  });
+
   it("keeps gated features discoverable on the free tier instead of hiding them", async () => {
     await renderPage();
     expect(screen.queryByTestId("channel-slack")).not.toBeInTheDocument();

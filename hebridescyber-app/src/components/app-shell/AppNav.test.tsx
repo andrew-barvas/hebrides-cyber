@@ -55,6 +55,12 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: "Manage →" })).toHaveAttribute("href", "/account");
   });
 
+  it("names Tier A in the plan badge", () => {
+    render(<AppSidebar summary={{ plan: "tier_a", billingPlan: "tier_a", planStatus: "active" }} />);
+    expect(screen.getByText("Tier A")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage →" })).toHaveAttribute("href", "/account");
+  });
+
   it("flags a failed payment instead of a plan name", () => {
     render(<AppSidebar summary={{ plan: "none", billingPlan: "pro", planStatus: "past_due" }} />);
     expect(screen.getByText("Payment failed")).toBeInTheDocument();

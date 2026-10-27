@@ -44,9 +44,14 @@ describe("deriveOnboardingFlags", () => {
     expect(deriveOnboardingFlags({ ...nothing, slackWebhookUrl: "" }).hasAlertChannel).toBe(false);
   });
 
-  it("suggests Slack/Teams on Pro and Agency, a webhook otherwise", () => {
+  it("suggests Slack/Teams on Pro and up, a webhook otherwise", () => {
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "pro" }).alertChannelIsSlackTeams).toBe(true);
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "agency" }).alertChannelIsSlackTeams).toBe(true);
+    expect(deriveOnboardingFlags({ ...nothing, activePlan: "tier_a" }).alertChannelIsSlackTeams).toBe(true);
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "basic" }).alertChannelIsSlackTeams).toBe(false);
+  });
+
+  it("counts Tier A's plan emails as an alert channel", () => {
+    expect(deriveOnboardingFlags({ ...nothing, activePlan: "tier_a" }).hasAlertChannel).toBe(true);
   });
 });
