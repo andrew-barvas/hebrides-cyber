@@ -62,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const error = sites.error ?? domains.error;
   if (error) {
     if (isMissingSchemaError(error)) {
-      return res.status(503).json({ error: "Client workspaces aren't enabled on this server yet (database migration 063 pending)." });
+      return res.status(503).json({ error: "Client workspaces aren't enabled on this server yet (database migration 064 pending)." });
     }
     return res.status(500).json({ error: error.message });
   }

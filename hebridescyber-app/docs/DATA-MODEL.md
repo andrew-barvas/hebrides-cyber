@@ -57,12 +57,12 @@ erDiagram
     scan_jobs {
         uuid scan_id FK "null => scheduled"
         text scan_profile "safe|full|offensive"
-        uuid client_id FK "nullable = Unassigned; ON DELETE SET NULL (063)"
+        uuid client_id FK "nullable = Unassigned; ON DELETE SET NULL (064)"
     }
     clients {
         uuid id PK
         uuid owner FK
-        text name "unique per owner, case-insensitive (063)"
+        text name "unique per owner, case-insensitive (064)"
         text notes
         text brand_name "per-client override of the account brand"
         text brand_logo_url "https only"
@@ -70,7 +70,7 @@ erDiagram
     api_keys {
         text key_hash "sha-256 only; plaintext shown once at creation"
         text_array allowed_cidrs "IP allowlist (042)"
-        text_array scopes "scans:read|scans:write|dependency:check (062)"
+        text_array scopes "scans:read|scans:write|dependency:check (063)"
     }
     cloud_credentials {
         text provider "aws|azure|gcp"

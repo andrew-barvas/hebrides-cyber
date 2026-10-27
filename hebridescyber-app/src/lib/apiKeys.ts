@@ -44,7 +44,7 @@ export type ApiKeyOwner = {
   keyId: string;
   /** Empty = any address. See src/lib/ipAllowlist.ts. */
   allowedCidrs: string[];
-  /** What the key may do. A row from before migration 062 has none stored and keeps every scope. */
+  /** What the key may do. A row from before migration 063 has none stored and keeps every scope. */
   scopes: ApiScope[];
 };
 

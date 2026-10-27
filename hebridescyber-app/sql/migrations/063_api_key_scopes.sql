@@ -1,4 +1,4 @@
--- Migration 062: scoped API keys.
+-- Migration 063: scoped API keys.
 --
 -- A key's scopes limit what it may do on the public API (/api/v1). Every
 -- existing key is backfilled with all scopes, so nothing already deployed in a

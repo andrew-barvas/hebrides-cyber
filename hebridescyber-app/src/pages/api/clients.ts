@@ -3,7 +3,7 @@
 //
 // Session-only like api/keys.ts: client management is an account control, not
 // something a CI key should do. Agency-gated; deleting a client never deletes
-// its sites (migration 063 sets their client_id to null = "Unassigned").
+// its sites (migration 064 sets their client_id to null = "Unassigned").
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
@@ -51,7 +51,7 @@ const blankToNull = (v: string | null | undefined) => (v === undefined ? undefin
 
 function writeError(res: NextApiResponse, error: { code?: string; message: string }) {
   if (isMissingSchemaError(error)) {
-    return res.status(503).json({ error: "Client workspaces aren't enabled on this server yet (database migration 063 pending)." });
+    return res.status(503).json({ error: "Client workspaces aren't enabled on this server yet (database migration 064 pending)." });
   }
   if (error.code === "23505") return res.status(409).json({ error: "You already have a client with that name." });
   return res.status(500).json({ error: error.message });

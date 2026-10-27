@@ -22,7 +22,7 @@ export async function resolveClientScope(db: SupabaseClient, ownerId: string, sc
     const { data, error } = await db.from("clients").select("id").eq("id", scope).eq("owner", ownerId).maybeSingle();
     if (error) {
       return isMissingSchemaError(error)
-        ? { ok: false, status: 503, error: "Client workspaces aren't enabled on this server yet (database migration 063 pending)." }
+        ? { ok: false, status: 503, error: "Client workspaces aren't enabled on this server yet (database migration 064 pending)." }
         : { ok: false, status: 500, error: "Could not resolve the client" };
     }
     if (!data) return { ok: false, status: 404, error: "Client not found" };
@@ -33,7 +33,7 @@ export async function resolveClientScope(db: SupabaseClient, ownerId: string, sc
   const { data, error } = await query;
   if (error) {
     return isMissingSchemaError(error)
-      ? { ok: false, status: 503, error: "Client workspaces aren't enabled on this server yet (database migration 063 pending)." }
+      ? { ok: false, status: 503, error: "Client workspaces aren't enabled on this server yet (database migration 064 pending)." }
       : { ok: false, status: 500, error: "Could not resolve the client's sites" };
   }
 

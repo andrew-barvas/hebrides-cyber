@@ -145,7 +145,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
     expect(rows[0]).toEqual({ email: "newsignup@example.test", company_name: "Acme Ltd" });
   });
 
-  describe("api_keys.scopes (migration 062)", () => {
+  describe("api_keys.scopes (migration 063)", () => {
     const owner = "eeeeeeee-0000-0000-0000-000000000010";
     const insertKey = (suffix: string, scopes?: string[]) =>
       scopes

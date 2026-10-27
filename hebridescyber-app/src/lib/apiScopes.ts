@@ -1,6 +1,6 @@
 // Scopes for API keys on the public API (/api/v1). A key carries a subset;
 // a dashboard session is unscoped (it is the account owner at the keyboard).
-// Mirrors the check constraint in migration 062 — change both together.
+// Mirrors the check constraint in migration 063 — change both together.
 import type { NextApiResponse } from "next";
 
 export const API_SCOPES = ["scans:read", "scans:write", "dependency:check"] as const;
@@ -24,7 +24,7 @@ export function isApiScope(value: unknown): value is ApiScope {
   return typeof value === "string" && (API_SCOPES as readonly string[]).includes(value);
 }
 
-/** Scopes from storage, tolerant of a pre-062 row (column absent → all scopes, i.e. the old behaviour). */
+/** Scopes from storage, tolerant of a pre-063 row (column absent → all scopes, i.e. the old behaviour). */
 export function scopesFromRow(value: unknown): ApiScope[] {
   if (!Array.isArray(value)) return [...API_SCOPES];
   return value.filter(isApiScope);

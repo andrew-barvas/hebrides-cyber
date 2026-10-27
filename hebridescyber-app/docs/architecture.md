@@ -232,7 +232,7 @@ the same way, by removing the HTTP hop entirely.
   customer site being authenticated-scanned does not, so that one credential
   type is saved without a live validation call, documented as a deliberate
   limitation rather than a false assurance).
-- **Client workspaces (Agency).** `clients` (063) groups `monitored_targets` and
+- **Client workspaces (Agency).** `clients` (064) groups `monitored_targets` and
   `verifications` via a nullable `client_id` (null = Unassigned, `ON DELETE SET NULL`).
   Scans and findings carry no client id: they are tied to a client **by hostname**
   through the client's sites (`src/lib/clientScope.ts` server-side,
@@ -240,7 +240,7 @@ the same way, by removing the HTTP hop entirely.
   `AppShell` holds the selection and the header switcher; pages filter by it.
 - **Scoped API keys.** `/api/v1` keys carry scopes (`scans:read`,
   `scans:write`, `dependency:check`; presets Full / CI / Read-only, migration
-  062). Every v1 route calls `guardV1` (`src/lib/v1Guard.ts`), which sets the version and no-store
+  063). Every v1 route calls `guardV1` (`src/lib/v1Guard.ts`), which sets the version and no-store
   headers, throttles failed authentication per IP, authenticates, enforces the
   scope (403 `insufficient_scope`) and applies the per-account rate limit, and `guard-coverage.test.ts`
   fails if a route skips it. A key narrower than full access is refused on
