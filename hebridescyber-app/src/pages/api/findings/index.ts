@@ -6,6 +6,7 @@
 //   &site=<host> &severity=critical,high &kev=1 &epssMin=0.1 &category=headers
 //   &triage=open|triaged|all|accepted_risk|false_positive|snoozed (default open)
 //   &sla=breached|due_soon|on_track &minAgeDays=30 &page=1 &pageSize=50
+//   &client=<client id>|unassigned  — only that client's sites (Agency workspaces)
 //   &format=csv  — the whole filtered list as a download (no paging)
 //
 // Triage is written through the existing bulk PUT /api/findings/triage, not
@@ -13,6 +14,7 @@
 // nothing is triaged and `triageAvailable` is false.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { clientParam, resolveClientScope } from "@/lib/clientScope";
 import {
   applyFilters,
   buildFacets,
@@ -35,7 +37,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data } = loaded;
 
   const query = parseFindingsQuery(req.query);
-  const filtered = applyFilters(data.rows, query.filters).sort(compareFindings);
+  let rows = data.rows;
+  const client = clientParam(req.query.client);
+  if (client) {
+    const scope = await resolveClientScope(supabaseAdmin, caller.ownerId, client);
+    if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+    rows = rows.filter((r) => scope.hosts.has(r.host));
+  }
+  const filtered = applyFilters(rows, query.filters).sort(compareFindings);
 
   if (query.format === "csv") {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -50,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     slaEnabled: data.slaEnabled,
     detailComplete: data.detailComplete,
     truncated: data.truncated,
-    facets: buildFacets(data.rows),
+    facets: buildFacets(rows),
     view: query.view,
     totalFindings: filtered.length,
   };

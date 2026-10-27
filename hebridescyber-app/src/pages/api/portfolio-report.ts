@@ -12,6 +12,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { loadPortfolioInput } from "@/lib/portfolioData";
+import { clientParam } from "@/lib/clientScope";
 import { renderPortfolioReportHtml } from "@/lib/portfolioReport";
 import { htmlToPdf } from "@/lib/reportPdf";
 
@@ -31,9 +32,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
   }
 
+  // ?client=<id> narrows the report to one client's sites, branded with that client's override.
+  const clientId = clientParam(req.query.client);
+  if (clientId) {
+    const { data: owned, error: ownedError } = await supabaseAdmin.from("clients").select("id").eq("id", clientId).eq("owner", caller.ownerId).maybeSingle();
+    if (ownedError) return res.status(500).json({ error: "Could not load the client — try again." });
+    if (!owned) return res.status(404).json({ error: "Client not found", code: "client_not_found" });
+  }
+
   let input;
   try {
-    input = await loadPortfolioInput(supabaseAdmin, caller.ownerId);
+    input = await loadPortfolioInput(supabaseAdmin, caller.ownerId, new Date(), clientId ? { clientId } : undefined);
   } catch (err) {
     console.error("[portfolio-report]", (err as Error).message);
     return res.status(500).json({ error: "Could not load your sites — try again." });

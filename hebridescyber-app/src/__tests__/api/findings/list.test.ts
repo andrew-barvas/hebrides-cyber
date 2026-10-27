@@ -3,7 +3,9 @@ import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { FindingRow } from "@/lib/findingsView";
 
-const { authenticateApiRequestMock, loadMock } = vi.hoisted(() => ({ authenticateApiRequestMock: vi.fn(), loadMock: vi.fn() }));
+const { authenticateApiRequestMock, loadMock, resolveMock } = vi.hoisted(() => ({ authenticateApiRequestMock: vi.fn(), loadMock: vi.fn(), resolveMock: vi.fn() }));
+
+vi.mock("@/lib/clientScope", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/clientScope")>()), resolveClientScope: resolveMock }));
 
 vi.mock("@/lib/apiAuth", () => ({ authenticateApiRequest: authenticateApiRequestMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/findingsView", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/findingsView")>()), loadFindingsView: loadMock }));
@@ -93,5 +95,37 @@ describe("GET /api/findings", () => {
     const res = await call();
     expect(res._getStatusCode()).toBe(500);
     expect(res._getJSONData()).toEqual({ error: "Could not load findings" });
+  });
+});
+
+describe("GET /api/findings ?client=", () => {
+  beforeEach(() => {
+    authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "o1", via: "session" });
+    loadMock.mockReset().mockResolvedValue({
+      ok: true,
+      data: { available: true, triageAvailable: true, slaEnabled: false, detailComplete: true, truncated: false, rows },
+    });
+    resolveMock.mockReset();
+  });
+
+  it("narrows findings and facets to the client's sites", async () => {
+    resolveMock.mockResolvedValue({ ok: true, hosts: new Set(["a.example"]), urls: [] });
+    const res = await call("GET", { client: "c1", view: "rows" });
+    const body = res._getJSONData() as Body;
+    expect(resolveMock).toHaveBeenCalledWith({ tag: "admin" }, "o1", "c1");
+    expect(body.items.map((i) => i.host)).toEqual(["a.example"]);
+    expect(body.facets.sites).toHaveLength(1);
+  });
+
+  it("passes the scope's error status through (unknown client, migration pending)", async () => {
+    resolveMock.mockResolvedValue({ ok: false, status: 404, error: "Client not found" });
+    const res = await call("GET", { client: "nope" });
+    expect(res._getStatusCode()).toBe(404);
+    expect(res._getJSONData()).toEqual({ error: "Client not found" });
+  });
+
+  it("does not resolve a scope when no client is given", async () => {
+    await call("GET");
+    expect(resolveMock).not.toHaveBeenCalled();
   });
 });

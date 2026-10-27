@@ -16,6 +16,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/dbErrors";
+import { clientParam, resolveClientScope } from "@/lib/clientScope";
 import { buildTriageIndex, loadTriageForOwner } from "@/lib/findingTriage";
 import { hasSlaAccess } from "@/lib/slaAlerts";
 import { DEFAULT_SLA_POLICY, buildSlaSummary, policyFromRow, type LifecycleRow, type SlaPolicyRow } from "@/lib/slaMonitoring";
@@ -99,7 +100,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (triage.error) return res.status(500).json({ error: "Could not load SLA status" });
 
   const policy = policyFromRow(policyResult.data as SlaPolicyRow | null);
-  const rows = [...(openResult.data ?? []), ...(resolvedResult.data ?? [])] as LifecycleRow[];
+  let rows = [...(openResult.data ?? []), ...(resolvedResult.data ?? [])] as LifecycleRow[];
+  // Optional ?client= scope: the policy stays account-wide, only the findings are narrowed.
+  const client = clientParam(req.query.client);
+  if (client) {
+    const scope = await resolveClientScope(supabaseAdmin, caller.ownerId, client);
+    if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+    rows = rows.filter((r) => scope.hosts.has(r.target_host));
+  }
   const now = new Date();
   const summary = buildSlaSummary(rows, policy, now, buildTriageIndex(triage.rows, now));
   return res.status(200).json({

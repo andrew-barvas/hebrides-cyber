@@ -12,12 +12,16 @@ import type { PortfolioInput, PortfolioSiteInput } from "./portfolioReport";
 /** Recent completed scans looked at to find each site's latest. */
 const SCAN_LOOKBACK = 500;
 
-export async function loadPortfolioInput(db: SupabaseClient, ownerId: string, now: Date = new Date()): Promise<PortfolioInput> {
-  const [targets, scans, sub, triage] = await Promise.all([
-    db.from("monitored_targets").select("target_url").eq("owner", ownerId),
+export type PortfolioScope = { clientId: string };
+
+export async function loadPortfolioInput(db: SupabaseClient, ownerId: string, now: Date = new Date(), scope?: PortfolioScope): Promise<PortfolioInput> {
+  const targetQuery = db.from("monitored_targets").select("target_url").eq("owner", ownerId);
+  const [targets, scans, sub, triage, client] = await Promise.all([
+    scope ? targetQuery.eq("client_id", scope.clientId) : targetQuery,
     db.from("scans").select("id, target_url, created_at").eq("owner", ownerId).eq("status", "completed").order("created_at", { ascending: false }).limit(SCAN_LOOKBACK),
     db.from("subscriptions").select("brand_logo_url, brand_name").eq("owner", ownerId).maybeSingle(),
     loadTriageForOwner(db, ownerId),
+    scope ? db.from("clients").select("brand_name, brand_logo_url").eq("id", scope.clientId).eq("owner", ownerId).maybeSingle() : Promise.resolve(null),
   ]);
   if (targets.error) throw new Error(`Could not read monitored sites: ${targets.error.message}`);
   if (scans.error) throw new Error(`Could not read scans: ${scans.error.message}`);
@@ -53,9 +57,13 @@ export async function loadPortfolioInput(db: SupabaseClient, ownerId: string, no
     return { targetUrl, scan: scan && result ? { id: scan.id, completedAt: scan.created_at, score: result.score, findings: result.findings } : null };
   });
 
-  const brand = sub.data as { brand_logo_url?: string | null; brand_name?: string | null } | null;
-  const branding: ReportBranding | undefined =
-    brand && (brand.brand_logo_url || brand.brand_name) ? { logoUrl: brand.brand_logo_url ?? undefined, name: brand.brand_name ?? undefined } : undefined;
+  // A client's own brand overrides the account brand field by field, so a client
+  // with only a name still gets the agency's logo.
+  const accountBrand = sub.data as { brand_logo_url?: string | null; brand_name?: string | null } | null;
+  const clientBrand = (client?.data ?? null) as { brand_logo_url?: string | null; brand_name?: string | null } | null;
+  const logoUrl = clientBrand?.brand_logo_url || accountBrand?.brand_logo_url || undefined;
+  const brandName = clientBrand?.brand_name || accountBrand?.brand_name || undefined;
+  const branding: ReportBranding | undefined = logoUrl || brandName ? { logoUrl, name: brandName } : undefined;
 
   return { sites: siteInputs, triage: buildTriageIndex(triage.rows, now), branding, now };
 }

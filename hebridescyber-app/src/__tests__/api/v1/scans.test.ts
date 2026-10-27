@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   insertScan: { data: { id: "scan-new" } as unknown, error: null as unknown },
   insertJob: { error: null as unknown },
   eqCalls: [] as string[],
+  resolve: vi.fn(),
   limitCalls: [] as number[],
 }));
 
@@ -25,6 +26,7 @@ vi.mock("@/lib/ownership", () => ({
   isDomainVerified: m.verified,
   hostnameFromUrl: (u: string) => new URL(u).hostname,
 }));
+vi.mock("@/lib/clientScope", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/clientScope")>()), resolveClientScope: m.resolve }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: m.rateLimit, getClientIp: () => "1.2.3.4" }));
 vi.mock("@/lib/freeTier", () => ({ isFreeTierExhausted: m.freeTier, FREE_TIER_EXHAUSTED_MESSAGE: "free tier used" }));
 vi.mock("@/lib/onDemandScanTrigger", () => ({ triggerOnDemandWorkflow: m.trigger }));
@@ -139,6 +141,38 @@ describe("/api/v1/scans", () => {
       await call("GET");
       await call("GET", { query: { limit: "5000" } });
       expect(m.limitCalls).toEqual([20, 100]);
+    });
+
+    describe("client filter", () => {
+      const scan = (id: string, url: string) => ({ id, target_url: url, status: "completed", created_at: "t", scan_results: null });
+      beforeEach(() => {
+        m.resolve.mockReset().mockResolvedValue({ ok: true, hosts: new Set(["shop.example.com"]), urls: [] });
+        m.list = { data: [scan("s1", TARGET), scan("s2", "https://other.test"), scan("s3", "not a url"), scan("s4", "https://SHOP.example.com/x")], error: null };
+        m.limitCalls = [];
+      });
+
+      it("keeps only scans of the client's sites, matched by hostname, and over-fetches", async () => {
+        const res = await call("GET", { query: { client: "c1" } });
+        expect(m.resolve).toHaveBeenCalledWith(expect.anything(), "owner-1", "c1");
+        expect(res._getJSONData().scans.map((s: { scan_id: string }) => s.scan_id)).toEqual(["s1", "s4"]);
+        expect(m.limitCalls).toEqual([20, 500]);
+      });
+
+      it("still honours limit after filtering", async () => {
+        const res = await call("GET", { query: { client: "c1", limit: "1" } });
+        expect(res._getJSONData().count).toBe(1);
+      });
+
+      it("404s with client_not_found for an unknown client, 503 with client_unavailable otherwise", async () => {
+        m.resolve.mockResolvedValue({ ok: false, status: 404, error: "Client not found" });
+        const missing = await call("GET", { query: { client: "nope" } });
+        expect(missing.statusCode).toBe(404);
+        expect(missing._getJSONData()).toMatchObject({ code: "client_not_found" });
+        m.resolve.mockResolvedValue({ ok: false, status: 503, error: "pending" });
+        const pending = await call("GET", { query: { client: "c1" } });
+        expect(pending.statusCode).toBe(503);
+        expect(pending._getJSONData()).toMatchObject({ code: "client_unavailable" });
+      });
     });
 
     it("filters by target_url when given, and 500s on a database error", async () => {
