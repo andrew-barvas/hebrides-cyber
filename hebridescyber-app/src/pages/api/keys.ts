@@ -145,12 +145,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id, name, key_prefix, created_at, scopes")
       .single();
 
-    // Migration 062 not applied yet: a full-access key is exactly what a row
+    // Migration 063 not applied yet: a full-access key is exactly what a row
     // without the column means, so mint it. A narrowed preset must never
     // silently become a full-access key, so refuse instead.
     if (error && isMissingSchemaError(error)) {
       if (parsed.preset !== "full") {
-        return res.status(503).json({ error: "Scoped API keys aren't enabled on this server yet (database migration 062 pending)." });
+        return res.status(503).json({ error: "Scoped API keys aren't enabled on this server yet (database migration 063 pending)." });
       }
       ({ data, error } = await supabaseAdmin
         .from("api_keys")

@@ -122,7 +122,7 @@ describe("/api/clients", () => {
       expect((await clients("GET"))._getStatusCode()).toBe(500);
     });
 
-    it("503s when migration 063 is not applied", async () => {
+    it("503s when migration 064 is not applied", async () => {
       results["clients:select"] = { data: null, error: { code: "42P01", message: "relation does not exist" } };
       expect((await clients("GET"))._getStatusCode()).toBe(503);
     });
@@ -329,7 +329,7 @@ describe("/api/clients/assign", () => {
     expect((await assign({ target_ids: ["t1"] }))._getStatusCode()).toBe(400);
   });
 
-  it("500s on a database error and 503s when migration 063 is pending", async () => {
+  it("500s on a database error and 503s when migration 064 is pending", async () => {
     results["monitored_targets:update"] = { data: null, error: { message: "db down" } };
     expect((await assign({ client_id: "c1", target_ids: ["t1"] }))._getStatusCode()).toBe(500);
     results["monitored_targets:update"] = { data: null, error: { code: "42703", message: "no column client_id" } };

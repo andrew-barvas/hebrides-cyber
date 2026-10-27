@@ -152,7 +152,7 @@ describe("/api/keys", () => {
       expect((res._getJSONData() as { key: string }).key).toBeTruthy();
     });
 
-    it("before migration 062, still mints a full-access key without the scopes column", async () => {
+    it("before migration 063, still mints a full-access key without the scopes column", async () => {
       insertResults = [
         { data: null, error: { code: "PGRST204", message: "column not found" } },
         { data: created, error: null },
@@ -163,11 +163,11 @@ describe("/api/keys", () => {
       expect(inserts[1]).not.toHaveProperty("scopes");
     });
 
-    it("before migration 062, refuses a narrowed preset rather than minting a full-access key", async () => {
+    it("before migration 063, refuses a narrowed preset rather than minting a full-access key", async () => {
       insertResults = [{ data: null, error: { code: "PGRST204", message: "column not found" } }];
       const res = await call("POST", { name: "CI", preset: "read_only" });
       expect(res._getStatusCode()).toBe(503);
-      expect((res._getJSONData() as { error: string }).error).toContain("062");
+      expect((res._getJSONData() as { error: string }).error).toContain("063");
       expect(inserts).toHaveLength(1);
     });
 

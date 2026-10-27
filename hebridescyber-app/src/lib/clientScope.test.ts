@@ -54,7 +54,7 @@ describe("resolveClientScope", () => {
     expect(calls).toEqual(["monitored_targets.eq:owner=o1", "monitored_targets.is:client_id=null"]);
   });
 
-  it("503s when migration 063 is missing, 500s on other errors (client lookup)", async () => {
+  it("503s when migration 064 is missing, 500s on other errors (client lookup)", async () => {
     expect(await resolveClientScope(fakeDb({ data: null, error: { code: "42P01", message: "x" } }, sites).db, "o1", "c1")).toMatchObject({ ok: false, status: 503 });
     expect(await resolveClientScope(fakeDb({ data: null, error: { message: "boom" } }, sites).db, "o1", "c1")).toMatchObject({ ok: false, status: 500 });
   });

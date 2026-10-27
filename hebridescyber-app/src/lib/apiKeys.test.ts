@@ -54,7 +54,7 @@ describe("resolveApiKey", () => {
     const row = { owner: "owner-1", id: "key-1", key_hash: hashApiKey(plaintext), revoked_at: null, allowed_cidrs: ["10.0.0.0/8"] };
     const { client } = fakeSupabase(row);
     const result = await resolveApiKey(client, plaintext);
-    // No scopes column stored (pre-062 row) → full access, i.e. the behaviour before scopes existed.
+    // No scopes column stored (pre-063 row) → full access, i.e. the behaviour before scopes existed.
     expect(result).toEqual({ ownerId: "owner-1", keyId: "key-1", allowedCidrs: ["10.0.0.0/8"], scopes: ["scans:read", "scans:write", "dependency:check"] });
   });
 
