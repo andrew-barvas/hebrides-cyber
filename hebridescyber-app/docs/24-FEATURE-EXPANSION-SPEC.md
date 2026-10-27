@@ -379,7 +379,7 @@ Aggregation over this operator's own already-collected customer scan history —
 
 **B. Frontend** — `/cyber-index` public page: stat cards + a trend chart (generalising `ScoreTrend.tsx`'s SVG approach to an arbitrary series), positioned alongside `/tourism`, `/churches`, `/local-trades` as a marketing/community-trust page.
 
-**C. CI/CD** — new `.github/workflows/cyber-index.yml`, monthly cron, Node 20 + npm cache, `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` only.
+**C. CI/CD** — new `.github/workflows/cyber-index.yml`, monthly cron, Node 22 + npm cache, `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` only.
 
 **D.** — read-only aggregate reporting; no scoring/compliance effect.
 

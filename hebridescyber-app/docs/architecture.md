@@ -58,7 +58,7 @@ flowchart TB
     subgraph SWA[Azure Static Web Apps - one deployed surface]
         Pages[App Router pages src/app/*]:::app
         API[API routes managed Functions src/pages/api/*]:::app
-        MW[middleware.ts auth gate]:::app
+        MW[proxy.ts nonce CSP + auth gate]:::app
     end
     subgraph Data[Supabase]
         PG[(Postgres + RLS)]:::store
@@ -164,7 +164,17 @@ between an on-demand scan and a scheduled one.
   commix, Subfinder, testssl.sh, plus (with a connected GitHub repo) Gitleaks
   secret scanning, dependency-manifest scanning (npm/pip/Composer), and
   Dockerfile base-image checks, plus (with a saved credential) the
-  authenticated header/cookie recheck.
+  authenticated header/cookie recheck. Also in the extended suite: Dalfox
+  (XSS depth, pinned and SHA-256-verified binary), session-token entropy
+  (`tokenEntropy.ts` via `sessionCheck`), and a configurable out-of-band
+  server for blind-SSRF templates (`INTERACTSH_SERVER`, or `DISABLE_OAST=1`).
+- After the tools run, an optional **triage** step can annotate unproven
+  findings: `replayProbe.ts` sends one allowlisted, read-only request and
+  `aiTriage.ts` (Azure OpenAI, off unless `AI_TRIAGE=1`) judges the response.
+  It writes `metadata.aiTriage` only and never changes severity or lifecycle
+  (design: `AI-TRIAGE-DESIGN.md`).
+- The worker reports unexpected failures to Sentry (`workerSentry.ts`) with a
+  per-scan correlation id, and one job throwing does not abort the batch.
 - Only jobs from `scheduled-scans.yml` get that flag — on-demand jobs stay
   passive-only, distinguished by whether the job's `scan_id` arrived
   pre-set (an on-demand job reuses an existing `scans` row created at step
@@ -222,6 +232,14 @@ the same way, by removing the HTTP hop entirely.
   customer site being authenticated-scanned does not, so that one credential
   type is saved without a live validation call, documented as a deliberate
   limitation rather than a false assurance).
+- **Scoped API keys.** `/api/v1` keys carry scopes (`scans:read`,
+  `scans:write`, `dependency:check`; presets Full / CI / Read-only, migration
+  062). Every v1 route calls `guardV1` (`src/lib/v1Guard.ts`), which sets the version and no-store
+  headers, throttles failed authentication per IP, authenticates, enforces the
+  scope (403 `insufficient_scope`) and applies the per-account rate limit, and `guard-coverage.test.ts`
+  fails if a route skips it. A key narrower than full access is refused on
+  every non-v1 endpoint, and key management itself is session-only. The
+  OpenAPI 3.1 spec at `/api/v1/openapi.json` is drift-tested against the routes.
 - **Real ownership verification.** No scan runs against a domain without a
   DNS TXT record or file-upload proof of control — required by default on
   every deployment.
