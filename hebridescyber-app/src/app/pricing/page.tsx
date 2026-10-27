@@ -35,8 +35,13 @@ const oneOff = [
   { name: "Full SaaS Audit", price: "£1,800", desc: "Full manual pen test, CI/CD review, cloud permissions review, 20+ page report." },
 ];
 
+// Tier A is deliberately not sold here (SPRINT-PLAN H6: hidden). Every
+// feature it would add (strix, cairn, credential spraying) is `not_configured`,
+// and there is no customer path to the offensive profile; owner decision
+// 2026-10-23: "leave not_configured, do not market". The plan still exists
+// for accounts that already have it, and checkout still accepts "tier_a".
 const subscriptions: Array<{
-  id: "basic" | "pro" | "agency" | "tier_a";
+  id: "basic" | "pro" | "agency";
   name: string;
   price: string;
   tagline: string;
@@ -82,26 +87,13 @@ const subscriptions: Array<{
       "Priority support",
     ],
   },
-  {
-    id: "tier_a",
-    name: "Tier A",
-    price: "Contact us",
-    tagline: "Everything in Agency, plus opt-in offensive readiness testing.",
-    features: [
-      "Opt-in offensive scan mode (per-scan authorised)",
-      "Content & vhost discovery",
-      "Credential-defence (rate-limit/lockout) testing",
-      "Attack-readiness: controlled credential & exploit testing",
-      "Written authorisation required per target",
-    ],
-  },
 ];
 
 export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
-  async function subscribe(plan: "basic" | "pro" | "agency" | "tier_a") {
+  async function subscribe(plan: "basic" | "pro" | "agency") {
     setError(null);
     setLoadingPlan(plan);
     try {
