@@ -58,7 +58,8 @@ test("a Pro account connects its own UptimeRobot key, which is never shown back"
   // The status and its duration share one element ("Down for 10 min"), so match the text, not the bare word.
   await expect(card.getByText("Down for 10 min")).toBeVisible();
   await expect(card.getByText("Not found in UptimeRobot")).toBeVisible();
-  await expect(card.getByText(/^Up/)).toHaveCount(0);
+  // \b so the card heading ("Uptime monitoring") does not match, only a status such as "Up for 2 h".
+  await expect(card.getByText(/^Up\b/)).toHaveCount(0);
   // The form is gone and the key appears nowhere on the page.
   await expect(card.getByLabel("UptimeRobot API key")).toHaveCount(0);
   expect(await page.content()).not.toContain(TEST_KEY);
