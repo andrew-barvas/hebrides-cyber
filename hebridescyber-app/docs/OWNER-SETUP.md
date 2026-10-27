@@ -191,3 +191,15 @@ Sentry reports errors the code catches; it cannot tell you the site is completel
 
 `/api/health` makes a real Stripe call and a Supabase query per probe and is limited to 120 requests per IP per hour, so keep monitors at 5 minutes or slower.
 
+## Verify uptime monitoring with a real UptimeRobot key (before announcing it)
+
+The client was written from UptimeRobot's published spec and has not yet been run against a real account. With a free UptimeRobot account and a Pro test subscription:
+
+1. In UptimeRobot, open **Integrations → API** and create an API key.
+2. In the dashboard, open **Integrations → Uptime monitoring**, paste the key and click **Connect**. If it says the key was rejected, UptimeRobot v3 wants a different token type: report the exact message and we will adjust `uptimeRobot.ts`.
+3. Click **Create monitors** for a verified site and confirm the monitor appears in UptimeRobot.
+4. Pause that monitor in UptimeRobot, wait for the next sync (up to 15 minutes, or reload the card after 5), and confirm the status changes.
+5. Never paste the key anywhere except the dashboard field.
+
+The `uptime-sync.yml` workflow reuses `SUPABASE_*`, `CREDENTIALS_ENC_KEY` and `RESEND_API_KEY`; no new secrets.
+
