@@ -135,28 +135,29 @@ function PolicyForm({ policy, token, onSaved }: { policy: SlaPolicy; token: stri
   );
 }
 
-async function fetchSla(token: string): Promise<SlaResponse> {
-  const res = await fetch("/api/account/sla", { headers: { Authorization: `Bearer ${token}` } });
+async function fetchSla(token: string, client?: string): Promise<SlaResponse> {
+  const qs = client && client !== "all" ? `?client=${encodeURIComponent(client)}` : "";
+  const res = await fetch(`/api/account/sla${qs}`, { headers: { Authorization: `Bearer ${token}` } });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? "Could not load SLA status");
   return body;
 }
 
-export default function SlaDashboard({ token }: { token: string | null }) {
+export default function SlaDashboard({ token, client = "all" }: { token: string | null; client?: string }) {
   const [data, setData] = useState<SlaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
 
   const load = useCallback(() => {
     if (!token) return;
-    fetchSla(token).then(
+    fetchSla(token, client).then(
       (body) => {
         setData(body);
         setError(null);
       },
       (err: Error) => setError(err.message)
     );
-  }, [token]);
+  }, [token, client]);
 
   useEffect(load, [load]);
 

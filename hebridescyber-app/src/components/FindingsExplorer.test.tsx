@@ -348,3 +348,28 @@ describe("FindingsExplorer", () => {
     expect(within(filters).getByRole("button", { name: "Grouped by check" })).toHaveAttribute("aria-pressed", "true");
   });
 });
+
+describe("FindingsExplorer — client workspaces", () => {
+  it("sends ?client= for a client scope and omits it for all clients", async () => {
+    const { rerender } = render(<FindingsExplorer token="tok" client="c1" />);
+    await screen.findByText("Missing HSTS");
+    expect(lastList()).toContain("client=c1");
+    rerender(<FindingsExplorer token="tok" client="all" />);
+    await waitFor(() => expect(lastList()).not.toContain("client="));
+  });
+
+  it("groups by site: asks the server for rows and sections them by host", async () => {
+    listBody = () => body({ view: "rows" });
+    render(<FindingsExplorer token="tok" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grouped by site" }));
+    await waitFor(() => expect(lastList()).toContain("view=rows"));
+    expect(await screen.findByRole("list", { name: "Open findings on a.example" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Open findings on b.example" })).toBeInTheDocument();
+  });
+
+  it("carries the client into the CSV export", async () => {
+    render(<FindingsExplorer token="tok" client="unassigned" />);
+    await screen.findByText("Missing HSTS");
+    expect(listCalls().every((u) => u.includes("client=unassigned"))).toBe(true);
+  });
+});

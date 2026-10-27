@@ -96,3 +96,15 @@ describe("SlaDashboard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("must be at least 1 day");
   });
 });
+
+describe("SlaDashboard — client scope", () => {
+  it("requests ?client= for a client and refetches when the scope changes", async () => {
+    fetchMock.mockResolvedValue(available([row("a", "high", 3)]));
+    const { rerender } = render(<SlaDashboard token="tok" client="c 1" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/account/sla?client=c%201");
+    rerender(<SlaDashboard token="tok" client="all" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/account/sla");
+  });
+});
