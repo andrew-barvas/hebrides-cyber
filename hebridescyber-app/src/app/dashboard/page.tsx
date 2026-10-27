@@ -144,7 +144,7 @@ function CheckoutBanner() {
 }
 
 export default function DashboardPage() {
-  const { plan, planStatus, slackWebhookUrl, teamsWebhookUrl } = useAppSession();
+  const { plan, planStatus, slackWebhookUrl, teamsWebhookUrl, clients, currentClientId } = useAppSession();
   const billing = useBillingPortal();
   const sessionToken = useSessionToken();
 
@@ -240,7 +240,7 @@ export default function DashboardPage() {
 
       {plan === "agency" && <PortfolioReportButton token={sessionToken} />}
 
-      <FleetOverview />
+      <FleetOverview clients={clients} scope={currentClientId} />
 
       <EmergingThreatsPanel token={sessionToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
 

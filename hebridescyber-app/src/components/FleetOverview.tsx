@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import type { Finding } from "@/lib/scanners";
+import { groupByClient, SCOPE_ALL, UNASSIGNED_NAME, type ClientScope, type ClientSummary } from "@/lib/clientRollup";
 
 type FleetRow = {
   targetId: string;
@@ -28,7 +29,9 @@ type FleetRow = {
   latestScore: number | null;
   lastScannedAt: string | null;
   openFindingsCount: number | null;
+  openCriticalCount: number | null;
   scoreHistory: number[];
+  clientId: string | null;
 };
 
 type ScanCandidate = {
@@ -84,7 +87,15 @@ function relativeTime(iso: string): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-export default function FleetOverview() {
+type Props = {
+  /** Agency client workspaces; when present the fleet is grouped by client. */
+  clients?: ClientSummary[];
+  /** The shell switcher's selection. */
+  scope?: ClientScope;
+};
+
+export default function FleetOverview({ clients = [], scope = SCOPE_ALL }: Props = {}) {
+  const hasClients = clients.length > 0;
   const [rows, setRows] = useState<FleetRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -92,11 +103,11 @@ export default function FleetOverview() {
     (async () => {
       const { data: targets } = await supabase
         .from("monitored_targets")
-        .select("id, target_url")
+        .select(hasClients ? "id, target_url, client_id" : "id, target_url")
         .order("created_at", { ascending: true });
 
-      const targetList = (targets ?? []) as Array<{ id: string; target_url: string }>;
-      if (targetList.length < 2) {
+      const targetList = (targets ?? []) as unknown as Array<{ id: string; target_url: string; client_id?: string | null }>;
+      if (targetList.length < (hasClients ? 1 : 2)) {
         setLoading(false);
         return;
       }
@@ -135,7 +146,9 @@ export default function FleetOverview() {
           latestScore: result?.score ?? null,
           lastScannedAt: latest?.created_at ?? null,
           openFindingsCount: latest ? findings.filter((f) => f.severity !== "info").length : null,
+          openCriticalCount: latest ? findings.filter((f) => f.severity === "critical").length : null,
           scoreHistory,
+          clientId: t.client_id ?? null,
         };
       });
 
@@ -145,74 +158,124 @@ export default function FleetOverview() {
       setRows(rowsOut);
       setLoading(false);
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasClients]);
 
   if (loading || rows.length === 0) return null;
+
+  if (hasClients) {
+    const groups = groupByClient(rows, clients).filter((g) =>
+      scope === SCOPE_ALL ? true : scope === "unassigned" ? g.clientId === null : g.clientId === scope,
+    );
+    const unassignedCount = rows.filter((r) => !r.clientId || !clients.some((c) => c.id === r.clientId)).length;
+    return (
+      <div className="space-y-3">
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// clients ({groups.length})</h2>
+        {groups.map((g) => (
+          <details key={g.clientId ?? "unassigned"} open={g.clientId === null || groups.length === 1} className="rounded-xl border border-cyberborder bg-cyberpanel p-4">
+            <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-cybertext">
+                {g.name} <span className="text-xs font-normal text-cybermuted">· {g.sites.length} site{g.sites.length === 1 ? "" : "s"}</span>
+              </span>
+              <span className="flex flex-wrap items-center gap-4 text-xs text-cybermuted">
+                <span>
+                  Score{" "}
+                  {g.rollupScore !== null ? <span className={`font-semibold ${scoreColor(g.rollupScore)}`}>{g.rollupScore}/100</span> : "—"}
+                </span>
+                <span>
+                  Critical <span className={g.openCriticals > 0 ? "font-semibold text-danger" : "text-cybertext"}>{g.openCriticals}</span>
+                </span>
+                <span>Last scan {g.lastScannedAt ? relativeTime(g.lastScannedAt) : "never"}</span>
+              </span>
+            </summary>
+            {g.clientId === null && unassignedCount > 0 && (
+              <p className="mt-2 text-xs text-cybermuted">
+                {UNASSIGNED_NAME} sites aren&apos;t part of any client.{" "}
+                <Link href="/dashboard/assets" className="text-neon hover:underline">
+                  Assign them to a client
+                </Link>
+                .
+              </p>
+            )}
+            <div className="mt-3">
+              {g.sites.length === 0 ? <p className="text-sm text-cybermuted">No sites assigned yet.</p> : <FleetTable rows={g.sites} />}
+            </div>
+          </details>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <h2 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// fleet overview ({rows.length} sites)</h2>
-      <div className="sm:overflow-x-auto">
-        <table className="block w-full text-sm sm:table">
-          <thead className="hidden sm:table-header-group">
-            <tr className="border-b border-cyberborder text-left text-xs text-cybermuted">
-              <th className="pb-2 font-normal">Site</th>
-              <th className="pb-2 font-normal">Score</th>
-              <th className="pb-2 font-normal">Trend</th>
-              <th className="pb-2 font-normal">Open findings</th>
-              <th className="pb-2 font-normal">Last scanned</th>
-            </tr>
-          </thead>
-          <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 sm:divide-y sm:divide-cyberborder">
-            {rows.map((row) => (
-              <tr
-                key={row.targetId}
-                className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 sm:table-row sm:border-0 sm:bg-transparent sm:p-0"
-              >
-                <td className="py-0.5 font-mono text-xs text-cybertext/80 break-all sm:table-cell sm:max-w-[180px] sm:py-2.5 sm:pr-3">{row.targetUrl}</td>
-                <td
-                  data-label="Score"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
-                >
-                  {row.latestScore !== null ? (
-                    <span className={`font-semibold ${scoreColor(row.latestScore)}`}>{row.latestScore}/100</span>
-                  ) : (
-                    <span className="text-cybermuted">—</span>
-                  )}
-                </td>
-                <td
-                  data-label="Trend"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
-                >
-                  <MiniSparkline points={row.scoreHistory} />
-                </td>
-                <td
-                  data-label="Open findings"
-                  className="flex items-center justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
-                >
-                  {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybermuted">—</span>}
-                </td>
-                <td
-                  data-label="Last scanned"
-                  className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden"
-                >
-                  {row.lastScannedAt ? (
-                    row.latestScanId ? (
-                      <Link href={`/dashboard/scans/${row.latestScanId}`} className="text-neon hover:underline">
-                        {relativeTime(row.lastScannedAt)}
-                      </Link>
-                    ) : (
-                      relativeTime(row.lastScannedAt)
-                    )
-                  ) : (
-                    <span className="text-cybermuted">Never scanned</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <FleetTable rows={rows} />
     </div>
+  );
+}
+
+function FleetTable({ rows }: { rows: FleetRow[] }) {
+  return (
+  <div className="sm:overflow-x-auto">
+    <table className="block w-full text-sm sm:table">
+      <thead className="hidden sm:table-header-group">
+        <tr className="border-b border-cyberborder text-left text-xs text-cybermuted">
+          <th className="pb-2 font-normal">Site</th>
+          <th className="pb-2 font-normal">Score</th>
+          <th className="pb-2 font-normal">Trend</th>
+          <th className="pb-2 font-normal">Open findings</th>
+          <th className="pb-2 font-normal">Last scanned</th>
+        </tr>
+      </thead>
+      <tbody className="block space-y-2 sm:table-row-group sm:space-y-0 sm:divide-y sm:divide-cyberborder">
+        {rows.map((row) => (
+          <tr
+            key={row.targetId}
+            className="block rounded-lg border border-cyberborder/60 bg-cyberbg/20 p-3 sm:table-row sm:border-0 sm:bg-transparent sm:p-0"
+          >
+            <td className="py-0.5 font-mono text-xs text-cybertext/80 break-all sm:table-cell sm:max-w-[180px] sm:py-2.5 sm:pr-3">{row.targetUrl}</td>
+            <td
+              data-label="Score"
+              className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+            >
+              {row.latestScore !== null ? (
+                <span className={`font-semibold ${scoreColor(row.latestScore)}`}>{row.latestScore}/100</span>
+              ) : (
+                <span className="text-cybermuted">—</span>
+              )}
+            </td>
+            <td
+              data-label="Trend"
+              className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+            >
+              <MiniSparkline points={row.scoreHistory} />
+            </td>
+            <td
+              data-label="Open findings"
+              className="flex items-center justify-between gap-3 py-0.5 text-cybertext/70 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:pr-3 sm:before:hidden"
+            >
+              {row.openFindingsCount !== null ? row.openFindingsCount : <span className="text-cybermuted">—</span>}
+            </td>
+            <td
+              data-label="Last scanned"
+              className="flex items-center justify-between gap-3 py-0.5 before:font-mono before:text-[10px] before:uppercase before:tracking-wide before:text-cybermuted before:content-[attr(data-label)] sm:table-cell sm:py-2.5 sm:before:hidden"
+            >
+              {row.lastScannedAt ? (
+                row.latestScanId ? (
+                  <Link href={`/dashboard/scans/${row.latestScanId}`} className="text-neon hover:underline">
+                    {relativeTime(row.lastScannedAt)}
+                  </Link>
+                ) : (
+                  relativeTime(row.lastScannedAt)
+                )
+              ) : (
+                <span className="text-cybermuted">Never scanned</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
   );
 }
