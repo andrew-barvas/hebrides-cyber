@@ -20,8 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { SNOOZE_PRESET_DAYS, TRIAGE_BULK_MAX, TRIAGE_REASON_MAX, TRIAGE_REASON_MIN, TRIAGE_STATE_LABELS, reasonLength } from "@/lib/findingTriage";
 import type { Facets, FindingGroup, FindingRow, FindingSeverity } from "@/lib/findingsView";
 import { cn } from "@/lib/utils";
+import { groupBySite } from "@/lib/clientRollup";
 
-type ViewMode = "grouped" | "rows";
+/** "site" is a client-side regrouping of the server's "rows" view by hostname. */
+type ViewMode = "grouped" | "rows" | "site";
 
 type FindingsResponse = {
   available: boolean;
@@ -85,8 +87,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SELECT_CLASS =
   "h-10 w-full rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/40";
 
-function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "csv"): string {
+function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "csv", client?: string): string {
   const p = new URLSearchParams();
+  if (client && client !== "all") p.set("client", client);
   if (filters.site) p.set("site", filters.site);
   if (filters.severity) p.set("severity", filters.severity);
   if (filters.kev) p.set("kev", "1");
@@ -98,7 +101,7 @@ function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "cs
   if (format) {
     p.set("format", format);
   } else {
-    p.set("view", view);
+    p.set("view", view === "site" ? "rows" : view);
     p.set("page", String(page));
   }
   return p.toString();
@@ -357,7 +360,7 @@ function BulkBar({
   );
 }
 
-export default function FindingsExplorer({ token }: { token: string | null }) {
+export default function FindingsExplorer({ token, client = "all" }: { token: string | null; client?: string }) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [view, setView] = useState<ViewMode>("grouped");
   const [page, setPage] = useState(1);
@@ -374,7 +377,7 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/findings?${buildQuery(filters, view, page)}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+    fetch(`/api/findings?${buildQuery(filters, view, page, undefined, client)}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? "Could not load your findings");
@@ -389,7 +392,7 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [token, filters, view, page, reloads]);
+  }, [token, filters, view, page, reloads, client]);
 
   const rowsOnPage = useMemo(() => (data ? (data.view === "grouped" ? data.groups.flatMap((g) => g.rows) : data.items) : []), [data]);
   const byKey = useMemo(() => new Map(rowsOnPage.map((r) => [r.key, r])), [rowsOnPage]);
@@ -449,7 +452,7 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
     if (!token) return;
     setExportError(null);
     try {
-      const res = await fetch(`/api/findings?${buildQuery(filters, view, page, "csv")}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/findings?${buildQuery(filters, view, page, "csv", client)}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Could not export your findings");
       const url = URL.createObjectURL(await res.blob());
       const link = document.createElement("a");
@@ -551,6 +554,7 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
             options={[
               { value: "grouped", label: "Grouped by check" },
               { value: "rows", label: "All findings" },
+              { value: "site", label: "Grouped by site" },
             ]}
           />
           {filtersActive && (
@@ -618,6 +622,19 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
           </p>
           {data.view === "grouped" ? (
             data.groups.map((g) => <GroupCard key={g.key} group={g} selected={selected} onToggleRow={toggleRow} onToggleGroup={toggleGroup} />)
+          ) : view === "site" ? (
+            groupBySite(data.items, (r) => r.host).map((g) => (
+              <Card key={g.host}>
+                <h3 className="px-4 pt-3 font-mono text-xs text-cybermuted">
+                  {g.host} <span className="text-cybermuted">· {g.rows.length}</span>
+                </h3>
+                <ul className="divide-y divide-cyberborder" aria-label={`Open findings on ${g.host}`}>
+                  {g.rows.map((r) => (
+                    <FindingLine key={r.key} row={r} checked={selected.has(r.key)} onToggle={() => toggleRow(r.key)} showTitle />
+                  ))}
+                </ul>
+              </Card>
+            ))
           ) : (
             <Card>
               <ul className="divide-y divide-cyberborder" aria-label="Open findings">

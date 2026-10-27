@@ -5,7 +5,7 @@ import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
 
 export default function SlaPage() {
-  const { accessToken } = useAppSession();
+  const { accessToken, currentClientId } = useAppSession();
 
   return (
     <div className="space-y-6">
@@ -14,7 +14,7 @@ export default function SlaPage() {
         title="Remediation SLAs"
         description="Every open finding across your sites against the fix-by target for its severity, how quickly things actually get fixed, and alerts before a deadline passes."
       />
-      <SlaDashboard token={accessToken} />
+      <SlaDashboard token={accessToken} client={currentClientId} />
     </div>
   );
 }

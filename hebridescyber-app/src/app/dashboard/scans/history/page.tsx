@@ -6,7 +6,7 @@
 // page starts from "pick a target" instead and has no such cap — see
 // findFullScoreHistoryClient's own header for the (still bounded, at 500)
 // reasoning.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, TrendingUp } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -18,8 +18,10 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAppSession } from "@/components/app-shell/AppShell";
+import { filterByScope } from "@/lib/clientRollup";
 
-type Target = { id: string; target_url: string };
+type Target = { id: string; target_url: string; client_id?: string | null };
 
 function csvEscape(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -43,7 +45,14 @@ function downloadScoreHistoryCsv(targetUrl: string, points: ScorePoint[]) {
 }
 
 export default function ScoreHistoryPage() {
-  const [targets, setTargets] = useState<Target[]>([]);
+  const { currentClientId, clients } = useAppSession();
+  const [allTargets, setAllTargets] = useState<Target[]>([]);
+  const hasClients = clients.length > 0;
+  // Sites in the switcher's selection; the picker below only offers these.
+  const targets = useMemo(
+    () => (hasClients ? filterByScope(allTargets.map((t) => ({ ...t, clientId: t.client_id ?? null })), currentClientId) : allTargets),
+    [allTargets, hasClients, currentClientId],
+  );
   const [selectedId, setSelectedId] = useState<string>("");
   const [loadingTargets, setLoadingTargets] = useState(true);
   const [scorePoints, setScorePoints] = useState<ScorePoint[]>([]);
@@ -53,15 +62,18 @@ export default function ScoreHistoryPage() {
   useEffect(() => {
     supabase
       .from("monitored_targets")
-      .select("id, target_url")
+      .select(hasClients ? "id, target_url, client_id" : "id, target_url")
       .order("created_at", { ascending: true })
       .then(({ data }) => {
-        const list = (data ?? []) as Target[];
-        setTargets(list);
-        if (list.length > 0) setSelectedId(list[0].id);
+        setAllTargets((data ?? []) as unknown as Target[]);
         setLoadingTargets(false);
       });
-  }, []);
+  }, [hasClients]);
+
+  // Keep the selected site inside the current scope (first site when it falls outside).
+  useEffect(() => {
+    if (targets.length > 0 && !targets.some((t) => t.id === selectedId)) setSelectedId(targets[0].id);
+  }, [targets, selectedId]);
 
   useEffect(() => {
     const target = targets.find((t) => t.id === selectedId);
