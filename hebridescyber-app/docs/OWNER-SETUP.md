@@ -129,7 +129,7 @@ Sentry within ~60s with a request id.
 ### 4a. `SITE_URL` — completes the post-deploy health check (BETA-2)
 **Why.** `deploy.yml`'s post-deploy curl of `/api/health` needs the base URL.
 **Steps.** GitHub → Actions secrets → add `SITE_URL` = `https://www.hebridescyber.co.uk`.
-**Verify.** Next deploy's final "health check" step runs and passes (not skipped).
+**Verify.** Next deploy's final "health check" step logs `Health check returned HTTP 200` (not skipped, no warning). Done: the secret is set (bare domain), and the step follows the redirect to `www`, so either form works.
 
 ### 4b. Branch protection — a failing check blocks merge (BETA-5)
 **Why.** The `check` job (lint/tsc/test/e2e) runs on PRs, but nothing *enforces*
