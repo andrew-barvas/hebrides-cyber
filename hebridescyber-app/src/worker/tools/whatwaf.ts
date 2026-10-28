@@ -25,16 +25,22 @@
 // stdout, so it isn't passed. `--skip` skips WhatWaf's bypass analysis, which
 // fires its tamper payloads at the target for results we don't use.
 //
-// Built from source, not from a recorded run: there is no captured-output
-// fixture or integration test yet (unlike katana/dalfox).
+// WhatWaf asks "create an issue?" (raw_input) after an unidentified or "behind
+// some kind of protection" verdict and has no flag to skip it. With stdin closed
+// that raises EOFError and the process exits non-zero, AFTER printing the
+// verdict. So a failed exit still carries stdout, and a WAF verdict in it is
+// kept. A non-zero exit never yields "no WAF": that needs a clean run. Seen in
+// the real-binary integration run, not in a recorded fixture yet.
 
 import { execTool } from "../../lib/execTool";
 
 const execFileAsync = execTool;
 
-const WHATWAF_TIMEOUT_MS = 90_000;
+// A real v1.9 run against a plain local server took ~88s at --throttle 3 (about 24
+// detection requests), only just inside the old 90s limit.
+const WHATWAF_TIMEOUT_MS = 120_000;
 
-export const WHATWAF_ARGS = ["--ra", "--throttle", "3", "--skip"] as const;
+export const WHATWAF_ARGS = ["--ra", "--throttle", "1", "--skip"] as const;
 
 export type WhatWafResult =
   | {
@@ -90,9 +96,13 @@ export async function runWhatWaf(targetUrl: string): Promise<WhatWafResult> {
     );
     return parseWhatWafOutput(stdout);
   } catch (err) {
-    const error = err as NodeJS.ErrnoException;
+    const error = err as NodeJS.ErrnoException & { stdout?: unknown; killed?: boolean };
     if (error.code === "ENOENT") {
       return { status: "not_configured" };
+    }
+    if (!error.killed && typeof error.stdout === "string") {
+      const verdict = parseWhatWafOutput(error.stdout);
+      if (verdict.status === "completed" && verdict.waf !== null) return verdict;
     }
     return {
       status: "error",
