@@ -1508,6 +1508,10 @@ annotation rather than failing the workflow outright (the deploy already
 succeeded at that point — a degraded health check is worth surfacing, not
 worth reverting a deploy over automatically). Requires the `SITE_URL`
 GitHub secret (the live `hebridescyber.co.uk` URL) — owner action.
+**2026-10-27:** the secret is set to the bare domain, which 301s to `www`, so
+every deploy logged "HTTP 301" and warned without ever checking health. The
+curl now follows redirects (`-L --max-redirs 3`, 20 s timeout), so either form
+of the URL works, and a dead host reports `000` instead of `000000`.
 
 **What**: `docs/ROADMAP.md` BETA-2 says "`GET /api/health` returns 200 with
 Supabase/Stripe/queue-depth sub-checks" and lists "curl in CI immediately
