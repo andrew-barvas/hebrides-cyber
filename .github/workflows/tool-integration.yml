@@ -243,6 +243,11 @@ jobs:
       # the job log and the uploaded artifact (readable straight from the log
       # below). Informational: never fails the job.
       - name: Capture whatwaf output
+        # always(): the whatwaf test step above may fail, and a step without
+        # this is skipped after an earlier failure (continue-on-error only stops
+        # a step's OWN failure from failing the job), so the capture must be
+        # unconditional to record the real output either way.
+        if: always()
         continue-on-error: true
         run: |
           set +e
