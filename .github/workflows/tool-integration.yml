@@ -239,6 +239,21 @@ jobs:
           cmsmap --help > /tmp/capture/cmsmap.help.txt 2>&1 || true
           head -5 /tmp/capture/cmsmap.help.txt
 
+      # The same hard check for whatwaf, with the recipe scheduled-scans.yml now
+      # uses. #124's first version of that install (sudo pip3 install of the
+      # clone) was never run on a runner and does not work: bs4 must be
+      # installed before setup.py runs, and a root install prompts via raw_input
+      # and writes ~/.whatwaf in root's home. This must put a `whatwaf` on PATH.
+      - name: Check the pinned whatwaf install
+        run: |
+          git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf-check
+          pip3 install --break-system-packages -r /tmp/whatwaf-check/requirements.txt
+          pip3 install --break-system-packages /tmp/whatwaf-check
+          command -v whatwaf
+          # install_helper.sh rsyncs the plugins into ~/.whatwaf and setup.py
+          # ignores its exit status, so a missing rsync would leave this empty.
+          test -n "$(ls -A "$HOME/.whatwaf/plugins")"
+
       - name: Print captured output
         if: always()
         run: |
