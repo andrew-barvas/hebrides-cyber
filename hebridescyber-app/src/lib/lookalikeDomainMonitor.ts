@@ -58,9 +58,9 @@ import { escapeHtml, sendEmail } from "./email";
 import { channelsFor, type OwnerContext } from "./emergingThreatAlerts";
 import { sendTeamsNotice } from "./msTeams";
 import { ownerDomain } from "./scanners/registrableDomain";
+import { planIncludes } from "./planAccess";
 import { sendSlackNotice } from "./slack";
 
-const PAID_PLANS = new Set(["basic", "pro", "agency"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** How often a domain's full candidate set is re-checked. */
@@ -350,7 +350,7 @@ async function loadOwner(supabase: SupabaseClient, ownerId: string): Promise<{ o
     slackWebhookUrl: s?.slack_webhook_url ?? null,
     teamsWebhookUrl: s?.ms_teams_webhook_url ?? null,
   };
-  const alerting = owner.isAdmin || (owner.status === "active" && PAID_PLANS.has(owner.plan ?? ""));
+  const alerting = owner.isAdmin || (owner.status === "active" && planIncludes(owner.plan, "basic"));
   return { owner, email: u?.email ?? null, alerting };
 }
 
