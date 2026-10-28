@@ -51,8 +51,9 @@ in-repo summary.
    unit test (non-safe `totalChecks === 58`); a controlled vulnerable staging
    target + bench fixture; a `/api/health` smoke step in `deploy.yml`; confirm a
    Basic subscriber receives a scheduled scan (POC-1).
-4. **Sprint 4** — bounded, redacted `evidence` field on findings; fix the
-   scheduled-report `pdf` branch (today emits JSON — `send-scheduled-reports.ts`).
+4. **Sprint 4** — bounded, redacted `evidence` field on findings. *(The
+   scheduled-report `pdf` half is done, 2026-10-27: a real PDF attachment via
+   `htmlToPdf()`, CSV fallback that says so; see `SPRINT-PLAN.md` H4.)*
 5. **Sprint 5** — gating decision for the open routes
    (`ai-fix`/`keys`/`shares`/tickets); reconcile stale docs; prune ~20 merged
    remote branches; branch protection (owner).

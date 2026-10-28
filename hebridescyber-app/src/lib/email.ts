@@ -7,12 +7,16 @@
 // Never throws: an email failure must never crash the scan pipeline or a
 // cron job that happens to trigger it. Callers get back { ok, error } and
 // decide for themselves whether/how to log it.
+/** A file sent with the email (a scheduled report's PDF). */
+export type EmailAttachment = { filename: string; content: Buffer };
+
 export type SendEmailInput = {
   to: string | string[];
   subject: string;
   html: string;
   /** Defaults to the shared sender identity used by the contact form. */
   from?: string;
+  attachments?: EmailAttachment[];
 };
 
 export type SendEmailResult = { ok: boolean; error?: string };
@@ -46,7 +50,7 @@ async function recordOutcome(to: string | string[], subject: string, result: Sen
  * enable — resolves to { ok: false } (not a throw) when unset, matching
  * how contact.ts previously skipped sending silently when unconfigured.
  */
-export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: SendEmailInput): Promise<SendEmailResult> {
+export async function sendEmail({ to, subject, html, from = DEFAULT_FROM, attachments }: SendEmailInput): Promise<SendEmailResult> {
   const resendKey = process.env.RESEND_API_KEY;
   // Not a real attempt (no provider configured) — don't record it as a
   // deliverability failure, that would drown real bounces in noise.
@@ -65,6 +69,10 @@ export async function sendEmail({ to, subject, html, from = DEFAULT_FROM }: Send
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
+        // Resend's JSON API takes attachment bytes base64-encoded.
+        ...(attachments?.length
+          ? { attachments: attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+          : {}),
       }),
       signal: AbortSignal.timeout(10_000),
     });
