@@ -114,9 +114,10 @@ export const OFFENSIVE_ONLY_TOOLS: ReadonlySet<ExtendedToolName> = new Set<Exten
 //   - wpscan / cmsmap: need a real WordPress/CMS target to exercise, which CI
 //     has no hermetic fixture for; they remain in the opt-in, CMS-detection-
 //     gated `cms` profile.
-//   - photon: the installable PyPI `photon` is a third-party upload whose CLI
-//     can't be verified against photon.ts (s0md3v/Photon ships no pip entry
-//     point); it remains in the opt-in `osint` profile.
+//   - photon: the installable PyPI `photon` (author s0md3v, but a 2019 build;
+//     the current s0md3v/Photon repo ships no pip entry point) can't be
+//     verified against photon.ts's CLI; it remains in the opt-in `osint`
+//     profile.
 // nmap, zap and arjun, which DO now have integration tests, stay in `full`.
 // This only narrows `full`: a tool here is still reachable through whichever
 // explicit profile lists it, and through offensive/ai-pentest (which spread
