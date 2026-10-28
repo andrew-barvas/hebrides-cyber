@@ -416,10 +416,23 @@ jobs:
         run: |
           # WhatWaf has no PyPI package, so `pip install whatwaf` never resolved
           # and whatwaf.ts has always been not_configured. Install from the
-          # pinned v1.9 release tag instead (its setup.py installs the `whatwaf`
-          # script the wrapper calls).
-          ( sudo git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /opt/whatwaf \
-            && sudo pip3 install --break-system-packages /opt/whatwaf ) \
+          # pinned v1.9 release tag instead. A first attempt here (sudo pip3
+          # install of the clone) never worked either; the real install, run on
+          # a runner in tool-integration.yml, has three traps:
+          #   1. setup.py imports bs4 at metadata time, so install its
+          #      requirements FIRST.
+          #   2. setup.py prompts via raw_input when run as root, which aborts
+          #      under pip's closed stdin, so install UNPRIVILEGED (no sudo).
+          #   3. its install_helper.sh writes ~/.whatwaf in the installing
+          #      user's home, so it must be the runner user that scans.
+          # ~/.local/bin is already on the runner PATH (the sqlmap step above
+          # relies on that too). Soft in this job like every other install;
+          # tool-integration.yml runs the same recipe hard.
+          ( git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf \
+            && pip3 install --break-system-packages -r /tmp/whatwaf/requirements.txt \
+            && pip3 install --break-system-packages /tmp/whatwaf \
+            && command -v whatwaf \
+            && test -n "$(ls -A "$HOME/.whatwaf/plugins")" ) \
             || echo "whatwaf install failed — whatwaf.ts will report status: not_configured"
           sudo gem install wpscan -v 4.2.0 --no-document \
             || echo "wpscan install failed — wpscan.ts will report status: not_configured"
