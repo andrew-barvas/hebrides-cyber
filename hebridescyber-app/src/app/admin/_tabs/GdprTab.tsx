@@ -35,7 +35,7 @@ export default function DeletionRequestsTab({ token }: { token: string }) {
         <p className="mt-2 text-xs text-cybertext/50">
           Pending erasure requests, soonest deadline first (/privacy promises action within 30 days).
           {overdue > 0 ? <span className="text-red-400"> {overdue} overdue.</span> : " None overdue."} Run
-          {" "}<code className="rounded bg-cyberbg px-1 text-cybertext/70">npm run account:erase</code> to action one — erasure is a deliberate operator step, not a button here.
+          {" "}<code className="rounded-sm bg-cyberbg px-1 text-cybertext/70">npm run account:erase</code> to action one — erasure is a deliberate operator step, not a button here.
         </p>
       </div>
 

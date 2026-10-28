@@ -65,13 +65,13 @@ export default function ContactsTab({ token }: { token: string }) {
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  {!e.read && <span className="h-2 w-2 rounded-full bg-neon flex-shrink-0" />}
+                  {!e.read && <span className="h-2 w-2 rounded-full bg-neon shrink-0" />}
                   <span className="font-medium text-cybertext text-sm">{e.name}</span>
                   <span className="font-mono text-xs text-cybermuted">{e.email}</span>
                 </div>
                 <p className="mt-1 text-xs text-cybertext/50 truncate max-w-lg">{e.message}</p>
               </div>
-              <div className="flex-shrink-0 text-right">
+              <div className="shrink-0 text-right">
                 <p className="text-xs text-cybermuted">{reltime(e.created_at)}</p>
                 {e.url && (
                   <p className="mt-0.5 font-mono text-xs text-neon/60 truncate max-w-[160px]">{e.url}</p>
@@ -129,9 +129,9 @@ export default function ContactsTab({ token }: { token: string }) {
 
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
           <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
-          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
     </div>

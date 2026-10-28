@@ -108,7 +108,7 @@ export default function ScoreHistoryPage() {
               id="target-select"
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
-              className="h-9 rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/40"
+              className="h-9 rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40"
             >
               {targets.map((t) => (
                 <option key={t.id} value={t.id}>
