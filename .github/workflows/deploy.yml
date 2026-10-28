@@ -21,6 +21,10 @@ name: Deploy
 #   SUPABASE_SERVICE_ROLE_KEY          - service role key (for migration check)
 #   DATABASE_URL                       - direct Postgres connection string (for db push)
 #   SITE_URL                           - production URL (for post-deploy health check)
+#
+# Optional (blank = feature off):
+#   NEXT_PUBLIC_SENTRY_DSN             - browser-side error reporting
+#   NEXT_PUBLIC_GA_MEASUREMENT_ID      - Google Analytics 4 id, looks like G-XXXXXXXXXX
 
 on:
   push:
@@ -49,9 +53,9 @@ jobs:
         with:
           submodules: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -75,7 +79,7 @@ jobs:
         working-directory: hebridescyber-app
         run: npm run test:unit:coverage
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: coverage-report
@@ -105,9 +109,9 @@ jobs:
         with:
           submodules: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -206,9 +210,9 @@ jobs:
         with:
           submodules: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -222,14 +226,20 @@ jobs:
           action: upload
           app_location: "hebridescyber-app"
           output_location: ".next"
-          # Let Oryx build the app — .nvmrc pins Node 20 so Oryx doesn't
+          # Let Oryx build the app — .nvmrc pins Node 22 so Oryx doesn't
           # pick up the runner's system Node (previously 24.x, unsupported).
           # Env vars are passed here so Oryx's build has the Supabase keys
           # needed for generateStaticParams() at build time.
         env:
-          NODE_VERSION: '20'
+          NODE_VERSION: '22'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          # Browser-side Sentry: NEXT_PUBLIC_* is inlined at build time, and SWA app settings
+          # are not visible to this Oryx build, so it has to be passed here. Blank = no browser reporting.
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          # Google Analytics 4 (consent-gated, see GoogleAnalytics.tsx). Same reason as above: inlined at
+          # build time. Blank = analytics never loads, even after a visitor accepts the cookie banner.
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
 
       # E-57: post-deploy health check — curls /api/health on the live site
       # to catch runtime failures that pass the build. Waits 45s for Azure
@@ -246,7 +256,11 @@ jobs:
           fi
           echo "Waiting 45s for Azure Functions warm-up..."
           sleep 45
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/api/health" || echo "000")
+          base="${SITE_URL%/}"
+          # -L: the bare domain 301s to www, and a redirect is not health. The code is the final hop's.
+          # curl's -w already prints 000 when it gets no answer; `|| true` only stops -e from exiting.
+          STATUS=$(curl -s -L --max-redirs 3 -m 20 -o /dev/null -w "%{http_code}" "${base}/api/health" || true)
+          STATUS="${STATUS:-000}"
           echo "Health check returned HTTP ${STATUS}"
           if [ "$STATUS" != "200" ]; then
             echo "::warning::Post-deploy health check returned ${STATUS} — site may be degraded"

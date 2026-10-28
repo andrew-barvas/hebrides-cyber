@@ -3,6 +3,7 @@ import { generateKeyPairSync } from "crypto";
 import {
   runCloudPostureChecks,
   checkAwsPublicBuckets,
+  checkAwsPasswordPolicy,
   checkAzurePublicStorage,
   checkGcpPublicStorage,
   getGcpAccessToken,
@@ -259,12 +260,77 @@ describe("checkAwsPublicBuckets", () => {
   });
 });
 
+describe("checkAwsPasswordPolicy (SCALE-3)", () => {
+  const AWS = { accessKeyId: "AKIAIOSFODNN7EXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" };
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("flags a missing password policy (404 NoSuchEntity) as medium", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, status: 404 });
+    const findings = await checkAwsPasswordPolicy(AWS);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe("medium");
+    expect(findings[0].checkId).toBe("cloudPosture.awsIamPasswordPolicy");
+    expect(findings[0].remediation).toBeDefined();
+  });
+
+  it("flags a weak policy (short length, never expires, no reuse prevention) as low", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve(`<GetAccountPasswordPolicyResult><PasswordPolicy><MinimumPasswordLength>8</MinimumPasswordLength><ExpirePasswords>false</ExpirePasswords></PasswordPolicy></GetAccountPasswordPolicyResult>`),
+    });
+    const findings = await checkAwsPasswordPolicy(AWS);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe("low");
+    expect(findings[0].checkId).toBe("cloudPosture.awsIamPasswordPolicy");
+  });
+
+  it("stays silent for a strong policy", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve(`<GetAccountPasswordPolicyResult><PasswordPolicy><MinimumPasswordLength>14</MinimumPasswordLength><ExpirePasswords>true</ExpirePasswords><PasswordReusePrevention>24</PasswordReusePrevention></PasswordPolicy></GetAccountPasswordPolicyResult>`),
+    });
+    expect(await checkAwsPasswordPolicy(AWS)).toEqual([]);
+  });
+
+  it("stays silent on a failed/forbidden read (no evidence either way)", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, status: 403 });
+    expect(await checkAwsPasswordPolicy(AWS)).toEqual([]);
+  });
+});
+
 describe("checkAzurePublicStorage", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("flags a storage account lacking infrastructure encryption as low (SCALE-3)", async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ access_token: "t" }) });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        value: [
+          { name: "acct1", properties: { allowBlobPublicAccess: false, supportsHttpsTrafficOnly: true, minimumTlsVersion: "TLS1_2", encryption: { requireInfrastructureEncryption: false } } },
+        ],
+      }),
+    });
+    const findings = await checkAzurePublicStorage({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      clientId: "00000000-0000-0000-0000-000000000002",
+      clientSecret: "s",
+      subscriptionId: "00000000-0000-0000-0000-000000000003",
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].checkId).toBe("cloudPosture.azureInfraEncryption:acct1");
+    expect(findings[0].severity).toBe("low");
   });
 
   it("flags storage account with HTTP traffic and weak TLS", async () => {
@@ -548,6 +614,8 @@ describe("compliance mapping", () => {
     expect(getComplianceRefs("cloudPosture.gcpPublicBucket:bucket").length).toBeGreaterThan(0);
     expect(getComplianceRefs("cloudPosture.gcpPublicAccessPrevention:bucket").length).toBeGreaterThan(0);
     expect(getComplianceRefs("cloudPosture.gcpUniformAccess:bucket").length).toBeGreaterThan(0);
+    expect(getComplianceRefs("cloudPosture.awsIamPasswordPolicy").length).toBeGreaterThan(0);
+    expect(getComplianceRefs("cloudPosture.azureInfraEncryption:acct").length).toBeGreaterThan(0);
   });
 });
 

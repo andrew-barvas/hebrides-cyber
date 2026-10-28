@@ -14,6 +14,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
+import { validateNoSsrf } from "@/lib/ownership";
 
 const SPEC_FETCH_TIMEOUT_MS = 15_000;
 
@@ -139,11 +140,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if ("spec_url" in parsed) {
     // Fetch the spec from a URL
     sourceUrl = parsed.spec_url;
+    // The server fetches this URL on the caller's behalf, so it gets the same
+    // SSRF guard as every scan target: no private/loopback/link-local hosts
+    // (cloud metadata included), and no following redirects — a public URL
+    // that 302s to an internal one would otherwise walk straight past the check.
+    try {
+      await validateNoSsrf(parsed.spec_url);
+    } catch (err) {
+      return res.status(400).json({ error: `Invalid spec_url: ${(err as Error).message}` });
+    }
     try {
       const fetchRes = await fetch(parsed.spec_url, {
         signal: AbortSignal.timeout(SPEC_FETCH_TIMEOUT_MS),
         headers: { Accept: "application/json, application/yaml, */*" },
+        redirect: "manual",
       });
+      if (fetchRes.status >= 300 && fetchRes.status < 400) {
+        return res.status(400).json({ error: "spec_url redirected — use the final URL of the spec directly." });
+      }
       if (!fetchRes.ok) {
         return res.status(400).json({ error: `Could not fetch spec: HTTP ${fetchRes.status} from ${parsed.spec_url}` });
       }

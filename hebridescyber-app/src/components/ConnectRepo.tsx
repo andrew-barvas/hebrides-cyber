@@ -86,7 +86,7 @@ export default function ConnectRepo() {
   return (
     <details className="rounded-lg border border-cyberborder bg-cyberpanel">
       <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
-        Connect a repository <span className="font-normal text-cybertext/40">(for dependency scanning)</span>
+        Connect a repository <span className="font-normal text-cybermuted">(for dependency scanning)</span>
       </summary>
       <div className="px-5 pb-5 pt-1 space-y-4">
         <p className="text-sm text-cybertext/60">
@@ -124,9 +124,9 @@ export default function ConnectRepo() {
         )}
 
         {loading ? (
-          <p className="font-mono text-xs text-cybertext/30">// loading…</p>
+          <p className="font-mono text-xs text-cybermuted">// loading…</p>
         ) : connections.length === 0 ? (
-          <p className="text-xs text-cybertext/40">No repository connected yet.</p>
+          <p className="text-xs text-cybermuted">No repository connected yet.</p>
         ) : (
           <ul className="divide-y divide-cyberborder rounded-lg border border-cyberborder">
             {connections.map((c) => (
@@ -135,7 +135,7 @@ export default function ConnectRepo() {
                 <button
                   onClick={() => disconnect(c.github_repo)}
                   disabled={busy}
-                  className="text-xs text-cybertext/40 hover:text-red-400 disabled:opacity-40 transition-colors"
+                  className="text-xs text-cybermuted hover:text-red-400 disabled:opacity-40 transition-colors"
                 >
                   Disconnect
                 </button>

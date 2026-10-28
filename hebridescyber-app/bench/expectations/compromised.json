@@ -1,0 +1,14 @@
+{
+  "target": "compromised",
+  "description": "Hardened site whose homepage has been injected with three malware traces. The hidden iframe, obfuscated script and hidden SEO-spam links must all be reported; the cryptominer and defacement rules must stay silent (no miner signal, an ordinary title), proving the malware check doesn't over-fire.",
+  "mustFind": [
+    "tls.no-https",
+    "malware.hidden-iframe:*",
+    "malware.obfuscated-script:*",
+    "malware.seo-spam:*"
+  ],
+  "mustNotFind": [
+    "malware.cryptominer:*",
+    "malware.defacement:*"
+  ]
+}

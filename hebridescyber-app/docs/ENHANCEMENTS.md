@@ -1508,6 +1508,10 @@ annotation rather than failing the workflow outright (the deploy already
 succeeded at that point — a degraded health check is worth surfacing, not
 worth reverting a deploy over automatically). Requires the `SITE_URL`
 GitHub secret (the live `hebridescyber.co.uk` URL) — owner action.
+**2026-10-27:** the secret is set to the bare domain, which 301s to `www`, so
+every deploy logged "HTTP 301" and warned without ever checking health. The
+curl now follows redirects (`-L --max-redirs 3`, 20 s timeout), so either form
+of the URL works, and a dead host reports `000` instead of `000000`.
 
 **What**: `docs/ROADMAP.md` BETA-2 says "`GET /api/health` returns 200 with
 Supabase/Stripe/queue-depth sub-checks" and lists "curl in CI immediately
@@ -1767,3 +1771,58 @@ recall per module and failing on regressions.
 filterable and groupable, with bulk triage (E-64's bulk API) and export.
 **Impact/effort**: high / medium. **Category**: code (UI).
 **Source**: industry-grade gap analysis, 2026-10-05.
+
+## E-75 — Request/response evidence on findings
+
+**Status: open.** Brief in `docs/LAUNCH-PRIORITY.md` item 3.
+**What**: store a bounded, redacted request and response for each finding
+that came from an HTTP probe, and show it in the finding card, PDF and CSV.
+No credential or session value may be stored; deleted with the scan.
+**Why**: proof drives trust and fixes; enterprise tools show it.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: launch-readiness review, 2026-10-18.
+
+## E-76 — Single sign-on (SAML) for the top plan
+
+**Status: open — only if a customer asks.** Brief in `docs/LAUNCH-PRIORITY.md` item 4.
+**What**: SAML login for one identity provider mapped to the existing team
+roles. The earlier SSO/RBAC/SCIM modules were deleted on 2026-10-13 (no
+importers); migrations 034-036 remain.
+**Impact/effort**: medium / medium-high. **Category**: code.
+**Source**: launch-readiness review, 2026-10-18.
+
+## E-77 — CMS and client-side library depth
+
+**Status: in progress.** One PR per item, each with tests and a benchmark case.
+**What**:
+1. ~~Passive WordPress plugin discovery~~ done (PR #60): slugs come from the
+   page's own `/wp-content/plugins/<slug>/` references, not only a fixed list.
+2. ~~WordPress theme detection and theme vulnerabilities~~ done (PR #61):
+   `style.css` header version, WPScan `/themes/{slug}`.
+3. ~~retire.js data for JS libraries~~ done: `scanners/retireJs.ts` replaces
+   the 7 hand-kept `LIB_PATTERNS` with the retire.js repository (~76
+   libraries, published vulnerable ranges and severities), fetched at scan
+   time from a pinned commit. Detection uses retire.js's own URL, filename,
+   file-banner and SHA-1 extractors over up to 10 script bodies. If the data
+   can't be loaded the legacy patterns still run. Apache-2.0, attributed in
+   `docs/THIRD-PARTY-NOTICES.md`.
+4. ~~badsecrets~~ done: `src/worker/tools/badsecrets.ts`, known/default
+   framework keys behind cookies, ViewState and JWTs (passive mode; AGPL-3.0,
+   run unmodified as a separate program per the owner's decision 2026-10-19).
+5. ~~katana~~ done: `src/worker/tools/katana.ts`, JavaScript-aware page
+   discovery whose pages get the crawler's checks as `katana.*` findings (its
+   own namespace rather than crawl seeds, so passive scans can't resolve them).
+6. ~~More CMS fingerprints~~ done for PrestaShop, OpenCart, TYPO3, Umbraco,
+   Craft CMS and Moodle (`fingerprint.ts`): detection, nuclei tag scoping,
+   NVD CPE entries, TYPO3/Umbraco end-of-life. Checked against real sites:
+   TYPO3 (typo3.org), Craft (craftcms.com) and Moodle (a demo site) match,
+   and example.com, this site, wordpress.org and drupal.org are clean. Not
+   verified live: OpenCart and Moodle's own sites sit behind bot challenges
+   (not bypassed), PrestaShop's demo is a launcher page, and umbraco.com's
+   front end shows no Umbraco markup, which is typical, so recall is limited.
+   **Still open:** Joomla component and Drupal module versions with CVEs
+   (module version needs a `.info.yml` fetch like WordPress plugins'
+   readme.txt; OSV carries Packagist `drupal/*` advisories) and reading the
+   Moodle version (`/lib/upgrade.txt`).
+**Impact/effort**: high / medium. **Category**: code (detection).
+**Source**: CMS/tooling gap review, 2026-10-18.

@@ -72,12 +72,25 @@ lookup), Subresource Integrity checks, Google Safe Browsing malware/
 phishing flags, Wayback Machine historical-URL discovery, and HaveIBeenPwned
 domain breach exposure.
 
+**Injected-content / page-compromise detection** — as the site crawler walks
+each page, it also reads the HTML a visitor receives for the tell-tale traces
+of a hacked site: a hidden iframe pointing at another site, an obfuscated
+inline script (a long encoded payload handed to `eval`/`document.write`), an
+in-browser cryptocurrency miner, a hidden block of SEO-spam links, or a
+defaced page title. It never runs, fetches or follows anything — it is a
+pattern match on markup — and it reports only high-confidence signals that
+legitimate sites don't produce, so a clean result means "no such traces on the
+pages we visited", not "the server is clean".
+
 **WordPress plugin CVE matching** — plugin versions detected on the target
 are checked against the real WPScan Vulnerability Database, not just
 reported as "detected" with no risk signal.
 
 **Extended active-tool suite** — runs only on the scheduled monitoring path
-(nightly, via GitHub Actions, where real binaries can run): nmap, nuclei
+(nightly, via GitHub Actions, where real binaries can run): nmap, broad network
+exposure scanning (naabu top-1000 port discovery feeding nmap service detection
+on whatever's open — so a risky service on an unusual port is caught, not just
+the 30 fixed ports the base scan checks), nuclei
 (template set scoped to the target's actual detected technologies, not the
 entire default template library), sqlmap, commix (dedicated OS command injection
 confirmation), Subfinder subdomain takeover detection, httpx live-host probing
@@ -159,6 +172,8 @@ neither), critical-finding email alerts (every active plan, including
 Basic), outbound webhooks on scan completion (HMAC-signed, for anyone
 building their own integration), and the monthly digest email.
 
+**Uptime monitoring (Pro and above).** Connect your own UptimeRobot account under Dashboard → Integrations → Uptime monitoring (the free UptimeRobot plan checks every 5 minutes). Hebrides creates monitors for your verified sites in your account, shows whether each is up or down (on the Integrations card and next to each site under Assets → monitored sites), and sends one message (email, plus Slack/Teams if set) when a site goes down and one when it recovers. Your monitors and UptimeRobot's terms stay with your account; disconnecting here does not delete them.
+
 ### 3.6 Scheduling and the public API
 
 Scans run on-demand (dashboard button or `POST /api/v1/scans`, queued and
@@ -176,6 +191,31 @@ New/Fixed diffing, exporting findings, and reading score trends —
 authenticated by session or API key. A packaged GitHub Action wraps the API
 for CI, gating a build on newly introduced findings above a configurable
 severity.
+
+### 3.6a Continuous attack-surface monitoring
+
+Three capabilities that watch your external surface between scans, not just
+during them:
+
+- **Standalone EASM discovery** (SCALE-2) — a sweep runs every ~6 hours,
+  independent of your scan cadence, finding new subdomains for every verified
+  monitored domain via Certificate Transparency. A subdomain that gets its
+  first certificate shows up in your discovered-assets inventory within hours
+  rather than at your next full scan, and the next scheduled scan alerts you to
+  it. It never brute-forces; it only populates the inventory.
+- **DMARC aggregate (RUA) reports** (E-66) — the half of the retired NCSC Mail
+  Check a DNS lookup can't give you. A DNS check only tells you a DMARC record
+  exists and its policy; the daily aggregate reports mailbox providers send to
+  your record's `rua=` address tell you *who is actually sending mail as your
+  domain and how much of it passes SPF/DKIM*. On the Assets page, generate a
+  private ingest URL and point a mailbox/forwarding provider at it; incoming
+  reports are parsed and summarised per sending source, with an alignment
+  percentage per report. See `docs/API.md`'s `/api/dmarc/ingest`.
+- **Cloud posture — IAM & encryption** (SCALE-3) — in addition to the public-
+  storage checks, a connected cloud credential (Agency) now also flags a
+  missing/weak AWS IAM account password policy and Azure Storage accounts
+  without infrastructure (double) encryption at rest. Read-only, same stored
+  credential; findings are mapped to the usual compliance frameworks.
 
 ### 3.7 Billing and plans
 
@@ -421,23 +461,17 @@ the concrete needs each feature area above exists to satisfy.
 
 Worth stating plainly, since it shapes several design decisions above:
 
-- **No destructive payloads — outside the opt-in Tier A offensive mode.** On
-  every plan below Tier A, every passive check is read-only and the active-tool
+- **No destructive payloads.** Every passive check is read-only and the active-tool
   suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's curated-wordlist
   API-route discovery, Gospider's crawl and httpx's one-GET-per-host live-host
   probing) only runs against ownership-verified domains and sends no payload
   intended to alter, damage or persist on your systems — it reads what is there,
   and we do not run autonomous exploitation agents.
-  **Tier A** adds an explicitly opt-in "offensive readiness" mode you turn on
-  per target, after acknowledging in writing that the platform will send **real
-  attack traffic** to that host: bounded content/path discovery (a brute-force
-  of a curated path list), credential-defence testing, and — where you enable
-  them — controlled credential-spraying (against a test account you designate)
-  and exploitation. It runs only on a Tier A plan, only against a domain you
-  have verified you own, and only while a current per-target authorization is on
-  file; every offensive scan is audited. This is for testing your own readiness
-  for these attacks, under your own authorisation — make sure your own contracts
-  and change-control cover it before enabling it.
+  An opt-in "offensive readiness" mode (real attack traffic against a verified
+  domain under a written per-target authorisation) exists in the code as
+  groundwork, but **it is not offered**: its exploitation and
+  credential-spraying tools are not configured, no plan on the pricing page
+  includes it, and there is no way to turn it on from the dashboard.
 - **No fabricated findings.** A check that can't evidence something
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms
@@ -461,6 +495,8 @@ Worth stating plainly, since it shapes several design decisions above:
   business logic or access control, or tell whether a route is reachable,
   and a clean result is not proof the code is secure. Test folders,
   dependencies and build output are skipped.
-- **No cloud account-level IAM auditing yet** (ScoutSuite/Prowler-style) —
-  a real, acknowledged gap, out of scope until a credential-onboarding
-  flow with real customer consent is built for it specifically.
+- **No full cloud IAM auditing** (ScoutSuite/Prowler-style role/policy graph) —
+  a real, acknowledged gap. Cloud posture now covers public storage, storage
+  TLS/HTTPS/encryption config, and the AWS IAM account password policy
+  (§3.6a), but not a comprehensive role/permission audit; that stays out of
+  scope until a broader credential-onboarding flow justifies it.

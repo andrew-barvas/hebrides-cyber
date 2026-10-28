@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeCriticalPaths } from "./attackPathAnalysis";
+import { computeCriticalPaths, computeChokepoints } from "./attackPathAnalysis";
 import type { Finding } from "./scanners";
 
 function finding(checkId: string, overrides: Partial<Finding> = {}): Finding {
@@ -57,5 +57,84 @@ describe("computeCriticalPaths", () => {
     const findings = [finding("exposure.exposed-file:.git"), finding("secretScan.exposed-secret:abc"), finding("secretScan.exposed-secret:def")];
     const paths = computeCriticalPaths(findings);
     expect(paths[0].findingCheckIds).toHaveLength(3); // .git + 2 distinct secretScan findings, no duplicates
+  });
+
+  it("attaches ordered entry → pivot → impact steps whose matched checkIds union to findingCheckIds", () => {
+    const findings = [finding("exposure.exposed-file:.git"), finding("secretScan.exposed-secret:abc")];
+    const [path] = computeCriticalPaths(findings);
+    expect(path.steps.map((s) => s.role)).toEqual(["entry", "pivot", "impact"]);
+    // The impact stage is a consequence, not a finding — no checkIds.
+    expect(path.steps[2].checkIds).toEqual([]);
+    expect(path.steps[0].checkIds).toEqual(["exposure.exposed-file:.git"]);
+    expect(path.steps[1].checkIds).toEqual(["secretScan.exposed-secret:abc"]);
+    expect([...path.findingCheckIds].sort()).toEqual([...new Set(path.steps.flatMap((s) => s.checkIds))].sort());
+  });
+
+  it("fires the v2 subdomain-takeover → loose-cookie → account-takeover chain", () => {
+    const findings = [finding("takeover.dangling-cname:old.example.com"), finding("headers.cookie-flags:session")];
+    const [path] = computeCriticalPaths(findings);
+    expect(path.severity).toBe("critical");
+    expect(path.title).toContain("takeable subdomain");
+    expect(path.steps[2].label).toContain("takeover");
+  });
+
+  it("fires the v2 service_role-key → open-table data-exfiltration chain", () => {
+    const findings = [finding("backend-exposure.service-key:abcd"), finding("backend-exposure.open-table:abcd:users")];
+    const [path] = computeCriticalPaths(findings);
+    expect(path.severity).toBe("critical");
+    expect(path.findingCheckIds).toContain("backend-exposure.service-key:abcd");
+  });
+
+  it("does not fire the service_role chain on the service-key finding alone", () => {
+    expect(computeCriticalPaths([finding("backend-exposure.service-key:abcd")])).toEqual([]);
+  });
+
+  it("fires the exposed-sourcemap → client-secret chain", () => {
+    const findings = [
+      finding("js-secrets.exposed-sourcemap:/static/app.js.map"),
+      finding("js-secrets.exposed-key:stripe-secret-key"),
+    ];
+    const [path] = computeCriticalPaths(findings);
+    expect(path).toBeDefined();
+    expect(path.title).toContain("source map");
+    expect(path.severity).toBe("high");
+    expect(path.steps[0].checkIds).toEqual(["js-secrets.exposed-sourcemap:/static/app.js.map"]);
+    expect(path.steps[1].checkIds).toEqual(["js-secrets.exposed-key:stripe-secret-key"]);
+  });
+
+  it("does not fire the sourcemap chain on an exposed sourcemap alone (needs a client secret too)", () => {
+    expect(computeCriticalPaths([finding("js-secrets.exposed-sourcemap:/static/app.js.map")])).toEqual([]);
+  });
+
+  it("fires the mixed-content → insecure-cookie interception chain", () => {
+    const findings = [finding("playwright.mixed-content"), finding("headers.cookie-flags:session")];
+    const [path] = computeCriticalPaths(findings);
+    expect(path).toBeDefined();
+    expect(path.title).toContain("Mixed content");
+    expect(path.steps[2].label).toContain("interception");
+  });
+});
+
+describe("computeChokepoints", () => {
+  it("returns nothing when there are no paths", () => {
+    expect(computeChokepoints([])).toEqual([]);
+  });
+
+  it("ranks a finding that breaks more paths above one that breaks fewer", () => {
+    // exposure.exposed-file:.git is a stage in BOTH the .git→secret chain and
+    // the open-directory→exposed-file chain, so fixing it collapses two paths.
+    const findings = [
+      finding("exposure.exposed-file:.git"),
+      finding("secretScan.exposed-secret:abc"),
+      finding("directory-listing.open-directory:/uploads"),
+    ];
+    const paths = computeCriticalPaths(findings);
+    expect(paths.length).toBeGreaterThanOrEqual(2);
+    const chokepoints = computeChokepoints(paths);
+    expect(chokepoints[0].checkId).toBe("exposure.exposed-file:.git");
+    expect(chokepoints[0].pathCount).toBe(2);
+    expect(chokepoints[0].pathTitles).toHaveLength(2);
+    // It carries the highest severity among the paths it sits on (critical here).
+    expect(chokepoints[0].severity).toBe("critical");
   });
 });

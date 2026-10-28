@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveToolConfig, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS } from "./scanProfiles";
+import { resolveToolConfig, enablesOffensiveTools, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS } from "./scanProfiles";
 
 describe("resolveToolConfig", () => {
   it("'full' enables every extended tool except the offensive-only suite", () => {
@@ -31,6 +31,10 @@ describe("resolveToolConfig", () => {
     }
   });
 
+  // This is true and deliberate, but it means 'ai-pentest' also enables the
+  // four OFFENSIVE_ONLY_TOOLS — so it must pass the same Tier A +
+  // authorization gate as 'offensive'. See the enablesOffensiveTools block
+  // below, which is what the queue worker actually gates on.
   it("'ai-pentest' enables every extended tool including cost-gated AI tools", () => {
     const config = resolveToolConfig("ai-pentest");
     for (const name of EXTENDED_TOOL_NAMES) {
@@ -96,5 +100,46 @@ describe("resolveToolConfig", () => {
     expect(config.nmap).toBe(true);
     expect(config.sqlmap).toBe(true); // still true from the "api" profile itself
     expect(config.secretScan).toBe(false); // untouched
+  });
+});
+
+describe("enablesOffensiveTools", () => {
+  // The queue worker's Tier A + per-target-authorization gate keys off this
+  // function. It used to compare the profile to "offensive" directly, which
+  // let "ai-pentest" run the same four brute-force / exploit tools with no
+  // Tier A check, no authorization row and neither audit event.
+  it("is true for 'offensive'", () => {
+    expect(enablesOffensiveTools("offensive")).toBe(true);
+  });
+
+  it("is true for 'ai-pentest' — the gap a profile-name check missed", () => {
+    expect(enablesOffensiveTools("ai-pentest")).toBe(true);
+  });
+
+  it("is false for every profile that enables no offensive-only tool", () => {
+    for (const profile of ["safe", "full", "api", "cms", "osint"] as const) {
+      expect(enablesOffensiveTools(profile), profile).toBe(false);
+    }
+  });
+
+  it("is true for any profile the table gives an offensive-only tool to", () => {
+    // Guards the table itself rather than a hand-kept list of profile names:
+    // add an offensive-only tool to any profile and that profile must gate.
+    for (const profile of ["safe", "full", "api", "cms", "osint", "offensive", "ai-pentest"] as const) {
+      const config = resolveToolConfig(profile);
+      const hasOffensive = [...OFFENSIVE_ONLY_TOOLS].some((t) => config[t]);
+      expect(enablesOffensiveTools(profile), profile).toBe(hasOffensive);
+    }
+  });
+
+  it("is true when a scan bundle's tool_overrides turn one on over a tame profile", () => {
+    expect(enablesOffensiveTools("full", { contentDiscovery: true })).toBe(true);
+    expect(enablesOffensiveTools("safe", { credentialSpray: true })).toBe(true);
+  });
+
+  it("is false when overrides turn the offensive tools off on an offensive profile", () => {
+    const off = { contentDiscovery: false, credentialSpray: false, strix: false, cairn: false };
+    expect(enablesOffensiveTools("offensive", off)).toBe(false);
+    expect(enablesOffensiveTools("ai-pentest", off)).toBe(false);
   });
 });

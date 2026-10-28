@@ -3,13 +3,42 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
+import { uptimeStatusLabel, type UptimeLabel } from "@/lib/uptimeLabels";
+import { normaliseMonitorUrl, type UptimeStatus } from "@/lib/uptimeProvider";
 
 type Target = { id: string; target_url: string; created_at: string; scan_profile: string };
 type AuthStatus = { auth_type: "cookie" | "basic" };
 
+/**
+ * Uptime badges, keyed by normalised URL, from the same GET /api/uptime/status
+ * the Integrations card reads (so it is Pro-gated and never refreshes faster
+ * than that route allows). Optional decoration: any failure, or no UptimeRobot
+ * connection, means no badges rather than a guessed status; the Integrations
+ * card is where uptime errors are explained.
+ */
+async function loadUptimeBadges(): Promise<Record<string, UptimeLabel>> {
+  try {
+    const session = await getSession();
+    if (!session) return {};
+    const res = await fetch("/api/uptime/status", { headers: { Authorization: `Bearer ${session.access_token}` } });
+    if (!res.ok) return {};
+    const body = (await res.json()) as { connected?: boolean; monitors?: Array<{ target_url: string; last_status: UptimeStatus | null; missing?: boolean }> };
+    if (!body.connected) return {};
+    const badges: Record<string, UptimeLabel> = {};
+    for (const m of body.monitors ?? []) {
+      const key = normaliseMonitorUrl(m.target_url);
+      if (key) badges[key] = uptimeStatusLabel(m.last_status, m.missing);
+    }
+    return badges;
+  } catch {
+    return {};
+  }
+}
+
 export default function MonitoredTargets() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus | null>>({});
+  const [uptime, setUptime] = useState<Record<string, UptimeLabel>>({});
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +90,7 @@ export default function MonitoredTargets() {
 
   useEffect(() => {
     load();
+    loadUptimeBadges().then(setUptime);
   }, []);
 
   async function addTarget(e: React.FormEvent) {
@@ -97,7 +127,7 @@ export default function MonitoredTargets() {
 
   return (
     <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-0.5 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// monitored sites</h2>
+      <h2 className="mb-0.5 font-mono text-xs text-cybermuted uppercase tracking-wide">// monitored sites</h2>
       <p className="mb-4 text-xs text-cybertext/50">
         Scanned automatically on your plan&apos;s schedule (weekly on Basic, daily on Pro/Agency)
         {cap !== null && (
@@ -130,34 +160,47 @@ export default function MonitoredTargets() {
       {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-cybertext/40">Loading…</p>
+        <p className="text-sm text-cybermuted">Loading…</p>
       ) : targets.length === 0 ? (
-        <p className="text-sm text-cybertext/40">No monitored sites yet — add one above.</p>
+        <p className="text-sm text-cybermuted">No monitored sites yet — add one above.</p>
       ) : (
         <ul className="divide-y divide-cyberborder text-sm">
-          {targets.map((t) => (
-            <li key={t.id} className="py-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
-                <button
-                  onClick={() => removeTarget(t.id)}
-                  className="text-xs text-cybertext/30 hover:text-red-400 transition-colors"
-                >
-                  Remove
-                </button>
-              </div>
-              <AuthenticatedScanConfig
-                monitoredTargetId={t.id}
-                status={authStatus[t.id] ?? null}
-                onChange={load}
-              />
-              <ScanProfileConfig
-                monitoredTargetId={t.id}
-                currentProfile={t.scan_profile ?? "full"}
-                onChange={load}
-              />
-            </li>
-          ))}
+          {targets.map((t) => {
+            const badge = uptime[normaliseMonitorUrl(t.target_url) ?? ""];
+            return (
+              <li key={t.id} className="py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
+                    {badge && (
+                      <span
+                        className={`rounded border border-cyberborder px-1.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
+                        title="From your UptimeRobot account (Integrations → Uptime monitoring)"
+                      >
+                        Uptime: {badge.text}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => removeTarget(t.id)}
+                    className="text-xs text-cybermuted hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <AuthenticatedScanConfig
+                  monitoredTargetId={t.id}
+                  status={authStatus[t.id] ?? null}
+                  onChange={load}
+                />
+                <ScanProfileConfig
+                  monitoredTargetId={t.id}
+                  currentProfile={t.scan_profile ?? "full"}
+                  onChange={load}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -256,11 +299,11 @@ function AuthenticatedScanConfig({
 
   if (status) {
     return (
-      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-cybertext/40">
+      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-cybermuted">
         <span>
           Authenticated scan connected ({status.auth_type === "cookie" ? "session cookie" : "Basic Auth"})
         </span>
-        <button onClick={remove} disabled={busy} className="text-cybertext/30 hover:text-red-400 disabled:opacity-40 transition-colors">
+        <button onClick={remove} disabled={busy} className="text-cybermuted hover:text-red-400 disabled:opacity-40 transition-colors">
           Disconnect
         </button>
       </div>
@@ -269,7 +312,7 @@ function AuthenticatedScanConfig({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="mt-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+      <button onClick={() => setOpen(true)} className="mt-1.5 text-[11px] text-cybermuted hover:text-neon transition-colors">
         + Add authenticated scan credential
       </button>
     );
@@ -428,7 +471,7 @@ function ScanProfileConfig({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybertext/40 hover:text-neon transition-colors">
+      <button onClick={() => setOpen(true)} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybermuted hover:text-neon transition-colors">
         <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-[10px]">{label}</span>
         scan profile
       </button>

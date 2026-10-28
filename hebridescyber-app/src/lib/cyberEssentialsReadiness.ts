@@ -83,6 +83,7 @@ const CE_CONTROL_CHECKERS: Array<{
       "exposure.sensitive-path",
       "directoryListing.enabled",
       "dns.caa-missing",
+      "badsecrets.known-secret",
     ],
     assessEvidence(findings) {
       const evidence: string[] = [];
@@ -112,6 +113,8 @@ const CE_CONTROL_CHECKERS: Array<{
       if (infoDisc) gaps.push("Server version information disclosed in headers");
       if (exposedPaths.length > 0) gaps.push(`${exposedPaths.length} sensitive file(s) publicly accessible (.env, .git, etc.)`);
       if (dirListing.length > 0) gaps.push("Directory listing enabled — exposes file structure");
+      const knownKeys = findings.filter((f) => f.checkId?.startsWith("badsecrets.known-secret"));
+      if (knownKeys.length > 0) gaps.push(`${knownKeys.length} framework secret key${knownKeys.length === 1 ? " is a" : "s are"} publicly known default — CE requires default credentials to be changed`);
 
       if (!noHttps && !weakProto && !selfSigned && !missingHeaders) {
         evidence.push("TLS and header configuration meets CE Secure Configuration requirements");
@@ -192,6 +195,7 @@ const CE_CONTROL_CHECKERS: Array<{
       "dependency-manifest.",
       "docker-base-image.outdated-base",
       "wpvdb.plugin-vulnerability",
+      "wpvdb.theme-vulnerability",
       "trivy-image.vulnerable-package",
       "eol.unsupported",
     ],
@@ -201,7 +205,7 @@ const CE_CONTROL_CHECKERS: Array<{
 
       const vulnLibs = findings.filter((f) => f.checkId?.startsWith("webapp.vulnerable-js-lib"));
       const depFindings = findings.filter((f) => f.checkId?.startsWith("dependency-manifest."));
-      const wpPlugins = findings.filter((f) => f.checkId?.startsWith("wpvdb.plugin-vulnerability"));
+      const wpPlugins = findings.filter((f) => f.checkId?.startsWith("wpvdb.plugin-vulnerability") || f.checkId?.startsWith("wpvdb.theme-vulnerability"));
       const eolImages = findings.filter((f) => f.checkId?.startsWith("docker-base-image.outdated-base"));
       const trivyCves = findings.filter((f) => f.checkId?.startsWith("trivy-image.vulnerable-package"));
       const eolSoftware = findings.filter((f) => f.checkId?.startsWith("eol.unsupported"));
@@ -216,7 +220,7 @@ const CE_CONTROL_CHECKERS: Array<{
       else evidence.push("No vulnerable JavaScript libraries detected on the frontend");
 
       if (depFindings.length > 0) gaps.push(`${depFindings.length} server-side dependenc${depFindings.length === 1 ? "y" : "ies"} with known vulnerabilities`);
-      if (wpPlugins.length > 0) gaps.push(`${wpPlugins.length} WordPress plugin${wpPlugins.length === 1 ? "" : "s"} with known vulnerabilities`);
+      if (wpPlugins.length > 0) gaps.push(`${wpPlugins.length} known ${wpPlugins.length === 1 ? "vulnerability" : "vulnerabilities"} in WordPress plugins or themes`);
       if (eolImages.length > 0) gaps.push("Docker base image has reached end-of-life — no longer receiving security updates");
       if (trivyCves.length > 0) gaps.push(`${trivyCves.length} CVE(s) in container image packages`);
 

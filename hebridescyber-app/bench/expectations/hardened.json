@@ -11,7 +11,10 @@
     "directory-listing.*",
     "webapp.*",
     "business-logic.*",
-    "graphql.*"
+    "graphql.*",
+    "crawl.*",
+    "malware.*",
+    "js-secrets.*"
   ],
   "optional": [
     "fingerprint.tech-detected"

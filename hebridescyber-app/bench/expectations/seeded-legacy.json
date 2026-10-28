@@ -22,7 +22,8 @@
     "webapp.dangerous-methods",
     "webapp.error-disclosure",
     "business-logic.csrf-missing",
-    "business-logic.autocomplete-sensitive:pass"
+    "business-logic.autocomplete-sensitive:pass",
+    "crawl.insecure-form:/"
   ],
   "mustNotFind": [
     "exposure.exposed-file:/.htpasswd",

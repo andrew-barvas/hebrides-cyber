@@ -207,7 +207,7 @@ export default function CloudCredentialsConfig() {
                   className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
                 />
               </div>
-              <p className="text-xs text-cybertext/40">
+              <p className="text-xs text-cybermuted">
                 Requires: s3:ListBuckets, s3:GetBucketPolicyStatus, s3:GetPublicAccessBlock (read-only).
               </p>
             </>
@@ -255,7 +255,7 @@ export default function CloudCredentialsConfig() {
                   className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
                 />
               </div>
-              <p className="text-xs text-cybertext/40">
+              <p className="text-xs text-cybermuted">
                 Requires: Reader role on the subscription (Storage Account list + properties).
               </p>
             </>
@@ -272,9 +272,9 @@ export default function CloudCredentialsConfig() {
       )}
 
       {loading ? (
-        <p className="text-xs text-cybertext/40">Loading...</p>
+        <p className="text-xs text-cybermuted">Loading...</p>
       ) : credentials.length === 0 ? (
-        <p className="text-xs text-cybertext/40">
+        <p className="text-xs text-cybermuted">
           No cloud credentials configured. Add credentials to enable cloud posture scanning.
         </p>
       ) : (
@@ -289,7 +289,7 @@ export default function CloudCredentialsConfig() {
                   {providerLabel[cred.provider]}
                 </span>
                 <span className="text-sm text-cybertext">{cred.label}</span>
-                <span className="text-xs text-cybertext/40">
+                <span className="text-xs text-cybermuted">
                   Added {new Date(cred.created_at).toLocaleDateString()}
                 </span>
               </div>

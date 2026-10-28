@@ -19,6 +19,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { buildRemediationMarkdown } from "@/lib/remediation";
+import { CONFIG_TARGETS, missingRemediableHeaders, type DesiredHeader } from "@/lib/configFixes";
 import type { Finding } from "@/lib/scanners";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
@@ -132,7 +133,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     dependencyBumpError = `dependency bump PR failed: ${(err as Error).message}`;
   }
 
-  return res.status(200).json({ ok: true, prUrl, dependencyBumpPrUrl, dependencyBumpError });
+  // Config-header fixes — a third, independent best-effort PR, same contract
+  // as the dependency bump above: it must never turn an otherwise-successful
+  // request into a failure. It only acts when the scan's structured header
+  // analysis shows a remediable header missing on the live site AND the repo
+  // has a config file it can edit safely (see src/lib/configFixes.ts).
+  let configFixPrUrl: string | undefined;
+  let configFixError: string | undefined;
+  let configFixNote: string | undefined;
+  try {
+    const headers = (result.results as { headers?: { status?: string; owasp?: { headers?: Array<{ name: string; present: boolean }> } } }).headers;
+    const desired = headers?.status === "checked" && headers.owasp?.headers ? missingRemediableHeaders(headers.owasp.headers) : [];
+    if (desired.length > 0) {
+      const outcome = await openConfigFixPr(githubRepo, baseBranch, scanId, desired, token);
+      if (outcome.prUrl) configFixPrUrl = outcome.prUrl;
+      else if (outcome.note) configFixNote = outcome.note;
+    }
+  } catch (err) {
+    configFixError = `config fix PR failed: ${(err as Error).message}`;
+  }
+
+  return res.status(200).json({ ok: true, prUrl, dependencyBumpPrUrl, dependencyBumpError, configFixPrUrl, configFixError, configFixNote });
 }
 
 async function openRemediationPr(repo: string, baseBranch: string, scanId: string, markdown: string, token: string): Promise<string> {
@@ -564,4 +585,115 @@ export async function openDependencyBumpPr(repo: string, baseBranch: string, sca
   if (!prRes.ok) throw new Error(`could not open dependency-bump PR (${prRes.status})`);
   const pr = (await prRes.json()) as { html_url: string };
   return { prUrl: pr.html_url, bumps };
+}
+
+// ---------------------------------------------------------------------------
+// Config-header fixes — adds the no-regret security headers the scan found
+// missing on the live site to whichever config file the repo actually uses,
+// as a THIRD independent PR on its own branch (same reasoning as the
+// dependency-bump PR: a zero-to-low-risk, reviewable change, kept separate so
+// it never entangles the recommendations PR). Pure editing logic lives in
+// src/lib/configFixes.ts; this only fetches, commits and opens the PR. It
+// tries the config targets in priority order (safe structured data first, the
+// Next.js code config last) and acts on the FIRST that yields a safe edit;
+// files it understands but can't edit safely contribute a skip reason.
+// ---------------------------------------------------------------------------
+async function fetchRepoFile(repo: string, path: string, ref: string, token: string): Promise<string | null> {
+  const res = await fetch(`${githubApi}/repos/${repo}/contents/${encodeURIComponent(path)}?ref=${ref}`, { headers: ghHeaders(token) });
+  if (!res.ok) return null;
+  const file = (await res.json()) as { content?: string; encoding?: string };
+  if (!file.content) return null;
+  return Buffer.from(file.content, (file.encoding as BufferEncoding) ?? "base64").toString("utf-8");
+}
+
+export async function openConfigFixPr(
+  repo: string,
+  baseBranch: string,
+  scanId: string,
+  desired: DesiredHeader[],
+  token: string,
+): Promise<{ prUrl?: string; note?: string }> {
+  // Find the first config file present that we can edit safely.
+  let chosen: { path: string; updated: string; applied: string[] } | null = null;
+  const skips: string[] = [];
+  for (const target of CONFIG_TARGETS) {
+    const raw = await fetchRepoFile(repo, target.path, baseBranch, token);
+    if (raw === null) continue; // not in this repo
+    const result = target.edit(raw, desired);
+    if (result.status === "edited") {
+      chosen = { path: target.path, updated: result.updated, applied: result.applied };
+      break;
+    }
+    if (result.status === "skip") skips.push(`${target.path}: ${result.reason}`);
+    // "noop" — the file already sets these headers, so editing another file
+    // wouldn't change what the live site serves; stop and report.
+    if (result.status === "noop") return { note: `${target.path} already sets these headers — the gap is likely added downstream (a CDN or proxy stripping them), which a repo change can't fix.` };
+  }
+  if (!chosen) {
+    if (skips.length > 0) return { note: `No config file could be edited safely: ${skips.join("; ")}.` };
+    return { note: "No supported header-config file (staticwebapp.config.json, vercel.json, netlify.toml, _headers, next.config.*) found in the repo root." };
+  }
+
+  // 1. Base branch HEAD sha.
+  const baseRefRes = await fetch(`${githubApi}/repos/${repo}/git/ref/heads/${baseBranch}`, { headers: ghHeaders(token) });
+  if (!baseRefRes.ok) throw new Error(`could not read base branch (${baseRefRes.status}) — check that the GitHub App is installed (or GITHUB_PAT's bot is a collaborator) on ${repo}`);
+  const baseRef = (await baseRefRes.json()) as { object: { sha: string } };
+
+  // 2. A branch separate from the other two fix PRs.
+  const branchName = `hebridescyber/security-headers-${scanId.slice(0, 8)}`;
+  const createRefRes = await fetch(`${githubApi}/repos/${repo}/git/refs`, {
+    method: "POST",
+    headers: ghHeaders(token),
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }),
+  });
+  if (!createRefRes.ok && createRefRes.status !== 422) {
+    throw new Error(`could not create branch (${createRefRes.status})`);
+  }
+
+  // 3. Commit the edited config file on that branch.
+  const existingRes = await fetch(`${githubApi}/repos/${repo}/contents/${encodeURIComponent(chosen.path)}?ref=${branchName}`, { headers: ghHeaders(token) });
+  const existingSha = existingRes.ok ? ((await existingRes.json()) as { sha: string }).sha : undefined;
+
+  const putRes = await fetch(`${githubApi}/repos/${repo}/contents/${encodeURIComponent(chosen.path)}`, {
+    method: "PUT",
+    headers: ghHeaders(token),
+    body: JSON.stringify({
+      message: `Add ${chosen.applied.length} missing security header${chosen.applied.length === 1 ? "" : "s"} to ${chosen.path}`,
+      content: Buffer.from(chosen.updated, "utf-8").toString("base64"),
+      branch: branchName,
+      ...(existingSha ? { sha: existingSha } : {}),
+    }),
+  });
+  if (!putRes.ok) throw new Error(`could not write ${chosen.path} (${putRes.status})`);
+
+  // 4. Open the PR (or return the existing one if it's already open).
+  const prRes = await fetch(`${githubApi}/repos/${repo}/pulls`, {
+    method: "POST",
+    headers: ghHeaders(token),
+    body: JSON.stringify({
+      title: `Security: add ${chosen.applied.length} missing header${chosen.applied.length === 1 ? "" : "s"} (Hebrides Cyber)`,
+      head: branchName,
+      base: baseBranch,
+      body: buildConfigFixPrBody(chosen.path, chosen.applied),
+    }),
+  });
+  if (prRes.status === 422) {
+    const listRes = await fetch(`${githubApi}/repos/${repo}/pulls?head=${repo.split("/")[0]}:${branchName}`, { headers: ghHeaders(token) });
+    const list = (await listRes.json()) as Array<{ html_url: string }>;
+    if (list[0]) return { prUrl: list[0].html_url };
+    throw new Error("config-fix PR creation returned 422 and no existing PR was found");
+  }
+  if (!prRes.ok) throw new Error(`could not open config-fix PR (${prRes.status})`);
+  const pr = (await prRes.json()) as { html_url: string };
+  return { prUrl: pr.html_url };
+}
+
+export function buildConfigFixPrBody(path: string, applied: string[]): string {
+  return `# Hebrides Cyber — security header fixes
+
+Adds the following security header${applied.length === 1 ? "" : "s"} to \`${path}\`, found missing on the live site by the scan:
+
+${applied.map((h) => `- \`${h}\``).join("\n")}
+
+Only \`${path}\` is changed. These are conservative, no-regret defaults (for example \`Strict-Transport-Security\` without \`preload\`, \`X-Frame-Options: SAMEORIGIN\` rather than \`DENY\`) — review them against your own requirements, and do not merge until your own CI and tests pass on this branch. Content-Security-Policy and cookie flags are intentionally not auto-edited; see the scan's remediation guidance for those.`;
 }

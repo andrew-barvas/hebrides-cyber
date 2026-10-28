@@ -1,0 +1,34 @@
+# Captured third-party tool output used as test fixtures.
+#
+# These files are byte-exact recordings of what a real tool emitted, parsed by
+# the wrappers in src/worker/tools/ and src/lib/scanners/. Git must never
+# convert their line endings in either direction: a parser that splits on "\n"
+# sees a trailing "\r" and silently fails to match.
+#
+# Why this file exists. core.autocrlf=true is set on this repo and there was no
+# .gitattributes at all, so git checked every text fixture out as CRLF on
+# Windows while every committed blob is LF. sqlmap's host-log parser splits on
+# "\n" only, so "reads the same point from the per-host log file"
+# (sqlmapOutput.test.ts) and "finds the injection point from the host log alone
+# when console output was lost" (sqlmap.test.ts) failed on any Windows checkout
+# and passed in CI, where Linux checks out LF. A Windows contributor therefore
+# could not trust a local `npm run test:unit`.
+#
+# The failure was selective, which is what made it confusing: git's own binary
+# detection already left clean.stdout.txt, unreachable.stdout.txt and
+# vulnerable.stdout.txt untouched, so the tests reading console output passed
+# while the two reading the host log did not.
+#
+# -text rather than eol=lf on purpose. These are recordings, not source: if a
+# tool one day emits real CRLF (raw HTTP headers, say), eol=lf would rewrite it
+# on commit and the fixture would stop being a faithful capture. -text pins the
+# bytes both ways.
+#
+# Scope is deliberately the captured-output trees only. The rest of the repo
+# keeps its CRLF working-tree convention (see CLAUDE.md rule 3), and the source
+# files that happen to live under a fixtures/ directory — bench/fixtures/sites.ts
+# and tests/fixtures/test-app/ — are ordinary code, not recordings, so they are
+# left to follow that convention.
+hebridescyber-app/src/worker/tools/fixtures/** -text
+hebridescyber-app/src/lib/scanners/fixtures/** -text
+hebridescyber-app/bench/fixtures/retire-subset.json -text

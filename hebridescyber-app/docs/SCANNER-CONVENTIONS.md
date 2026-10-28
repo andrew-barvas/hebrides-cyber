@@ -3,10 +3,15 @@
 Normative rules for writing or extending a check in `src/lib/scanners/` or
 `src/worker/tools/`. Six source files point here for exactly this reason —
 if you're editing one of them, read this first. Kept short deliberately:
-this is a rulebook, not a tutorial. For *how the pipeline is wired*
-(base vs. extended tiers, `runAllChecks()`, `runExtendedTools()`), see
-`CLAUDE.md`'s "Scanner pipeline" section. For *what already exists*, see
-`docs/FUNCTIONALITY-MATRIX.md`.
+this is a rulebook, not a tutorial. For *what already exists* — every tool,
+service and check, with its checkIds, severities and profiles — see
+`docs/SCANNER-INVENTORY.md`, which is the single source of truth for
+per-check detail, plus `docs/FUNCTIONALITY-MATRIX.md` for plan-gating and
+test coverage. For *how the pipeline is wired* (base vs. extended tiers,
+`runAllChecks()`, `runExtendedTools()`, the order of the final passes), see
+`docs/ARCHITECTURE-NOTES.md`'s "Scanner pipeline" section.
+The always-applicable rules are numbered in `CLAUDE.md`; the `/new-scanner-check`
+skill walks the whole flow.
 
 1. **Export the result type from the module**; add it to `ScanResults` in
    `src/lib/scanners/index.ts` (base tier) or the `extended` object in

@@ -35,7 +35,7 @@ function DashboardMock({ compact = false }: { compact?: boolean }) {
     <div className={`flex flex-col gap-3 ${compact ? "text-[9px]" : "text-xs"}`}>
       <div className="flex items-center justify-between">
         <p className="font-mono font-semibold text-cybertext/60 uppercase tracking-wide">// fleet overview</p>
-        <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-cybertext/40">3 sites</span>
+        <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-cybermuted">3 sites</span>
       </div>
       <div className="flex flex-col gap-1.5 rounded-lg border border-cyberborder bg-cyberbg/60 p-2.5">
         {SAMPLE_SITES.map((s) => (
@@ -74,7 +74,7 @@ function DesktopFrame() {
         <span className="h-2 w-2 rounded-full bg-red-400/60" />
         <span className="h-2 w-2 rounded-full bg-amber-400/60" />
         <span className="h-2 w-2 rounded-full bg-neon/60" />
-        <span className="ml-2 truncate font-mono text-[9px] text-cybertext/30">hebridescyber.co.uk/dashboard</span>
+        <span className="ml-2 truncate font-mono text-[9px] text-cybermuted">hebridescyber.co.uk/dashboard</span>
       </div>
       <div className="p-4">
         <DashboardMock />
@@ -101,7 +101,7 @@ export default function ProductPreview() {
         <DesktopFrame />
         <MobileFrame />
       </div>
-      <p className="mx-auto mt-6 max-w-md text-center text-xs text-cybertext/40">
+      <p className="mx-auto mt-6 max-w-md text-center text-xs text-cybermuted">
         Illustrative preview with sample data — see the real thing with your
         own site on a free scan.
       </p>

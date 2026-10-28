@@ -25,9 +25,11 @@ import { checkEndOfLife, eolSeverity, type EndOfLifeResult } from "./endOfLife";
 import { checkSubdomainCerts, type SubdomainCertsResult } from "./subdomainCerts";
 import { checkCrawl, type CrawlResult } from "./crawler";
 import { checkBackendExposure, type BackendExposureResult } from "./backendExposure";
+import { checkJsSecrets, buildJsSecretsFindings, type JsSecretsResult } from "./jsSecrets";
 import { checkGraphql, buildGraphqlFindings, type GraphqlResult } from "./graphql";
-import { buildCrawlFindings } from "./crawlFindings";
+import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
+import { runCookieConsent, type CookieConsentResult } from "./cookieConsent";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
@@ -41,6 +43,7 @@ export type {
   CloudMisconfigResult, SafeBrowsingResult, WaybackDiscoveryResult, HibpResult, WpVulnDbResult,
   BusinessLogicResult, ApiSpecResult, SoftwareCveDbResult, TakeoverResult, DomainRegistrationResult,
   EndOfLifeResult, SubdomainCertsResult, ScriptInventoryResult, CrawlResult, BackendExposureResult,
+  CookieConsentResult,
 };
 
 export type ScanResults = {
@@ -70,8 +73,10 @@ export type ScanResults = {
   endOfLife?: EndOfLifeResult;
   subdomainCerts?: SubdomainCertsResult;
   scriptInventory?: ScriptInventoryResult;
+  cookieConsent?: CookieConsentResult;
   crawl?: CrawlResult;
   backendExposure?: BackendExposureResult;
+  jsSecrets?: JsSecretsResult;
   graphql?: GraphqlResult;
   // Optional: ZAP stays available if ZAP_API_URL is set
   zap: ZapResult;
@@ -229,6 +234,7 @@ export async function runAllChecks(
     checkDomainRegistration(targetUrl),
     checkBackendExposure(targetUrl),
     checkGraphql(targetUrl),
+    checkJsSecrets(targetUrl),
   ]);
 
   function unwrap<T extends { status: string }>(r: PromiseSettledResult<T>, fallback: T): T {
@@ -251,6 +257,7 @@ export async function runAllChecks(
   const domainRegistration = unwrap(settled1[13], { status: "error", note: "check crashed" } as DomainRegistrationResult);
   const backendExposure = unwrap(settled1[14], { status: "error", note: "check crashed" } as BackendExposureResult);
   const graphql = unwrap(settled1[15], { status: "error", note: "check crashed" } as GraphqlResult);
+  const jsSecrets = unwrap(settled1[16], { status: "error", note: "check crashed" } as JsSecretsResult);
 
   // CMS deep scans only run for the CMS fingerprint.ts actually detected.
   const detectedTechs = fingerprint.status === "checked" ? fingerprint.technologies : [];
@@ -294,11 +301,18 @@ export async function runAllChecks(
   const scriptInventoryPending = checkScriptInventory(targetUrl, playwright, crawl).catch(
     (err: Error): ScriptInventoryResult => ({ status: "error", note: err.message })
   );
+  // Cookie-consent / tracker-before-consent (PECR/GDPR): consumes the same
+  // Playwright pass (cookies + script hosts) plus one HTML fetch for CMP
+  // markers. Runs after playwright resolves, like scriptInventory.
+  const cookieConsentPending = runCookieConsent(targetUrl, playwright).catch(
+    (err: Error): CookieConsentResult => ({ status: "error", note: err.message })
+  );
 
   // Depends on webapp's WordPress plugin detection, so it can't join the
   // Promise.all batches above — those run before webapp exists.
   const wpVulnDb = await checkWpVulnDb(
-    webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : []
+    webapp.status === "checked" && webapp.wordpress ? webapp.wordpress.plugins : [],
+    webapp.status === "checked" && webapp.wordpress ? (webapp.wordpress.themes ?? []) : []
   );
 
   // Depends on fingerprint's riskySoftware detection (WordPress core, PHP,
@@ -332,6 +346,7 @@ export async function runAllChecks(
 
   const endOfLife = await endOfLifePending;
   const scriptInventory = await scriptInventoryPending;
+  const cookieConsent = await cookieConsentPending;
 
   return {
     target_url: targetUrl,
@@ -359,8 +374,10 @@ export async function runAllChecks(
     endOfLife,
     subdomainCerts,
     scriptInventory,
+    cookieConsent,
     crawl,
     backendExposure,
+    jsSecrets,
     graphql,
     zap,
   };
@@ -465,11 +482,33 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       findings.push({ checkId: "dns.dmarc-missing", severity: "high", title: "No DMARC record", detail: "Without DMARC, email spoofing is undetected. Add a _dmarc TXT record.", remediation: FIX.DMARC_MISSING });
     } else if (results.dns.dmarc.policy === "none") {
       findings.push({ checkId: "dns.dmarc-none", severity: "medium", title: "DMARC policy is 'none' — no enforcement", detail: "Spoofed emails are not rejected. Upgrade to p=quarantine or p=reject.", remediation: FIX.DMARC_NONE });
+    } else {
+      // Enforcing policy (quarantine/reject) but weakened or unmonitored.
+      // Separate from dmarc-none above: these only apply when the policy IS
+      // enforcing, so they never double up with it.
+      if (results.dns.dmarc.partialEnforcement) {
+        findings.push({
+          checkId: "dns.dmarc-partial-enforcement",
+          severity: "low",
+          title: `DMARC enforcement weakened by pct=${results.dns.dmarc.pct}`,
+          detail: `The policy is p=${results.dns.dmarc.policy}, but pct=${results.dns.dmarc.pct} applies it to only ${results.dns.dmarc.pct}% of failing messages — the rest are delivered as if there were no policy. Once you've confirmed legitimate mail passes, raise pct to 100.`,
+          remediation: FIX.DMARC_PARTIAL_ENFORCEMENT,
+        });
+      }
+      if (results.dns.dmarc.noReporting) {
+        findings.push({
+          checkId: "dns.dmarc-no-reporting",
+          severity: "info",
+          title: "DMARC has no aggregate-report (rua) address",
+          detail: `The policy enforces (p=${results.dns.dmarc.policy}) but has no rua= tag, so you receive no aggregate reports and have no visibility into who is sending as your domain or whether legitimate mail is being caught. Add rua=mailto:dmarc@your-domain to start receiving them.`,
+          remediation: FIX.DMARC_NO_REPORTING,
+        });
+      }
     }
     if (!results.dns.caa.present) {
       findings.push({ checkId: "dns.caa-missing", severity: "low", title: "No CAA records", detail: "Any CA can issue certificates for this domain. Add CAA records to restrict to your provider.", remediation: FIX.CAA_MISSING });
     }
-    if (!results.dns.dnssec.likelySigned) {
+    if (!results.dns.dnssec.likelySigned && !results.dns.dnssec.inconclusive) {
       findings.push({ checkId: "dns.dnssec-missing", severity: "info", title: "DNSSEC not detected", detail: results.dns.dnssec.note, remediation: FIX.DNSSEC_MISSING });
     }
     // MTA-STS/TLS-RPT only get evaluated when the domain has MX records (see
@@ -711,6 +750,18 @@ export function summariseResults(results: ScanResults): { summary: string; findi
           });
         }
       }
+      // One finding for plugins seen but not versioned: we can't check them
+      // against a vulnerability database, and say so rather than staying silent.
+      const unversioned = wordpress.pluginsWithoutVersion ?? [];
+      if (unversioned.length > 0) {
+        findings.push({
+          checkId: "webapp.wp-plugins-unversioned",
+          severity: "info",
+          title: `${unversioned.length} WordPress plugin${unversioned.length === 1 ? "" : "s"} in use, version not readable`,
+          detail: `The page loads files from these plugins, but their version could not be read (readme.txt is blocked or missing), so they could not be checked for known vulnerabilities: ${unversioned.slice(0, 15).join(", ")}${unversioned.length > 15 ? ` (+${unversioned.length - 15} more)` : ""}. Check each is up to date in your WordPress dashboard.`,
+          remediation: FIX.WP_PLUGIN_DETECTED,
+        });
+      }
     }
 
     // Joomla findings
@@ -853,7 +904,9 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         // fingerprint.risky-library above.
         findings.push({
           checkId: `webapp.vulnerable-js-lib:${lib.name}`,
-          severity: "medium",
+          // The published severity when retire.js supplied one; the legacy
+          // pattern path has none and stays medium.
+          severity: lib.severity ?? "medium",
           title: `Vulnerable JS library: ${lib.name} ${lib.version}`,
           detail: lib.reason,
           remediation: FIX.OUTDATED_LIBRARY,
@@ -1029,6 +1082,23 @@ export function summariseResults(results: ScanResults): { summary: string; findi
         });
       }
     }
+    // Themes: same evidence (WPScan record vs the version in the theme's
+    // own style.css header), separate checkId so a theme and a plugin with
+    // the same slug can never collide.
+    for (const theme of results.wpVulnDb.themes ?? []) {
+      for (const vuln of theme.vulnerabilities) {
+        findings.push({
+          checkId: `wpvdb.theme-vulnerability:${theme.slug}:${vuln.id}`,
+          severity: wpVulnSeverity(vuln.vulnType),
+          title: `Theme ${theme.name} ${theme.version} — ${vuln.title}`,
+          detail: vuln.fixedIn
+            ? `WPScan's vulnerability database lists this as fixed in version ${vuln.fixedIn} — the detected theme version ${theme.version} (from its style.css) predates that fix.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`
+            : `WPScan's vulnerability database lists this as still unpatched upstream as of its last update — no fixed version exists yet.${vuln.vulnType ? ` Vulnerability type: ${vuln.vulnType}.` : ""}`,
+          remediation: FIX.wpPluginVulnerabilityRemediation(theme.name, vuln.fixedIn, vuln.referenceUrls[0], "theme"),
+          cveIds: vuln.cveIds,
+        });
+      }
+    }
   }
 
   // --- Software CVE DB (WordPress core / PHP / Apache CVE matches) ----------
@@ -1183,6 +1253,41 @@ export function summariseResults(results: ScanResults): { summary: string; findi
     }
   }
 
+  // --- Cookie consent / tracker-before-consent (PECR/GDPR) --------------------
+  // Known analytics/marketing trackers (by cookie name or request host) fired
+  // on the no-interaction load with no consent-management platform on the
+  // page. A page with a CMP is silent (we can't prove pre-consent firing
+  // without driving the banner); not_applicable/partial/error produce nothing.
+  if (results.cookieConsent?.status === "checked") {
+    for (const tracker of results.cookieConsent.trackers) {
+      const key = tracker.kind === "cookie" ? tracker.name : tracker.host;
+      findings.push({
+        checkId: `cookie-consent.tracker-before-consent:${key}`,
+        severity: "medium",
+        title: `Tracker set before consent: ${tracker.detail}`,
+        detail: `${tracker.detail} was ${tracker.kind === "cookie" ? "set" : "requested"} on the initial page load, before any consent was given, and no cookie-consent banner (CMP) was detected on the page. Under UK PECR and GDPR, analytics and marketing cookies/trackers need the visitor's consent *before* they fire — a non-essential cookie set on arrival with no banner at all is the most common compliance gap for small-business sites.`,
+        remediation: FIX.COOKIE_CONSENT_TRACKER,
+      });
+    }
+    if (results.cookieConsent.trackers.length > 0) {
+      // Only emitted alongside real trackers: "no CMP" is only a problem when
+      // there's something that needs consent in the first place.
+      findings.push({
+        checkId: "cookie-consent.no-cmp-detected",
+        severity: "info",
+        title: "No cookie-consent banner detected despite trackers present",
+        detail: `This page loads analytics or marketing trackers but no consent-management platform (OneTrust, Cookiebot, Osano, CookieYes, and similar) was detected in its scripts or markup. A compliant site presents a banner that blocks non-essential cookies until the visitor opts in.`,
+        remediation: FIX.COOKIE_CONSENT_NO_CMP,
+      });
+    }
+  }
+
+  // --- Live-site JS secrets / endpoints ---------------------------------------
+  // High-confidence API keys/tokens and internal endpoints shipped to the
+  // browser. Supabase/Firebase/JWT/framework-key material is owned by other
+  // checks and skipped inside jsSecrets.ts, so nothing is double-reported.
+  findings.push(...buildJsSecretsFindings(results.jsSecrets));
+
   findings.push(...buildGraphqlFindings(results.graphql));
 
   // --- Supabase / Firebase backend exposure -------------------------------------
@@ -1253,6 +1358,8 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // Page-level issues on pages beyond the one scanned. "partial" still
   // evidences what it saw; findingLifecycle.ts won't resolve on it.
   findings.push(...buildCrawlFindings(results.crawl));
+  // Injected content / malware traces from the same crawl (malware.* namespace).
+  findings.push(...buildMalwareFindings(results.crawl));
 
   if (findings.length === 0) {
     findings.push({ checkId: "meta.no-issues", severity: "info", title: "No issues found by automated checks", detail: "Passive and active checks completed — no findings. Manual review recommended for business logic flaws.", remediation: FIX.NO_ISSUES });

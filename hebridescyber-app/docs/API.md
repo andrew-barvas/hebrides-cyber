@@ -389,6 +389,33 @@ two scans of "the same" site aren't guaranteed byte-identical URLs.
 An empty `points` array means no completed scans of that host exist yet on
 this account — not an error.
 
+### `POST /api/dmarc/ingest` — DMARC aggregate (RUA) reports
+
+Receives one DMARC aggregate report (E-66). Unlike the endpoints above this is
+**not** authenticated by your API key or session — it's called by a mail /
+forwarding provider (a robot, with no session), so it's authenticated by a
+**per-owner ingest token**. Generate the token and the full URL from
+**Dashboard → Assets → DMARC reports** (or `POST /api/account/dmarc-ingest-token`),
+then set it as the destination your DMARC record's `rua=` mailbox forwards to.
+
+- Auth: `?token=<ingest-token>` query parameter, or `Authorization: Bearer <ingest-token>`.
+- Body: the raw report — gzip'd XML (the usual case) or plain XML. Max 10 MB.
+- Rate-limited per IP (60/hour).
+
+```bash
+curl -X POST "https://www.hebridescyber.co.uk/api/dmarc/ingest?token=dmarc_..." \
+  --data-binary @report.xml.gz
+```
+
+```json
+{ "accepted": true, "domain": "example.com", "org": "google.com", "total": 55, "passing": 42, "failing": 13 }
+```
+
+Re-POSTing the same report (same org + domain + report id) is idempotent.
+`400` = not a parseable DMARC aggregate report; `401` = bad/missing token;
+`503` = report storage not enabled on this deployment yet. Read your stored
+reports back with `GET /api/dmarc/reports` (session or API key).
+
 ---
 
 ## Webhooks

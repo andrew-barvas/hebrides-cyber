@@ -36,6 +36,8 @@ type Scenario = {
   gotoError?: Error;
   /** The DOM-XSS probe's second page: whether the marker element is found, or a load failure. */
   domXss?: "found" | "not-found" | Error;
+  /** Cookies the browser context reports after load (cookieConsent.ts input). */
+  cookies?: Array<{ name: string; domain: string }> | Error;
 };
 
 function fakeBrowser(scenario: Scenario) {
@@ -61,6 +63,12 @@ function fakeBrowser(scenario: Scenario) {
     $$eval: vi.fn(async () => {
       if (scenario.elements instanceof Error) throw scenario.elements;
       return scenario.elements ?? [];
+    }),
+    context: () => ({
+      cookies: async () => {
+        if (scenario.cookies instanceof Error) throw scenario.cookies;
+        return scenario.cookies ?? [];
+      },
     }),
   };
   const probeClose = vi.fn(async () => undefined);
@@ -179,6 +187,23 @@ describe("DOM-based XSS probe", () => {
     if (result.status !== "checked") throw new Error("unreachable");
     expect(result.domXss).toMatchObject({ status: "error" });
     expect(result.loadedOk).toBe(true); // the main check still succeeded
+  });
+});
+
+describe("cookie capture (for cookieConsent.ts)", () => {
+  it("records cookies present after load as names + domains, never values", async () => {
+    fakeBrowser({ cookies: [{ name: "_ga", domain: ".example.com" }, { name: "session", domain: "www.example.com" }] });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.cookies).toEqual([{ name: "_ga", domain: ".example.com" }, { name: "session", domain: "www.example.com" }]);
+  });
+
+  it("falls back to an empty list (not a load failure) when the cookie read throws", async () => {
+    fakeBrowser({ cookies: new Error("context closed") });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error("unreachable");
+    expect(result.cookies).toEqual([]);
+    expect(result.loadedOk).toBe(true);
   });
 });
 

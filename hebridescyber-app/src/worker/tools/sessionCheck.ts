@@ -6,9 +6,10 @@
 // the heavier active scanning tools.
 
 import { postShowsCredentialHandling } from "../../lib/scanners/businessLogic";
+import { analyseTokens, describeTokenIssues, MIN_TOKEN_SAMPLES } from "../../lib/scanners/tokenEntropy";
 
 export type SessionFinding = {
-  type: "no-rate-limit" | "session-fixation" | "idor-indicator" | "session-no-rotation";
+  type: "no-rate-limit" | "session-fixation" | "idor-indicator" | "session-no-rotation" | "weak-session-token";
   detail: string;
   url: string;
 };
@@ -19,6 +20,9 @@ export type SessionCheckResult =
 
 const FETCH_TIMEOUT_MS = 10_000;
 const RATE_LIMIT_BURST_COUNT = 10;
+/** Fresh anonymous sessions sampled to judge token quality: a dozen plain GETs of the home page. */
+const TOKEN_SAMPLE_COUNT = 12;
+const SESSION_COOKIE_NAME = /^(session|sess|sid|jsessionid|phpsessid|asp\.net_sessionid|connect\.sid|laravel_session|ci_session)/i;
 
 async function checkRateLimiting(targetUrl: string): Promise<SessionFinding[]> {
   const findings: SessionFinding[] = [];
@@ -153,18 +157,57 @@ async function checkIdorIndicators(targetUrl: string): Promise<SessionFinding[]>
   return findings;
 }
 
+/**
+ * Sequencer: request the home page with no cookies a dozen times, collect the
+ * session cookie each response sets, and statistically check the values
+ * (tokenEntropy.ts). Only anonymous sessions are sampled, JWT-shaped values are
+ * left to jwtAnalysis, and no token value is kept beyond this function.
+ *
+ * Sample too small, cookie never set, or every request failing is "nothing to
+ * judge", not "weak" and not "strong".
+ */
+export async function checkSessionTokenQuality(targetUrl: string): Promise<SessionFinding[]> {
+  const samples = new Map<string, string[]>();
+  for (let i = 0; i < TOKEN_SAMPLE_COUNT; i++) {
+    try {
+      const res = await fetch(targetUrl, { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      for (const raw of res.headers.getSetCookie?.() ?? []) {
+        const [pair] = raw.split(";");
+        const eq = pair.indexOf("=");
+        if (eq <= 0) continue;
+        const name = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        if (!SESSION_COOKIE_NAME.test(name) || value.startsWith("eyJ")) continue;
+        samples.set(name, [...(samples.get(name) ?? []), value]);
+      }
+    } catch {
+      // Request failed: that sample is simply missing.
+    }
+  }
+
+  const findings: SessionFinding[] = [];
+  for (const [name, values] of samples) {
+    if (values.length < MIN_TOKEN_SAMPLES) continue;
+    const detail = describeTokenIssues(name, analyseTokens(values));
+    if (detail) findings.push({ type: "weak-session-token", detail, url: name });
+  }
+  return findings;
+}
+
 export async function runSessionCheck(targetUrl: string): Promise<SessionCheckResult> {
   try {
-    const [rateLimitFindings, sessionFixationFindings, idorFindings] = await Promise.allSettled([
+    const [rateLimitFindings, sessionFixationFindings, idorFindings, tokenFindings] = await Promise.allSettled([
       checkRateLimiting(targetUrl),
       checkSessionFixation(targetUrl),
       checkIdorIndicators(targetUrl),
+      checkSessionTokenQuality(targetUrl),
     ]);
 
     const findings: SessionFinding[] = [
       ...(rateLimitFindings.status === "fulfilled" ? rateLimitFindings.value : []),
       ...(sessionFixationFindings.status === "fulfilled" ? sessionFixationFindings.value : []),
       ...(idorFindings.status === "fulfilled" ? idorFindings.value : []),
+      ...(tokenFindings.status === "fulfilled" ? tokenFindings.value : []),
     ];
 
     return { status: "completed", findings };

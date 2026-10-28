@@ -243,23 +243,48 @@ against cross-site scripting.
 Start in report-only mode so nothing breaks:
 
 \`\`\`
-Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 \`\`\`
 
 Watch the browser console and your report endpoint for violations, add the
 origins you genuinely use (CDN, analytics, payment scripts), then switch the
 header name to \`Content-Security-Policy\` to enforce.
 
-Avoid \`'unsafe-inline'\` in \`script-src\` — it removes most of the protection.
-Use a per-request nonce instead if you need inline scripts.`;
+**Make the script-src strong, not just present:**
 
-export const CSP_WEAK = `Tighten the existing policy. The issues listed above each weaken it materially:
+- Avoid \`'unsafe-inline'\` in \`script-src\` — it removes most of the protection.
+  If you need inline scripts, add a per-request **nonce** (\`script-src
+  'nonce-{random}'\`) and put that same random value on each \`<script nonce="…">\`.
+  A policy that pairs a nonce (or a \`'sha256-…'\` hash) with \`'strict-dynamic'\`
+  can keep \`'unsafe-inline'\` purely as a fallback older browsers ignore — modern
+  browsers honour the nonce and ignore the \`'unsafe-inline'\`, so it isn't a
+  weakness there.
 
-- **\`'unsafe-inline'\` in \`script-src\`** — defeats most XSS protection. Replace
-  with a per-request nonce: \`script-src 'nonce-{random}'\`.
+**Include the three directives that have no \`default-src\` fallback**, or they
+are silently absent even with a tight \`default-src\`:
+
+- \`base-uri 'self'\` — stops an injected \`<base>\` tag rewriting where every
+  relative URL (scripts included) resolves to.
+- \`frame-ancestors 'none'\` (or an allow-list) — stops clickjacking, and
+  supersedes \`X-Frame-Options\`.
+- \`form-action 'self'\` — stops a form being re-pointed at an attacker's endpoint.`;
+
+export const CSP_WEAK = `Tighten the existing policy. The issues listed above name the exact directive
+and token that triggered each — fix those specifically:
+
+- **\`'unsafe-inline'\` in \`script-src\` with no nonce/hash/\`'strict-dynamic'\`** —
+  this is the real bypass: inline scripts (including injected ones) execute.
+  Add a per-request **nonce** (\`script-src 'nonce-{random}'\` plus a matching
+  \`<script nonce="…">\`), or a \`'sha256-…'\` hash of each inline block. Pairing
+  either with \`'strict-dynamic'\` lets \`'unsafe-inline'\` stay only as a fallback
+  that modern browsers ignore — so it stops counting against you.
 - **\`'unsafe-eval'\`** — remove unless a dependency genuinely requires it.
 - **Wildcard (\`*\`) sources** — replace with explicit origins.
-- **Missing \`object-src\`/\`base-uri\`** — add \`object-src 'none'; base-uri 'self'\`.
+- **\`object-src\` not \`'none'\`** — set \`object-src 'none'\` to block plugin injection.
+- **Missing \`base-uri\` / \`frame-ancestors\` / \`form-action\`** — none of these
+  fall back to \`default-src\`, so add them explicitly:
+  \`base-uri 'self'; frame-ancestors 'none'; form-action 'self'\`. They stop
+  base-tag injection, clickjacking and form hijacking respectively.
 
 Test changes with \`Content-Security-Policy-Report-Only\` before enforcing.`;
 
@@ -371,6 +396,42 @@ v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com; pct=100
 Check your aggregate reports first — every legitimate sender must be passing SPF
 or DKIM, or their mail will start going to spam. Once clean, move to \`p=reject\`.
 You can ease in with \`pct=25\` to apply the policy to a quarter of failing mail.`;
+
+export const DMARC_PARTIAL_ENFORCEMENT = `Your DMARC policy enforces (p=quarantine or p=reject), but \`pct\` is below 100,
+so the policy is only applied to that percentage of failing messages — the
+remainder are delivered exactly as if you had no policy at all. \`pct\` is meant
+as a temporary ramp while you confirm legitimate senders pass, not a permanent
+setting.
+
+\`\`\`
+v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com
+\`\`\`
+
+1. Review your aggregate (rua) reports and confirm every legitimate sender is
+   passing SPF or DKIM.
+2. Once clean, raise \`pct\` to 100 (or simply remove the tag — it defaults to
+   100) so the policy covers all failing mail.
+
+Leaving a reduced \`pct\` in place indefinitely means spoofed mail still gets
+through a fraction of the time, which is the exact gap DMARC exists to close.`;
+
+export const DMARC_NO_REPORTING = `Your DMARC policy enforces, but has no \`rua=\` aggregate-reporting address, so
+you get no feedback at all: no visibility into who is sending mail as your
+domain, which of your own senders are failing authentication, or whether a
+spoofing campaign is underway. Add one:
+
+\`\`\`
+v=DMARC1; p=reject; rua=mailto:dmarc@example.com
+\`\`\`
+
+A plain mailbox is the simplest start; the reports arrive as periodic XML
+summaries (a reporting service makes them readable, but isn't required).
+
+This product already ingests DMARC aggregate (RUA) reports, so you can point
+\`rua=\` at us to see sender authentication results alongside your scans rather
+than parsing the raw XML yourself. Reporting is also what makes it safe to
+*keep* an enforcing policy — without it, you can't tell whether tightening the
+policy has started silently dropping legitimate mail.`;
 
 export const DKIM_NOT_DETECTED = `DKIM signs outgoing mail with a private key so receivers can verify it really
 came from you and was not altered in transit. Together with SPF it is what
@@ -1163,6 +1224,31 @@ export function commixRemediation(): string {
   return COMMIX_COMMAND_INJECTION_BASE;
 }
 
+export const DALFOX_REFLECTED_XSS_BASE = `Dalfox confirmed this parameter's value is reflected into the page in a
+position where it executes as script — a real, exploitable cross-site
+scripting (XSS) issue, not a theoretical one. An attacker who gets a victim
+to follow a crafted link can run arbitrary JavaScript in that victim's
+session: steal cookies/tokens, act as them, or deface the page.
+
+**The fix:**
+
+- Encode output for the context it lands in — HTML-encode for HTML body
+  text, attribute-encode for attribute values, JS-string-encode inside
+  \`<script>\`. Use your framework's templating (React/JSX, Vue, a
+  server-side templating engine with auto-escaping) rather than building
+  HTML by string concatenation, which is almost always how this happens.
+- Add a Content-Security-Policy that restricts \`script-src\` — it does not
+  fix the injection, but it blocks the payload from running even if encoding
+  is missed somewhere else.
+- Validate and reject unexpected input server-side (allowlist expected
+  shapes) in addition to output encoding; encoding alone is the fix for this
+  reflection, validation narrows the attack surface further.`;
+
+/** Same as DALFOX_REFLECTED_XSS_BASE — no per-target variant. */
+export function dalfoxRemediation(): string {
+  return DALFOX_REFLECTED_XSS_BASE;
+}
+
 /**
  * The small fixed set of ports scanExecution.ts's DANGEROUS_TOOL_PORTS
  * escalates to critical regardless of nmap's service-guess — each one is
@@ -1497,13 +1583,14 @@ exact version remotely.`;
  * fixedIn null means still unpatched upstream, which changes the advice
  * from "update" to "there is nothing to update to yet."
  */
-export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: string | null, referenceUrl?: string): string {
+export function wpPluginVulnerabilityRemediation(pluginName: string, fixedIn: string | null, referenceUrl?: string, kind: "plugin" | "theme" = "plugin"): string {
   const parts: string[] = [];
+  const where = kind === "theme" ? "**Appearance → Themes**" : "**Plugins → Update Available**";
 
   if (fixedIn) {
     parts.push(
       `Update **${pluginName}** to version **${fixedIn}** or later from the WordPress admin dashboard ` +
-        `(**Plugins → Update Available**) after taking a backup. This is a confirmed, disclosed vulnerability ` +
+        `(${where}) after taking a backup. This is a confirmed, disclosed vulnerability ` +
         `in the specific version detected — not a general "keep plugins updated" reminder.`
     );
   } else {
@@ -2017,6 +2104,15 @@ the victim authenticates. Ensure your application always generates a
 new session ID upon successful authentication, invalidating any
 previously issued session tokens.`;
 
+export const WEAK_SESSION_TOKEN = `Session identifiers sampled from fresh visits look predictable
+(short, from a small alphabet, repeated, or counting up). An attacker who can
+guess a valid identifier takes over that user's session without a password.
+Generate session IDs with your framework's built-in session handler, which uses
+a cryptographically secure random source, and make them at least 128 bits
+(about 32 hex or 22 base64url characters). Never build them from a counter, a
+timestamp, a user ID or Math.random(). If you wrote your own session code,
+replace it with the framework's.`;
+
 export const IDOR_INDICATOR = `An API endpoint returned data when accessed with a sequential numeric
 ID without requiring authentication. This may indicate an Insecure
 Direct Object Reference (IDOR) vulnerability where users can access
@@ -2196,6 +2292,48 @@ gcloud storage buckets remove-iam-policy-binding gs://BUCKET \\
 
 If the bucket genuinely needs to serve public content, prefer a signed URL
 or Cloud CDN in front of it over a fully public, listable bucket.`;
+
+// --- Cloud posture: IAM / encryption (SCALE-3) ---
+
+export const AWS_IAM_PASSWORD_POLICY = `This AWS account has no IAM account
+password policy, so console users can set weak passwords. Set one that meets
+Cyber Essentials / CIS expectations:
+
+\`\`\`
+aws iam update-account-password-policy \\
+  --minimum-password-length 14 \\
+  --require-symbols --require-numbers \\
+  --require-uppercase-characters --require-lowercase-characters \\
+  --max-password-age 90 --password-reuse-prevention 24
+\`\`\`
+
+Better still, use IAM Identity Center (SSO) / federation and reserve long-lived
+console passwords for break-glass accounts only, each with hardware MFA.`;
+
+export const AWS_IAM_WEAK_PASSWORD_POLICY = `This AWS account has an IAM
+password policy, but it is weaker than recommended (minimum length under 14,
+no expiry, or no reuse-prevention). Strengthen it:
+
+\`\`\`
+aws iam update-account-password-policy \\
+  --minimum-password-length 14 \\
+  --require-symbols --require-numbers \\
+  --require-uppercase-characters --require-lowercase-characters \\
+  --max-password-age 90 --password-reuse-prevention 24
+\`\`\``;
+
+export const AZURE_STORAGE_INFRA_ENCRYPTION = `This Azure Storage account does
+not have infrastructure (double) encryption enabled. Data at rest is encrypted
+once by default, but regulated workloads often require a second,
+infrastructure-level layer. It can only be set at account creation:
+
+\`\`\`
+az storage account create --name NAME --resource-group RG \\
+  --require-infrastructure-encryption true ...
+\`\`\`
+
+Recreate the account with the flag, or confirm single-layer encryption is
+acceptable for your compliance scope and accept this finding.`;
 
 // --- Strix AI pentest (Sprint 18) ---
 
@@ -3152,3 +3290,195 @@ export const GRAPHQL_IDE = `Remove or protect the GraphQL explorer in production
 - **Hasura:** disable the console on the public endpoint.
 
 If a team needs it, serve the explorer only behind your VPN or sign-in.`;
+
+// ---- Known framework secrets (src/worker/tools/badsecrets.ts) ---------------
+// Where each framework keeps the key badsecrets matched, keyed by its module
+// (Python class) name. A module missing here gets the generic text.
+const BADSECRETS_KEY_LOCATION: Record<string, string> = {
+  ASPNET_Viewstate: "the `<machineKey>` element in `web.config` (validationKey/decryptionKey). Remove any key copied from documentation or a sample; on .NET 4.5+ set `validation=\"HMACSHA256\"` and let IIS auto-generate per-application keys, or generate new ones with IIS Manager's Machine Key feature",
+  ASPNET_Resource: "the `<machineKey>` element in `web.config`, which also protects `WebResource.axd`/`ScriptResource.axd` URLs",
+  ASPNET_compressedviewstate: "the page's ViewState settings: it is sent with no MAC at all. Set `EnableViewStateMac=\"true\"` (never disable it) and configure a private `<machineKey>`",
+  DjangoSignedCookies: "`SECRET_KEY` in `settings.py` or the environment. Generate one with `django.core.management.utils.get_random_secret_key()`",
+  Flask_SignedCookies: "`app.secret_key` / `SECRET_KEY` in the Flask config. Generate one with `python -c \"import secrets; print(secrets.token_hex(32))\"`",
+  ExpressSignedCookies_CS: "the `secret` passed to `cookie-session`",
+  ExpressSignedCookies_ES: "the `secret` passed to `express-session`",
+  Generic_JWT: "the signing secret or private key your JWT library is configured with",
+  Jsf_viewstate: "the JSF ViewState encryption settings (`org.apache.myfaces.SECRET` / `MAC_SECRET` for MyFaces, or `com.sun.faces.ClientStateSavingPassword` for Mojarra) — or switch `javax.faces.STATE_SAVING_METHOD` to `server`",
+  LaravelSignedCookies: "`APP_KEY` in `.env`. Run `php artisan key:generate`",
+  LTPA_Token: "the WebSphere LTPA keys (Global security → LTPA → Generate keys)",
+  Peoplesoft_PSToken: "the PeopleSoft node password used to sign PS_TOKEN (PeopleTools → Portal → Node Definitions)",
+  Rack2_SignedCookies: "the `secret` given to `Rack::Session::Cookie`",
+  Rails_SecretKeyBase: "`secret_key_base` in `config/credentials.yml.enc` (`bin/rails credentials:edit`) or `SECRET_KEY_BASE`. Generate one with `bin/rails secret`",
+  Shiro_RememberMe: "the Apache Shiro `rememberMe` cipher key (`securityManager.rememberMeManager.cipherKey`). Shiro's default key allows remote code execution (CVE-2016-4437); set a random 16-byte key",
+  Symfony_SignedURL: "`APP_SECRET` in `.env`. Leaving the demo value lets anyone sign `_fragment` URLs, which is a known remote-code-execution path",
+  Telerik_EncryptionKey: "`Telerik.AsyncUpload.ConfigurationEncryptionKey` and `Telerik.Upload.ConfigurationHashKey` in `web.config`; also update Telerik UI for ASP.NET AJAX (CVE-2017-11317, CVE-2019-18935)",
+  Telerik_HashKey: "`Telerik.Web.UI.DialogParametersEncryptionKey` in `web.config`; also update Telerik UI for ASP.NET AJAX (CVE-2017-9248)",
+  Yii2_SignedCookies: "`cookieValidationKey` in the `request` component of the Yii2 config",
+};
+
+export function badsecretsRemediation(module: string, product: string, secretLabel: string): string {
+  const where = BADSECRETS_KEY_LOCATION[module] ?? `wherever your application configures its ${secretLabel}`;
+  return [
+    `This ${product} is protected with a ${secretLabel} that appears on public lists of default and example keys, so an attacker can forge or decrypt it.`,
+    `1. Generate a new, long, random key and set it in ${where}.`,
+    "2. Keep the new key out of source control: load it from the environment or a secrets manager.",
+    "3. Deploy, then treat everything signed with the old key as compromised: active sessions, remember-me cookies and signed links are invalidated by the rotation, which is intended.",
+    "4. Rescan to confirm the finding has cleared.",
+  ].join("\n\n");
+}
+
+// ---- Injected content and malware (src/lib/scanners/injectedContent.ts) ----------
+const MALWARE_CLEANUP = `Treat this as a possible compromise, not a cosmetic issue:
+1. Take a backup of the site as it is now (for evidence), then restore the affected files from a known-good backup, or remove the injected code. Compare file dates and contents against a clean copy of the CMS, theme and plugins.
+2. Find how they got in before you clean up, or it will come back: update the CMS, themes and plugins, remove anything unused, and check for unknown admin users.
+3. Change every password and key (hosting, FTP/SFTP, database, CMS admins) and rotate salts/secret keys.
+4. Rescan to confirm the finding has cleared, then ask Google to re-review the site if it was flagged (Search Console > Security issues).`;
+
+export const MALWARE_HIDDEN_IFRAME = `A page embeds an invisible frame from another website. Attackers add these to
+load exploit kits or ad fraud in the background of your visitors' browsers. If you
+did not add this frame yourself, your site has been modified.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_OBFUSCATED_SCRIPT = `A page contains script that is deliberately scrambled (a long encoded payload
+passed to eval/Function, document.write(unescape(...)), or packed code that redirects
+or writes a frame). Ordinary site code is not written this way; injected redirectors
+and malware loaders usually are. Check whether you or your developer added it. If not:
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_CRYPTOMINER = `A page loads an in-browser cryptocurrency miner. It uses your visitors' processors
+to make money for whoever planted it, slows their devices, and harms your reputation.
+Unless you added this deliberately, your site has been modified.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_SEO_SPAM = `A page contains a hidden block of links to other websites (or spam vocabulary in hidden
+text). This is "SEO spam": attackers hide links to their own sites on yours to borrow
+your search ranking. It can get your site flagged or removed from search results.
+
+${MALWARE_CLEANUP}`;
+
+export const MALWARE_DEFACEMENT = `A page title announces that the site has been hacked. Someone has changed content on your
+site without your permission.
+
+${MALWARE_CLEANUP}`;
+
+// ---------------------------------------------------------------------------
+// Dependency licence compliance (src/lib/scanners/dependencyLicense.ts,
+// data from deps.dev) — a legal/compliance axis, not a vulnerability.
+// ---------------------------------------------------------------------------
+
+export const COPYLEFT_LICENSE = `This dependency is distributed under a strong or network copyleft licence (GPL, AGPL, LGPL,
+SSPL and similar), identified from deps.dev's SPDX data. These licences can require you to make
+your own source code available under the same terms when you distribute software that includes
+them — and AGPL/SSPL extend that to software you merely make available over a network, which
+covers most SaaS. This is a legal question, not a security bug, so there is no one-line fix:
+
+1. **Confirm the licence and how you use the package.** A build-only or test-only dependency
+   usually doesn't trigger distribution obligations the way a bundled runtime one does. LGPL is
+   generally fine when the library is dynamically linked and unmodified.
+2. **Check it against your product's licensing.** If you ship closed-source or commercial
+   software, a GPL/AGPL runtime dependency may be incompatible — take legal advice if unsure.
+3. **Replace it if needed.** Where the licence doesn't fit, look for a permissively-licensed
+   (MIT/BSD/Apache-2.0) alternative, or isolate the component so its obligations don't reach
+   your own code.`;
+
+export const UNKNOWN_LICENSE = `deps.dev could not resolve this dependency to a recognised SPDX licence (it reports the licence
+as non-standard or absent). You can't automatically confirm you're permitted to use the package
+the way you intend, and an SBOM with "unknown" licences fails most compliance reviews.
+
+- Open the package's own LICENSE/COPYING file or its repository and read the actual terms.
+- If it genuinely has no licence, you have no right to use it — treat an unlicensed dependency
+  as "all rights reserved" and replace it with a clearly-licensed equivalent.
+- If it does carry a licence deps.dev simply didn't parse, record it in your own dependency
+  inventory so the gap is closed for your compliance records.`;
+
+// ---------------------------------------------------------------------------
+// Live-site JS secret / endpoint scanning (src/lib/scanners/jsSecrets.ts)
+// ---------------------------------------------------------------------------
+
+export const JS_SECRET_EXPOSED = `A credential that looks like a real API key or token is being delivered to the browser in
+your site's own HTML or JavaScript. Anything the browser receives is public — view-source,
+the network tab, or a saved copy all reveal it — so treat this key as compromised.
+
+1. **Rotate it now.** Issue a new key in the provider's dashboard and revoke the exposed one.
+   Until you do, anyone who viewed the page may have it.
+2. **Move it server-side.** Secret keys belong only in server code (API routes, serverless
+   functions, CI secrets), never in a client bundle or a variable prefixed \`NEXT_PUBLIC_\`,
+   \`VITE_\` or \`REACT_APP_\`. If the browser genuinely needs to call that service, proxy the
+   call through your own backend so the key never leaves the server.
+3. **Check for misuse** in the provider's logs/billing for activity you don't recognise.
+
+We matched a pattern and store only a fingerprint of the value, never the value itself —
+confirm it is a live credential (some keys, e.g. a publishable \`pk_\` key, are meant to be
+public) before treating it as an incident.`;
+
+export const JS_ENDPOINT_EXPOSED = `Your site's client-side code references an internal, API, staging or private-network
+endpoint. This isn't a vulnerability on its own, but it hands an attacker a map of where to
+look next, and a localhost/private-IP URL usually means a debug build was shipped to
+production.
+
+- Confirm the endpoint is meant to be publicly known. If it's an internal or staging host,
+  remove the reference from the production bundle (environment-specific config, not a
+  hard-coded URL).
+- Make sure the endpoint itself enforces authentication and authorisation — being
+  "undiscovered" was never protecting it.`;
+
+export const JS_SOURCEMAP_EXPOSED = `A JavaScript source map (\`.map\`) is publicly readable alongside your minified bundle.
+Source maps exist to help developers debug — they reconstruct the original, pre-minification
+code, including file structure, variable names, comments, and (when \`sourcesContent\` is
+inlined) the full original source. Shipping one to production hands all of that to anyone who
+appends \`.map\` to a script URL or reads its \`sourceMappingURL\` comment.
+
+1. **Stop publishing maps to production.** In most bundlers this is one setting:
+   - **webpack:** set \`devtool: false\` (or a \`hidden-*\`/\`nosources-*\` variant) for the
+     production build.
+   - **Vite / Rollup:** \`build.sourcemap: false\` (or \`'hidden'\`).
+   - **Next.js:** \`productionBrowserSourceMaps: false\` (the default).
+   - **esbuild:** drop \`--sourcemap\`, or use \`--sourcemap=external\` and don't deploy the file.
+2. **Remove the already-deployed \`.map\` files** from the server/CDN, not just future builds.
+3. **If you need maps for error monitoring** (Sentry, Datadog), upload them privately to that
+   service during CI instead of serving them from your own origin.
+
+This is an information-disclosure finding, not a direct compromise — but if the map inlined
+your source, treat any secret it revealed as exposed and rotate it (those are reported
+separately above).`;
+
+// ---------------------------------------------------------------------------
+// Cookie consent / tracker-before-consent (src/lib/scanners/cookieConsent.ts)
+// — UK PECR + GDPR. A non-essential (analytics/marketing) cookie or tracker
+// firing before consent, with no consent banner on the page at all.
+// ---------------------------------------------------------------------------
+
+export const COOKIE_CONSENT_TRACKER = `Under UK PECR (regulation 6) and GDPR, you must get the visitor's consent
+**before** setting non-essential cookies or firing analytics/marketing
+trackers. This page set one on arrival with no cookie banner present, so a
+visitor has no way to decline it first.
+
+1. **Add a consent-management platform (CMP)** that shows a banner and blocks
+   non-essential cookies until the visitor opts in — Cookiebot, OneTrust,
+   Osano, CookieYes, Civic Cookie Control, Complianz (WordPress), or similar.
+   A compliant banner offers "Reject" as prominently as "Accept" and does not
+   pre-tick consent.
+2. **Gate the trackers behind consent, not just the banner.** A banner that
+   appears while the tracker already fired changes nothing. With Google tags,
+   use **Consent Mode v2** and set \`analytics_storage\`/\`ad_storage\` to
+   \`denied\` by default, granting them only after opt-in. With a tag manager,
+   fire the tags on a consent-granted trigger.
+3. **Essential cookies are exempt** — a session/login cookie, a cart, or the
+   consent choice itself needs no consent. Analytics and advertising
+   (Google Analytics, Meta Pixel, TikTok, Hotjar, …) are never essential.
+4. Re-scan after wiring consent in: on a correctly configured site the tracker
+   should no longer fire on the initial, no-interaction load.`;
+
+export const COOKIE_CONSENT_NO_CMP = `This page loads analytics or marketing trackers but shows no sign of a
+consent-management platform (no OneTrust / Cookiebot / Osano / CookieYes /
+Civic / Complianz / IAB TCF marker in its scripts or markup).
+
+A compliant UK/EU site presents a cookie banner that blocks non-essential
+cookies until the visitor opts in. Add one (see the tracker finding's
+remediation for the integration steps) — this informational finding simply
+flags that none was detected while trackers are present. If you do use a CMP
+that this scan didn't recognise, confirm it actually blocks the trackers
+before they fire, not just displays a banner alongside them.`;

@@ -1,0 +1,55 @@
+name: EASM Discovery
+
+# SCALE-2: standalone External Attack Surface Management sweep. Runs
+# src/scripts/run-easm-discovery.ts directly against Supabase, same lightweight
+# pattern as emerging-threats.yml (no scanner-tool install — this only does
+# crt.sh + HTTP HEAD probes). It calls runEasmDiscovery for every verified
+# monitored target of an active-subscription owner, independent of the scan
+# cadence, so a newly-certificated subdomain lands in asset_inventory within
+# hours. Alerting is deliberately left to the next scheduled scan's
+# sendAttackSurfaceAlerts (which has the crt.sh cert-date evidence) — this job
+# only populates the inventory. Never brute-forces (that stays Tier-A gated in
+# the scan path). See src/lib/easmPipeline.ts.
+#
+# Requires: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. Run manually with dry_run
+# to enumerate targets without discovering.
+
+on:
+  schedule:
+    # Every 6 hours at :25, clear of the emerging-threats (:40) and hourly runs.
+    - cron: "25 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Enumerate targets only — discover nothing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: easm-discovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Run EASM discovery sweep
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: npm run easm:discover -- $DRY_RUN

@@ -49,6 +49,31 @@ export const hardened: SiteHandler = (req, res) => {
 };
 
 /**
+ * A hardened site in every respect EXCEPT its Content-Security-Policy, which is
+ * present but trivially bypassable: 'unsafe-inline' in script-src with no
+ * nonce/hash/'strict-dynamic' to mitigate it. The modern CSP grader must grade
+ * this "C" (one serious weakness, no gaps) and report headers.csp-weak — not
+ * headers.csp-absent (the policy exists), and not stay silent (a nonce-less
+ * 'unsafe-inline' is the real bypass). Every other header is complete, so this
+ * also guards against the grader over-firing: only tls.no-https (loopback is
+ * HTTP) and headers.csp-weak may appear.
+ */
+export const cspWeak: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const headers: Headers = {
+    ...SECURE_HEADERS,
+    "content-security-policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  };
+  if (p === "/") return send(req, res, 200, { ...HTML, ...headers }, HOME);
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...headers }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  if (p === "/robots.txt") return send(req, res, 200, { ...TEXT, ...headers }, "User-agent: *\nAllow: /\n");
+  return send(req, res, 404, { ...HTML, ...headers }, "<!doctype html><title>Not found</title><p>Not found</p>");
+};
+
+/**
  * Single-page app: every unknown path returns the same 200 shell, which echoes
  * the requested URL back (router state) — the classic false-positive trap for
  * path-probing checks. Nothing is exposed.
@@ -247,4 +272,137 @@ export function createLoginThrottled(): SiteHandler {
 export const spaLogin: SiteHandler = (req, res) => {
   const p = pathOf(req);
   return send(req, res, 200, { ...HTML, ...SECURE_HEADERS }, `<!doctype html><html><body><div id="root" data-p="${p}"></div></body></html>`);
+};
+
+/**
+ * A hardened site that has nonetheless been compromised: its homepage carries
+ * three injected-content traces the crawler's malware check (injectedContent.ts)
+ * must catch, all in the HTML a visitor receives — nothing is executed or fetched:
+ *   - a hidden, cross-origin iframe (display:none, off-site src);
+ *   - an obfuscated inline script (a long base64 payload handed to eval(atob()));
+ *   - a hidden <div> of off-site SEO-spam links.
+ * It is otherwise hardened (full headers, security.txt, real 404s) so the ONLY
+ * findings are tls.no-https (every loopback fixture is HTTP) and the three
+ * malware.* ones — the off-site hosts are never contacted (the check is pure
+ * HTML parsing), so this stays loopback-only. The miner and defacement rules
+ * must stay silent: the page carries no miner host/API name and an ordinary
+ * <title>, so this also guards those two rules against over-firing.
+ */
+export const compromised: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  if (p === "/robots.txt") return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "User-agent: *\nAllow: /\n");
+  if (p !== "/") return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
+  // 384 base64 characters — well over the obfuscated-script rule's 300-char floor.
+  const payload = "ZG9jdW1lbnQud3JpdGUodW5lc2NhcGUoJyUzQ3NjcmlwdCUyMHNyYz0laHR0cDov".repeat(6);
+  const spamLinks = ["cheap-watches", "payday-fast", "rx-pills", "casino-win", "replica-bags"]
+    .map((h) => `<a href="http://${h}.example/buy">deal</a>`)
+    .join("");
+  const body =
+    `<!doctype html><html><head><title>Welcome to our shop</title></head><body>` +
+    `<h1>Shop</h1><p>Our normal content.</p>` +
+    `<iframe src="http://ad-malware.example/landing" style="display:none" width="0" height="0"></iframe>` +
+    `<script>eval(atob("${payload}"));</script>` +
+    `<div style="display:none">${spamLinks}</div>` +
+    `</body></html>`;
+  return send(req, res, 200, { ...HTML, ...SECURE_HEADERS }, body);
+};
+
+/**
+ * Site loading outdated client-side libraries, each detectable only one way:
+ * jQuery from its filename, jQuery UI only from the banner in a
+ * neutrally-named file, and a current Lodash that must not be reported.
+ */
+export const legacyJs: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const js = { "content-type": "application/javascript", ...SECURE_HEADERS };
+  if (p === "/") {
+    return send(
+      req,
+      res,
+      200,
+      { ...HTML, ...SECURE_HEADERS },
+      `<!doctype html><html><head><title>Shop</title><script src="/js/jquery-1.8.3.min.js"></script><script src="/vendor/ui.js"></script><script src="/vendor/utils.js"></script></head><body><h1>Shop</h1></body></html>`
+    );
+  }
+  if (p === "/js/jquery-1.8.3.min.js") return send(req, res, 200, js, "/*! jQuery v1.8.3 jquery.com | jquery.org/license */\n(function(){})();");
+  if (p === "/vendor/ui.js") return send(req, res, 200, js, "/*! jQuery UI - v1.12.1 - 2016-09-14\n* http://jqueryui.com */\n(function(){})();");
+  if (p === "/vendor/utils.js") return send(req, res, 200, js, "/**\n * @license\n * Lodash v4.18.0 <https://lodash.com/>\n */\n(function(){})();");
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
+};
+
+/**
+ * A site whose own JavaScript bundle leaks real-shaped secrets a visitor's
+ * browser receives: a fake AWS access key id and a Stripe LIVE secret key
+ * (both inert, never valid), plus an internal API endpoint hard-coded in the
+ * client. jsSecrets.ts must report the two keys and the endpoint; the harmless
+ * publishable Stripe key (`pk_live_…`) must NOT be flagged — it's meant to be
+ * public, and flagging it would be the false positive the check exists to avoid.
+ *
+ * The bundle also carries a `sourceMappingURL` comment pointing at a publicly
+ * readable `config.js.map` whose `sourcesContent` inlines the un-minified
+ * source — which itself contains an npm token (a secret the minified bundle
+ * didn't). jsSecrets.ts must report the exposed sourcemap AND the npm token it
+ * found inside it; a 404 on a map (none of the other fixtures serve one) must
+ * stay silent.
+ */
+export const jsSecretsLeak: SiteHandler = (req, res) => {
+  const p = pathOf(req);
+  const js = { "content-type": "application/javascript", ...SECURE_HEADERS };
+  if (p === "/") {
+    return send(
+      req,
+      res,
+      200,
+      { ...HTML, ...SECURE_HEADERS },
+      `<!doctype html><html><head><title>Shop</title><script src="/static/config.js"></script></head><body><h1>Shop</h1></body></html>`
+    );
+  }
+  if (p === "/static/config.js") {
+    // The Stripe secret/publishable prefixes are assembled from fragments so no
+    // contiguous `sk_live_…`-shaped literal exists in source (GitHub push
+    // protection flags those even though these are inert fakes); the string the
+    // handler serves is identical to a real one, so jsSecrets.ts still matches.
+    const sk = "sk" + "_live_" + "51Habcdef0123456789ABCDxyz";
+    const pk = "pk" + "_live_" + "51Habcdef0123456789ABCDxyz";
+    return send(
+      req,
+      res,
+      200,
+      js,
+      [
+        "window.CONFIG = {",
+        '  awsKey: "AKIAIOSFODNN7EXAMPLE",',
+        `  stripe: "${sk}",`,
+        `  stripePublishable: "${pk}",`,
+        '  api: "https://api.internal.shop.example/v1"',
+        "};",
+        "//# sourceMappingURL=config.js.map",
+      ].join("\n")
+    );
+  }
+  if (p === "/static/config.js.map") {
+    // A real source map: a `sources` array plus `sourcesContent` inlining the
+    // original source, which carries an npm token (npm_ + 36 base36 chars) the
+    // minified bundle above does not — proving the catalogue runs over inlined
+    // source. Assembled from a fragment so no literal token sits in the repo.
+    const npmToken = "npm_" + "abcdefghijklmnopqrstuvwxyz0123456789";
+    const map = {
+      version: 3,
+      sources: ["src/config.js"],
+      sourcesContent: [`export const NPM_TOKEN = "${npmToken}"; // build-time only, do not ship\nexport const CONFIG = { api: "https://api.internal.shop.example/v1" };\n`],
+      names: [],
+      mappings: "",
+    };
+    return send(req, res, 200, { "content-type": "application/json", ...SECURE_HEADERS }, JSON.stringify(map));
+  }
+  if (p === "/.well-known/security.txt") {
+    return send(req, res, 200, { ...TEXT, ...SECURE_HEADERS }, "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n");
+  }
+  return send(req, res, 404, { ...HTML, ...SECURE_HEADERS }, "<!doctype html><title>Not found</title><p>Not found</p>");
 };

@@ -58,7 +58,7 @@ export default function AssetInventory() {
   }, []);
 
   if (loading) {
-    return <p className="font-mono text-sm text-cybertext/30">// loading…</p>;
+    return <p className="font-mono text-sm text-cybermuted">// loading…</p>;
   }
 
   if (groups.length === 0) {
@@ -80,7 +80,7 @@ export default function AssetInventory() {
               </span>
             ))}
             {group.subdomains.length > 0 && (
-              <span className="text-xs text-cybertext/40">
+              <span className="text-xs text-cybermuted">
                 {group.subdomains.length} subdomain{group.subdomains.length === 1 ? "" : "s"}
               </span>
             )}

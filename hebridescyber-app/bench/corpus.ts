@@ -13,6 +13,7 @@ export type CorpusTarget = {
 
 export const CORPUS: CorpusTarget[] = [
   { id: "hardened", description: "Well-configured static site", create: () => sites.hardened },
+  { id: "csp-weak", description: "Hardened site whose only flaw is a bypassable CSP (nonce-less 'unsafe-inline')", create: () => sites.cspWeak },
   { id: "spa-catch-all", description: "SPA returning its shell (echoing the path) for every URL", create: () => sites.spaCatchAll },
   { id: "spa-catch-all-nonce", description: "SPA catch-all with a per-request nonce in the shell", create: () => sites.spaCatchAllNonce },
   { id: "soft-404", description: "Unknown paths return a 200 'page not found' page", create: () => sites.soft404 },
@@ -25,5 +26,8 @@ export const CORPUS: CorpusTarget[] = [
   { id: "login-throttled", description: "Login form with CSRF token and 429 throttling", create: () => sites.createLoginThrottled() },
   { id: "graphql-open", description: "GraphQL endpoint with introspection and GraphiQL exposed", create: () => sites.graphqlOpen },
   { id: "graphql-locked", description: "GraphQL endpoint with introspection off, no suggestions, no IDE", create: () => sites.graphqlLocked },
+  { id: "legacy-js", description: "Outdated jQuery and jQuery UI script tags beside a current Lodash", create: () => sites.legacyJs },
   { id: "spa-login", description: "Client-rendered login that answers every POST with 200", create: () => sites.spaLogin },
+  { id: "compromised", description: "Hardened site compromised with a hidden iframe, an obfuscated script and hidden SEO-spam links", create: () => sites.compromised },
+  { id: "js-secrets-leak", description: "Client JS bundle leaking an AWS key, a Stripe live secret and an internal API endpoint (publishable key must not be flagged)", create: () => sites.jsSecretsLeak },
 ];

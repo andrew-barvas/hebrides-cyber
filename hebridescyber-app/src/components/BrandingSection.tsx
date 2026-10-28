@@ -89,7 +89,7 @@ export default function BrandingSection({ token, initialLogoUrl, initialBrandNam
 
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// white-label branding</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// white-label branding</h2>
 
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Agency plan: swap the default Hebrides Cyber header on generated PDF reports for your
@@ -105,7 +105,7 @@ export default function BrandingSection({ token, initialLogoUrl, initialBrandNam
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="Report logo preview" className="h-full w-full object-contain" />
           ) : (
-            <span className="font-mono text-[10px] text-cybertext/30">no logo</span>
+            <span className="font-mono text-[10px] text-cybermuted">no logo</span>
           )}
         </div>
         <div>
@@ -117,9 +117,9 @@ export default function BrandingSection({ token, initialLogoUrl, initialBrandNam
             disabled={uploading}
             className="block text-xs text-cybertext/60 file:mr-3 file:rounded-md file:border file:border-cyberborder file:bg-cyberbg file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cybertext/70 hover:file:border-neon hover:file:text-neon file:transition-colors disabled:opacity-40"
           />
-          <p className="mt-1 text-[11px] text-cybertext/30">PNG, JPG or SVG-as-raster, under 5 MB.</p>
+          <p className="mt-1 text-[11px] text-cybermuted">PNG, JPG or SVG-as-raster, under 5 MB.</p>
         </div>
-        {uploading && <span className="font-mono text-xs text-cybertext/40">uploading…</span>}
+        {uploading && <span className="font-mono text-xs text-cybermuted">uploading…</span>}
       </div>
 
       <form onSubmit={saveBrandName} className="flex flex-wrap gap-2">

@@ -60,6 +60,8 @@ const SNIPPET_MAX_CHARS = 200;
 export const SAST_EXCLUDE_DIRS = [
   "node_modules", "vendor", "bower_components", "dist", "build", ".next", "coverage",
   "test", "tests", "__tests__", "__mocks__", "spec", "fixtures", "e2e",
+  // Our own rule pack ships deliberately vulnerable example files next to each rule.
+  "sast-rules",
 ] as const;
 export const SAST_EXCLUDE_FILE_PATTERNS = [
   "*.min.js", "*.min.mjs", "*.bundle.js", "*.test.*", "*.spec.*", "test_*.py", "*_test.py", "conftest.py",

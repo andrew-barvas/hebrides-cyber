@@ -121,4 +121,7 @@ a PR.
 ## No dependencies
 
 This action has no `node_modules` and nothing to `npm install` — it's a
-single file using Node 20's built-in `fetch`. See `index.js`.
+single script (`index.js`) using Node 20's built-in `fetch`. The only other file,
+`package.json`, just pins the module type to CommonJS so the script runs the
+same wherever it is checked out, even under a directory whose parent
+`package.json` says `"type": "module"`.

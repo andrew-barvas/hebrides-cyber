@@ -44,6 +44,14 @@ export default defineConfig({
       // and mocks "*.example-project.supabase.co" network requests to match.
       NEXT_PUBLIC_SUPABASE_URL: "https://example-project.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
+      // supabaseAdmin (used by API routes such as create-checkout-session) is
+      // also pointed at the fake project so its auth.getUser() calls are
+      // handled by supabase-auth-preload.cjs alongside the middleware's call.
+      // Without this, a real SUPABASE_URL in CI makes the admin client send
+      // the fake test JWT to the real project, which returns 401 before any
+      // plan-validation logic runs.
+      SUPABASE_URL: "https://example-project.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
       // src/middleware.ts validates the session server-side, which a browser
       // page.route() mock can't intercept. This preload answers that one
       // request for the fake project, and only for the test JWT — see
