@@ -23,6 +23,7 @@
     "seed:users": "tsx src/scripts/seed-users.ts",
     "queue:enqueue-scheduled-scans": "tsx src/scripts/enqueue-scheduled-scans.ts",
     "queue:run-worker": "tsx src/scripts/run-queued-scan-jobs.ts",
+    "queue:verify-run": "tsx src/scripts/verify-scan-run.ts",
     "newsletter:daily": "tsx src/scripts/generate-daily-blog.ts",
     "newsletter:weekly": "tsx src/scripts/generate-weekly-newsletter.ts",
     "blog:publish-scheduled": "tsx src/scripts/publish-scheduled-posts.ts",
