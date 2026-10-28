@@ -42,21 +42,27 @@ describe("runArjun", () => {
 
   it("parses JSON output with discovered parameters", async () => {
     execFileMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    // Real arjun -oJ shape: an object keyed by URL (see arjun core/exporter.py).
     readFileMock.mockResolvedValueOnce(
-      JSON.stringify([
-        { url: "https://example.com/search", method: "GET", params: ["q", "page", "sort"] },
-        { url: "https://example.com/api/data", method: "POST", params: ["debug"] },
-      ])
+      JSON.stringify({
+        "https://example.com/search": { method: "GET", params: ["q", "page", "sort"], headers: {} },
+        "https://example.com/api/data": { method: "POST", params: ["debug"], headers: {} },
+      })
     );
 
     const result = await runArjun("https://example.com");
     expect(result.status).toBe("completed");
     if (result.status !== "completed") return;
     expect(result.parameters).toHaveLength(2);
-    expect(result.parameters[0]).toEqual({
+    expect(result.parameters).toContainEqual({
       url: "https://example.com/search",
       method: "GET",
       params: ["q", "page", "sort"],
+    });
+    expect(result.parameters).toContainEqual({
+      url: "https://example.com/api/data",
+      method: "POST",
+      params: ["debug"],
     });
   });
 
@@ -73,10 +79,10 @@ describe("runArjun", () => {
   it("filters out entries with no params", async () => {
     execFileMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
     readFileMock.mockResolvedValueOnce(
-      JSON.stringify([
-        { url: "https://example.com/empty", method: "GET", params: [] },
-        { url: "https://example.com/found", method: "GET", params: ["id"] },
-      ])
+      JSON.stringify({
+        "https://example.com/empty": { method: "GET", params: [], headers: {} },
+        "https://example.com/found": { method: "GET", params: ["id"], headers: {} },
+      })
     );
 
     const result = await runArjun("https://example.com");
