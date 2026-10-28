@@ -215,13 +215,29 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p /tmp/capture
-          git clone --depth 1 https://github.com/commixproject/commix.git /tmp/commix || true
+          # Same v4.1 tag as scheduled-scans.yml, so this captures what production runs.
+          git clone --depth 1 --branch v4.1 https://github.com/commixproject/commix.git /tmp/commix || true
           if [ -f /tmp/commix/commix.py ]; then
             python3 /tmp/commix/commix.py --version > /tmp/capture/commix.version.txt 2>&1 || true
             timeout 120 python3 /tmp/commix/commix.py --url="http://127.0.0.1:8099/search?q=a" --batch > /tmp/capture/commix.clean.stdout.txt 2> /tmp/capture/commix.clean.stderr.txt || true
           else
             echo "commix could not be cloned" > /tmp/capture/commix.not-installed.txt
           fi
+
+      # cmsmap has no PyPI package, so scheduled-scans.yml installs it from a
+      # pinned git commit. That install only ever ran on the daily job, where a
+      # failure is deliberately soft, so a broken pin would have gone unnoticed
+      # (the way `pip install cmsmap` did until 2026-10-28). This runs the same
+      # install hard: it must resolve and put a working `cmsmap` on PATH.
+      - name: Check the pinned cmsmap install
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone https://github.com/Dionach/CMSmap.git /opt/cmsmap
+          sudo git -C /opt/cmsmap checkout 59dd0e2b3b0c751c6da2b0565374ab83c736b0e6
+          sudo pip3 install --break-system-packages /opt/cmsmap
+          command -v cmsmap
+          cmsmap --help > /tmp/capture/cmsmap.help.txt 2>&1 || true
+          head -5 /tmp/capture/cmsmap.help.txt
 
       - name: Print captured output
         if: always()
