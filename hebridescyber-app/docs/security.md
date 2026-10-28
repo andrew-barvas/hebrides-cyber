@@ -92,6 +92,10 @@ output is schema-checked and can only annotate a finding. Replay requests are co
 the privacy notice before enabling it for customers. Off by default; `DISABLE_AI_TRIAGE=1` forces it
 off.
 
+## Uptime monitoring data flow (UptimeRobot, bring your own account)
+
+A Pro-or-above customer can paste their own UptimeRobot API key. It is checked once against `api.uptimerobot.com`, then stored encrypted (`credentialEncryption.ts`) in `uptime_integrations`, a table with **no client policy at all**: the browser can never read it back, and `GET /api/uptime/status` returns monitor rows and sync times only. The key is only ever sent to `api.uptimerobot.com` (a pagination link pointing anywhere else is refused). Sent to UptimeRobot: the key, and for each monitor the customer's own verified site URL and a name (`Hebrides: <host>`). Received: monitor id, status and how long it has been in it. Monitors can only be created for domains the customer has verified. Disconnecting deletes the key and our monitor records but not the monitors in the customer's UptimeRobot account. Rows cascade-delete with the account. UptimeRobot's terms bar reselling or white-labelling its monitoring, which is why there is no shared Hebrides account.
+
 ## Secrets Handling
 
 - Set production secrets (Supabase service role key, Stripe secret key,
