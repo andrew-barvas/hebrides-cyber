@@ -254,6 +254,43 @@ jobs:
           # ignores its exit status, so a missing rsync would leave this empty.
           test -n "$(ls -A "$HOME/.whatwaf/plugins")"
 
+      # The last installs from scheduled-scans.yml that no job ran, each hard,
+      # run the way production runs it. always() so one failure doesn't hide the
+      # others in the same run (whatwaf's install only looked fine until it was
+      # actually run; these were in the same position).
+      - name: Check the pinned wpscan install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo gem install wpscan -v 4.2.0 --no-document
+          command -v wpscan
+          gem list -i wpscan -v 4.2.0
+          wpscan --version > /tmp/capture/wpscan.version.txt 2>&1 || true
+          head -5 /tmp/capture/wpscan.version.txt
+
+      - name: Check the pinned photon install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          pip3 install --break-system-packages photon==1.1.8.3
+          command -v photon
+          photon --help > /tmp/capture/photon.help.txt 2>&1 || true
+          head -20 /tmp/capture/photon.help.txt
+          # photon.ts runs `photon -u <url> -o <dir> -l 3 --keys --dns -t 5`; an
+          # install that provides a `photon` without those flags is no use to it.
+          grep -q -- "--keys" /tmp/capture/photon.help.txt
+          grep -q -- "--dns" /tmp/capture/photon.help.txt
+
+      - name: Check the pinned testssl.sh install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
+          test -x /opt/testssl.sh/testssl.sh
+          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
+          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
+          head -5 /tmp/capture/testssl.version.txt
+
       - name: Print captured output
         if: always()
         run: |
