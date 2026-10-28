@@ -434,7 +434,11 @@ jobs:
             && command -v whatwaf \
             && test -n "$(ls -A "$HOME/.whatwaf/plugins")" ) \
             || echo "whatwaf install failed — whatwaf.ts will report status: not_configured"
-          sudo gem install wpscan -v 4.2.0 --no-document \
+          # 3.8.28 is the newest wpscan that runs on the runner's Ruby: every 4.x
+          # release needs Ruby >= 3.3 and ubuntu-latest ships 3.2.3, so the 4.2.0
+          # pin #124 first used could not install (found by tool-integration.yml's
+          # hard check, before a scheduled run hit it).
+          sudo gem install wpscan -v 3.8.28 --no-document \
             || echo "wpscan install failed — wpscan.ts will report status: not_configured"
           # CMSmap has no PyPI package and no release tags, so `pip install cmsmap`
           # never resolved — cmsmap.ts was silently not_configured on every run.
@@ -445,7 +449,7 @@ jobs:
             && sudo pip3 install --break-system-packages /opt/cmsmap \
             || echo "cmsmap install failed — cmsmap.ts will report status: not_configured"
 
-      - name: Install photon and gospider
+      - name: Install gospider
         # gospider never installed before: the asset name was wrong
         # (linux_amd64 vs linux_x86_64) and the binary lives inside a folder
         # in the zip. Correct name + SHA-256 of the downloaded asset (jaeles
@@ -455,15 +459,14 @@ jobs:
           GOSPIDER_VERSION: 1.1.6
           GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
         run: |
-          # Pinned for a reproducible run. NOTE: PyPI `photon` names s0md3v as
-          # its author, but 1.1.8.3 dates from 2019, the current s0md3v/Photon
-          # repo ships no setup.py or pip entry point, and 1.1.9 carries an sdist
-          # named 1.1.8.1, so nothing here confirms its CLI matches what
-          # photon.ts calls. photon is therefore excluded from the default
-          # `full` profile (see scanProfiles.ts) and runs only under the opt-in
-          # osint/offensive profiles.
-          pip3 install --break-system-packages photon==1.1.8.3 \
-            || echo "photon install failed — photon.ts will report status: not_configured"
+          # No photon install. The PyPI `photon` package (1.1.8.3) installs but
+          # puts no `photon` command on PATH, which tool-integration.yml showed
+          # on a runner, so photon.ts has always got ENOENT and reported
+          # not_configured. Installing it only added third-party code to a job
+          # that holds the service-role key. s0md3v/Photon itself ships no
+          # setup.py and runs as `python3 photon.py`, so a real install would be a
+          # pinned clone plus a launcher, and photon.ts has never been run against
+          # its output. Until then photon stays not_configured, and out of `full`.
           curl -fsSL \
             "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" \
             -o /tmp/gospider.zip
