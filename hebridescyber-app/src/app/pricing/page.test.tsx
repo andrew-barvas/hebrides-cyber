@@ -49,6 +49,16 @@ describe("pricing page checkout", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Sign in first/));
   });
 
+  it("sells only the self-serve plans, and nothing from the unavailable offensive tier", () => {
+    render(<PricingPage />);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(
+      expect.arrayContaining(["Basic", "Pro", "Agency"]),
+    );
+    // Tier A's tools are not_configured and the owner decided not to market them (SPRINT-PLAN H6).
+    expect(screen.queryByText(/Tier A/)).toBeNull();
+    expect(screen.queryByText(/offensive|exploit|credential/i)).toBeNull();
+  });
+
   it("acknowledges a cancelled checkout, and says nothing otherwise", () => {
     const { unmount } = render(<PricingPage />);
     expect(screen.queryByText(/Checkout cancelled/)).toBeNull();

@@ -24,6 +24,14 @@ import { confirmedProof } from "./proofEvidence";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
 
+/**
+ * Text colours for every PDF template (executive, portfolio, scheduled). Small
+ * print text has to read on paper and to text-extraction tools: body ~17.7:1 on
+ * white, secondary ~9:1 (the old #64727f grey was ~4.9:1 and hard to read).
+ */
+export const REPORT_TEXT = "#111827";
+export const REPORT_MUTED = "#3f4a56";
+
 export type ExecutiveReportInput = {
   targetUrl: string;
   /** When the scan ran (ISO). */
@@ -211,16 +219,16 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
 <html lang="en"><head><meta charset="utf-8" /><title>${e(brandName)} — ${e(host)}</title>
 <style>
   @page { size: A4; margin: 18mm 16mm; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #1f2933; font-size: 12px; line-height: 1.45; }
+  body { font-family: Arial, Helvetica, sans-serif; color: ${REPORT_TEXT}; font-size: 12px; line-height: 1.45; }
   h1 { font-size: 22px; margin: 0; color: #0b3d5b; } h2 { font-size: 15px; margin: 22px 0 8px; color: #0b3d5b; border-bottom: 1px solid #d5dde5; padding-bottom: 4px; }
   .head { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #0b3d5b; padding-bottom: 12px; }
   .head img { height: 40px; max-width: 160px; object-fit: contain; }
-  .muted { color: #64727f; } .meta { margin: 10px 0 0; }
+  .muted { color: ${REPORT_MUTED}; } .meta { margin: 10px 0 0; }
   .overview { display: flex; gap: 18px; align-items: stretch; margin-top: 14px; }
   .score { min-width: 130px; text-align: center; border: 2px solid ${rating.colour}; border-radius: 8px; padding: 12px; }
   .score b { font-size: 38px; color: ${rating.colour}; display: block; line-height: 1; } .score span { font-weight: bold; color: ${rating.colour}; }
   .chips { display: flex; gap: 8px; flex: 1; } .chip { flex: 1; border: 1px solid #d5dde5; border-radius: 8px; text-align: center; padding: 12px 4px; }
-  .chip b { display: block; font-size: 24px; } .chip span { text-transform: uppercase; font-size: 10px; color: #64727f; }
+  .chip b { display: block; font-size: 24px; } .chip span { text-transform: uppercase; font-size: 10px; color: ${REPORT_MUTED}; }
   .sev { display: inline-block; color: #fff; text-transform: uppercase; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
   .kev { color: #7f1d1d; font-weight: bold; font-size: 10px; }
   .priority { display: flex; gap: 10px; margin: 10px 0; page-break-inside: avoid; } .pn { font-size: 18px; font-weight: bold; color: #0b3d5b; width: 20px; }
@@ -231,8 +239,8 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   .chainsteps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 0; }
   .node { border: 1px solid #c3ccd6; border-radius: 6px; padding: 3px 8px; font-size: 10px; background: #f8fafc; }
   .node-entry { border-color: #0b7a5b; } .node-pivot { border-color: #b45309; } .node-impact { border-color: #b91c1c; }
-  .arrow { color: #64727f; font-size: 12px; } .chokepoints { background: #f1f7f4; border: 1px solid #0b7a5b33; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
-  .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #d5dde5; font-size: 10px; color: #64727f; }
+  .arrow { color: ${REPORT_MUTED}; font-size: 12px; } .chokepoints { background: #f1f7f4; border: 1px solid #0b7a5b33; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+  .foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #d5dde5; font-size: 10px; color: ${REPORT_MUTED}; }
 </style></head><body>
   <div class="head">${logo ? `<img src="${e(logo)}" alt="${e(brandName)}" />` : ""}<div><h1>${e(brandName)}</h1><div class="muted">Security assessment report</div></div></div>
   <p class="meta"><b>Site:</b> ${e(input.targetUrl)} &nbsp; <b>Scanned:</b> ${e(scanned)} &nbsp; <b>Report date:</b> ${e(generated)}</p>

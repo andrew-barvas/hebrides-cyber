@@ -12,10 +12,12 @@ import ChannelWebhookIntegration from "@/components/ChannelWebhookIntegration";
 import CloudCredentialsConfig from "@/components/CloudCredentialsConfig";
 import ConnectRepo from "@/components/ConnectRepo";
 import LockedFeature from "@/components/LockedFeature";
+import { planIncludes } from "@/lib/planAccess";
 import NotificationPrefsSection from "@/components/NotificationPrefsSection";
 import OncallIntegrationConfig from "@/components/OncallIntegrationConfig";
 import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
 import TicketIntegration from "@/components/TicketIntegration";
+import UptimeMonitoringConfig from "@/components/UptimeMonitoringConfig";
 import Webhooks from "@/components/Webhooks";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
@@ -37,7 +39,7 @@ function Group({ id, title, description, children }: { id: string; title: string
 export default function IntegrationsPage() {
   const { plan, accessToken } = useAppSession();
   const paid = plan !== "none";
-  const chatAlerts = plan === "pro" || plan === "agency";
+  const chatAlerts = planIncludes(plan, "pro");
 
   return (
     <div className="space-y-10">
@@ -70,6 +72,15 @@ export default function IntegrationsPage() {
           />
         )}
         <OncallIntegrationConfig />
+        {chatAlerts ? (
+          <UptimeMonitoringConfig />
+        ) : (
+          <LockedFeature
+            title="uptime monitoring"
+            description="Connect your own UptimeRobot account to watch your verified sites and get a message here, in Slack or by email when one goes down."
+            availableOn="Pro & Agency"
+          />
+        )}
         <Webhooks token={accessToken} />
       </Group>
 
@@ -93,7 +104,7 @@ export default function IntegrationsPage() {
             availableOn="Paid plans"
           />
         )}
-        {plan === "agency" ? (
+        {planIncludes(plan, "agency") ? (
           <CloudCredentialsConfig />
         ) : (
           <LockedFeature

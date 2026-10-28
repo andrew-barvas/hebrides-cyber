@@ -50,6 +50,7 @@ const KEY_TABLES: TableSpec[] = [
   { table: "dmarc_reports", ownerCol: "owner", insert: "insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, 'new.test', 'google.com', 'rpt-new')" },
   { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
   { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
+  { table: "uptime_monitors", ownerCol: "owner", insert: "insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, 'https://new.test', 'uptimerobot', '999')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -59,11 +60,18 @@ const SERVICE_WRITE_ONLY = [
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
-  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment",
+  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
-const SERVICE_ONLY = ["audit_logs", "contact_enquiries"];
+const SERVICE_ONLY = ["audit_logs", "contact_enquiries", "uptime_integrations"];
+
+// What a client insert attempt looks like for each service-only table, and the parameter it takes.
+const SERVICE_ONLY_INSERTS: Record<string, { sql: string; param: string }> = {
+  audit_logs: { sql: "insert into audit_logs (actor, action) values ($1, 'x.y')", param: A },
+  contact_enquiries: { sql: "insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', $1::text)", param: "m" },
+  uptime_integrations: { sql: "insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'k')", param: A },
+};
 
 describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
   let db: TestDb;
@@ -106,6 +114,8 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into dmarc_reports (owner, domain, org_name, report_id) values ($1, $2, 'google.com', $3)", [o, h, `rpt-${h}`]);
       await q("insert into dmarc_ingest_tokens (owner, token) values ($1, $2)", [o, `tok-${h}-0123456789abcdef`]);
       await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
+      await q("insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, $2, 'uptimerobot', $3)", [o, `https://${h}`, `ext-${h}`]);
+      await q("insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'enc:k')", [o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
@@ -186,12 +196,10 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     it("returns nothing to owners or anon, and rejects client inserts", async () => {
       expect(await count(asA, `select 1 from ${table}`)).toBe(0);
       expect(await count(anon, `select 1 from ${table}`)).toBe(0);
-      const ins = table === "audit_logs"
-        ? "insert into audit_logs (actor, action) values ($1, 'x.y')"
-        : "insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', $1::text)";
-      const r = await asActor(db, asA, (c) => attempt(c, ins, [table === "audit_logs" ? A : "m"]));
+      const { sql: ins, param } = SERVICE_ONLY_INSERTS[table];
+      const r = await asActor(db, asA, (c) => attempt(c, ins, [param]));
       expect(r.ok).toBe(false);
-      const anonR = await asActor(db, anon, (c) => attempt(c, ins, [table === "audit_logs" ? A : "m"]));
+      const anonR = await asActor(db, anon, (c) => attempt(c, ins, [param]));
       expect(anonR.ok).toBe(false);
       expect(await count(service, `select 1 from ${table}`)).toBeGreaterThan(0);
     });

@@ -14,6 +14,7 @@ import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanRe
 import { dispatchScanCompletedWebhooks } from "./webhooks";
 import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
+import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
@@ -583,22 +584,24 @@ async function runExtendedTools(
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
-  // WAF detection findings
+  // WAF detection findings. Only "completed" carries evidence either way:
+  // runWhatWaf() returns "error" for output it can't read, and lifecycle
+  // treats that as not-run, so last scan's whatwaf.* findings stay as they were.
   if (extended.whatwaf.status === "completed") {
-    const waf = extended.whatwaf as { status: "completed"; waf: string | null; vendor: string | null; confidence: number };
+    const waf = extended.whatwaf;
     if (waf.waf) {
       findings.push({
         checkId: "whatwaf.waf-detected",
         severity: "info",
         title: `[WhatWaf] WAF detected: ${waf.waf}`,
-        detail: `A web application firewall (${waf.waf}${waf.vendor ? `, ${waf.vendor}` : ""}) is protecting this application. Confidence: ${waf.confidence}%.`,
+        detail: `A web application firewall (${waf.waf}${waf.vendor ? `, ${waf.vendor}` : ""}) is protecting this application. ${waf.evidence}`,
       });
     } else {
       findings.push({
         checkId: "whatwaf.no-waf",
         severity: "medium",
         title: "[WhatWaf] No Web Application Firewall detected",
-        detail: "No WAF was detected protecting this application. A WAF provides defence-in-depth against common web attacks.",
+        detail: `No WAF was detected protecting this application. ${waf.evidence} A WAF provides defence-in-depth against common web attacks.`,
         remediation: WAF_NOT_DETECTED,
       });
     }
@@ -1299,7 +1302,7 @@ async function sendChangeAlertIfDue(
   const isAdmin = Boolean(user?.is_admin);
   if (!isAdmin) {
     if (sub.status !== "active") return;
-    if (sub.plan !== "pro" && sub.plan !== "agency") return;
+    if (!planIncludes(sub.plan, "pro")) return;
   }
   if (!sub.slack_webhook_url && !sub.ms_teams_webhook_url) return;
 

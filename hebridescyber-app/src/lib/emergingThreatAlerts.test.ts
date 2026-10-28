@@ -371,6 +371,9 @@ describe("channelsFor", () => {
   });
   it("gates chat channels to active Pro/Agency, admins exempt, and needs a webhook", () => {
     expect(channelsFor(owner({}))).toEqual({ slack: true, teams: true });
+    expect(channelsFor(owner({ plan: "agency" }))).toEqual({ slack: true, teams: true });
+    expect(channelsFor(owner({ plan: "tier_a" }))).toEqual({ slack: true, teams: true });
+    expect(channelsFor(owner({ plan: "tier_a", status: "past_due" }))).toEqual({ slack: false, teams: false });
     expect(channelsFor(owner({ plan: "basic" }))).toEqual({ slack: false, teams: false });
     expect(channelsFor(owner({ plan: null, status: null, isAdmin: true }))).toEqual({ slack: true, teams: true });
     expect(channelsFor(owner({ teamsWebhookUrl: null }))).toEqual({ slack: true, teams: false });
