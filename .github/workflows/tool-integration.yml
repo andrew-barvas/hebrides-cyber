@@ -57,12 +57,15 @@ jobs:
       - name: Install whatwaf (pinned to v1.9; not on PyPI)
         # WhatWaf has no PyPI package, so install from the pinned v1.9 release
         # tag (its setup.py installs the `whatwaf` script the wrapper calls).
-        # Same install as scheduled-scans.yml, so the integration test exercises
-        # exactly what production installs. No `|| true`: a failed install must
-        # fail the job rather than hide a tool that never installed (rule 15),
-        # and `command -v` proves the console script is on PATH.
+        # Its setup.py imports lib.settings at metadata-generation time, which
+        # imports bs4, so the runtime deps (beautifulsoup4, requests) must be
+        # present BEFORE `pip install .` or egg_info fails with
+        # ModuleNotFoundError. No `|| true`: a failed install must fail the job
+        # rather than hide a tool that never installed (rule 15), and
+        # `command -v` proves the console script is on PATH.
         run: |
           sudo git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /opt/whatwaf
+          sudo pip3 install --break-system-packages -r /opt/whatwaf/requirements.txt
           sudo pip3 install --break-system-packages /opt/whatwaf
           command -v whatwaf
 
