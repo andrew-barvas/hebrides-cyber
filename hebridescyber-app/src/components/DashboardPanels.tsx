@@ -7,7 +7,7 @@ type WafStatus = {
   status: "completed";
   waf: string | null;
   vendor: string | null;
-  confidence: number;
+  evidence?: string;
 } | { status: "not_configured" | "error" };
 
 type CmsMapStatus = {
@@ -66,8 +66,8 @@ export function WafIndicator({ results }: { results: ScanResults }) {
           {detected && w.vendor && (
             <p className="text-xs text-cybertext/50">{w.vendor}</p>
           )}
-          {detected && (
-            <p className="text-xs text-cybermuted">Confidence: {Math.round(w.confidence)}%</p>
+          {w.evidence && (
+            <p className="text-xs text-cybermuted">{w.evidence}</p>
           )}
         </div>
       </div>
