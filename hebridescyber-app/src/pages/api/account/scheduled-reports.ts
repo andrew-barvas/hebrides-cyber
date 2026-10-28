@@ -4,6 +4,8 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 
+// "pdf" (the default here and in migration 032) is attached as a real PDF by
+// send-scheduled-reports.ts; CSV and JSON go inline in the email body.
 const createSchema = z.object({
   targetUrl: z.string().url().nullable().default(null),
   frequency: z.enum(["daily", "weekly", "monthly"]),
