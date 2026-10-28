@@ -5,6 +5,9 @@ are **secrets and dashboard settings, not code**, so they can't be done from a
 pull request. Ordered by urgency. Each item says *why*, *where*, and *how to
 verify it worked*.
 
+**What's still outstanding, and when each item was raised and done, is tracked in
+[`OWNER-TODO.md`](OWNER-TODO.md).** This file is the how-to that list links to.
+
 Status legend: 🔴 security-urgent · 🟠 blocks a core feature · 🟡 important · 🟢 nice-to-have
 
 ---
@@ -72,53 +75,6 @@ now a failed scan is only visible as `scans.status = 'failed'` (plus the new
    - `SENTRY_DSN`: used by the scan worker (`workerSentry.ts`).
 4. Push to `master` (or re-run Deploy) so the browser bundle is rebuilt with the DSN.
 
-**Verify.** Trigger a deploy (any push to `master`, or Actions → **Deploy → Run
-workflow**). The "Apply migrations + verify schema" job should connect and report
-`N applied, 0 pending`. If it fails to connect, the string is wrong.
-
-**Also rotate anything else ever pasted into a chat** (service-role key, Stripe
-keys) on the same principle — see items below for where each lives.
-
----
-
-## 🟠 2. Stripe price IDs — unblocks paid signup (E-07)
-
-**Why.** Paid signup is impossible and `GET /api/health` returns 503
-("degraded") until the three price IDs and the webhook secret are set. This is
-the single biggest commercial blocker.
-
-**Steps.**
-1. Stripe dashboard → **Products** → create a recurring Product+Price for each tier:
-   Basic £20/mo, Pro £35/mo, Agency £75/mo (and Tier A if selling it). Copy each `price_…` id.
-2. **Developers → Webhooks → Add endpoint**:
-   - URL: `https://www.hebridescyber.co.uk/api/stripe/webhook`
-   - Events: `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`
-   - Copy the **Signing secret** (`whsec_…`).
-3. Azure Portal → your Static Web App → **Settings → Environment variables** → add:
-   - `STRIPE_SECRET_KEY` = `sk_live_…`
-   - `STRIPE_PRICE_BASIC`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_AGENCY` (+ `STRIPE_PRICE_TIER_A` if used)
-   - `STRIPE_WEBHOOK_SECRET` = `whsec_…`
-   - **Save** (this restarts the app).
-
-**Verify.** `https://www.hebridescyber.co.uk/api/health` returns 200 with
-`stripe: { ok: true }`. Then do one real test checkout per tier (Stripe test
-mode first if you prefer) and confirm the `subscriptions` row updates.
-
----
-
-## 🟠 3. Sentry DSN — makes production failures visible (BETA-1 / E-03)
-
-**Why.** The error-tracking code is wired but a no-op until a DSN exists. Right
-now a failed scan is only visible as `scans.status = 'failed'` (plus the new
-`error_detail` column) — no stack trace, no alerting.
-
-**Steps.**
-1. Create a Sentry account → **Create project** → platform **Next.js**. Copy the DSN.
-2. Azure SWA → Environment variables → add **both**:
-   - `SENTRY_DSN` = the DSN (server-side)
-   - `NEXT_PUBLIC_SENTRY_DSN` = the same DSN (browser) — `NEXT_PUBLIC_*` is baked at build, so a redeploy is needed for the client half.
-3. Save; push to `master` (or re-run Deploy) so the client bundle picks up the public var.
-
 **Verify.** Hit `/global-error` paths or trigger a canary error; it appears in
 Sentry within ~60s with a request id.
 
@@ -129,7 +85,7 @@ Sentry within ~60s with a request id.
 ### 4a. `SITE_URL` — completes the post-deploy health check (BETA-2)
 **Why.** `deploy.yml`'s post-deploy curl of `/api/health` needs the base URL.
 **Steps.** GitHub → Actions secrets → add `SITE_URL` = `https://www.hebridescyber.co.uk`.
-**Verify.** Next deploy's final "health check" step runs and passes (not skipped).
+**Verify.** Next deploy's final "health check" step logs `Health check returned HTTP 200` (not skipped, no warning). Done: the secret is set (bare domain), and the step follows the redirect to `www`, so either form works.
 
 ### 4b. Branch protection — a failing check blocks merge (BETA-5)
 **Why.** The `check` job (lint/tsc/test/e2e) runs on PRs, but nothing *enforces*
@@ -190,4 +146,16 @@ Sentry reports errors the code catches; it cannot tell you the site is completel
 2. **Primary pager, 5 minutes to set up:** create a free account at uptimerobot.com (check its pricing page for the current free limits), choose **Add New Monitor → HTTP(s)**, URL `https://www.hebridescyber.co.uk/api/health`, interval 5 minutes (the shortest on the free plan, as far as I know), and add your email as the alert contact. Optionally add a keyword monitor for `"status":"ok"`. `/api/health` answers HEAD as well as GET, because HEAD-only monitors otherwise read the 405 as down. Better Stack has a comparable free plan if you prefer it.
 
 `/api/health` makes a real Stripe call and a Supabase query per probe and is limited to 120 requests per IP per hour, so keep monitors at 5 minutes or slower.
+
+## Verify uptime monitoring with a real UptimeRobot key (before announcing it)
+
+The client was written from UptimeRobot's published spec and has not yet been run against a real account. With a free UptimeRobot account and a Pro test subscription:
+
+1. In UptimeRobot, open **Integrations → API** and create an API key.
+2. In the dashboard, open **Integrations → Uptime monitoring**, paste the key and click **Connect**. If it says the key was rejected, UptimeRobot v3 wants a different token type: report the exact message and we will adjust `uptimeRobot.ts`.
+3. Click **Create monitors** for a verified site and confirm the monitor appears in UptimeRobot.
+4. Pause that monitor in UptimeRobot, wait for the next sync (up to 15 minutes, or reload the card after 5), and confirm the status changes.
+5. Never paste the key anywhere except the dashboard field.
+
+The `uptime-sync.yml` workflow reuses `SUPABASE_*`, `CREDENTIALS_ENC_KEY` and `RESEND_API_KEY`; no new secrets.
 
