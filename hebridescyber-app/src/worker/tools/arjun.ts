@@ -33,8 +33,12 @@ export async function runArjun(targetUrl: string): Promise<ArjunResult> {
       [
         "-u", targetUrl,
         "-oJ", outFile,
+        // No `--stable`: arjun forces threads=1 whenever it is set, overriding
+        // this -t. Single-threaded over the full built-in wordlist, a run
+        // against even a trivial local endpoint was killed at ARJUN_TIMEOUT_MS
+        // (the tool-integration job caught it, 2026-10-28), so every real scan
+        // came back "error". Without it the same run finishes in about a second.
         "-t", "5",
-        "--stable",
       ],
       { timeout: ARJUN_TIMEOUT_MS }
     );

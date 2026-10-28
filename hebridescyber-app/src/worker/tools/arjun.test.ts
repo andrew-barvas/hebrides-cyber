@@ -66,6 +66,16 @@ describe("runArjun", () => {
     });
   });
 
+  it("keeps its 5 threads: no --stable, which makes arjun single-threaded and time out", async () => {
+    execFileMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    readFileMock.mockResolvedValueOnce("{}");
+
+    await runArjun("https://example.com");
+    const args = execFileMock.mock.calls[0][1] as string[];
+    expect(args).not.toContain("--stable");
+    expect(args[args.indexOf("-t") + 1]).toBe("5");
+  });
+
   it("returns empty parameters when output file is missing", async () => {
     execFileMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
     readFileMock.mockRejectedValueOnce(new Error("ENOENT"));
