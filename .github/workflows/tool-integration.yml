@@ -19,6 +19,7 @@ on:
       - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
       - "hebridescyber-app/src/worker/tools/contentDiscovery*.ts"
       - "hebridescyber-app/src/worker/tools/badsecrets*.ts"
+      - "hebridescyber-app/src/worker/tools/whatwaf*.ts"
       - "hebridescyber-app/src/worker/tools/katana*.ts"
       - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
@@ -52,6 +53,18 @@ jobs:
 
       - name: Install sqlmap
         run: pip3 install --break-system-packages sqlmap
+
+      - name: Install whatwaf (pinned to v1.9; not on PyPI)
+        # WhatWaf has no PyPI package, so install from the pinned v1.9 release
+        # tag (its setup.py installs the `whatwaf` script the wrapper calls).
+        # Same install as scheduled-scans.yml, so the integration test exercises
+        # exactly what production installs. No `|| true`: a failed install must
+        # fail the job rather than hide a tool that never installed (rule 15),
+        # and `command -v` proves the console script is on PATH.
+        run: |
+          sudo git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /opt/whatwaf
+          sudo pip3 install --break-system-packages /opt/whatwaf
+          command -v whatwaf
 
       - name: Install nmap (for networkExposure service detection)
         run: sudo apt-get update && sudo apt-get install -y nmap
@@ -197,6 +210,7 @@ jobs:
           src/worker/tools/httpProbe.integration.test.ts
           src/worker/tools/contentDiscovery.integration.test.ts
           src/worker/tools/badsecrets.integration.test.ts
+          src/worker/tools/whatwaf.integration.test.ts
           src/worker/tools/katana.integration.test.ts
           src/worker/tools/networkExposure.integration.test.ts
           src/worker/tools/nmap.integration.test.ts
