@@ -55,18 +55,31 @@ jobs:
         run: pip3 install --break-system-packages sqlmap
 
       - name: Install whatwaf (pinned to v1.9; not on PyPI)
-        # WhatWaf has no PyPI package, so install from the pinned v1.9 release
-        # tag (its setup.py installs the `whatwaf` script the wrapper calls).
-        # Its setup.py imports lib.settings at metadata-generation time, which
-        # imports bs4, so the runtime deps (beautifulsoup4, requests) must be
-        # present BEFORE `pip install .` or egg_info fails with
-        # ModuleNotFoundError. No `|| true`: a failed install must fail the job
-        # rather than hide a tool that never installed (rule 15), and
-        # `command -v` proves the console script is on PATH.
+        # WhatWaf has no PyPI package; install from the pinned v1.9 tag, whose
+        # setup.py installs the `whatwaf` script the wrapper calls. Three traps,
+        # all only reachable by actually running the install — which
+        # scheduled-scans.yml (schedule-only) never did in CI, so its sudo
+        # `pip install /opt/whatwaf` has never worked and whatwaf has been
+        # silently not_configured in production:
+        #   1. setup.py imports lib.settings -> bs4 at metadata-generation time,
+        #      so the runtime deps must be installed FIRST or egg_info fails
+        #      with ModuleNotFoundError.
+        #   2. setup.py calls raw_input for a username only when run as root
+        #      (os.getuid() == 0); under pip's closed stdin that is an EOFError
+        #      that aborts the build. So install UNPRIVILEGED (no sudo):
+        #      getpass.getuser() is used instead and there is no prompt.
+        #   3. setup.py's install_helper.sh populates ~/.whatwaf (plugins,
+        #      tampers) in the INVOKING user's home; a sudo install would put it
+        #      in /root/.whatwaf, but whatwaf runs as the runner at scan time
+        #      and reads /home/runner/.whatwaf. Unprivileged install puts it in
+        #      the right home.
+        # ~/.local/bin is already on the runner PATH (the sqlmap step relies on
+        # that too). No `|| true`: a failed install must fail the job (rule 15),
+        # and `command -v` proves the script is on PATH.
         run: |
-          sudo git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /opt/whatwaf
-          sudo pip3 install --break-system-packages -r /opt/whatwaf/requirements.txt
-          sudo pip3 install --break-system-packages /opt/whatwaf
+          git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf
+          pip3 install --break-system-packages -r /tmp/whatwaf/requirements.txt
+          pip3 install --break-system-packages /tmp/whatwaf
           command -v whatwaf
 
       - name: Install nmap (for networkExposure service detection)
