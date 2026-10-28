@@ -45,13 +45,16 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <label htmlFor="email" className="sr-only">Email address</label>
             <input
+              id="email"
+              autoComplete="email"
               type="email"
               required
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
             />
             {error && (
               <p role="alert" className="text-sm text-red-400">{error}</p>
@@ -66,7 +69,7 @@ export default function ForgotPasswordPage() {
           </form>
         )}
 
-        <p className="mt-10 text-center text-xs text-cybertext/40">
+        <p className="mt-10 text-center text-xs text-cybermuted">
           <Link href="/login" className="text-neon hover:underline">Back to sign in</Link>
         </p>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import AssetInventory from "@/components/AssetInventory";
+import DmarcReports from "@/components/DmarcReports";
 import DomainVerification from "@/components/DomainVerification";
 import LockedFeature from "@/components/LockedFeature";
 import MonitoredTargets from "@/components/MonitoredTargets";
@@ -9,7 +10,7 @@ import { CardDescription, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 
 export default function AssetsPage() {
-  const { plan } = useAppSession();
+  const { plan, accessToken } = useAppSession();
 
   return (
     <div className="space-y-6">
@@ -46,6 +47,13 @@ export default function AssetsPage() {
           </CardDescription>
         </div>
         <AssetInventory />
+      </section>
+
+      {/* DMARC aggregate reports (E-66) — the half of NCSC Mail Check a DNS
+          lookup can't show. Panel self-hides before migration 060 or for a
+          free account with no ingest URL set. */}
+      <section aria-label="DMARC reports">
+        <DmarcReports token={accessToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
       </section>
     </div>
   );

@@ -142,6 +142,8 @@ describe("MonitoredTargets", () => {
   });
 });
 
+const recordLoginCalls = () => vi.mocked(fetch).mock.calls.filter(([url]) => url === "/api/account/record-login");
+
 describe("AuthenticatedScanConfig — recorded login", () => {
   beforeEach(() => {
     vi.mocked(getSession).mockResolvedValue({ access_token: "test-token" } as never);
@@ -165,9 +167,9 @@ describe("AuthenticatedScanConfig — recorded login", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Log in & save" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    const [url, init] = vi.mocked(fetch).mock.calls[0];
-    expect(url).toBe("/api/account/record-login");
+    // The list also asks /api/uptime/status for its badges, so find this form's call by URL.
+    await waitFor(() => expect(recordLoginCalls()).toHaveLength(1));
+    const [, init] = recordLoginCalls()[0];
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       monitoredTargetId: "t1",
       loginUrl: "https://example.com/login",
@@ -197,6 +199,60 @@ describe("AuthenticatedScanConfig — recorded login", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log in & save" }));
 
     expect(await screen.findByText("Login did not appear to succeed.")).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(recordLoginCalls()).toHaveLength(1);
+  });
+});
+
+describe("uptime badges", () => {
+  const status = (body: unknown, ok = true) => ({ ok, json: async () => body }) as Response;
+
+  beforeEach(() => {
+    vi.mocked(getSession).mockResolvedValue({ access_token: "test-token" } as never);
+    vi.stubGlobal("fetch", vi.fn());
+    state.targets = [
+      { id: "t1", target_url: "https://shop.example.co.uk/", created_at: "2026-01-01T00:00:00Z" },
+      { id: "t2", target_url: "https://gone.example.co.uk", created_at: "2026-01-01T00:00:00Z" },
+      { id: "t3", target_url: "https://unmonitored.example.co.uk", created_at: "2026-01-01T00:00:00Z" },
+    ];
+  });
+
+  it("shows each monitored site's status, and a deleted monitor as not found rather than its stale status", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      status({
+        allowed: true,
+        connected: true,
+        monitors: [
+          // Stored without the trailing slash the site was added with: still the same site.
+          { target_url: "https://shop.example.co.uk", last_status: "down" },
+          { target_url: "https://gone.example.co.uk", last_status: "up", missing: true },
+        ],
+        unmonitored: ["https://unmonitored.example.co.uk"],
+      }),
+    );
+    render(<MonitoredTargets />);
+    expect(await screen.findByText("Uptime: Down")).toBeInTheDocument();
+    expect(screen.getByText("Uptime: Not found in UptimeRobot")).toBeInTheDocument();
+    expect(screen.queryByText("Uptime: Up")).toBeNull();
+    expect(screen.getAllByText(/^Uptime:/)).toHaveLength(2);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/uptime/status", { headers: { Authorization: "Bearer test-token" } });
+  });
+
+  it.each([
+    ["UptimeRobot is not connected", () => status({ allowed: true, connected: false, monitors: [], unmonitored: [] })],
+    ["the plan does not include it", () => status({ allowed: false, connected: false, monitors: [], unmonitored: [] })],
+    ["the status route fails", () => status({ error: "boom" }, false)],
+  ])("shows no badges when %s", async (_label, reply) => {
+    vi.mocked(fetch).mockResolvedValue(reply());
+    render(<MonitoredTargets />);
+    await screen.findByText("https://shop.example.co.uk/");
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByText(/^Uptime:/)).toBeNull();
+  });
+
+  it("still lists the sites when the status request throws", async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error("offline"));
+    render(<MonitoredTargets />);
+    expect(await screen.findByText("https://gone.example.co.uk")).toBeInTheDocument();
+    expect(screen.queryByText(/^Uptime:/)).toBeNull();
   });
 });

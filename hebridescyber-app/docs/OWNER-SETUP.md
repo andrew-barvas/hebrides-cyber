@@ -1,0 +1,161 @@
+# Owner setup runbook
+
+Step-by-step for the configuration tasks only the account owner can do — these
+are **secrets and dashboard settings, not code**, so they can't be done from a
+pull request. Ordered by urgency. Each item says *why*, *where*, and *how to
+verify it worked*.
+
+**What's still outstanding, and when each item was raised and done, is tracked in
+[`OWNER-TODO.md`](OWNER-TODO.md).** This file is the how-to that list links to.
+
+Status legend: 🔴 security-urgent · 🟠 blocks a core feature · 🟡 important · 🟢 nice-to-have
+
+---
+
+## 🔴 1. Rotate the Supabase database password (do this first)
+
+**Why.** The `DATABASE_URL` connection string (which contains the Postgres
+password) was pasted into a chat on 2026-10-14 during migration setup. Treat it
+as compromised. It grants direct, RLS-bypassing SQL access to all customer data.
+
+**Steps.**
+1. Supabase dashboard → your project → **Settings → Database → Database password → Reset database password**. Copy the new password.
+2. Rebuild the connection string with the new password (same host/port/db, e.g.
+   `postgresql://postgres:<NEW_PASSWORD>@<host>:5432/postgres`). Supabase shows
+   the full string under **Settings → Database → Connection string → URI**.
+3. GitHub → repo → **Settings → Secrets and variables → Actions** → update the
+   **`DATABASE_URL`** secret with the new string.
+4. If `DATABASE_URL` is also set anywhere else (local `.env.local`, Azure), update it there too.
+
+**Verify.** Trigger a deploy (any push to `master`, or Actions → **Deploy → Run
+workflow**). The "Apply migrations + verify schema" job should connect and report
+`N applied, 0 pending`. If it fails to connect, the string is wrong.
+
+**Also rotate anything else ever pasted into a chat** (service-role key, Stripe
+keys) on the same principle — see items below for where each lives.
+
+---
+
+## 🟠 2. Stripe price IDs — unblocks paid signup (E-07)
+
+**Why.** Paid signup is impossible and `GET /api/health` returns 503
+("degraded") until the three price IDs and the webhook secret are set. This is
+the single biggest commercial blocker.
+
+**Steps.**
+1. Stripe dashboard → **Products** → create a recurring Product+Price for each tier:
+   Basic £20/mo, Pro £35/mo, Agency £75/mo (and Tier A if selling it). Copy each `price_…` id.
+2. **Developers → Webhooks → Add endpoint**:
+   - URL: `https://www.hebridescyber.co.uk/api/stripe/webhook`
+   - Events: `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`
+   - Copy the **Signing secret** (`whsec_…`).
+3. Azure Portal → your Static Web App → **Settings → Environment variables** → add:
+   - `STRIPE_SECRET_KEY` = `sk_live_…`
+   - `STRIPE_PRICE_BASIC`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_AGENCY` (+ `STRIPE_PRICE_TIER_A` if used)
+   - `STRIPE_WEBHOOK_SECRET` = `whsec_…`
+   - **Save** (this restarts the app).
+
+**Verify.** `https://www.hebridescyber.co.uk/api/health` returns 200 with
+`stripe: { ok: true }`. Then do one real test checkout per tier (Stripe test
+mode first if you prefer) and confirm the `subscriptions` row updates.
+
+---
+
+## 🟠 3. Sentry DSN — makes production failures visible (BETA-1 / E-03)
+
+**Why.** The error-tracking code is wired but a no-op until a DSN exists. Right
+now a failed scan is only visible as `scans.status = 'failed'` (plus the new
+`error_detail` column) — no stack trace, no alerting.
+
+**Steps.**
+1. Create a Sentry account → **Create project** → platform **Next.js**. Copy the DSN.
+2. Azure SWA → Environment variables → add `SENTRY_DSN` = the DSN (server side, read at runtime).
+3. GitHub → Settings → Secrets and variables → Actions → add **two repository secrets**, both set to the same DSN:
+   - `NEXT_PUBLIC_SENTRY_DSN`: `deploy.yml` passes it to the Azure build, because `NEXT_PUBLIC_*` is inlined at build time and SWA app settings are not visible to that build. Setting it only in Azure does nothing for the browser.
+   - `SENTRY_DSN`: used by the scan worker (`workerSentry.ts`).
+4. Push to `master` (or re-run Deploy) so the browser bundle is rebuilt with the DSN.
+
+**Verify.** Hit `/global-error` paths or trigger a canary error; it appears in
+Sentry within ~60s with a request id.
+
+---
+
+## 🟡 4. SITE_URL + branch protection
+
+### 4a. `SITE_URL` — completes the post-deploy health check (BETA-2)
+**Why.** `deploy.yml`'s post-deploy curl of `/api/health` needs the base URL.
+**Steps.** GitHub → Actions secrets → add `SITE_URL` = `https://www.hebridescyber.co.uk`.
+**Verify.** Next deploy's final "health check" step logs `Health check returned HTTP 200` (not skipped, no warning). Done: the secret is set (bare domain), and the step follows the redirect to `www`, so either form works.
+
+### 4b. Branch protection — a failing check blocks merge (BETA-5)
+**Why.** The `check` job (lint/tsc/test/e2e) runs on PRs, but nothing *enforces*
+it before merge yet. (Requires GitHub Pro for a private repo.)
+**Steps.** GitHub → **Settings → Branches → Add branch ruleset** (or classic
+protection) for `master`:
+- Require a pull request before merging.
+- **Require status checks to pass** → select the **`Lint, typecheck, test`** check.
+- Optionally: require branches up to date, require linear history.
+**Verify.** Open a deliberately-failing PR; the merge button is blocked until the check passes.
+
+---
+
+## 🟢 5. Lower-priority owner actions (from NEXT-STEPS §"Owner actions pending")
+
+- **Encrypt stored secrets** — ✅ *already done this session* (`CREDENTIALS_ENC_KEY`
+  set in Azure + GitHub; the "Encrypt stored secrets" dry run found 0 rows, so
+  nothing to migrate yet). Nothing further needed unless you rotate the key.
+- **Restore drill (E-13 / LIVE-4):** restore a Supabase backup into a scratch
+  project and record it in `BACKUP-RESTORE.md`; consider Supabase Pro for PITR.
+- **Publish the GitHub Action** from a public repo (this repo is private, so
+  customers can't `uses:` it); until then the `/docs/ci` templates are the route.
+- **Domains:** register `hebridescyber.com` defensively; add a
+  `security@hebridescyber.co.uk` alias for `security.txt` / `SECURITY.md`.
+- **ToS solicitor review** (BETA-B1) and **PI insurance** before selling the
+  manual pen-test tiers (BETA-B3).
+- **NCSC replacement campaign:** run `sql/seed/002_ncsc_web_check_retirement_post.sql`
+  then send the drafts in `marketing/16-ncsc-replacement-campaign.md`.
+- **CAA DNS record** at the registrar (`0 issue "digicert.com"`), then replay the own-site scan.
+- Optional service keys (all degrade gracefully if unset): `UPSTASH_REDIS_REST_URL`/`_TOKEN`
+  (**security-relevant** — rate limiting fails open without it), `RESEND_API_KEY`
+  (all outbound email), `AZURE_STORAGE_CONNECTION_STRING` (report/image hosting),
+  `AZURE_OPENAI_*` (AI remediation), `GOOGLE_SAFE_BROWSING_API_KEY` / `HIBP_API_KEY`
+  / `WPSCAN_API_TOKEN` (extra scan coverage), `GITHUB_PAT` or GitHub App (customer-repo scanning).
+
+All env-var names are documented in `.env.example`.
+
+## Optional: AI triage and out-of-band server
+
+Both off or default until you choose. In GitHub **Settings → Secrets and variables → Actions**:
+
+- Variable `AI_TRIAGE` = `1` to let the scan workers triage unproven findings with Azure OpenAI
+  (needs the three `AZURE_OPENAI_*` secrets). Read `AI-TRIAGE-DESIGN.md` (data handling) first and
+  evaluate the output by hand on a few of your own sites.
+- Variable `INTERACTSH_SERVER` (a bare host) and secret `INTERACTSH_TOKEN` to point nuclei's
+  SSRF/OAST templates at your own interactsh server instead of ProjectDiscovery's public pool;
+  variable `DISABLE_OAST` = `1` to send nothing out-of-band at all (loses blind-SSRF coverage).
+
+## Sentry for the scan worker
+
+The same `SENTRY_DSN` now also covers the GitHub Actions scan worker. Add it as a repository **secret** named `SENTRY_DSN` (in addition to the Azure setting) or worker failures stay invisible. Filter by tag `correlation_id` (the scan id) or `scan_id` to follow one scan from the API request to the worker.
+
+## Uptime monitoring (free)
+
+Sentry reports errors the code catches; it cannot tell you the site is completely down. Two layers, both free:
+
+1. **Built in, nothing to sign up for:** `.github/workflows/uptime.yml` probes `/api/health` every 10 minutes and opens a GitHub issue labelled `uptime` (GitHub emails repository watchers) when the site is down or degraded, and closes it on recovery. Make sure you are **watching** the repo (Watch → All Activity, or Custom → Issues) so the email reaches you. Actions cron is best-effort, so treat it as a backstop.
+2. **Primary pager, 5 minutes to set up:** create a free account at uptimerobot.com (check its pricing page for the current free limits), choose **Add New Monitor → HTTP(s)**, URL `https://www.hebridescyber.co.uk/api/health`, interval 5 minutes (the shortest on the free plan, as far as I know), and add your email as the alert contact. Optionally add a keyword monitor for `"status":"ok"`. `/api/health` answers HEAD as well as GET, because HEAD-only monitors otherwise read the 405 as down. Better Stack has a comparable free plan if you prefer it.
+
+`/api/health` makes a real Stripe call and a Supabase query per probe and is limited to 120 requests per IP per hour, so keep monitors at 5 minutes or slower.
+
+## Verify uptime monitoring with a real UptimeRobot key (before announcing it)
+
+The client was written from UptimeRobot's published spec and has not yet been run against a real account. With a free UptimeRobot account and a Pro test subscription:
+
+1. In UptimeRobot, open **Integrations → API** and create an API key.
+2. In the dashboard, open **Integrations → Uptime monitoring**, paste the key and click **Connect**. If it says the key was rejected, UptimeRobot v3 wants a different token type: report the exact message and we will adjust `uptimeRobot.ts`.
+3. Click **Create monitors** for a verified site and confirm the monitor appears in UptimeRobot.
+4. Pause that monitor in UptimeRobot, wait for the next sync (up to 15 minutes, or reload the card after 5), and confirm the status changes.
+5. Never paste the key anywhere except the dashboard field.
+
+The `uptime-sync.yml` workflow reuses `SUPABASE_*`, `CREDENTIALS_ENC_KEY` and `RESEND_API_KEY`; no new secrets.
+

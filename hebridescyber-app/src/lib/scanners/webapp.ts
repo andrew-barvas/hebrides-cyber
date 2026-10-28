@@ -3,6 +3,7 @@
 // versions, Subresource Integrity on cross-origin scripts/stylesheets.
 // All checks are passive/safe read-only probes — no exploit code.
 import { npmPackageNameFor, lookupNpmCveIds, extractCveIdsFromText } from "./osv";
+import { compareRetireVersions, displayName, loadRetireRepository, matchRetire, type RetireRepository } from "./retireJs";
 import { type Baseline, normaliseBody, fetchBaseline, matchesBaselineHeaders, isCatchAllBody } from "./httpProbe";
 
 export type WebAppResult =
@@ -50,6 +51,10 @@ export type WordPressData = {
   wpCronAccessible: boolean;
   enumeratedUsers: string[];
   plugins: DetectedPlugin[];
+  /** Plugin slugs the page loads assets from whose version couldn't be read. Optional: older stored scans lack it. */
+  pluginsWithoutVersion?: string[];
+  /** Themes the page loads, versioned from their style.css header. Optional: older stored scans lack it. */
+  themes?: DetectedPlugin[];
 };
 
 // A plugin name + version pair read from the plugin's own public readme.txt.
@@ -129,6 +134,8 @@ export type JsLibraryFinding = {
   // See src/lib/scanners/osv.ts for why this covers JS libraries specifically
   // and not every risky-software finding in the scanner suite.
   cveIds?: string[];
+  /** Highest published severity among the matched vulnerabilities (retire.js data). Absent from the legacy path. */
+  severity?: "low" | "medium" | "high" | "critical";
 };
 
 // ── Robots.txt ────────────────────────────────────────────────────────────────
@@ -285,7 +292,15 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     } catch { /* ignore */ }
   }
 
-  const plugins = await detectPlugins(origin, baseline);
+  // Plugins the page itself loads assets from, not just the fixed shortlist.
+  const homepageHtml = await fetch(`${origin}/`, { signal: AbortSignal.timeout(8_000) })
+    .then((r) => (r.ok ? r.text() : ""))
+    .catch(() => "");
+  const discovered = extractWpPluginSlugs(homepageHtml);
+  const [{ plugins, unversioned }, themes] = await Promise.all([
+    detectPlugins(origin, baseline, discovered),
+    detectThemes(origin, baseline, extractWpThemeSlugs(homepageHtml)),
+  ]);
 
   return {
     xmlRpcEnabled: xmlRpc,
@@ -295,6 +310,8 @@ async function checkWordPress(origin: string): Promise<WordPressData> {
     wpCronAccessible: wpCron,
     enumeratedUsers,
     plugins,
+    pluginsWithoutVersion: unversioned,
+    themes,
   };
 }
 
@@ -369,16 +386,91 @@ async function probePlugin(origin: string, candidate: PluginCandidate, baseline:
   }
 }
 
-async function detectPlugins(origin: string, baseline: Baseline): Promise<DetectedPlugin[]> {
+/** Most plugin slugs read from the page, so a hostile page can't make us probe hundreds. */
+const MAX_DISCOVERED_PLUGINS = 40;
+const WP_PLUGIN_PATH_RE = /\/wp-content\/plugins\/([a-z0-9][a-z0-9_-]{0,63})\//gi;
+
+/**
+ * Plugin slugs the page loads assets from (`/wp-content/plugins/<slug>/…`),
+ * which is how every plugin that enqueues a script or stylesheet shows up.
+ * The fixed shortlist below only finds 20 well-known plugins; this finds
+ * whatever the site really runs. Slugs only — a slug is never a finding.
+ */
+export function extractWpPluginSlugs(html: string): string[] {
+  const slugs = new Set<string>();
+  for (const m of html.matchAll(WP_PLUGIN_PATH_RE)) {
+    slugs.add(m[1].toLowerCase());
+    if (slugs.size >= MAX_DISCOVERED_PLUGINS) break;
+  }
+  return [...slugs];
+}
+
+/** A site runs one theme, plus at most a parent theme for a child theme. */
+const MAX_DISCOVERED_THEMES = 3;
+const WP_THEME_PATH_RE = /\/wp-content\/themes\/([a-z0-9][a-z0-9_-]{0,63})\//gi;
+
+/** Theme slugs the page loads assets from (`/wp-content/themes/<slug>/…`). */
+export function extractWpThemeSlugs(html: string): string[] {
+  const slugs = new Set<string>();
+  for (const m of html.matchAll(WP_THEME_PATH_RE)) {
+    slugs.add(m[1].toLowerCase());
+    if (slugs.size >= MAX_DISCOVERED_THEMES) break;
+  }
+  return [...slugs];
+}
+
+/**
+ * A theme's own style.css header is WordPress's source of truth for its name
+ * and version. It counts only if it declares `Theme Name:` — a catch-all page
+ * or an unrelated 200 never does, the same decisive check as `Stable tag:`.
+ */
+export function parseThemeHeader(css: string): { name: string; version: string } | null {
+  const head = css.slice(0, 8_192);
+  const name = head.match(/^[\s*/]*Theme Name:\s*(.+?)\s*$/im)?.[1];
+  const version = head.match(/^[\s*/]*Version:\s*([\w.-]+)\s*$/im)?.[1];
+  return name && version ? { name, version } : null;
+}
+
+async function detectThemes(origin: string, baseline: Baseline, slugs: string[]): Promise<DetectedPlugin[]> {
+  const results = await Promise.allSettled(
+    slugs.map(async (slug): Promise<DetectedPlugin | null> => {
+      const path = `/wp-content/themes/${slug}/style.css`;
+      const res = await fetch(origin + path, { redirect: "manual", signal: AbortSignal.timeout(6_000) });
+      if (res.status !== 200 || matchesBaselineHeaders(baseline, res)) return null;
+      const text = await res.text().catch(() => "");
+      if (isCatchAllBody(baseline, normaliseBody(text, path))) return null;
+      const header = parseThemeHeader(text);
+      return header ? { slug, name: header.name, version: header.version } : null;
+    })
+  );
+  return results.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
+}
+
+async function detectPlugins(
+  origin: string,
+  baseline: Baseline,
+  discoveredSlugs: string[] = []
+): Promise<{ plugins: DetectedPlugin[]; unversioned: string[] }> {
+  const known = new Set(PLUGIN_CANDIDATES.map((c) => c.slug));
+  const candidates: PluginCandidate[] = [
+    ...PLUGIN_CANDIDATES,
+    ...discoveredSlugs.filter((s) => !known.has(s)).map((slug) => ({ slug, name: slug })),
+  ];
+
   const found: DetectedPlugin[] = [];
-  for (let i = 0; i < PLUGIN_CANDIDATES.length; i += PLUGIN_PROBE_CONCURRENCY) {
-    const batch = PLUGIN_CANDIDATES.slice(i, i + PLUGIN_PROBE_CONCURRENCY);
+  for (let i = 0; i < candidates.length; i += PLUGIN_PROBE_CONCURRENCY) {
+    const batch = candidates.slice(i, i + PLUGIN_PROBE_CONCURRENCY);
     const results = await Promise.allSettled(batch.map((c) => probePlugin(origin, c, baseline)));
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) found.push(r.value);
     }
   }
-  return found;
+  // Seen loading assets but the version couldn't be read (readme blocked or
+  // absent). Reported separately and never matched against a CVE database:
+  // without a version, a match would be a guess.
+  const versioned = new Set(found.map((p) => p.slug));
+  const unversioned = discoveredSlugs.filter((s) => !versioned.has(s));
+  return { plugins: found, unversioned };
 }
 
 // ── Joomla deep scan ───────────────────────────────────────────────────────────
@@ -614,11 +706,84 @@ export function isVersionBelow(version: string, fixedIn: string): boolean {
   return false;
 }
 
+/** Script bodies read for retire.js's content/hash extractors: few and bounded. */
+const MAX_SCRIPT_BODIES = 10;
+const MAX_SCRIPT_BYTES = 1_000_000;
+const SEVERITY_RANK = { low: 1, medium: 2, high: 3, critical: 4 } as const;
+
+async function fetchScriptBodies(urls: string[]): Promise<string[]> {
+  const bodies = await Promise.allSettled(
+    urls.slice(0, MAX_SCRIPT_BODIES).map(async (url) => {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6_000) });
+      if (!res.ok) return "";
+      const text = await res.text();
+      return text.length > MAX_SCRIPT_BYTES ? text.slice(0, MAX_SCRIPT_BYTES) : text;
+    })
+  );
+  return bodies.flatMap((b) => (b.status === "fulfilled" && b.value ? [b.value] : []));
+}
+
+/**
+ * retire.js path: every library its extractors recognise in the page's
+ * script URLs and bodies, with published vulnerable ranges. Exported for
+ * tests with an injected repository.
+ */
+export async function jsLibrariesFromRetire(repo: RetireRepository, html: string, pageUrl: string): Promise<JsLibraryFinding[]> {
+  const urls: string[] = [];
+  for (const { src } of extractScriptTags(html)) {
+    try {
+      const u = new URL(src, pageUrl);
+      if (u.protocol === "http:" || u.protocol === "https:") urls.push(u.href);
+    } catch {
+      /* unparseable src: skip */
+    }
+  }
+  const bodies = await fetchScriptBodies(urls);
+  const matches = matchRetire(repo, urls, bodies);
+
+  return Promise.all(
+    matches.map(async (m) => {
+      const name = displayName(m.component);
+      const vulnerable = m.vulnerabilities.length > 0;
+      let cveIds = [...new Set(m.vulnerabilities.flatMap((v) => v.cveIds))];
+      // retire.js lists most CVEs itself; OSV fills gaps for npm-mapped libraries.
+      if (vulnerable && cveIds.length === 0) {
+        const npmName = npmPackageNameFor(name);
+        if (npmName) cveIds = await lookupNpmCveIds(npmName, m.version);
+      }
+      const top = m.vulnerabilities.reduce<JsLibraryFinding["severity"]>(
+        (acc, v) => (!acc || SEVERITY_RANK[v.severity] > SEVERITY_RANK[acc] ? v.severity : acc),
+        undefined
+      );
+      // The highest "below" bound is the first version clear of every match.
+      const fixedIn = m.vulnerabilities
+        .map((v) => v.below)
+        .filter((b): b is string => Boolean(b))
+        .reduce<string | undefined>((max, b) => (!max || (compareRetireVersions(b, max) ?? 0) > 0 ? b : max), undefined);
+      return {
+        name,
+        version: m.version,
+        isVulnerable: vulnerable,
+        reason: vulnerable
+          ? `${name} ${m.version} has ${m.vulnerabilities.length} published vulnerabilit${m.vulnerabilities.length === 1 ? "y" : "ies"}: ${[...new Set(m.vulnerabilities.map((v) => v.summary))].slice(0, 3).join("; ")}${fixedIn ? `. Fixed in ${fixedIn} or later.` : "."}`
+          : `${name} ${m.version}: no published vulnerabilities for this version`,
+        ...(vulnerable ? { cveIds, severity: top } : {}),
+      };
+    })
+  );
+}
+
 async function checkJsLibraries(targetUrl: string): Promise<JsLibraryFinding[]> {
   try {
     const res = await fetch(targetUrl, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const html = await res.text();
+
+    // retire.js data when it loads (76 libraries, published ranges); the
+    // hand-kept pattern list below otherwise, so a data outage narrows
+    // detection rather than dropping it.
+    const repo = await loadRetireRepository();
+    if (repo) return await jsLibrariesFromRetire(repo, html, targetUrl);
 
     const findings: JsLibraryFinding[] = [];
     const seen = new Set<string>();

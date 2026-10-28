@@ -1,0 +1,9 @@
+# Captured real tool/HTTP output used as test fixtures. The parsers were
+# written against the tools' own line endings (LF), and some are
+# line-ending-sensitive (e.g. sqlmap's per-host log reader), so these files
+# must stay LF on every checkout regardless of core.autocrlf — otherwise they
+# are converted to CRLF on a Windows checkout and the fixture tests fail
+# locally while passing on CI (Linux). This is scoped to fixtures only; the
+# rest of the repo keeps its usual line-ending behaviour.
+src/worker/tools/fixtures/**   eol=lf
+src/lib/scanners/fixtures/**   eol=lf

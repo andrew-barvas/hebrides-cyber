@@ -18,7 +18,9 @@ import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
+import { runDalfox } from "../worker/tools/dalfox";
 import { runNmap } from "../worker/tools/nmap";
+import { runNetworkExposure } from "../worker/tools/networkExposure";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
@@ -42,10 +44,12 @@ import { runKiterunner } from "../worker/tools/kiterunner";
 import { runArjun } from "../worker/tools/arjun";
 import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { runBadsecrets } from "../worker/tools/badsecrets";
+import { runKatana } from "../worker/tools/katana";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
-import { resolveToolConfig, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
+import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { parseDisabledTools, applyKillSwitch, type KillSwitchRow } from "./toolKillSwitch";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
@@ -59,6 +63,7 @@ import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { triageIfEnabled } from "./scanners/aiTriage";
 import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
 import { sendSlaAlerts } from "./slaAlerts";
@@ -153,7 +158,9 @@ async function runExtendedTools(
   detectedTechnologies: string[],
   toolConfig: Record<ExtendedToolName, boolean>,
   supabaseAdmin: SupabaseClient,
-  ownerId: string
+  ownerId: string,
+  /** Pages the base crawl already visited; katana checks only the others. */
+  crawledUrls: string[] = []
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -171,7 +178,9 @@ async function runExtendedTools(
     zapResult,
     sqlmapResult,
     commixResult,
+    dalfoxResult,
     nmapResult,
+    networkExposureResult,
     subdomainsResult,
     deepTlsResult,
     secretScanResult,
@@ -195,6 +204,8 @@ async function runExtendedTools(
     strixResult,
     cairnResult,
     apiSpecInjectionResult,
+    badsecretsResult,
+    katanaResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies)
@@ -208,8 +219,16 @@ async function runExtendedTools(
     toolConfig.commix
       ? runCommix(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
+    // Same precedent: a dedicated tool for XSS depth, beyond ZAP's generic rules.
+    toolConfig.dalfox
+      ? runDalfox(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as never[] }),
     toolConfig.nmap
       ? runNmap(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
+    // Broad port discovery (naabu top-1000) → nmap -sV on whatever's open.
+    toolConfig.networkExposure
+      ? runNetworkExposure(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
     toolConfig.subdomains
       ? runSubdomainDiscovery(targetUrl)
@@ -338,6 +357,16 @@ async function runExtendedTools(
     toolConfig.apiSpecInjection
       ? checkApiSpecInjection(targetUrl, supabaseAdmin, ownerId)
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], endpointsTested: 0 as const, specSource: "none" as const }),
+    // Known framework secrets (AGPL tool, run unmodified as a separate
+    // program, passive mode only — see badsecrets.ts header).
+    toolConfig.badsecrets
+      ? runBadsecrets(targetUrl)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], note: "Disabled by scan profile." }),
+    // JS-aware page discovery; the crawler's page checks on what it finds
+    // (katana.* namespace — see katana.ts header for why not crawl seeds).
+    toolConfig.katana
+      ? runKatana(targetUrl, crawledUrls)
+      : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[], note: "Disabled by scan profile." }),
   ]);
 
   // httpx runs AFTER the batch, not inside it: it probes the hostnames the
@@ -376,7 +405,9 @@ async function runExtendedTools(
     zap: zapResult.status === "fulfilled" ? zapResult.value : { status: "error", alerts: [], note: String(zapResult.reason) },
     sqlmap: sqlmapResult.status === "fulfilled" ? sqlmapResult.value : { status: "error", vulnerable: false, findings: [], note: String(sqlmapResult.reason) },
     commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
+    dalfox: dalfoxResult.status === "fulfilled" ? dalfoxResult.value : { status: "error", findings: [], note: String(dalfoxResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
+    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error", host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
@@ -400,6 +431,8 @@ async function runExtendedTools(
     strix: strixResult.status === "fulfilled" ? strixResult.value : { status: "error", findings: [], note: String(strixResult.reason) },
     cairn: cairnResult.status === "fulfilled" ? cairnResult.value : { status: "error", findings: [], note: String(cairnResult.reason) },
     apiSpecInjection: apiSpecInjectionResult.status === "fulfilled" ? apiSpecInjectionResult.value : { status: "error", findings: [], note: String(apiSpecInjectionResult.reason) },
+    badsecrets: badsecretsResult.status === "fulfilled" ? badsecretsResult.value : { status: "error" as const, findings: [] as Finding[], note: String(badsecretsResult.reason) },
+    katana: katanaResult.status === "fulfilled" ? katanaResult.value : { status: "error" as const, findings: [] as Finding[], note: String(katanaResult.reason) },
   };
 
   const findings: Finding[] = [];
@@ -454,6 +487,18 @@ async function runExtendedTools(
     }
   }
 
+  if (extended.dalfox.status === "completed") {
+    for (const f of extended.dalfox.findings) {
+      findings.push({
+        checkId: `dalfox.reflected-xss:${f.param}`,
+        severity: f.severity,
+        title: `[dalfox] Reflected XSS — param: ${f.param}`,
+        detail: `The "${f.param}" parameter is reflected in a position where it executes as script. Payload: ${f.payload}. ${f.evidence}`,
+        remediation: dalfoxRemediation(),
+      });
+    }
+  }
+
   if (extended.nmap.status === "completed") {
     for (const p of extended.nmap.ports) {
       if (DANGEROUS_TOOL_PORTS.has(p.port)) {
@@ -465,6 +510,24 @@ async function runExtendedTools(
           remediation: nmapDangerousPortRemediation(p.port),
         });
       }
+    }
+  }
+
+  // Network exposure (naabu top-1000 → nmap -sV): one finding per discovered
+  // open port carrying real risk. "info" ports (80/443/expected services) are
+  // left out — they'd flood the report without evidencing a problem. A port's
+  // risk/service comes from portRisk.ts, the same table ports.ts uses.
+  if (extended.networkExposure.status === "completed") {
+    for (const p of extended.networkExposure.ports) {
+      if (p.risk === "info") continue;
+      const version = p.version ? ` (${p.version})` : "";
+      findings.push({
+        checkId: `network-exposure.open-port:${p.port}`,
+        severity: p.risk,
+        title: `[network] Open port ${p.port}/${p.protocol} — ${p.service}${version}`,
+        detail: `Port discovery (naabu top-1000) found port ${p.port} open, and service detection identified it as ${p.service}${version}. ${p.reason}`,
+        remediation: nmapDangerousPortRemediation(p.port),
+      });
     }
   }
 
@@ -509,6 +572,14 @@ async function runExtendedTools(
   // workflowSecurity.ts (zizmor) already builds full Finding[] too.
   if (extended.workflowSecurity.status === "completed") {
     findings.push(...extended.workflowSecurity.findings);
+  }
+  if (extended.badsecrets.status === "completed") {
+    findings.push(...extended.badsecrets.findings);
+  }
+  // A "partial" katana run still reports what it saw; lifecycle treats it as
+  // not-run, so nothing it didn't visit is marked fixed.
+  if (extended.katana.status === "completed" || extended.katana.status === "partial") {
+    findings.push(...extended.katana.findings);
   }
   findings.push(...buildAuthenticatedFindings(extended.authCheck));
 
@@ -723,12 +794,13 @@ async function runExtendedTools(
       "no-rate-limit": NO_RATE_LIMIT,
       "session-fixation": SESSION_FIXATION,
       "idor-indicator": IDOR_INDICATOR,
+      "weak-session-token": WEAK_SESSION_TOKEN,
     };
     for (const f of sessionFindings) {
       findings.push({
         checkId: `sessionCheck.${f.type}:${f.url}`,
         severity: f.type === "idor-indicator" ? "high" : f.type === "session-fixation" ? "high" : "medium",
-        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type}`,
+        title: `[Session] ${f.type === "no-rate-limit" ? "No rate limiting on login endpoint" : f.type === "session-fixation" ? "Possible session fixation" : f.type === "idor-indicator" ? "IDOR indicator detected" : f.type === "weak-session-token" ? `Session cookie "${f.url}" looks predictable` : f.type}`,
         detail: f.detail,
         remediation: remediationMap[f.type],
       });
@@ -861,7 +933,11 @@ export async function executeScan(
   });
 
   const BASE_CHECK_NAMES = ["tls", "headers", "dns", "exposure", "directoryListing", "cloudMisconfig", "fingerprint", "ports", "recon", "safeBrowsing", "waybackDiscovery", "hibp", "playwright", "webapp", "wpVulnDb", "endOfLife", "subdomainCerts", "scriptInventory", "crawl", "backendExposure", "graphql", "businessLogic"];
-  const totalChecks = profile !== "safe" ? BASE_CHECK_NAMES.length + 26 : BASE_CHECK_NAMES.length;
+  // Derived from EXTENDED_TOOL_NAMES, never a literal: this was a hand-typed
+  // 26 against 36 real tool keys, so every non-safe scan under-reported its
+  // own progress total. A literal just drifts again on the next tool added.
+  const totalChecks =
+    profile !== "safe" ? BASE_CHECK_NAMES.length + EXTENDED_TOOL_NAMES.length : BASE_CHECK_NAMES.length;
 
   await updateScanProgress(supabaseAdmin, scanId, {
     phase: "base",
@@ -950,7 +1026,7 @@ export async function executeScan(
         console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
       }
       const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId);
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : []);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
@@ -1028,7 +1104,11 @@ export async function executeScan(
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
     // Proof of exploit: a handful of harmless re-checks mark which findings
     // reproduce. Never changes severity or the score; it only adds evidence.
-    if (options.confirmExploits ?? profile !== "safe") findings = await confirmExploitable(targetUrl, findings);
+    if (options.confirmExploits ?? profile !== "safe") {
+      findings = await confirmExploitable(targetUrl, findings);
+      // Runs after the deterministic proofs so it only sees what they couldn't prove.
+      findings = await triageIfEnabled(targetUrl, findings);
+    }
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and

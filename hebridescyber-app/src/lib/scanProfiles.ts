@@ -3,18 +3,18 @@
 // (all-or-nothing) with a named profile plus optional per-tool overrides —
 // see scanExecution.ts's runExtendedTools() for where this is consumed.
 //
-// Deliberately excludes tools that don't exist in this codebase yet
-// (Kiterunner, Arjun, Dalfox, WPScan CLI, CMSmap, Gospider, Photon,
-// WhatWaf — see docs/24-FEATURE-EXPANSION-SPEC.md for that roadmap). Each
-// future tool's own PR adds its own key here, in whichever profile(s) it
+// Each tool's own PR adds its own key here, in whichever profile(s) it
 // belongs — additive, no restructuring, same precedent compliance.ts and
-// fixDifficulty.ts already set for their own tables.
+// fixDifficulty.ts already set for their own tables. This list used to also
+// name Kiterunner, Arjun, WPScan CLI, CMSmap, Gospider, Photon, WhatWaf and
+// Dalfox; all eight now exist and are wired.
 
 export type ExtendedToolName =
   | "nuclei"
   | "zap"
   | "sqlmap"
   | "commix"
+  | "dalfox"
   | "nmap"
   | "subdomains"
   | "deepTls"
@@ -43,7 +43,10 @@ export type ExtendedToolName =
   | "credentialSpray"
   | "strix"
   | "cairn"
-  | "apiSpecInjection";
+  | "apiSpecInjection"
+  | "badsecrets"
+  | "katana"
+  | "networkExposure";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -56,6 +59,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "zap",
   "sqlmap",
   "commix",
+  "dalfox",
   "nmap",
   "subdomains",
   "deepTls",
@@ -85,6 +89,9 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "strix",
   "cairn",
   "apiSpecInjection",
+  "badsecrets",
+  "katana",
+  "networkExposure",
 ];
 
 // The opt-in offensive suite: tools that generate brute-force or real attack
@@ -109,15 +116,16 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
   safe: {},
   full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
-  api: { nuclei: true, zap: true, sqlmap: true, commix: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true },
+  api: { nuclei: true, zap: true, sqlmap: true, commix: true, dalfox: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true, badsecrets: true, katana: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;
   // active scan + XSS are the classic CMS admin/comment-form vectors.
-  cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true },
+  cms: { nuclei: true, zap: true, authCheck: true, whatwaf: true, wpscan: true, cmsmap: true, zapAjaxSpider: true, badsecrets: true },
   // Passive reconnaissance / supply-chain inventory — no active exploitation.
   osint: {
     subdomains: true,
     deepTls: true,
     nmap: true,
+    networkExposure: true,
     secretScan: true,
     dependencyManifest: true,
     dockerBaseImage: true,
@@ -130,6 +138,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     metadataLeak: true,
     cloudPosture: true,
     httpx: true,
+    katana: true,
   },
   // Tier A opt-in offensive mode: the full active suite PLUS the offensive-only
   // tools (directory/vhost brute-force, login credential spraying, and the
@@ -150,9 +159,11 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
 };
 
 /**
- * Resolves a profile (plus optional bundle overrides) into a full,
- * all-14-keys-present tool-enable map. bundleOverrides, when given, win
- * over the base profile's own tool list — see scan_bundles (Item 3).
+ * Resolves a profile (plus optional bundle overrides) into a tool-enable map
+ * carrying every ExtendedToolName, present whether enabled or not.
+ * bundleOverrides, when given, win over the base profile's own tool list —
+ * see scan_bundles (Item 3). Deliberately names no count: the previous
+ * "all-14-keys-present" wording went stale as tools were added.
  */
 export function resolveToolConfig(
   profile: ScanProfile,
@@ -164,4 +175,30 @@ export function resolveToolConfig(
     result[name] = merged[name] ?? false;
   }
   return result;
+}
+
+/**
+ * True when a resolved scan configuration would run any OFFENSIVE_ONLY_TOOLS,
+ * and must therefore pass run-queued-scan-jobs.ts's Tier A + per-target
+ * authorization gate before it runs.
+ *
+ * Derived from the resolved tool map, never from a list of profile names.
+ * A `profile === "offensive"` check used to be the gate's condition, and it
+ * missed `ai-pentest`, which spreads every tool key and so enables the same
+ * four offensive-only tools; migration 051 made that value storable, and
+ * MonitoredTargets.tsx writes scan_profile straight from the browser under
+ * RLS with no server-side validation, so any owner could reach it. Deriving
+ * the answer here means a new profile — or a scan bundle's tool_overrides —
+ * that enables an offensive tool is gated automatically rather than silently
+ * bypassing it.
+ */
+export function enablesOffensiveTools(
+  profile: ScanProfile,
+  bundleOverrides?: Partial<Record<ExtendedToolName, boolean>>
+): boolean {
+  const config = resolveToolConfig(profile, bundleOverrides);
+  for (const tool of OFFENSIVE_ONLY_TOOLS) {
+    if (config[tool]) return true;
+  }
+  return false;
 }

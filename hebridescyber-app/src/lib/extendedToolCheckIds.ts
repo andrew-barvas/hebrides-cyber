@@ -20,6 +20,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "sqlmap",
   "xsser", // retired tool: kept so a finding it once stored is never treated as re-verifiable by an on-demand rescan
   "commix",
+  "dalfox",
   "nmap",
   "subdomains",
   "deep-tls",
@@ -48,6 +49,9 @@ export const EXTENDED_TOOL_PREFIXES = [
   "credential-spray",
   "strix",
   "cairn",
+  "badsecrets",
+  "katana",
+  "network-exposure",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

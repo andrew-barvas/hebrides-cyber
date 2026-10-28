@@ -19,7 +19,7 @@ Full manual pen test, CI/CD review, cloud permissions review, RLS/database check
 Weekly automated scans, monthly Security Score email, critical alerts.
 
 **Pro — £35/month**
-Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts.
+Daily automated scans, plus everything in Basic — dependency monitoring, Slack alerts, and uptime alerts through your own UptimeRobot account.
 
 **Agency — £75/month**
 Daily automated scans across multi-site monitoring, white-label PDF reports, priority support.

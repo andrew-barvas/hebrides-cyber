@@ -47,6 +47,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   // --- JWT security: library/config changes, no architecture change ---
   "jwt-analysis.none-algorithm": "easy", // configure the library's allowed algorithms
   "jwt-analysis.weak-secret": "easy", // rotate the signing secret
+  "badsecrets.known-secret": "easy", // set a new random key; sessions signed with the old one end
   "jwt-analysis.no-expiration": "easy", // add an exp claim when issuing
   "jwt-analysis.sent-over-http": "moderate", // same as tls.no-https
   "jwt-analysis.exposed-in-url": "moderate", // move the token into a header/cookie across every caller
@@ -71,6 +72,9 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "headers.cors-wildcard": "easy",
   "headers.info-disclosure": "trivial",
   "headers.smuggling-surface": "moderate", // config change on the app or front-end, but needs careful testing to avoid breaking real traffic
+  "js-secrets.exposed-key": "easy", // rotate the key and move it server-side / proxy the call
+  "js-secrets.exposed-endpoint": "easy", // remove the hard-coded internal URL from the bundle
+  "js-secrets.exposed-sourcemap": "trivial", // one bundler setting + remove the deployed .map
   "backend-exposure.service-key": "easy", // rotate the key and move it server-side
   "backend-exposure.open-table": "moderate", // needs correct RLS policies per table
   "backend-exposure.storage-bucket": "easy", // drop one storage.objects policy
@@ -82,6 +86,12 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "crawl.mixed-content": "easy",
   "crawl.insecure-form": "easy",
   "crawl.error-disclosure": "easy",
+  // Injected content means a compromise: cleanup plus finding the way in.
+  "malware.hidden-iframe": "hard",
+  "malware.obfuscated-script": "hard",
+  "malware.cryptominer": "hard",
+  "malware.seo-spam": "hard",
+  "malware.defacement": "hard",
   "crawl.missing-sri": "easy",
   "graphql.introspection": "easy",
   "graphql.suggestions": "moderate",
@@ -94,6 +104,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dns.spf-issues": "easy",
   "dns.dmarc-missing": "easy",
   "dns.dmarc-none": "easy",
+  "dns.dmarc-partial-enforcement": "trivial", // raise pct to 100 (one DNS record edit)
+  "dns.dmarc-no-reporting": "trivial", // add a rua= address (one DNS record edit)
   "dns.dkim-issues": "moderate", // needs coordination with the sending mail platform
   "dns.caa-missing": "trivial",
   "dns.mta-sts-missing": "moderate",
@@ -144,12 +156,17 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "webapp.vulnerable-js-lib": "moderate", // version bump, but can carry breaking changes
   "webapp.missing-sri": "easy",
   "script-inventory.unreviewed": "trivial", // review the source and record a justification (or remove it)
+  // Install a consent banner and gate the tags behind it — a real integration,
+  // not a config toggle, but well-trodden (CMP + tag-manager consent mode).
+  "cookie-consent.tracker-before-consent": "moderate",
+  "cookie-consent.no-cmp-detected": "moderate",
 
   // --- Third-party threat intel ---
   "safe-browsing.flagged": "hard", // real malware/compromise cleanup, not a config change
 
   // --- WPScan Vulnerability Database ---
   "wpvdb.plugin-vulnerability": "easy", // usually a plugin update
+  "wpvdb.theme-vulnerability": "easy", // usually a theme update
 
   // --- Software CVE DB (E-24) ---
   "softwareCveDb.wordpressCore": "easy", // core update, usually low-risk/backward-compatible
@@ -159,6 +176,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "sqlmap.sqli": "hard",
   "commix.command-injection": "hard",
   "nmap.dangerous-port": "easy",
+  "network-exposure.open-port": "easy", // firewall rule / bind-to-localhost change
   "secretScan.exposed-secret": "moderate", // rotate the credential + purge from git history
   "dependency-manifest.npm": "easy",
   "dependency-manifest.pip": "easy",
@@ -170,6 +188,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "dependency-manifest.nuget": "easy",
   "dependency-manifest.additional-vulnerable": "easy",
   "dependency-manifest.typosquat-risk": "moderate", // removing the package is quick; confirming nothing it ran was harmful is not
+  "dependency-license.copyleft": "moderate", // a licensing/legal decision, sometimes a dependency swap
+  "dependency-license.unknown": "easy", // confirm the licence or replace the package
   "docker-base-image.unpinned-tag": "trivial",
   "docker-base-image.outdated-base": "moderate",
   "eol.unsupported": "moderate", // a major-version upgrade, usually
@@ -215,6 +235,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "sessionCheck.no-rate-limit": "moderate",
   "sessionCheck.session-fixation": "hard",
   "sessionCheck.idor-indicator": "hard",
+  "sessionCheck.weak-session-token": "moderate",
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": "hard",
@@ -246,6 +267,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "cloudPosture.gcpPublicAccessPrevention": "easy",
   "cloudPosture.gcpUniformAccess": "moderate", // may require re-issuing signed URLs for anything relying on legacy ACLs
   "cloudPosture.gcpPublicBucket": "moderate", // also warrants reviewing what was exposed
+  "cloudPosture.awsIamPasswordPolicy": "easy", // one update-account-password-policy call
+  "cloudPosture.azureInfraEncryption": "hard", // only settable at account creation — needs a recreate/migrate
 
   // --- Business logic (passive) ---
   "business-logic.csrf-missing": "moderate", // needs per-form token integration
@@ -268,8 +291,9 @@ const FIX_MINUTES_BY_DIFFICULTY: Record<FixDifficulty, number> = {
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
   const base = idx === -1 ? checkId : checkId.slice(0, idx);
-  // crawl.auth.* is the signed-in crawl's copy of crawl.*: same fix, same mapping.
-  return base.replace(/^crawl\.auth\./, "crawl.");
+  // crawl.auth.* (signed-in crawl) and katana.* (katana-found pages) are copies
+  // of crawl.*: same fix, same mapping.
+  return base.replace(/^(?:crawl\.auth|katana)\./, "crawl.");
 }
 
 /** Returns undefined (not a guess) when the checkId is unmapped — see module header. */

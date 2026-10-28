@@ -1,0 +1,23 @@
+{
+  "target": "legacy-js",
+  "description": "Hardened site loading outdated jQuery (detectable by filename) and jQuery UI (detectable only by its file banner): both must be reported from retire.js data. A current Lodash must not be.",
+  "mustFind": [
+    "tls.no-https",
+    "webapp.vulnerable-js-lib:jQuery",
+    "webapp.vulnerable-js-lib:jquery-ui"
+  ],
+  "mustNotFind": [
+    "webapp.vulnerable-js-lib:Lodash",
+    "webapp.vulnerable-js-lib:lodash",
+    "headers.*",
+    "exposure.exposed-file:*",
+    "exposure.no-security-txt",
+    "directory-listing.*",
+    "business-logic.*",
+    "graphql.*"
+  ],
+  "optional": [
+    "fingerprint.tech-detected",
+    "fingerprint.risky-library:jQuery"
+  ]
+}

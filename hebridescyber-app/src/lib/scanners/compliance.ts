@@ -71,7 +71,12 @@ const ISO_A8: ComplianceRef = { framework: "iso-27001", control: "A.8 – Asset 
 const ISO_A9: ComplianceRef = { framework: "iso-27001", control: "A.9 – Access Control" };
 const ISO_A12: ComplianceRef = { framework: "iso-27001", control: "A.12 – Operations Security" };
 const ISO_A13: ComplianceRef = { framework: "iso-27001", control: "A.13 – Communications Security" };
+// A.18 covers compliance with legal/regulatory requirements — the right home
+// for a privacy-law finding (PECR/GDPR cookie consent) within the frameworks
+// this table already models.
+const ISO_A18: ComplianceRef = { framework: "iso-27001", control: "A.18 – Compliance" };
 
+const PCI_REQ2: ComplianceRef = { framework: "pci-dss", control: "Requirement 2 – Apply Secure Configurations to All System Components" };
 const PCI_REQ4: ComplianceRef = { framework: "pci-dss", control: "Requirement 4 – Protect Cardholder Data with Strong Cryptography During Transmission" };
 const PCI_REQ6: ComplianceRef = { framework: "pci-dss", control: "Requirement 6 – Develop and Maintain Secure Systems and Software" };
 const PCI_REQ8: ComplianceRef = { framework: "pci-dss", control: "Requirement 8 – Identify Users and Authenticate Access to System Components" };
@@ -173,6 +178,9 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "jwt-analysis.no-expiration": [OWASP_A07, CE_ACCESS, CIS_16, ISO_A9],
   "jwt-analysis.sent-over-http": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "jwt-analysis.exposed-in-url": [CE_SECURE_CONFIG, OWASP_A02, CIS_16, ISO_A9],
+  // --- Known framework secrets (src/worker/tools/badsecrets.ts): a default
+  // signing/encryption key is a default credential ---
+  "badsecrets.known-secret": [CE_SECURE_CONFIG, OWASP_A02, OWASP_A05, OWASP_A07, CIS_4, PCI_REQ2, ISO_A9, NIS2_ART21],
   // --- TLS ---
   "tls.no-https": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21, DORA_ART9],
   "tls.weak-protocol": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13, NIS2_ART21],
@@ -204,6 +212,12 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "backend-exposure.firebase-rtdb": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
   "backend-exposure.firebase-storage": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, ISO_A9],
   "backend-exposure.firestore": [OWASP_A01, OWASP_A05, CE_ACCESS, CIS_3, PCI_REQ6, ISO_A9, NIS2_ART21],
+  // A secret shipped to the client is a cryptographic/secrets-management failure.
+  "js-secrets.exposed-key": [OWASP_A02, OWASP_A05, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21, DORA_ART9],
+  "js-secrets.exposed-endpoint": [OWASP_A05, CE_SECURE_CONFIG, CIS_4, ISO_A12],
+  // An exposed source map leaks the original source: a secure-configuration /
+  // information-disclosure gap, same family as the endpoint leak above.
+  "js-secrets.exposed-sourcemap": [OWASP_A05, CE_SECURE_CONFIG, CIS_4, ISO_A12],
 
   // --- Site crawl (E-70): the same controls as the home-page checks they extend ---
   "crawl.header-gap": [CE_SECURE_CONFIG, OWASP_A05, CIS_4, PCI_REQ6, ISO_A12],
@@ -211,6 +225,12 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "crawl.mixed-content": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "crawl.insecure-form": [OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
   "crawl.error-disclosure": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
+  // --- Injected content (src/lib/scanners/injectedContent.ts) ---
+  "malware.hidden-iframe": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.obfuscated-script": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.cryptominer": [CE_MALWARE, OWASP_A08, CIS_9, CIS_7, NIS2_ART21],
+  "malware.seo-spam": [CE_MALWARE, OWASP_A08, CIS_7, NIS2_ART21],
+  "malware.defacement": [CE_MALWARE, OWASP_A08, CIS_7, NIS2_ART21],
   "crawl.missing-sri": [OWASP_A08, CIS_16],
   "graphql.introspection": [CE_SECURE_CONFIG, OWASP_A05, CIS_16, ISO_A12],
   "graphql.suggestions": [OWASP_A05, CIS_16],
@@ -222,6 +242,8 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "dns.dkim-issues": [CIS_9, ISO_A13],
   "dns.dmarc-missing": [CIS_9, ISO_A13],
   "dns.dmarc-none": [CIS_9, ISO_A13],
+  "dns.dmarc-partial-enforcement": [CIS_9, ISO_A13],
+  "dns.dmarc-no-reporting": [CIS_9, ISO_A13],
   "dns.caa-missing": [OWASP_A05, CIS_4, ISO_A13],
   "dns.dnssec-missing": [CIS_4, ISO_A12, NIS2_ART21],
 
@@ -283,12 +305,18 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // authorisation, 11.6.1's change detection, and CIS 16.4's inventory of
   // third-party software components.
   "script-inventory.unreviewed": [PCI_6_4_3, PCI_11_6_1, OWASP_A08, CIS_16],
+  // Cookie consent (cookieConsent.ts): a privacy-law (PECR/GDPR) obligation.
+  // ISO A.18 (compliance with legal requirements) is the honest fit within the
+  // frameworks this table models; CIS 3 covers the data-protection angle.
+  "cookie-consent.tracker-before-consent": [ISO_A18, CIS_3],
+  "cookie-consent.no-cmp-detected": [ISO_A18],
 
   // --- Third-party threat intel ---
   "safe-browsing.flagged": [CE_MALWARE, CIS_9, CIS_7, NIS2_ART21, DORA_ART9],
 
   // --- WPScan Vulnerability Database ---
   "wpvdb.plugin-vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
+  "wpvdb.theme-vulnerability": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
 
   // --- Software CVE DB (E-24) — WordPress core / PHP / Apache CVE matches,
   // same "outdated software" category as fingerprint.risky-library above.
@@ -298,7 +326,9 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // --- Extended tool suite (scheduled scans only) ---
   "sqlmap.sqli": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "commix.command-injection": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "dalfox.reflected-xss": [OWASP_A03, CE_SECURE_CONFIG, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "nmap.dangerous-port": [CE_FIREWALLS, OWASP_A05, CIS_12, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  "network-exposure.open-port": [CE_FIREWALLS, OWASP_A05, CIS_12, CIS_4, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
   "secretScan.exposed-secret": [OWASP_A02, CE_SECURE_CONFIG, CIS_3, CIS_16, PCI_REQ8, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
   "dependency-manifest.npm": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   "dependency-manifest.pip": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
@@ -313,6 +343,11 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   // mode from an outdated-but-legitimate package — same refs as zizmor's
   // "supply-chain-integrity" category above.
   "dependency-manifest.typosquat-risk": [OWASP_A08, OWASP_A06, CE_PATCHING, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
+  // Licence compliance (dependencyLicense.ts, deps.dev data) is a software-asset
+  // governance concern, not a vulnerability: knowing what you depend on and under
+  // what terms. Maps to asset management and supply-chain risk management.
+  "dependency-license.copyleft": [ISO_A8, NIS2_ART21],
+  "dependency-license.unknown": [ISO_A8, NIS2_ART21],
   "docker-base-image.unpinned-tag": [CE_SECURE_CONFIG, OWASP_A05, ISO_A12],
   "docker-base-image.outdated-base": [CE_PATCHING, OWASP_A06, CIS_7, PCI_REQ6, ISO_A12, NIS2_ART21],
   // Unsupported software on the site itself (endOfLife.ts). Not
@@ -362,6 +397,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "sessionCheck.no-rate-limit": [OWASP_A07, CIS_16],
   "sessionCheck.session-fixation": [OWASP_A07, CIS_16],
   "sessionCheck.idor-indicator": [OWASP_A01, CIS_3],
+  "sessionCheck.weak-session-token": [OWASP_A07, CIS_16],
 
   // --- Cloud posture (E-32) ---
   "cloudPosture.awsPublicS3": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
@@ -373,6 +409,10 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "cloudPosture.gcpPublicBucket": [CE_SECURE_CONFIG, OWASP_A05, OWASP_A01, CIS_3, CIS_4, PCI_REQ6, ISO_A9, ISO_A12, NIS2_ART21, DORA_ART9],
   "cloudPosture.gcpPublicAccessPrevention": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
   "cloudPosture.gcpUniformAccess": [CE_SECURE_CONFIG, OWASP_A05, CIS_3, CIS_4, ISO_A12, NIS2_ART21],
+
+  // --- Cloud posture: IAM / encryption (SCALE-3) ---
+  "cloudPosture.awsIamPasswordPolicy": [CE_ACCESS, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "cloudPosture.azureInfraEncryption": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
@@ -408,8 +448,9 @@ const COMPLIANCE_MAP: Record<string, ComplianceRef[]> = Object.fromEntries(
 function baseCheckId(checkId: string): string {
   const idx = checkId.indexOf(":");
   const base = idx === -1 ? checkId : checkId.slice(0, idx);
-  // crawl.auth.* is the signed-in crawl's copy of crawl.*: same fix, same mapping.
-  return base.replace(/^crawl\.auth\./, "crawl.");
+  // crawl.auth.* (signed-in crawl) and katana.* (katana-found pages) are copies
+  // of crawl.*: same fix, same mapping.
+  return base.replace(/^(?:crawl\.auth|katana)\./, "crawl.");
 }
 
 /** Returns [] (not undefined) when nothing maps — callers can treat an empty array and a missing checkId identically. */

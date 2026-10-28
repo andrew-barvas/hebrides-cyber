@@ -37,7 +37,7 @@ export default function RequestAudit({ token }: { token: string }) {
 
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
-      <h2 className="mb-4 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// request an audit</h2>
+      <h2 className="mb-4 font-mono text-xs text-cybermuted uppercase tracking-wide">// request an audit</h2>
       <p className="mb-4 text-xs text-cybertext/50 leading-relaxed">
         Want a scoped, invoiced engagement instead of continuous monitoring? Request one of
         these directly — we&apos;ll follow up at your account email.

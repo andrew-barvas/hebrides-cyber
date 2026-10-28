@@ -91,7 +91,7 @@ export default function DiffView({ scans, initialScanId }: { scans: ScanListEntr
       </div>
 
       {loading ? (
-        <p className="font-mono text-sm text-cybertext/30">// comparing…</p>
+        <p className="font-mono text-sm text-cybermuted">// comparing…</p>
       ) : beforeId === afterId ? (
         <p className="text-sm text-cybertext/50">Pick two different scans to compare.</p>
       ) : diff ? (
@@ -99,7 +99,7 @@ export default function DiffView({ scans, initialScanId }: { scans: ScanListEntr
           <div>
             <p className="mb-2 text-xs font-semibold text-cybertext/50 uppercase tracking-wide">New ({diff.added.length})</p>
             {diff.added.length === 0 ? (
-              <p className="text-xs text-cybertext/40">No new findings between these two scans.</p>
+              <p className="text-xs text-cybermuted">No new findings between these two scans.</p>
             ) : (
               <div className="space-y-2">
                 {diff.added.map((f, i) => (
@@ -111,7 +111,7 @@ export default function DiffView({ scans, initialScanId }: { scans: ScanListEntr
           <div>
             <p className="mb-2 text-xs font-semibold text-cybertext/50 uppercase tracking-wide">Fixed ({diff.fixed.length})</p>
             {diff.fixed.length === 0 ? (
-              <p className="text-xs text-cybertext/40">No findings resolved between these two scans.</p>
+              <p className="text-xs text-cybermuted">No findings resolved between these two scans.</p>
             ) : (
               <div className="space-y-2">
                 {diff.fixed.map((f, i) => (

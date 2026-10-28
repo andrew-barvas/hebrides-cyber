@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { nextBuildManifestUrl, parseNextPages, CRAWLER_USER_AGENT, urlKey, extractTitle, checkCrawl, parseRobots, normaliseUrl, urlShape, skipReason, isSameSite, analysePage, extractLinks } from "./crawler";
-import { buildCrawlFindings } from "./crawlFindings";
+import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { buildScriptInventory, checkScriptInventory, crawledPagesForInventory } from "./scriptInventory";
 import { scanCoverage, isCovered } from "../findingLifecycle";
 
@@ -596,5 +596,49 @@ describe("Next.js route discovery", () => {
     expect(crawl.status).not.toBe("error");
     stubSite({ "/robots.txt": { body: "User-agent: *\nAllow: /" }, "/": { body: HOME_WITH_MANIFEST, headers: SECURE }, "/_next/static/abc123XYZ/_buildManifest.js": { fail: true } });
     expect((await checkCrawl("https://x.test/")).status).not.toBe("error");
+  });
+});
+
+describe("injected content in the crawl", () => {
+  const res = new Response("", { headers: { "content-type": "text/html" } });
+  const HIDDEN = '<iframe src="https://evil.test/x" style="display:none"></iframe>';
+  const run = (url: string, html: string) => analysePage({ url: new URL(url), status: 200, res, html });
+  const crawlOf = (pages: Record<string, string>) => ({
+    status: "checked" as const, startUrl: "https://x.test/", truncated: false,
+    pages: Object.entries(pages).map(([path, h], i) => ({ url: `https://x.test${path}`, status: 200, contentType: "text/html", title: null, depth: i, checks: run(`https://x.test${path}`, h) })),
+  });
+
+  it("records injection signals and off-site frames/forms per page", () => {
+    const checks = run("https://x.test/", `${HIDDEN}<form action="https://pay.test/go"></form>`);
+    expect(checks.injection?.map((s) => s.rule)).toEqual(["hidden-iframe"]);
+    expect(checks.embeds).toEqual([{ kind: "iframe", host: "evil.test" }, { kind: "form", host: "pay.test" }]);
+  });
+
+  it("builds malware.* findings for every page, the start page included", () => {
+    const findings = buildMalwareFindings(crawlOf({ "/": HIDDEN, "/about": "<p>clean</p>", "/blog": HIDDEN }));
+    expect(findings.map((f) => f.checkId)).toEqual(["malware.hidden-iframe:/", "malware.hidden-iframe:/blog"]);
+    expect(findings[0].severity).toBe("high");
+    expect(findings[0].remediation).toContain("possible compromise");
+  });
+
+  it("is silent for a clean site, a failed crawl and scans stored before the check existed", () => {
+    expect(buildMalwareFindings(crawlOf({ "/": "<p>clean</p>" }))).toEqual([]);
+    expect(buildMalwareFindings({ status: "error", note: "down" })).toEqual([]);
+    expect(buildMalwareFindings(undefined)).toEqual([]);
+    const old = crawlOf({ "/": HIDDEN });
+    delete old.pages[0].checks!.injection;
+    expect(buildMalwareFindings(old)).toEqual([]);
+  });
+
+  it("caps findings per rule", () => {
+    const pages = Object.fromEntries(Array.from({ length: 15 }, (_, i) => [`/p${i}`, HIDDEN]));
+    expect(buildMalwareFindings(crawlOf(pages)).length).toBe(10);
+  });
+
+  it("shares the crawl's coverage in the finding lifecycle", () => {
+    const base = (status: string) => scanCoverage(null, { crawl: { status } });
+    expect(isCovered("base", base("checked"), "malware.cryptominer:/")).toBe(true);
+    expect(isCovered("base", base("partial"), "malware.cryptominer:/")).toBe(false);
+    expect(isCovered("base", base("error"), "malware.cryptominer:/")).toBe(false);
   });
 });

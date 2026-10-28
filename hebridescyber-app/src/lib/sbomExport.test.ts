@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { buildPurl, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory, type SbomInput } from "./sbomExport";
+import {
+  analysisFor,
+  buildPurl,
+  collectVexSignals,
+  EPSS_EXPLOITABLE_THRESHOLD,
+  generateCycloneDxBom,
+  generateCycloneDxBomFromInventory,
+  isDependencyInventory,
+  toLicenseChoices,
+  type SbomInput,
+} from "./sbomExport";
 import type { DependencyInventory } from "./scanners/dependencyManifest";
 import type { Finding } from "./scanners";
 
@@ -170,6 +180,30 @@ describe("generateCycloneDxBom", () => {
   });
 });
 
+describe("toLicenseChoices", () => {
+  it("maps SPDX ids to license.id and non-standard markers to license.name", () => {
+    expect(toLicenseChoices(["MIT", "Apache-2.0"])).toEqual([{ license: { id: "MIT" } }, { license: { id: "Apache-2.0" } }]);
+    expect(toLicenseChoices(["non-standard"])).toEqual([{ license: { name: "non-standard" } }]);
+  });
+  it("is undefined for no data", () => {
+    expect(toLicenseChoices(undefined)).toBeUndefined();
+    expect(toLicenseChoices([])).toBeUndefined();
+  });
+});
+
+describe("generateCycloneDxBomFromInventory licences", () => {
+  it("populates component.licenses from the inventory's deps.dev data, omitting it where absent", () => {
+    const inv = inventory();
+    inv.packages[0].license = ["MIT"];
+    inv.packages[1].license = ["GPL-3.0-only"];
+    // packages[2] has no licence → no licenses field.
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inv });
+    expect(bom.components[0].licenses).toEqual([{ license: { id: "MIT" } }]);
+    expect(bom.components[1].licenses).toEqual([{ license: { id: "GPL-3.0-only" } }]);
+    expect(bom.components[2].licenses).toBeUndefined();
+  });
+});
+
 describe("buildPurl", () => {
   it("builds spec-correct purls per ecosystem", () => {
     expect(buildPurl("Maven", "org.example:demo-lib", "1.2.3")).toBe("pkg:maven/org.example/demo-lib@1.2.3");
@@ -253,5 +287,119 @@ describe("generateCycloneDxBomFromInventory", () => {
     expect(isDependencyInventory(undefined)).toBe(false);
     expect(isDependencyInventory({ schemaVersion: 2, files: [], packages: [] })).toBe(false);
     expect(isDependencyInventory(inventory({ files: [] }))).toBe(false);
+  });
+
+  it("emits no analysis object when no VEX signals are threaded in (older scans serialise unchanged)", () => {
+    const bom = generateCycloneDxBomFromInventory({ targetUrl: "https://example.com", scanId: "s", inventory: inventory() });
+    expect(bom.vulnerabilities![0].analysis).toBeUndefined();
+  });
+
+  it("populates per-vulnerability VEX analysis when signals are present", () => {
+    const bom = generateCycloneDxBomFromInventory({
+      targetUrl: "https://example.com",
+      scanId: "s",
+      inventory: inventory(),
+      vex: { kevCveIds: ["CVE-2099-0001"] },
+    });
+    // The one advisory (GHSA-test-0001 → CVE-2099-0001) is KEV-listed.
+    expect(bom.vulnerabilities![0].analysis).toMatchObject({ state: "exploitable" });
+    expect(bom.vulnerabilities![0].analysis?.detail).toContain("CISA KEV");
+  });
+
+  it("writes in_triage (present, not absent) for an untriaged advisory once VEX is on", () => {
+    const bom = generateCycloneDxBomFromInventory({
+      targetUrl: "https://example.com",
+      scanId: "s",
+      inventory: inventory(),
+      vex: { kevCveIds: [], epssByCve: {}, notAffected: {} },
+    });
+    expect(bom.vulnerabilities![0].analysis).toEqual({ state: "in_triage" });
+  });
+});
+
+describe("analysisFor (VEX exploitability states)", () => {
+  it("is in_triage with no signals at all", () => {
+    expect(analysisFor("GHSA-x", ["CVE-1"], undefined)).toEqual({ state: "in_triage" });
+    expect(analysisFor("GHSA-x", ["CVE-1"], {})).toEqual({ state: "in_triage" });
+  });
+
+  it("marks a KEV-listed CVE exploitable, naming it", () => {
+    const a = analysisFor("GHSA-x", ["CVE-1", "CVE-2"], { kevCveIds: ["CVE-2"] });
+    expect(a.state).toBe("exploitable");
+    expect(a.detail).toContain("CVE-2");
+    expect(a.detail).not.toContain("ransomware");
+  });
+
+  it("notes ransomware use when CISA marks the KEV CVE", () => {
+    const a = analysisFor("GHSA-x", ["CVE-2"], { kevCveIds: ["CVE-2"], ransomwareCveIds: ["CVE-2"] });
+    expect(a.state).toBe("exploitable");
+    expect(a.detail).toContain("ransomware");
+  });
+
+  it("marks EPSS at/above the threshold exploitable, below it in_triage", () => {
+    expect(analysisFor("GHSA-x", ["CVE-1"], { epssByCve: { "CVE-1": EPSS_EXPLOITABLE_THRESHOLD } }).state).toBe("exploitable");
+    expect(analysisFor("GHSA-x", ["CVE-1"], { epssByCve: { "CVE-1": 0.01 } }).state).toBe("in_triage");
+  });
+
+  it("a false-positive triage wins over KEV and sets not_affected with a justification", () => {
+    const a = analysisFor("GHSA-x", ["CVE-2"], {
+      kevCveIds: ["CVE-2"],
+      notAffected: { "GHSA-x": "we don't call the affected API" },
+    });
+    expect(a.state).toBe("not_affected");
+    expect(a.justification).toBe("code_not_reachable");
+    expect(a.detail).toContain("we don't call the affected API");
+  });
+
+  it("matches not_affected on a CVE id, not just the advisory id", () => {
+    const a = analysisFor("GHSA-x", ["CVE-2"], { notAffected: { "CVE-2": "patched out of our build" } });
+    expect(a.state).toBe("not_affected");
+  });
+});
+
+describe("collectVexSignals", () => {
+  function depFinding(overrides: Partial<Finding> = {}): Finding {
+    return {
+      checkId: "dependency-manifest.npm:lodash",
+      severity: "high",
+      title: "Vulnerable dependency: lodash@4.17.20",
+      detail: "x",
+      cveIds: ["CVE-2021-23337"],
+      metadata: { osvIds: ["GHSA-dep-1"] },
+      ...overrides,
+    };
+  }
+
+  it("collects KEV, ransomware and EPSS from threat-intel-enriched findings", () => {
+    const signals = collectVexSignals([
+      depFinding({ threatIntel: { knownExploited: true, kevCveIds: ["CVE-2021-23337"], ransomware: true } }),
+      depFinding({ checkId: "dependency-manifest.pip:requests", cveIds: ["CVE-2023-32681"], threatIntel: { knownExploited: false, epss: 0.42 } }),
+    ]);
+    expect(signals.kevCveIds).toContain("CVE-2021-23337");
+    expect(signals.ransomwareCveIds).toContain("CVE-2021-23337");
+    expect(signals.epssByCve?.["CVE-2023-32681"]).toBe(0.42);
+  });
+
+  it("maps a false-positive triage to a not_affected reason keyed by advisory and CVE id", () => {
+    const signals = collectVexSignals(
+      [depFinding()],
+      (checkId) => checkId === "dependency-manifest.npm:lodash"
+    );
+    expect(signals.notAffected?.["GHSA-dep-1"]).toContain("false positive");
+    expect(signals.notAffected?.["CVE-2021-23337"]).toContain("false positive");
+  });
+
+  it("ignores non-dependency findings and never defaults not_affected", () => {
+    const signals = collectVexSignals([
+      { checkId: "tls.no-https", severity: "critical", title: "x", detail: "y" },
+      depFinding(),
+    ]);
+    expect(Object.keys(signals.notAffected ?? {})).toHaveLength(0);
+    expect(signals.kevCveIds).toHaveLength(0);
+  });
+
+  it("falls back to a finding's own CVE ids for KEV when kevCveIds is absent", () => {
+    const signals = collectVexSignals([depFinding({ threatIntel: { knownExploited: true } })]);
+    expect(signals.kevCveIds).toContain("CVE-2021-23337");
   });
 });

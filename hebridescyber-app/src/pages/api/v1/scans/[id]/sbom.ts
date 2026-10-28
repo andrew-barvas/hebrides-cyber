@@ -6,7 +6,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import type { Finding } from "@/lib/scanners";
-import { generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory } from "@/lib/sbomExport";
+import { collectVexSignals, generateCycloneDxBom, generateCycloneDxBomFromInventory, isDependencyInventory } from "@/lib/sbomExport";
+import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -40,7 +41,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let bom;
   if (isDependencyInventory(inventory)) {
-    bom = generateCycloneDxBomFromInventory({ targetUrl: scan.target_url, scanId, inventory });
+    // VEX exploitability statements per vulnerability, from the scan's own
+    // threat-intel-enriched findings (KEV/EPSS) plus any false-positive triage
+    // the owner recorded. Triage read is best-effort — degrades to "nothing
+    // triaged" on any failure (loadTriageIndexForTarget never throws), so the
+    // SBOM still serialises with KEV/EPSS signals even if triage is down.
+    const { host, index } = await loadTriageIndexForTarget(supabaseAdmin, scan.owner, scan.target_url);
+    const vex = collectVexSignals(results.findings, (checkId) => index.get(host ?? "", checkId)?.state === "false_positive");
+    bom = generateCycloneDxBomFromInventory({ targetUrl: scan.target_url, scanId, inventory, vex });
   } else {
     const depFindings = (results.findings ?? []).filter((f) => f.checkId?.startsWith("dependency-manifest."));
     if (depFindings.length === 0) {

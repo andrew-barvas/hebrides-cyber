@@ -101,6 +101,23 @@ const PATTERNS: Pattern[] = [
   { name: "Ghost", category: "CMS", html: /ghost-root|content="Ghost (\d+\.\d+)/i, versionGroup: 1 },
   { name: "Shopify", category: "E-commerce", html: /cdn\.shopify\.com|Shopify\.theme/i, headers: { "x-shopify-stage": /.+/ } },
   { name: "Magento", category: "E-commerce", html: /Mage\.(?:Cookies|Config)|\/skin\/frontend\//i },
+  // More CMS and shop platforms. These are passive, markup-only signals, and
+  // most of these platforms don't publish their version on a public page, so a
+  // detection usually has no version and the CVE and end-of-life checks stay
+  // silent about it (a name alone is never evidence of a vulnerability). The
+  // nuclei tag scoping, asset inventory and tech inventory still benefit.
+  // PrestaShop 1.6 sends a generator meta tag; 1.7+ defines a global
+  // `prestashop` object and serves modules/ps_* assets.
+  { name: "PrestaShop", category: "E-commerce", html: /(?:var|window\.)\s*prestashop\s*=\s*\{|<meta[^>]+name=["']generator["'][^>]+content=["']PrestaShop|\/modules\/ps_[a-z0-9_]+\//i },
+  { name: "OpenCart", category: "E-commerce", html: /["'(=/]catalog\/view\/(?:theme|javascript)\//i },
+  // Old TYPO3 (up to 6.x) put the version in the tag: content="TYPO3 6.2 CMS".
+  { name: "TYPO3", category: "CMS", html: /\/typo3(?:temp|conf)\/|<meta[^>]+name=["']generator["'][^>]+content=["']TYPO3/i },
+  { name: "TYPO3", category: "CMS", html: /content=["']TYPO3 (\d+(?:\.\d+)*) CMS/i, versionGroup: 1 },
+  // Umbraco 7/8 sent X-Umbraco-Version by default; the back office lives under /umbraco/.
+  { name: "Umbraco", category: "CMS", html: /\/umbraco\/(?:lib|backoffice|assets|api|surface)\//i, headers: { "x-umbraco-version": /(\d+\.\d+[\.\d]*)/ }, versionGroup: 1 },
+  // Craft sends X-Powered-By: Craft CMS unless disabled; control-panel assets are under /cpresources/.
+  { name: "Craft CMS", category: "CMS", html: /\/cpresources\//i, headers: { "x-powered-by": /Craft CMS/i } },
+  { name: "Moodle", category: "LMS", html: /M\.cfg\s*=\s*\{|<meta[^>]+name=["']keywords["'][^>]+content=["']moodle|\/(?:theme\/(?:styles|image|yui_combo)|lib\/javascript)\.php\//i },
   { name: "Wix", category: "Hosting", html: /wix\.com\/|wixstatic\.com/i },
   { name: "Squarespace", category: "Hosting", html: /squarespace\.com\/|Static\.SQUARESPACE_URLS/i },
   { name: "Webflow", category: "Hosting", html: /webflow\.com\/|data-wf-page/i },
@@ -152,9 +169,9 @@ const KNOWN_RISKY: KnownRisky[] = [
 // correlate external vulnerability feeds (e.g. CISA's KEV catalog) against
 // what this product can honestly claim to detect, so the newsletter never
 // overclaims coverage it doesn't have.
-export const DETECTABLE_TECHNOLOGIES: string[] = PATTERNS.map((p) => p.name);
+export const DETECTABLE_TECHNOLOGIES: string[] = [...new Set(PATTERNS.map((p) => p.name))];
 
-export type CmsType = "wordpress" | "joomla" | "drupal" | "magento" | "shopify" | "ghost";
+export type CmsType = "wordpress" | "joomla" | "drupal" | "magento" | "shopify" | "ghost" | "prestashop" | "opencart" | "typo3" | "umbraco" | "craft" | "moodle";
 
 // Single-value "what CMS is this" derivation, used to route CMS-specific
 // scanning (targeted scanners, scan profiles) rather than each consumer
@@ -162,7 +179,8 @@ export type CmsType = "wordpress" | "joomla" | "drupal" | "magento" | "shopify" 
 // names. Matches by name, not category — Magento's/Shopify's PATTERNS
 // category above is "E-commerce", not "CMS", so filtering by category here
 // would silently drop them. Precedence (WordPress > Joomla > Drupal >
-// Magento > Shopify > Ghost) is an arbitrary but deterministic tie-break for
+// Magento > Shopify > Ghost > PrestaShop > OpenCart > TYPO3 > Umbraco >
+// Craft > Moodle) is an arbitrary but deterministic tie-break for
 // the practically-impossible case of multiple CMS technologies matching one
 // target.
 export function getCmsType(technologies: DetectedTech[]): CmsType | null {
@@ -173,6 +191,12 @@ export function getCmsType(technologies: DetectedTech[]): CmsType | null {
   if (names.has("Magento")) return "magento";
   if (names.has("Shopify")) return "shopify";
   if (names.has("Ghost")) return "ghost";
+  if (names.has("PrestaShop")) return "prestashop";
+  if (names.has("OpenCart")) return "opencart";
+  if (names.has("TYPO3")) return "typo3";
+  if (names.has("Umbraco")) return "umbraco";
+  if (names.has("Craft CMS")) return "craft";
+  if (names.has("Moodle")) return "moodle";
   return null;
 }
 

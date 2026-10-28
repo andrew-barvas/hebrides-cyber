@@ -33,31 +33,53 @@ looks like, that one states what to actually work on next.
 
 ## Stage 0 — where we actually are
 
-- Live on Azure Static Web Apps, deployed on every push to `master`.
-- Taking Stripe Checkout payments — except paid signup itself is currently
-  broken (`STRIPE_PRICE_*` unset, `docs/ENHANCEMENTS.md` E-07).
-- A privilege-escalation bug in `public.users`' RLS existed until this
-  session's migration `017` — fixed, but its prior existence is why nothing
-  in this document should be taken on faith; it should be re-derived from
-  `docs/FUNCTIONALITY-MATRIX.md`, which is built by reading code.
-- Free-tier scan cap and rate limiting are real and server-enforced.
-  Almost everything else in the plan-gating ladder (`FUNCTIONALITY-MATRIX.md`
-  §5/§6) is not.
-- 914 unit/integration tests across 84 test files, coverage floor 36/30/33/37
-  (statements/branches/functions/lines) — a genuine floor, not a target,
-  and it only moves up.
-- **20 enterprise competitor gaps closed** (Sprints 9-13, 2026-09-12 –
-  2026-09-14): SSO/SAML, RBAC, org model, audit logging, scheduled reports,
-  GraphQL scanning, SIEM, CI/CD SDK, compliance reporting, proof-of-exploit,
-  authenticated crawling, ServiceNow/GitHub Issues, scan windows, IP
-  allowlisting, SCIM, MSP portal, custom policies, SLA monitoring, risk
-  scoring, GraphQL API. All implemented as pure library modules with test
-  coverage. See `docs/FUNCTIONALITY-MATRIX.md` §5b for the full table.
-- Error-tracking code shipped (`docs/ENHANCEMENTS.md` E-03, 2026-09-04) but
-  **not yet actually capturing anything in production** — needs a real
-  Sentry account and `SENTRY_DSN` set, neither of which exist yet. Don't
-  treat this as "done" until that's confirmed; the code shipping and the
-  capability existing are two different facts.
+*Reconciled 2026-10-15 against the code and `docs/NEXT-STEPS.md` (the live
+"what shipped" ledger). The earlier version of this section had drifted —
+it still cited "914 tests", "Stripe broken" and a "20 enterprise gaps closed"
+list naming modules that have since been **deleted** (`rbac.ts`,
+`scimProvisioning.ts`, `mspPortal.ts`, `customScanPolicies.ts`,
+`riskScoring.ts`, `graphqlApi.ts`, `ssoSaml.ts`, `orgModel.ts`, `cicdSdk.ts`).
+Treat `docs/NEXT-STEPS.md` + `docs/FUNCTIONALITY-MATRIX.md` as authoritative;
+this section is a dated snapshot, not a live tracker.*
+
+- Live on Azure Static Web Apps, deployed on every push to `master`;
+  **migrations auto-apply on deploy** (`DATABASE_URL` set, baseline through
+  047 recorded, files through 059 applied — `src/scripts/apply-migrations.ts`).
+- **Stripe signup still blocked** — `STRIPE_PRICE_*` unset, so `/api/health`
+  reads "degraded" (`docs/ENHANCEMENTS.md` E-07, `docs/OWNER-SETUP.md` §2).
+  Still the top business blocker.
+- The historical `public.users` privilege-escalation hole was closed in
+  migration `017`; the self-set-plan hole in `024`. Both have real-Postgres
+  RLS tests (`tests/db/rls.db.test.ts`). Nothing here should be taken on
+  faith — re-derive from `docs/FUNCTIONALITY-MATRIX.md`, built from code.
+- Plan gating is now largely server-enforced (`docs/FUNCTIONALITY-MATRIX.md`
+  §6): the 4 advertised-but-unenforced gaps are fixed; the remaining ungated
+  items are capabilities no page sells per-tier (an open product decision,
+  not a bug).
+- **~3,100 unit/integration tests**, coverage floor **73/66/74/74**
+  (statements/branches/functions/lines) — a genuine floor that only moves
+  up — plus a real-Postgres RLS/DB suite (`tests/db/`), an accuracy
+  benchmark (`bench/`), and a self-dependency CVE audit
+  (`dependency-audit.yml`). Next.js is on 16.4.1 (the RCE-patched release).
+- **Security posture materially hardened this session (2026-10-14/15):**
+  all stored customer secrets encrypted at rest (AES-256-GCM,
+  `credentialEncryption.ts` — review findings S-1/S-2); SSRF guard bypasses
+  closed (`ownership.ts`); CI Actions SHA-pinned + Dependabot (finding I-4);
+  risk score now CVSS/KEV/EPSS-weighted (`scanners/riskScore.ts`); CMS SEO
+  persistence bug fixed; sign-up + password-reset pages added (P1-2);
+  `scans.error_detail` captured and surfaced in admin. See
+  `docs/PRODUCT-REVIEW-2026-10.md` and `docs/NEXT-STEPS.md`'s shipped table.
+- The earlier "20 enterprise competitor gaps" claim was **corrected**: much
+  of it was unwired library code, now deleted (see `FUNCTIONALITY-MATRIX.md`
+  §5b and `COMPETITIVE-ANALYSIS.md` §8). What genuinely ships: 2FA, per-key
+  IP allow-listing, multi-site + white-label (Partner Portal), 7-framework
+  compliance reporting, SIEM/ServiceNow/Jira/Linear/GitHub ticketing,
+  SLA monitoring, scheduled reports, GraphQL endpoint *scanning*. There is
+  **no** org/RBAC/SSO/SCIM/MSP multi-tenancy in the application.
+- Error-tracking code is shipped but still a **no-op until `SENTRY_DSN` is
+  set** (`docs/OWNER-SETUP.md` §3) — the capability existing and the code
+  existing remain two different facts. The new `scans.error_detail` column
+  is the interim visibility.
 
 ---
 
@@ -76,7 +98,7 @@ looks like, that one states what to actually work on next.
 | POC-1 | A Basic subscriber can register a monitored target and receives a scheduled scan within the plan's cadence window | Staging Basic account → add target → run `npm run queue:enqueue-scheduled-scans` with a clock override → assert a `scans` row for that target | **UI/enforcement gap fixed** (`docs/ENHANCEMENTS.md` E-01 — `MonitoredTargets.tsx` now renders for any active plan, per-plan cap enforced server-side via `sql/migrations/018_monitored_targets_plan_cap.sql`); cadence logic itself was already correct. **Not yet verified against production (with a demo account)** — the verify method in this row's own third column hasn't actually been run since the fix landed, so don't mark this row green without doing that |
 | POC-2 | No authenticated non-admin user can set `is_admin` on their own row | Integration test issuing the UPDATE via the anon key against a real Postgres/RLS instance, asserting 0 rows affected | **Fixed** (migration `017`) — verify the assertion holds against the deployed Supabase project, not just locally |
 | POC-3 | Paid signup completes end-to-end for all three price tiers | One Playwright test per tier against production Stripe | **Fails today** (depends on POC-B1) |
-| POC-4 | A scan created via the public API (`POST /api/v1/scans`) and one created via the dashboard produce the same report shape | Compare `GET /api/v1/scans/{id}` output for one of each | Not yet verified — likely true (`executeScan()` is the single entry point per `CLAUDE.md`), but not asserted by a test |
+| POC-4 | A scan created via the public API (`POST /api/v1/scans`) and one created via the dashboard produce the same report shape | Compare `GET /api/v1/scans/{id}` output for one of each | **Verified by construction (2026-10-15):** both paths enqueue to the same `executeScan()` and both the public API (`src/pages/api/v1/scans/[id].ts:48`) and the dashboard (`src/app/dashboard/scans/[id]/page.tsx`, via `/api/v1/scans/{id}/…` + the shared `ScanReport` type) return the one `buildScanReport()` output. Its contract is locked by `src/lib/scanReport.test.ts` (triage field, fixed_findings, proof_of_exploit). There is no second report builder to drift from |
 | POC-5 | The extended active-tool suite (nmap/nuclei/sqlmap/xsser/commix/ZAP) runs successfully in the real scheduled-scan environment, not just `not_configured` | Trigger `scheduled-scans.yml` manually against a known-vulnerable staging target, confirm findings from at least one extended tool appear | Untested — `xsser`/`commix` specifically carry an unverified-against-a-real-binary caveat (`docs/ENHANCEMENTS.md` E-18) |
 
 **POC non-goals**: new scanner modules, cloud IAM auditing, SOC 2/ISO,
@@ -98,7 +120,7 @@ marketing-site work, support tooling. Explicitly parked, not forgotten.
 
 | ID | Assertion | Verify | Status |
 |---|---|---|---|
-| BETA-1 | Every unhandled server error in the last 24h is visible in one place with a request/correlation id | Trigger a canary error, locate it in the tracker within 60s | Code shipped (E-03, 2026-09-04) — **not yet verifiable**, needs a real Sentry account + `SENTRY_DSN` before this row can actually go green |
+| BETA-1 | Every unhandled server error in the last 24h is visible in one place with a request/correlation id | Trigger a canary error, locate it in the tracker within 60s | Code shipped (E-03) — **still needs `SENTRY_DSN`** (`docs/OWNER-SETUP.md` §3) before it goes green. Interim: a failed scan now records a human-readable reason in `scans.error_detail` (migration 058), surfaced in the admin Scans tab |
 | BETA-2 | `GET /api/health` returns 200 with Supabase/Stripe/queue-depth sub-checks, 503 when any is degraded | `curl` in CI immediately post-deploy | **Done** (E-04, 2026-09-04) — verified via unit tests; the "curl in CI immediately post-deploy" verify method itself hasn't been added to `deploy.yml`, worth doing as a follow-up |
 | BETA-3 | A customer can request deletion; every row keyed to their account is gone within the window stated on `/privacy` | Script + re-query test against a seeded account | **Done** (E-10, 2026-09-05) — `/account`'s "danger zone" records the request; `src/scripts/erase-user-data.ts` performs the actual erasure (dry-run by default, human-confirmed). Not yet exercised against a real seeded staging account |
 | BETA-4 | Every plan-gated capability in `docs/FUNCTIONALITY-MATRIX.md`'s Enforcement column reads ✅ server — zero ⚠️/❌ rows | Re-generate the matrix's enforcement column from the code, count non-✅ rows, assert zero | **Re-audited 2026-09-13**: down to 6 ❌ + 2 ⚠️ (was 14 ❌ + 3 ⚠️). All 4 advertised-but-unenforced gaps are now server-enforced (E-02: target-auth, team, connect-repo, authenticated-scan). Remaining 6 ❌ items are capabilities not advertised as tier-specific — gating them is a product decision, not a code bug. Per E-02's "intentionally open" decision, these stay ungated. ⚠️ = Partner Portal client-only gate + extended-tool path-gating |
@@ -168,15 +190,59 @@ Beyond Live. These are the next-frontier competitive gaps identified in
 "good SME scanner" to "genuinely differentiated platform." Not sequenced
 into sprints yet — they depend on Live criteria being green first.
 
-| ID | Capability | Why it matters | Effort |
+*Status reconciled 2026-10-15: SCALE-1/2/3 largely shipped already — see notes.*
+
+| ID | Capability | Why it matters | Status |
 |---|---|---|---|
-| SCALE-1 | **SBOM generation** (CycloneDX/SPDX export) | EU Cyber Resilience Act will mandate this for software vendors; low effort since `dependencyManifest.ts` already has the data, just needs standards-compliant output formatting | Low — format existing data |
-| SCALE-2 | **External Attack Surface Management (EASM)** | Continuous autonomous asset discovery (shadow IT, forgotten subdomains, cloud assets). Biggest genuine gap vs Detectify/Rapid7/Qualys. Extends existing `recon.ts`/`subdomains.ts` into a scheduled discovery pipeline | Medium — new scanning paradigm |
-| SCALE-3 | **Cloud Security Posture Management (CSPM)** | AWS/Azure/GCP IAM, storage, network config checks. Already scoped as E-32. Credential onboarding is the hard design problem, not the scanning logic | Medium — credential UX is the constraint |
-| SCALE-4 | **AI/ML vulnerability prioritization** | Move risk scoring from rule-based (`scoreFromFindings`, `scanners/index.ts`) to ML-informed exploit-likelihood prediction. Requires training data from real scan results | High — needs data + model |
-| SCALE-5 | **Container runtime scanning** | Beyond Trivy's static image analysis to runtime monitoring. Kubernetes-native | High — new infrastructure |
+| SCALE-1 | **SBOM generation** (CycloneDX) | EU Cyber Resilience Act will mandate this for software vendors | **Done** — `sbomExport.ts`, `GET /api/v1/scans/{id}/sbom` (CycloneDX 1.5) |
+| SCALE-2 | **External Attack Surface Management (EASM)** | Continuous asset discovery (shadow IT, forgotten subdomains). Biggest genuine gap vs Detectify/Rapid7/Qualys | **Partial** — `easmDiscovery.ts` runs crt.sh + DNS-bruteforce *per scan* (wired into `executeScan`), plus attack-surface change alerts. **Still open:** a schedule-decoupled standalone discovery pipeline + its own asset dashboard/change feed |
+| SCALE-3 | **Cloud Security Posture Management (CSPM)** | AWS/Azure/GCP storage/config checks | **Partial** — `cloudPosture.ts` covers storage public-access + TLS/HTTPS config for all three clouds (E-32), credentials now encrypted at rest. **Still open:** IAM/network/encryption-at-rest depth |
+| SCALE-4 | **AI/ML vulnerability prioritization** | Move beyond rule-based risk scoring to ML exploit-likelihood | **Open** — note the score is no longer a flat tally: `scanners/riskScore.ts` now weights by CVSS band, CISA KEV (×1.5/×2) and FIRST EPSS. ML prediction still needs real training data |
+| SCALE-5 | **Container runtime scanning** | Beyond Trivy's static image analysis to runtime monitoring | **Open** — High effort, Kubernetes-native; `trivyScan.ts` covers static image + IaC today |
+| E-66 | **DMARC aggregate-report processing** | The one NCSC Mail Check function `dns.ts` doesn't replace | **Done (2026-10-15)** — `dmarcAggregate.ts` parses RFC 7489 RUA XML (hand-rolled, namespace-tolerant); `POST /api/dmarc/ingest` (per-owner token, gunzip, rate-limited) stores a per-source summary in `dmarc_reports` (migration 060); `GET /api/dmarc/reports` + per-owner ingest-token management surface it. SCALE-2 (standalone EASM) and SCALE-3 (IAM/encryption CSPM) also shipped this session |
 
 **Scale non-goals** (explicitly not worth building for the SME segment):
 IAST/RASP (requires application instrumentation), attack path analysis
 (enterprise network complexity), autonomous pen testing (too early, too
 expensive). See `docs/COMPETITIVE-ANALYSIS.md` §10 for the full reasoning.
+
+---
+
+## Harden-then-launch stage-gates — 2026-10-22
+
+Stage-gates for the H1–H7 sprint block. A gate is green when **every** listed
+check passes, not "mostly." Execute in sprint order; see `docs/SPRINT-PLAN.md`
+§ "Harden-then-launch plan" for the full sprint briefs.
+
+| Gate | Sprint | Criterion | Verification |
+|---|---|---|---|
+| **H1-1** | H1 | `customer.subscription.updated` with absent metadata never writes `plan:"basic"` | `webhook.test.ts` "no-downgrade safety" describe passes |
+| **H1-2** | H1 | `checkout.session.completed` with absent plan does not activate a subscription | `webhook.test.ts` "checkout.session.completed with no metadata.plan" test passes |
+| **H1-3** | H1 | `subscriptionGrants({plan:"basic",status:"active"},"pro") === false` | `planAccess.test.ts` billing-safety describe passes |
+| **H1-4** | H1 (owner) | Stripe Price IDs set in Azure + GitHub secrets | `GET /api/health` → `"stripe":{"ok":true}` |
+| **H2-1** | H2 | Worker produces a Sentry event on a synthetic failing job | Sentry dashboard shows event with correlation id |
+| **H2-2** | H2 (owner) | `SENTRY_DSN` set + `UPSTASH_REDIS_REST_URL`/`_TOKEN` set | `/api/health` shows sentry + redis healthy |
+| **H3-1** | H3 | CI `verify` job passes and publishes the tool-status artifact | GitHub Actions run shows green `verify` job |
+| **H3-2** | H3 | `totalChecks === 58` unit test passes | `npm run test:unit` green |
+| **H3-3** | H3 | Health smoke step in `deploy.yml` passes on every deploy | `/api/health` → 200 `ok` in deploy log |
+| **H4-1** | H4 | Every probe-based finding carries bounded evidence; no credential/cookie values appear | `httpProbe` evidence tests pass |
+| **H4-2** | H4 | `format:"pdf"` scheduled report emails a real PDF attachment, not JSON labelled "pdf" | Send-script test passes |
+| **H5-1** | H5 | All open routes have explicit tests pinning their gating decision | Route tests green |
+| **H5-2** | H5 | PR #88 merged and CI green; COEP + `/blog/[slug]` post-deploy checks pass | GitHub Actions deploy green |
+| **H5-3** | H5 (owner) | Branch protection rule added; marketing/grant integrity pass done | GitHub settings show required check; no unsourced stats in live copy |
+| **H6-1** | H6 | Non-admin Tier-A `offensive` job downgrades to `safe` + audits `offensive_scan.refused` | Unit test asserting downgrade |
+| **H6-2** | H6 | Non-admin → 403 on `offensive-authorization` consent route | API test passes |
+| **H6-3** | H6 | No `offensive`/`ai-pentest`/`Strix`/`Cairn` strings in `src/app`/`src/components` | `grep` returns empty |
+| **H7-1** | H7 | Admin API key posts a scan with `profile:"offensive"` and it runs (given authorization + verified domain) | API route test passes |
+| **H7-2** | H7 | Non-admin key requesting `offensive` → 403 | API route test passes |
+| **H7-3** | H7 (owner) | Admin API key minted for `admin@hebridescyber.co.uk` | Key exists in `api_keys` table |
+
+**Added 2026-10-22 (Burp-parity review, see `BURP-PARITY.md`):** bounded replay, AI triage
+(off by default, `AI-TRIAGE-DESIGN.md`), session-token entropy and a configurable OOB server
+are built. Still open and unscheduled: Dalfox, own-probe OOB, OAuth/MFA flows, two-session IDOR,
+triage precision/recall benchmark. Positioning follows the review: compete on evidence,
+continuity and fixes, not tool count, and do not claim autonomous AI pentesting until a CI job
+proves it.
+
+**Added 2026-10-23 (uptime monitoring):** bring-your-own UptimeRobot is built (Pro and above). Native monitoring as a sellable product is Phase 2 and unscheduled; it needs demand evidence, a scheduler decision and an uptime-commitment wording review.
+

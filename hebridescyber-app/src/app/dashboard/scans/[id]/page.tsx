@@ -115,7 +115,7 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
           {isFailed ? "// scan failed" : "// active scan"}
         </p>
         {sinceSeconds !== null && (
-          <p className="text-cybertext/30 text-[10px]">
+          <p className="text-cybermuted text-[10px]">
             {sinceSeconds < 5 ? "live" : `updated ${sinceSeconds}s ago`}
           </p>
         )}
@@ -139,33 +139,33 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
         <div className="space-y-3 text-cybertext/70">
           <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
             <div>
-              <span className="text-cybertext/40">phase    </span>
+              <span className="text-cybermuted">phase    </span>
               <span className="text-neon">
                 {phase === "base" ? "base checks" : phase === "extended" ? "extended tools" : phase === "enrichment" ? "enrichment" : "complete"}
               </span>
             </div>
             <div>
-              <span className="text-cybertext/40">elapsed  </span>
+              <span className="text-cybermuted">elapsed  </span>
               <span>{status.started_at ? formatElapsed(elapsedMs) : "—"}</span>
             </div>
           </div>
 
           {progress && (
             <div>
-              <span className="text-cybertext/40">progress </span>
+              <span className="text-cybermuted">progress </span>
               <span className="text-neon">{bar}</span>
               <span className="ml-2 text-cybertext/50">{completed.length}/{total}</span>
             </div>
           )}
 
           <div className="truncate">
-            <span className="text-cybertext/40">current  </span>
+            <span className="text-cybermuted">current  </span>
             <span>{currentCheck}</span>
           </div>
 
           {completed.length > 0 && (
             <div className="mt-4 pt-4 border-t border-cyberborder/50">
-              <p className="text-cybertext/40 mb-2">completed checks</p>
+              <p className="text-cybermuted mb-2">completed checks</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5">
                 {completed.map((c) => (
                   <span key={c} className="text-neon/70">✓ {c}</span>
@@ -319,7 +319,7 @@ function ExportButton({
 // Only rendered when the user has a connected repo (repo_connections).
 function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; token: string | null; githubRepo: string }) {
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prs, setPrs] = useState<Array<{ label: string; url: string }>>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function generate() {
@@ -334,7 +334,13 @@ function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; to
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not generate fix PR");
-      setPrUrl(body.prUrl);
+      // The main recommendations PR always opens; the dependency-bump and
+      // config-header PRs open only when there's something to change, so show
+      // whichever ones came back.
+      const opened: Array<{ label: string; url: string }> = [{ label: "Recommendations", url: body.prUrl }];
+      if (body.dependencyBumpPrUrl) opened.push({ label: "Dependency bumps", url: body.dependencyBumpPrUrl });
+      if (body.configFixPrUrl) opened.push({ label: "Security headers", url: body.configFixPrUrl });
+      setPrs(opened);
       setState("done");
     } catch (err) {
       setErrorMsg((err as Error).message);
@@ -342,16 +348,21 @@ function GenerateFixPrButton({ scanId, token, githubRepo }: { scanId: string; to
     }
   }
 
-  if (state === "done" && prUrl) {
+  if (state === "done" && prs.length > 0) {
     return (
-      <a
-        href={prUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-md border border-neon/40 bg-neon/10 px-4 py-2 text-sm font-medium text-neon hover:bg-neon/20 transition-colors"
-      >
-        PR created — view ↗
-      </a>
+      <div className="inline-flex flex-wrap items-center gap-2">
+        {prs.map((pr) => (
+          <a
+            key={pr.url}
+            href={pr.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-neon/40 bg-neon/10 px-4 py-2 text-sm font-medium text-neon hover:bg-neon/20 transition-colors"
+          >
+            {pr.label} PR ↗
+          </a>
+        ))}
+      </div>
     );
   }
 
@@ -598,7 +609,7 @@ export default function ScanDetailPage() {
           </Link>
           <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./scan --live</p>
           <h1 className="text-xl font-bold text-cybertext">Scan in progress</h1>
-          <p className="mt-1 text-sm text-cybertext/40">Results will appear here automatically when the scan completes.</p>
+          <p className="mt-1 text-sm text-cybermuted">Results will appear here automatically when the scan completes.</p>
         </div>
         {params?.id && (
           <ScanProgressPanel
@@ -661,7 +672,7 @@ export default function ScanDetailPage() {
               <div>
                 <p className="font-mono text-xs text-neon/50" aria-hidden="true">$ ./report</p>
                 <h1 className="text-2xl font-bold text-cybertext break-all print:text-slate-800">{targetUrl}</h1>
-                <p className="mt-1 text-sm text-cybertext/40 print:text-slate-500">Security scan report · {checkedAt}</p>
+                <p className="mt-1 text-sm text-cybermuted print:text-slate-500">Security scan report · {checkedAt}</p>
               </div>
               <div className="no-print flex shrink-0 flex-wrap gap-2">
                 <ReplayButton scanId={result.scan_id} token={sessionToken} />
@@ -747,7 +758,7 @@ export default function ScanDetailPage() {
 
           {/* Check breakdown */}
           <div>
-            <h2 className="mb-3 font-mono text-xs text-cybertext/40 uppercase tracking-wide">// check breakdown</h2>
+            <h2 className="mb-3 font-mono text-xs text-cybermuted uppercase tracking-wide">// check breakdown</h2>
             <div className="grid gap-2 sm:grid-cols-2">
               {checkBreakdown({ tls, headers, dns, exposure }).map((row) => (
                 <CheckRow key={row.label} label={row.label} pass={row.pass} detail={row.detail} />
@@ -773,7 +784,7 @@ export default function ScanDetailPage() {
           {!wizardMode && (taggedOrdered.length > 0 || (diff && diff.fixed.length > 0) ? (
             <div>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// findings</h2>
+                <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// findings</h2>
                 {diff && (
                   <div className="no-print flex gap-2 text-xs">
                     {([
@@ -810,7 +821,7 @@ export default function ScanDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-cybertext/40">
+                <p className="text-sm text-cybermuted">
                   {filter === "new"
                     ? "No new open findings since your last scan of this target."
                     : filter === "fixed"
@@ -845,7 +856,7 @@ export default function ScanDetailPage() {
 
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
-            <p className="font-mono text-xs text-cybertext/40 uppercase tracking-wide mb-3">// embed your score badge</p>
+            <p className="font-mono text-xs text-cybermuted uppercase tracking-wide mb-3">// embed your score badge</p>
             <code className="block break-all rounded border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
               {/* The www host: the bare domain only forwards its homepage, so
                   an embedded badge pointing there was a broken image. */}

@@ -1,0 +1,19 @@
+{
+  "target": "csp-weak",
+  "description": "Hardened site whose only flaw is a bypassable Content-Security-Policy ('unsafe-inline' in script-src with no nonce/hash/strict-dynamic). The grader must report headers.csp-weak — not headers.csp-absent, and not stay silent — while every other header check stays clean.",
+  "mustFind": [
+    "tls.no-https",
+    "headers.csp-weak"
+  ],
+  "mustNotFind": [
+    "headers.csp-absent",
+    "headers.missing-critical",
+    "headers.missing-recommended",
+    "headers.cookie-flags:*",
+    "headers.cors-wildcard",
+    "headers.info-disclosure"
+  ],
+  "optional": [
+    "fingerprint.tech-detected"
+  ]
+}

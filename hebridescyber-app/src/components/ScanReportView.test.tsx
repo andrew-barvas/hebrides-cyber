@@ -224,6 +224,44 @@ describe("FindingCard proof of exploit", () => {
   });
 });
 
+describe("FindingCard AI triage", () => {
+  const triage = (over: Record<string, unknown>) => finding({ metadata: { aiTriage: { reasoning: "r", ...over } } });
+
+  it("shows AI-verified, with the quoted evidence, when the model's verdict was verified", () => {
+    render(<FindingCard finding={triage({ verdict: "confirmed", evidence: "DB_PASSWORD=x", request: ["GET /debug", "Origin: a"].join(String.fromCharCode(10)) })} />);
+    const title = screen.getByText("AI-verified").getAttribute("title");
+    expect(title).toContain('"DB_PASSWORD=x"');
+    expect(title).toContain("(GET /debug)");
+    expect(title).not.toContain("Origin: a");
+  });
+
+  it("says 'not reproduced' without claiming the finding is fixed", () => {
+    render(<FindingCard finding={triage({ verdict: "not_confirmed" })} />);
+    expect(screen.getByText("AI: not reproduced")).toHaveAttribute("title", expect.stringContaining("not evidence it is fixed"));
+  });
+
+  it("shows nothing for an inconclusive verdict or no triage", () => {
+    const { unmount } = render(<FindingCard finding={triage({ verdict: "inconclusive" })} />);
+    expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
+    unmount();
+    render(<FindingCard finding={finding()} />);
+    expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
+  });
+
+  it("does not add the AI badge when a deterministic proof already confirmed it", () => {
+    render(<FindingCard finding={finding({ metadata: { proofOfExploit: { confirmed: true }, aiTriage: { verdict: "confirmed", reasoning: "r" } } })} />);
+    expect(screen.getByText("Confirmed exploitable")).toBeInTheDocument();
+    expect(screen.queryByText("AI-verified")).not.toBeInTheDocument();
+  });
+
+  it("ranks an AI-verified finding above an unverified one of the same severity, below a proven one", () => {
+    const plain = finding({ title: "plain", severity: "high" });
+    const ai = finding({ title: "ai", severity: "high", metadata: { aiTriage: { verdict: "confirmed", reasoning: "r" } } });
+    const proven = finding({ title: "proven", severity: "high", metadata: { proofOfExploit: { confirmed: true } } });
+    expect(sortFindingsBySeverity([plain, ai, proven]).map((f) => f.title)).toEqual(["proven", "ai", "plain"]);
+  });
+});
+
 describe("FindingCard threat intel", () => {
   it("flags a CISA KEV finding as actively exploited, naming the CVEs and ransomware use", () => {
     render(

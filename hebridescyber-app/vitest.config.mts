@@ -29,6 +29,8 @@ export default defineConfig({
       exclude: [
         "src/app/**/layout.tsx",
         "src/app/**/page.tsx", // route entrypoints — thin composition, exercised by e2e instead
+        "src/app/admin/_tabs/**", // admin tabs were part of admin/page.tsx until the code-split; same exclusion
+        "src/app/admin/_shared.tsx",
         "src/**/*.d.ts",
         "src/scripts/**", // standalone GitHub Actions scripts — need real Supabase, out of unit scope
       ],
@@ -41,10 +43,10 @@ export default defineConfig({
       // the sibling WorldCup2026Predictions project's CLAUDE.md for the
       // same convention this mirrors.
       thresholds: {
-        statements: 73,
-        branches: 66,
-        functions: 74,
-        lines: 74,
+        statements: 76,
+        branches: 68,
+        functions: 76,
+        lines: 77,
       },
     },
   },

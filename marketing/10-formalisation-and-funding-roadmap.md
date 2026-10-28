@@ -113,6 +113,27 @@ consultancy" or "Information security" family. Confirm the exact current
 code list on Companies House at registration time rather than assuming a
 code here, since SIC lists are revised periodically.
 
+**Working draft for the registration form** (non-personal details only —
+confirm each with your accountant or against the live Companies House
+form before submitting):
+
+| Field | Draft value |
+|---|---|
+| Company name | Hebrides Cyber Ltd (check availability first) |
+| Company type | Private company limited by shares |
+| Primary SIC | 62020 — Information technology consultancy activities |
+| Optional second SIC | 62012 — Business and domestic software development |
+| Share capital | Ordinary shares, GBP 1 nominal; a small number such as 100 or 1,000 is common for a solo founder, and a statement of capital is required at incorporation |
+| Articles | Model articles |
+| Registered office | Must be a real address where documents can be delivered. A service or accountant address can be used instead of your home address, which is public on the register |
+
+**Personal details are not kept in this repository.** Director name, date
+of birth, home and service addresses, nationality and any person with
+significant control are entered directly on the Companies House form.
+Check Companies House's current guidance on what appears on the public
+register (a director's month and year of birth are normally public; a home
+address is kept off it when a service address is given).
+
 ---
 
 ## 3. Funding: Highlands and Islands Enterprise and other Scottish bodies

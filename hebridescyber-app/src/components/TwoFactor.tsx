@@ -84,7 +84,7 @@ export default function TwoFactor() {
   return (
     <section className="rounded-xl border border-cyberborder bg-cyberpanel p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-mono text-xs text-cybertext/40 uppercase tracking-wide">// security</h2>
+        <h2 className="font-mono text-xs text-cybermuted uppercase tracking-wide">// security</h2>
         {factors.length > 0 && (
           <span className="rounded-full border border-neon/30 bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon">
             2FA on
@@ -105,11 +105,11 @@ export default function TwoFactor() {
           {factors.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 p-3">
               <span className="text-sm text-cybertext/80">
-                Authenticator app <span className="text-cybertext/40">({f.status})</span>
+                Authenticator app <span className="text-cybermuted">({f.status})</span>
               </span>
               <button
                 onClick={() => remove(f.id)}
-                className="text-xs text-cybertext/40 hover:text-red-400 transition-colors"
+                className="text-xs text-cybermuted hover:text-red-400 transition-colors"
               >
                 Remove
               </button>
@@ -134,7 +134,7 @@ export default function TwoFactor() {
           {/* Supabase returns qr_code as an inline SVG data URI — safe as an <img> src. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={qrCode} alt="Two-factor authentication QR code" className="h-40 w-40 rounded bg-white p-1" />
-          <p className="text-xs text-cybertext/40">
+          <p className="text-xs text-cybermuted">
             Can&apos;t scan? Enter manually:{" "}
             <code className="break-all font-mono text-neon/80">{secret}</code>
           </p>

@@ -17,6 +17,7 @@
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/run-queued-scan-jobs.ts
 
+import { captureWorkerError, captureWorkerFatal, flushWorkerSentry, initWorkerSentry, logPrefix, type JobContext } from "../lib/workerSentry";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
@@ -26,6 +27,7 @@ import { executeScan } from "../lib/scanExecution";
 import { hasTierAAccess } from "../lib/planAccess";
 import { hasActiveOffensiveAuthorization } from "../lib/offensiveAuthorization";
 import { logAuditEvent } from "../lib/audit";
+import { enablesOffensiveTools } from "../lib/scanProfiles";
 import type { ScanProfile, ExtendedToolName } from "../lib/scanProfiles";
 
 // With a "full"/"api"/"cms"/"osint" scan profile, a single job can take up to ~3.5 minutes
@@ -50,6 +52,8 @@ async function main() {
 
   const workerId = process.env.WORKER_ID ?? `local-${process.pid}`;
   const startedAt = Date.now();
+  // Failures reach Sentry when SENTRY_DSN is set (a no-op otherwise).
+  initWorkerSentry(workerId);
 
   // Reset any scan_jobs rows stuck in 'running' past GitHub's job ceiling
   // (see 041_reset_stale_scan_jobs.sql for why it can't be shorter) — handles
@@ -73,6 +77,7 @@ async function main() {
 
     if (claimError) {
       console.error("claim_scan_job RPC failed:", claimError.message);
+      captureWorkerFatal(new Error(`claim_scan_job RPC failed: ${claimError.message}`), workerId, "claim");
       break;
     }
 
@@ -82,14 +87,29 @@ async function main() {
     if (!job) break; // queue is empty
 
     processed++;
-    console.log(`[${workerId}] claimed job ${job.id} — ${job.target_url}`);
+    console.log(`[${workerId}] claimed ${logPrefix(job)} — ${job.target_url}`);
 
-    const ok = await runOne(supabaseAdmin, job);
+    // One job throwing must not take the rest of the batch down with it (it used
+    // to reject main(), which exited the whole worker and left every unclaimed
+    // job for the next run): record it against the job and move on.
+    let ok = false;
+    try {
+      ok = await runOne(supabaseAdmin, job, workerId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`${logPrefix(job)} crashed: ${message}`);
+      captureWorkerError(err, jobContext(job, workerId), "run");
+      await supabaseAdmin.from("scan_jobs").update({ status: "failed", last_error: message.slice(0, 2000) }).eq("id", job.id);
+      if (job.scan_id) {
+        await supabaseAdmin.from("scans").update({ status: "failed", error_detail: message.slice(0, 2000) }).eq("id", job.scan_id);
+      }
+    }
     if (ok) succeeded++;
     else failed++;
   }
 
   console.log(`[${workerId}] done — processed ${processed}, succeeded ${succeeded}, failed ${failed}.`);
+  await flushWorkerSentry();
 }
 
 type ScanConfig = { profile: ScanProfile; toolOverrides?: Partial<Record<ExtendedToolName, boolean>> };
@@ -148,12 +168,26 @@ async function resolveScanConfig(
   return decideScanConfig(job, target, bundle ?? null);
 }
 
+function jobContext(job: { id: string; scan_id: string | null; target_url: string }, workerId: string): JobContext {
+  return { workerId, jobId: job.id, scanId: job.scan_id, targetUrl: job.target_url };
+}
+
 async function runOne(
   supabaseAdmin: SupabaseClient,
-  job: { id: string; owner: string; target_url: string; scan_id: string | null; scan_profile: string | null }
+  job: { id: string; owner: string; target_url: string; scan_id: string | null; scan_profile: string | null },
+  workerId: string = "local"
 ): Promise<boolean> {
-  async function failJob(message: string) {
-    console.error(`[job ${job.id}] failed: ${message}`);
+  // Declared before failJob (which reads it for log prefixes and correlation).
+  let scanId = job.scan_id;
+
+  /**
+   * `unexpected` marks a failure that is a bug or an outage (the scan engine
+   * erroring, a row that could not be created) as opposed to a normal outcome
+   * (the domain is no longer verified): only the former goes to Sentry.
+   */
+  async function failJob(message: string, unexpected = false) {
+    console.error(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} failed: ${message}`);
+    if (unexpected) captureWorkerError(new Error(message), jobContext({ ...job, scan_id: scanId ?? job.scan_id }, workerId), "job");
     await supabaseAdmin.from("scan_jobs").update({ status: "failed", last_error: message }).eq("id", job.id);
     if (job.scan_id) {
       // Mirror the reason onto the scan the owner/admin see (migration 058).
@@ -187,8 +221,6 @@ async function runOne(
   //     already exists (created when the customer clicked "Run scan"), so
   //     this worker reuses it and stays on the "safe" profile, matching what
   //     /what-we-check tells customers an on-demand scan does.
-  let scanId = job.scan_id;
-
   // Idempotency guard: a second job for a scan that has already completed
   // (an older double-enqueue, or a stale-job reset racing a run that did
   // finish) must not run it again — that's how one scan ended up with two
@@ -198,36 +230,45 @@ async function runOne(
     const { data: existing } = await supabaseAdmin.from("scans").select("status").eq("id", scanId).maybeSingle();
     if (existing?.status === "completed") {
       await supabaseAdmin.from("scan_jobs").update({ status: "completed" }).eq("id", job.id);
-      console.log(`[job ${job.id}] skipped — scan ${scanId} already completed`);
+      console.log(`${logPrefix({ id: job.id, scan_id: scanId })} skipped — already completed`);
       return true;
     }
   }
 
   let scanConfig = await resolveScanConfig(supabaseAdmin, job);
 
-  // Authoritative gate for the Tier A `offensive` profile (brute-force / real
-  // attack tools). The UI and the DB CHECK constraint let the value be stored,
-  // but nothing until here decides whether it may actually RUN. It runs only
-  // when the owner is on Tier A AND has a current per-scan authorization for
-  // this target (offensive_scan_authorizations) — the domain-ownership check
-  // above already ran. If either is missing we downgrade to a passive "safe"
-  // scan rather than failing the job, and record why. This is the only place
-  // the offensive suite is unlocked; a comment used to be the sole "gate".
-  if (scanConfig.profile === "offensive") {
+  // Authoritative gate for any configuration that would run the offensive-only
+  // tools (brute-force / real attack). The UI and the DB CHECK constraint let
+  // the value be stored, but nothing until here decides whether it may actually
+  // RUN. It runs only when the owner is on Tier A AND has a current per-scan
+  // authorization for this target (offensive_scan_authorizations) — the
+  // domain-ownership check above already ran. If either is missing we downgrade
+  // to a passive "safe" scan rather than failing the job, and record why. This
+  // is the only place the offensive suite is unlocked; a comment used to be the
+  // sole "gate".
+  //
+  // The condition asks enablesOffensiveTools() rather than comparing the
+  // profile to "offensive": that comparison missed `ai-pentest`, which enables
+  // the same four tools, and would miss a scan bundle whose tool_overrides turn
+  // one on over a tame base profile.
+  if (enablesOffensiveTools(scanConfig.profile, scanConfig.toolOverrides)) {
+    const requestedProfile = scanConfig.profile;
     const [tierOk, authorized] = await Promise.all([
       hasTierAAccess(supabaseAdmin, job.owner),
       hasActiveOffensiveAuthorization(supabaseAdmin, job.owner, job.target_url),
     ]);
     if (!tierOk || !authorized) {
       const reason = !tierOk ? "owner is not on Tier A" : "no current offensive-scan authorization for this target";
-      console.warn(`[job ${job.id}] offensive profile refused (${reason}); downgrading to safe`);
+      console.warn(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} offensive tools refused for profile "${requestedProfile}" (${reason}); downgrading to safe`);
       await logAuditEvent(supabaseAdmin, {
         actorId: job.owner,
         action: "offensive_scan.refused",
         resourceType: "scan_job",
         resourceId: job.id,
-        metadata: { target_url: job.target_url, reason },
+        metadata: { target_url: job.target_url, reason, profile: requestedProfile },
       });
+      // Drops toolOverrides along with the profile — a "safe" profile carrying
+      // an override that re-enabled an offensive tool would defeat the point.
       scanConfig = { profile: "safe" };
     } else {
       await logAuditEvent(supabaseAdmin, {
@@ -235,7 +276,7 @@ async function runOne(
         action: "offensive_scan.ran",
         resourceType: "scan_job",
         resourceId: job.id,
-        metadata: { target_url: job.target_url },
+        metadata: { target_url: job.target_url, profile: requestedProfile },
       });
     }
   }
@@ -253,7 +294,7 @@ async function runOne(
       .single();
 
     if (insertError || !scan) {
-      await failJob(insertError?.message ?? "Failed to create scans row");
+      await failJob(insertError?.message ?? "Failed to create scans row", true);
       return false;
     }
 
@@ -266,7 +307,7 @@ async function runOne(
     // succeeded (guarded by the insertError/!scan check). Kept as an explicit
     // guard rather than a non-null assertion so a future change to that logic
     // fails loudly here instead of passing a bad id to executeScan.
-    await failJob("Internal error: scanId was not resolved before running the scan.");
+    await failJob("Internal error: scanId was not resolved before running the scan.", true);
     return false;
   }
 
@@ -282,12 +323,12 @@ async function runOne(
     toolOverrides: scanConfig.toolOverrides,
   });
   if (!outcome.ok) {
-    await failJob(outcome.error);
+    await failJob(outcome.error, true);
     return false;
   }
 
   await supabaseAdmin.from("scan_jobs").update({ status: "completed" }).eq("id", job.id);
-  console.log(`[job ${job.id}] completed — score ${outcome.score}`);
+  console.log(`${logPrefix({ id: job.id, scan_id: scanId })} completed — score ${outcome.score}`);
   return true;
 }
 
@@ -299,8 +340,10 @@ async function runOne(
 // Windows, where a naive concatenation gets the drive-letter path format
 // and separators wrong.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((err) => {
+  main().catch(async (err) => {
     console.error("run-queued-scan-jobs failed:", err);
+    captureWorkerFatal(err, process.env.WORKER_ID ?? `local-${process.pid}`, "main");
+    await flushWorkerSentry();
     process.exit(1);
   });
 }
