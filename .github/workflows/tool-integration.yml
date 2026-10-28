@@ -237,6 +237,21 @@ jobs:
         if: always()
         run: docker rm -f zap || true
 
+      # Captures the real WhatWaf stdout/stderr against the local app, exactly
+      # as whatwaf.ts invokes it and with stdin closed like execTool does, so
+      # the true verdict lines and any interactive-prompt crash are visible in
+      # the job log and the uploaded artifact (readable straight from the log
+      # below). Informational: never fails the job.
+      - name: Capture whatwaf output
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p /tmp/capture
+          whatwaf -u http://127.0.0.1:8099/ --ra --throttle 3 --skip \
+            > /tmp/capture/whatwaf.local.stdout.txt \
+            2> /tmp/capture/whatwaf.local.stderr.txt < /dev/null
+          echo "whatwaf exit=$?" > /tmp/capture/whatwaf.exit.txt
+
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it
       # against the local test app, prints what it emits (readable straight from
