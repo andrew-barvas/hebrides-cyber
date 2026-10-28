@@ -56,6 +56,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
 | OT-26 | `SENTRY_DSN` GitHub secret (scan-worker errors) | — | Done | 2026-10-23 | 2026-10-23 |
+| OT-27 | Create a public status page and set `NEXT_PUBLIC_STATUS_PAGE_URL` | 🟡 Medium | Open | 2026-10-28 | |
 
 ## Items
 
@@ -312,6 +313,19 @@ Done. The live `/api/health` reported `stripe: ok` (overall `ok`) on
 ### OT-25: `SITE_URL` and `DATABASE_URL` deploy secrets ✅
 Done 2026-10-14. Since #111, the post-deploy health check follows the
 bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
+
+### OT-27: Public status page 🟡
+- **What and why:** launch priority #2 wants a status page linked from the
+  footer. The footer now shows a "Status" link as soon as
+  `NEXT_PUBLIC_STATUS_PAGE_URL` is set to an https URL; until then it shows
+  nothing. A status page hosted on the same site would be down with it, so it
+  needs to be external.
+- **How:** create a free public status page (an UptimeRobot status page works,
+  and OT-09's monitor can feed it). Add its URL as the GitHub secret
+  `NEXT_PUBLIC_STATUS_PAGE_URL`, then push to `master` (or re-run Deploy) so it
+  is built in.
+- **Verify:** the live footer shows "Status" and the link opens the page.
+- **Raised:** 2026-10-28 (launch priority #2, AC4).
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
