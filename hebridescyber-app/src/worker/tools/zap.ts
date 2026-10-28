@@ -1,8 +1,9 @@
 // OWASP ZAP active scanning integration.
 //
 // Runs a full spider + active scan against the target and collects alerts.
-// Requires a running ZAP daemon (provided by the `zap` service in
-// docker-compose.yml). When ZAP_API_URL is not set, returns gracefully.
+// Requires a running ZAP daemon (started by the "Start ZAP daemon" step in
+// .github/workflows/scheduled-scans.yml — there is no docker-compose.yml).
+// When ZAP_API_URL is not set, returns gracefully.
 
 import type { Finding } from "../../lib/scanners/index";
 

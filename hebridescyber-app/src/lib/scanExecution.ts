@@ -14,6 +14,7 @@ import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanRe
 import { dispatchScanCompletedWebhooks } from "./webhooks";
 import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
+import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
@@ -1301,7 +1302,7 @@ async function sendChangeAlertIfDue(
   const isAdmin = Boolean(user?.is_admin);
   if (!isAdmin) {
     if (sub.status !== "active") return;
-    if (sub.plan !== "pro" && sub.plan !== "agency") return;
+    if (!planIncludes(sub.plan, "pro")) return;
   }
   if (!sub.slack_webhook_url && !sub.ms_teams_webhook_url) return;
 

@@ -593,9 +593,13 @@ Add bounded, redacted `evidence` field to `Finding`/`ViewFinding`; populate
 in `httpProbe.ts`-based checks with secret/cookie stripping; render in
 `FindingCard`; include in CSV/JSON/PDF exports; delete with scan.
 
-Fix scheduled-report PDF gap: `send-scheduled-reports.ts:71-73` only branches
-csv/json — `format:"pdf"` currently emails JSON labelled "pdf". Add
-`formatReportPdf`/HTML builder + `pdf` branch calling `htmlToPdf()`.
+✅ **Done 2026-10-27 — scheduled-report PDF gap.** `format:"pdf"` (the API and
+column default) used to email JSON labelled "pdf". Now
+`scheduledReports.ts`'s `renderScheduledReportHtml` + `buildReportEmail` print
+it with `htmlToPdf()` and attach it (`sendEmail` gained `attachments`); the
+dashboard offers PDF. If Chromium fails the email carries CSV and says so, and
+the run fails. `scheduled-reports.yml` installs Chromium only when a PDF report
+is due (`--pdf-due-check`). The evidence half of H4 is still open.
 
 ---
 

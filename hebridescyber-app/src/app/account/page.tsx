@@ -10,6 +10,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useBillingPortal } from "@/lib/useBillingPortal";
 import { useAppSession } from "@/components/app-shell/AppShell";
+import { planIncludes } from "@/lib/planAccess";
 import RequestAudit from "@/components/RequestAudit";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
@@ -25,16 +26,17 @@ const PLAN_LABELS: Record<string, string> = {
   basic: "Basic",
   pro: "Pro",
   agency: "Agency",
+  tier_a: "Tier A",
 };
 
 export default function AccountPage() {
-  const { email, userId, accessToken, billingPlan, planStatus } = useAppSession();
+  const { email, userId, accessToken, plan, billingPlan, planStatus } = useAppSession();
   const billing = useBillingPortal();
   const [branding, setBranding] = useState<{ logoUrl: string | null; name: string | null } | null>(null);
 
   // White-label branding is Agency-only and not part of the shared session.
   useEffect(() => {
-    if (billingPlan !== "agency") return;
+    if (!planIncludes(plan, "agency")) return;
     supabase
       .from("subscriptions")
       .select("brand_logo_url, brand_name")
@@ -45,7 +47,7 @@ export default function AccountPage() {
           name: (data?.brand_name as string | null) ?? null,
         })
       );
-  }, [billingPlan]);
+  }, [plan]);
 
   return (
     <div className="space-y-8">
@@ -102,7 +104,7 @@ export default function AccountPage() {
         )}
       </Card>
 
-      {billingPlan === "agency" && branding && (
+      {planIncludes(plan, "agency") && branding && (
         <BrandingSection token={accessToken} initialLogoUrl={branding.logoUrl} initialBrandName={branding.name} />
       )}
 

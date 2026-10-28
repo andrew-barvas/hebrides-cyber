@@ -2,21 +2,31 @@
 // Run by .github/workflows/scheduled-reports.yml as a cron job.
 // Same direct-Supabase pattern as send-monthly-digest.ts — no HTTP hop.
 //
+// `--pdf-due-check` only reports whether this hour's run will render a PDF
+// (step output `pdf_due`), so the workflow installs Chromium only then.
+//
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/send-scheduled-reports.ts
 
+import { appendFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
 import ws from "ws";
 import {
   isReportDue,
+  pdfReportDue,
   gatherReportData,
-  formatReportCsv,
-  formatReportJson,
+  buildReportEmail,
   markReportSent,
   type ScheduledReport,
 } from "../lib/scheduledReports";
-import { sendEmail, escapeHtml } from "../lib/email";
+import { sendEmail } from "../lib/email";
+import { htmlToPdf } from "../lib/reportPdf";
+
+function writeStepOutput(name: string, value: string) {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  console.log(`${name}=${value}`);
+}
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -36,6 +46,13 @@ async function main() {
     .select("*")
     .eq("enabled", true);
 
+  if (process.argv.includes("--pdf-due-check")) {
+    // Fail open: on a failed read, install the browser and let the send step report the error.
+    if (fetchErr) console.warn("Could not read scheduled reports for the PDF check:", fetchErr.message);
+    writeStepOutput("pdf_due", String(fetchErr ? true : pdfReportDue((reports ?? []) as ScheduledReport[], new Date())));
+    return;
+  }
+
   if (fetchErr) {
     console.error("Failed to fetch scheduled reports:", fetchErr.message);
     process.exit(1);
@@ -50,6 +67,7 @@ async function main() {
   let sent = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const pdfFallbacks: string[] = [];
 
   for (const report of due) {
     try {
@@ -61,37 +79,11 @@ async function main() {
       }
 
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
-      const targetLabel = report.target_url ?? "all monitored sites";
-      const totalFindings = summaries.reduce((sum, s) => sum + s.totalFindings, 0);
-      const scoredSummaries = summaries.filter((s) => s.score !== null);
-      const avgScore = scoredSummaries.length > 0
-        ? Math.round(scoredSummaries.reduce((sum, s) => sum + (s.score ?? 0), 0) / scoredSummaries.length)
-        : null;
-
-      const reportData = report.format === "csv"
-        ? `<pre style="background:#111;color:#ccc;padding:12px;border-radius:4px;overflow-x:auto;font-size:12px">${escapeHtml(formatReportCsv(summaries))}</pre>`
-        : `<pre style="background:#111;color:#ccc;padding:12px;border-radius:4px;overflow-x:auto;font-size:12px">${escapeHtml(formatReportJson(summaries))}</pre>`;
-
-      const subject = `Scheduled Security Report — ${escapeHtml(targetLabel)}`;
-      const html = [
-        `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto">`,
-        `<h2 style="color:#39FFC0">Scheduled Security Report</h2>`,
-        `<p>Report for: <strong>${escapeHtml(targetLabel)}</strong></p>`,
-        `<p>Frequency: ${report.frequency} | Format: ${report.format}</p>`,
-        `<table style="width:100%;border-collapse:collapse;margin:16px 0">`,
-        `<tr style="background:#0D1524;color:#fff"><th style="padding:8px;text-align:left">Metric</th><th style="padding:8px;text-align:right">Value</th></tr>`,
-        `<tr><td style="padding:8px">Sites scanned</td><td style="padding:8px;text-align:right">${summaries.length}</td></tr>`,
-        `<tr><td style="padding:8px">Total findings</td><td style="padding:8px;text-align:right">${totalFindings}</td></tr>`,
-        avgScore !== null ? `<tr><td style="padding:8px">Average score</td><td style="padding:8px;text-align:right">${avgScore}/100</td></tr>` : "",
-        `</table>`,
-        reportData,
-        `<p><a href="${siteUrl}/dashboard" style="color:#39FFC0">View dashboard →</a></p>`,
-        `<p style="color:#888;font-size:12px;margin-top:24px">Manage your scheduled reports in Dashboard → Settings.</p>`,
-        `</div>`,
-      ].join("\n");
+      const email = await buildReportEmail(report, summaries, { siteUrl, renderPdf: htmlToPdf });
+      if (email.pdfError) pdfFallbacks.push(`Report ${report.id}: PDF could not be generated, sent as CSV instead (${email.pdfError})`);
 
       for (const recipient of report.recipients) {
-        await sendEmail({ to: recipient, subject, html });
+        await sendEmail({ to: recipient, subject: email.subject, html: email.html, attachments: email.attachments });
       }
 
       await markReportSent(supabaseAdmin, report.id, report.frequency);
@@ -101,10 +93,13 @@ async function main() {
     }
   }
 
-  console.log(`Scheduled reports: sent ${sent}, skipped ${skipped}, ${errors.length} error(s).`);
+  console.log(`Scheduled reports: sent ${sent}, skipped ${skipped}, ${errors.length} error(s), ${pdfFallbacks.length} PDF(s) sent as CSV.`);
   for (const err of errors) console.error(`  - ${err}`);
+  for (const fallback of pdfFallbacks) console.error(`  - ${fallback}`);
 
-  if (errors.length > 0) process.exit(1);
+  // A PDF that fell back to CSV was still delivered, and its email says so, but
+  // the run fails so a broken Chromium install is noticed rather than lasting.
+  if (errors.length > 0 || pdfFallbacks.length > 0) process.exit(1);
 }
 
 main().catch((err) => {
