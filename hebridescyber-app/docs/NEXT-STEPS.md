@@ -243,7 +243,7 @@ In order of impact:
 1. **Stripe price IDs (E-07)**: paid sign-up is impossible until `STRIPE_PRICE_*` are set; `/api/health` stays "degraded".
 2. **Sentry DSN (E-03)**: failed scans are invisible in production without it.
 3. **Restore drill (E-13 / LIVE-4)**: restore a backup into a scratch Supabase project and record the result in `BACKUP-RESTORE.md`; consider Supabase Pro for point-in-time recovery.
-4. **Deploy secrets**: `DATABASE_URL` is set and the one-time `baseline_up_to=047` run is done — migrations now auto-apply on every deploy (see the migrations note at the top). Still outstanding: `SITE_URL` = `https://www.hebridescyber.co.uk`, so the post-deploy health check actually runs. (The `DATABASE_URL` password was pasted into a chat during setup on 2026-10-14 — rotate it in Supabase and re-save the secret.)
+4. **Deploy secrets**: `DATABASE_URL` is set and the one-time `baseline_up_to=047` run is done — migrations now auto-apply on every deploy (see the migrations note at the top). `SITE_URL` is set (bare domain), and since 2026-10-27 the post-deploy health check follows the redirect to `www`, so it checks real health. (The `DATABASE_URL` password was pasted into a chat during setup on 2026-10-14 — rotate it in Supabase and re-save the secret.)
 5. **Publish the GitHub Action** from a public repository (this repo is private, so customers cannot `uses:` it); until then the CI templates in item 2 are the supported route.
 6. **Domains**: register `hebridescyber.com` defensively; optionally a `security@hebridescyber.co.uk` alias for `security.txt`.
 7. **ToS solicitor review** (BETA-B1).
