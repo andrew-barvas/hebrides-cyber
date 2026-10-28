@@ -15,6 +15,7 @@ import { deriveOnboardingFlags } from "@/lib/onboardingFlags";
 import PortfolioReportButton from "@/components/PortfolioReportButton";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import PlanUpsell from "@/components/PlanUpsell";
+import { planIncludes } from "@/lib/planAccess";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
@@ -238,11 +239,11 @@ export default function DashboardPage() {
 
       <OnboardingChecklist {...flags} />
 
-      {plan === "agency" && <PortfolioReportButton token={sessionToken} />}
+      {planIncludes(plan, "agency") && <PortfolioReportButton token={sessionToken} />}
 
       <FleetOverview />
 
-      <EmergingThreatsPanel token={sessionToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
+      <EmergingThreatsPanel token={sessionToken} paidPlan={planIncludes(plan, "basic")} />
 
       {!loaded ? (
         <OverviewSkeleton />
@@ -384,7 +385,7 @@ export default function DashboardPage() {
         />
       )}
 
-      {plan === "agency" && <PartnerPortalPanel />}
+      {planIncludes(plan, "agency") && <PartnerPortalPanel />}
 
       <PlanUpsell plan={plan} />
     </div>

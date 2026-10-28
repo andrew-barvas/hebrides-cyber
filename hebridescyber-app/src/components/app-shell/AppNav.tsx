@@ -35,7 +35,7 @@ export function activeNavHref(pathname: string): string | null {
   return best;
 }
 
-const PLAN_NAMES: Record<Plan, string> = { none: "Free", basic: "Basic", pro: "Pro", agency: "Agency" };
+const PLAN_NAMES: Record<Plan, string> = { none: "Free", basic: "Basic", pro: "Pro", agency: "Agency", tier_a: "Tier A" };
 
 type PlanSummary = { plan: Plan; billingPlan: Plan; planStatus: string | null } | null;
 
