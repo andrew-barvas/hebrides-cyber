@@ -442,11 +442,13 @@ jobs:
           GOSPIDER_VERSION: 1.1.6
           GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
         run: |
-          # Pinned for a reproducible run. NOTE: PyPI `photon` is a third-party
-          # upload, not s0md3v/Photon (which ships no pip entry point), so its
-          # CLI can't be verified against photon.ts — photon is excluded from the
-          # default `full` profile for that reason (see scanProfiles.ts) and runs
-          # only under the opt-in osint/offensive profiles.
+          # Pinned for a reproducible run. NOTE: PyPI `photon` names s0md3v as
+          # its author, but 1.1.8.3 dates from 2019, the current s0md3v/Photon
+          # repo ships no setup.py or pip entry point, and 1.1.9 carries an sdist
+          # named 1.1.8.1, so nothing here confirms its CLI matches what
+          # photon.ts calls. photon is therefore excluded from the default
+          # `full` profile (see scanProfiles.ts) and runs only under the opt-in
+          # osint/offensive profiles.
           pip3 install --break-system-packages photon==1.1.8.3 \
             || echo "photon install failed — photon.ts will report status: not_configured"
           curl -fsSL \
