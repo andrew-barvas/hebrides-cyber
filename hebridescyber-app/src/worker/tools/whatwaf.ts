@@ -5,22 +5,36 @@
 // that into the whatwaf.* findings. When the binary is absent, returns
 // { status: "not_configured" } so the worker continues gracefully.
 //
-// Evidence discipline: "no WAF" is a medium finding, so it needs WhatWaf to
-// have said so — JSON `is_protected: false`, or an explicit "no WAF" /
-// "unprotected" line. Empty output, a traceback, a changed format or JSON
-// with neither field is "error" (not run), never a clean "no WAF". WhatWaf
+// Evidence discipline: "no WAF" is a medium finding, so it needs WhatWaf's own
+// final verdict. Empty output, a traceback or any output without one of the
+// verdict lines below is "error" (not run), never a clean "no WAF". WhatWaf
 // reports no confidence score, so none is invented here; `evidence` quotes
-// what it did report.
+// the verdict line.
 //
-// Not yet checked against a real WhatWaf binary (there is no captured-output
-// fixture or integration test, unlike katana/dalfox), so its real output may
-// well land on "error" until a parser is built from a recorded run.
+// What v1.9 prints to stdout, read from its source (content/__init__.py's
+// detection_main; lib/formatter.py prefixes each line with an ANSI-coloured
+// "[HH:MM:SS]" stamp and a level tag):
+//   one WAF:       [FIREWALL] detected website protection identified as '<name>'
+//   several WAFs:  [FIREWALL] <name>   (one line each, no header)
+//   unidentified:  [INFO] target seems to be behind some kind of protection for the following reasons:
+//   no WAF:        [SUCCESS] no protection identified on target
+// "[WARN] no protection identified on target, verifying" comes BEFORE the
+// verification requests that can still find protection, so it is not a verdict.
+//
+// Flags: `-J/--json` writes a file under ~/.whatwaf (and only with -F), never
+// stdout, so it isn't passed. `--skip` skips WhatWaf's bypass analysis, which
+// fires its tamper payloads at the target for results we don't use.
+//
+// Built from source, not from a recorded run: there is no captured-output
+// fixture or integration test yet (unlike katana/dalfox).
 
 import { execTool } from "../../lib/execTool";
 
 const execFileAsync = execTool;
 
 const WHATWAF_TIMEOUT_MS = 90_000;
+
+export const WHATWAF_ARGS = ["--ra", "--throttle", "3", "--skip"] as const;
 
 export type WhatWafResult =
   | {
@@ -34,51 +48,44 @@ export type WhatWafResult =
   | { status: "not_configured" }
   | { status: "error"; note: string };
 
-type WhatWafJsonOutput = {
-  firewall_name?: unknown;
-  firewall_url?: unknown;
-  is_protected?: unknown;
-};
+const ANSI = /\x1b\[[0-9;]*m/g;
+const FIREWALL_LINE = /\[FIREWALL\] (.+)$/;
+const SINGLE_WAF = /^detected website protection identified as '(.+)'$/;
+const UNIDENTIFIED_WAF = /\[INFO\] target seems to be behind some kind of protection/;
+const NO_WAF = /\[SUCCESS\] no protection identified on target$/;
 
-const NO_WAF_TEXT = /no waf|unprotected/i;
-const UNREAD_OUTPUT = "whatwaf output could not be interpreted, so it says nothing about a WAF";
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function quote(line: string): string {
+  return `WhatWaf reported: "${line.replace(/^\[\d{2}:\d{2}:\d{2}\]/, "").slice(0, 200)}".`;
 }
 
 export function parseWhatWafOutput(stdout: string): Exclude<WhatWafResult, { status: "not_configured" }> {
-  const text = stdout.trim();
-  if (!text) return { status: "error", note: "whatwaf produced no output" };
+  const lines = stdout.replace(ANSI, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { status: "error", note: "whatwaf produced no output" };
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const line = text.split(/\r?\n/).find((l) => NO_WAF_TEXT.test(l));
-    if (line) return { status: "completed", waf: null, vendor: null, evidence: `WhatWaf reported: "${line.trim().slice(0, 200)}".` };
-    return { status: "error", note: UNREAD_OUTPUT };
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { status: "error", note: UNREAD_OUTPUT };
+  const firewallLines = lines.filter((l) => FIREWALL_LINE.test(l));
+  const names = firewallLines.map((l) => {
+    const reported = (l.match(FIREWALL_LINE) as RegExpMatchArray)[1].trim();
+    return reported.match(SINGLE_WAF)?.[1].trim() ?? reported;
+  });
+  const unidentified = lines.find((l) => UNIDENTIFIED_WAF.test(l));
+  const noWaf = lines.find((l) => NO_WAF.test(l));
 
-  const json = parsed as WhatWafJsonOutput;
-  const name = nonEmptyString(json.firewall_name);
-  if (json.is_protected === false) {
-    if (name) return { status: "error", note: `whatwaf reported is_protected: false but named a firewall (${name.slice(0, 100)})` };
-    return { status: "completed", waf: null, vendor: null, evidence: "WhatWaf reported is_protected: false." };
+  if (noWaf && (names.length > 0 || unidentified)) {
+    return { status: "error", note: "whatwaf reported both a protection and no protection" };
   }
-  if (name) return { status: "completed", waf: name, vendor: nonEmptyString(json.firewall_url), evidence: `WhatWaf identified the firewall as ${name}.` };
-  if (json.is_protected === true) {
-    return { status: "completed", waf: "Unidentified WAF", vendor: null, evidence: "WhatWaf reported is_protected: true but did not name the firewall." };
+  if (names.length > 0) {
+    return { status: "completed", waf: names.join(", "), vendor: null, evidence: firewallLines.map(quote).join(" ") };
   }
-  return { status: "error", note: "whatwaf output had neither is_protected nor firewall_name" };
+  if (unidentified) return { status: "completed", waf: "Unidentified WAF", vendor: null, evidence: quote(unidentified) };
+  if (noWaf) return { status: "completed", waf: null, vendor: null, evidence: quote(noWaf) };
+  return { status: "error", note: "whatwaf output had no verdict line, so it says nothing about a WAF" };
 }
 
 export async function runWhatWaf(targetUrl: string): Promise<WhatWafResult> {
   try {
     const { stdout } = await execFileAsync(
       "whatwaf",
-      ["-u", targetUrl, "--json", "--ra", "--throttle", "3"],
+      ["-u", targetUrl, ...WHATWAF_ARGS],
       { timeout: WHATWAF_TIMEOUT_MS }
     );
     return parseWhatWafOutput(stdout);

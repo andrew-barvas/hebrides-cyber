@@ -150,7 +150,7 @@ describe("executeScan extended findings: whatwaf", () => {
   }
 
   it("emits no finding for an errored run, and doesn't count it as covering last scan's whatwaf findings", async () => {
-    const { stored, findings, canDetect } = await scanWithWhatWaf({ status: "error", note: "whatwaf output could not be interpreted, so it says nothing about a WAF" });
+    const { stored, findings, canDetect } = await scanWithWhatWaf({ status: "error", note: "whatwaf output had no verdict line, so it says nothing about a WAF" });
     expect(findings).toEqual([]);
     expect((stored.extended as Record<string, { status: string }>).whatwaf.status).toBe("error");
     expect(canDetect({ checkId: "whatwaf.no-waf" })).toBe(false);
@@ -158,14 +158,15 @@ describe("executeScan extended findings: whatwaf", () => {
   });
 
   it("emits a medium whatwaf.no-waf, quoting the evidence, only for a positive no-WAF report", async () => {
-    const { findings, canDetect } = await scanWithWhatWaf({ status: "completed", waf: null, vendor: null, evidence: "WhatWaf reported is_protected: false." });
+    const evidence = 'WhatWaf reported: "[SUCCESS] no protection identified on target".';
+    const { findings, canDetect } = await scanWithWhatWaf({ status: "completed", waf: null, vendor: null, evidence });
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ checkId: "whatwaf.no-waf", severity: "medium", detail: expect.stringContaining("WhatWaf reported is_protected: false.") });
+    expect(findings[0]).toMatchObject({ checkId: "whatwaf.no-waf", severity: "medium", detail: expect.stringContaining(evidence) });
     expect(canDetect({ checkId: "whatwaf.waf-detected" })).toBe(true);
   });
 
   it("emits an info whatwaf.waf-detected with no confidence figure when a WAF is found", async () => {
-    const { findings } = await scanWithWhatWaf({ status: "completed", waf: "Cloudflare", vendor: null, evidence: "WhatWaf identified the firewall as Cloudflare." });
+    const { findings } = await scanWithWhatWaf({ status: "completed", waf: "Cloudflare", vendor: null, evidence: `WhatWaf reported: "[FIREWALL] detected website protection identified as 'Cloudflare'".` });
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ checkId: "whatwaf.waf-detected", severity: "info" });
     expect(findings[0].detail).not.toMatch(/confidence/i);

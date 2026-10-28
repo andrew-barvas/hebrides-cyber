@@ -9,6 +9,16 @@ vi.mock("../../lib/execTool", () => ({ execTool: (...args: unknown[]) => execToo
 import { parseWhatWafOutput, runWhatWaf } from "./whatwaf";
 import { findingSource, isCovered, scanCoverage } from "../../lib/findingLifecycle";
 
+/** A line as WhatWaf v1.9's lib/formatter.py prints it: ANSI-coloured stamp, then the coloured level tag and message. */
+function line(tag: string, message: string, color = "\x1b[32m"): string {
+  return `\x1b[38m[21:44:15]\x1b[0m${color}[${tag}] ${message}\x1b[0m`;
+}
+
+const START = [line("INFO", "loading firewall detection scripts"), line("INFO", "running firewall detection checks")];
+const VERIFYING = line("WARN", "no protection identified on target, verifying", "\x1b[33m");
+const NO_WAF = [...START, VERIFYING, line("SUCCESS", "no protection identified on target", "\x1b[1m\x1b[32m")].join("\n");
+const ONE_WAF = [...START, line("FIREWALL", "detected website protection identified as 'Cloudflare Web Application Firewall (CloudFlare)'", "\x1b[1m\x1b[96m"), line("WARN", "skipping bypass analysis")].join("\n");
+
 beforeEach(() => {
   execToolMock.mockReset();
 });
@@ -31,93 +41,90 @@ describe("runWhatWaf", () => {
     expect(result).toMatchObject({ status: "error", note: expect.stringContaining("timeout") });
   });
 
+  it("skips bypass analysis and doesn't pass --json, which writes a file rather than stdout", async () => {
+    stdout(NO_WAF);
+    await runWhatWaf("https://example.com");
+    const [file, args] = execToolMock.mock.calls[0] as [string, string[]];
+    expect(file).toBe("whatwaf");
+    expect(args).toEqual(["-u", "https://example.com", "--ra", "--throttle", "3", "--skip"]);
+    expect(args).not.toContain("--json");
+  });
+
   it("returns completed with the detected WAF and no invented confidence", async () => {
-    stdout(JSON.stringify({ firewall_name: "Cloudflare", firewall_url: "https://www.cloudflare.com", is_protected: true }));
+    stdout(ONE_WAF);
     const result = await runWhatWaf("https://example.com");
     expect(result).toEqual({
       status: "completed",
-      waf: "Cloudflare",
-      vendor: "https://www.cloudflare.com",
-      evidence: "WhatWaf identified the firewall as Cloudflare.",
+      waf: "Cloudflare Web Application Firewall (CloudFlare)",
+      vendor: null,
+      evidence: `WhatWaf reported: "[FIREWALL] detected website protection identified as 'Cloudflare Web Application Firewall (CloudFlare)'".`,
     });
     expect(result).not.toHaveProperty("confidence");
   });
 
-  it("reports no WAF only when JSON says is_protected: false", async () => {
-    stdout(JSON.stringify({ is_protected: false }));
+  it("reports no WAF only on WhatWaf's final 'no protection identified' verdict", async () => {
+    stdout(NO_WAF);
     expect(await runWhatWaf("https://example.com")).toEqual({
       status: "completed",
       waf: null,
       vendor: null,
-      evidence: "WhatWaf reported is_protected: false.",
+      evidence: 'WhatWaf reported: "[SUCCESS] no protection identified on target".',
     });
   });
 
   it("is an error, not 'no WAF', for unparseable output", async () => {
     stdout("Traceback (most recent call last):\n  File \"whatwaf\", line 1\nKeyError: 'headers'");
-    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "error", note: expect.stringContaining("could not be interpreted") });
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "error", note: expect.stringContaining("no verdict line") });
   });
 
   it("is an error, not 'no WAF', for empty output", async () => {
-    stdout("   \n");
+    stdout("   \n\x1b[0m\n");
     expect(await runWhatWaf("https://example.com")).toEqual({ status: "error", note: "whatwaf produced no output" });
-  });
-
-  it("is an error, not 'no WAF', when is_protected is missing", async () => {
-    stdout(JSON.stringify({ firewall_url: null }));
-    expect(await runWhatWaf("https://example.com")).toEqual({
-      status: "error",
-      note: "whatwaf output had neither is_protected nor firewall_name",
-    });
   });
 });
 
 describe("parseWhatWafOutput", () => {
-  it("reports no WAF from an explicit 'no waf' line, quoting it", () => {
-    expect(parseWhatWafOutput("[banner]\n[FAIL] No WAF detected on target\n")).toEqual({
+  it("is an error when the run stops at 'no protection identified on target, verifying' (verification never reported)", () => {
+    expect(parseWhatWafOutput([...START, VERIFYING].join("\n"))).toMatchObject({ status: "error" });
+  });
+
+  it("reports an unidentified WAF when verification finds protection after 'verifying'", () => {
+    const text = [...START, VERIFYING, line("INFO", "target seems to be behind some kind of protection for the following reasons:"), "------------------------------", "[1] response code changed"].join("\n");
+    expect(parseWhatWafOutput(text)).toEqual({
       status: "completed",
-      waf: null,
+      waf: "Unidentified WAF",
       vendor: null,
-      evidence: 'WhatWaf reported: "[FAIL] No WAF detected on target".',
+      evidence: 'WhatWaf reported: "[INFO] target seems to be behind some kind of protection for the following reasons:".',
     });
   });
 
-  it("reports no WAF from an explicit 'unprotected' line", () => {
-    expect(parseWhatWafOutput("site appears unprotected")).toMatchObject({ status: "completed", waf: null });
+  it("lists several WAFs when WhatWaf names more than one", () => {
+    const text = [...START, line("FIREWALL", "Akamai Global Host (Akamai Technologies)"), line("FIREWALL", "Cloudflare Web Application Firewall (CloudFlare)")].join("\n");
+    expect(parseWhatWafOutput(text)).toMatchObject({
+      status: "completed",
+      waf: "Akamai Global Host (Akamai Technologies), Cloudflare Web Application Firewall (CloudFlare)",
+    });
   });
 
-  it("is an error for text that names no outcome, such as a banner alone", () => {
-    expect(parseWhatWafOutput("WhatWaf v2.1.6 — starting")).toMatchObject({ status: "error" });
-  });
-
-  it("is an error for JSON that isn't an object", () => {
-    for (const text of ["null", "42", '"no"', "[]"]) {
-      expect(parseWhatWafOutput(text)).toMatchObject({ status: "error", note: expect.stringContaining("could not be interpreted") });
+  // The old wrapper parsed an invented JSON shape (`firewall_name`, `is_protected`). WhatWaf never prints JSON to
+  // stdout, so JSON, whatever it says, carries no verdict.
+  it("is an error for JSON, including is_protected: false and is_protected missing", () => {
+    for (const text of ['{"is_protected":false}', '{"firewall_url":null}', '{"is_protected":true,"firewall_name":"Cloudflare"}']) {
+      expect(parseWhatWafOutput(text)).toMatchObject({ status: "error", note: expect.stringContaining("no verdict line") });
     }
   });
 
-  it("treats a named firewall as detected even without is_protected", () => {
-    expect(parseWhatWafOutput(JSON.stringify({ firewall_name: "  Akamai  " }))).toEqual({
-      status: "completed",
-      waf: "Akamai",
-      vendor: null,
-      evidence: "WhatWaf identified the firewall as Akamai.",
-    });
+  it("is an error for output that names no outcome, such as start-up lines alone", () => {
+    expect(parseWhatWafOutput(START.join("\n"))).toMatchObject({ status: "error" });
   });
 
-  it("reports an unnamed WAF when is_protected is true without a name", () => {
-    expect(parseWhatWafOutput(JSON.stringify({ is_protected: true, firewall_name: "" }))).toMatchObject({
-      status: "completed",
-      waf: "Unidentified WAF",
-      evidence: expect.stringContaining("did not name the firewall"),
-    });
+  it("doesn't take 'no waf' or 'unprotected' text that isn't WhatWaf's verdict line as evidence", () => {
+    expect(parseWhatWafOutput("No WAF detected")).toMatchObject({ status: "error" });
+    expect(parseWhatWafOutput("site appears unprotected")).toMatchObject({ status: "error" });
   });
 
-  it("is an error when is_protected: false contradicts a named firewall", () => {
-    expect(parseWhatWafOutput(JSON.stringify({ is_protected: false, firewall_name: "Cloudflare" }))).toMatchObject({
-      status: "error",
-      note: expect.stringContaining("Cloudflare"),
-    });
+  it("is an error when the output contains both a protection and the no-protection verdict", () => {
+    expect(parseWhatWafOutput(`${ONE_WAF}\n${NO_WAF}`)).toMatchObject({ status: "error", note: expect.stringContaining("both") });
   });
 });
 
@@ -126,6 +133,6 @@ describe("whatwaf and finding lifecycle", () => {
     const keys = ["whatwaf"];
     expect(findingSource("whatwaf.no-waf", true, keys)).toBe("whatwaf");
     expect(isCovered("whatwaf", scanCoverage({ whatwaf: parseWhatWafOutput("") }), "whatwaf.no-waf")).toBe(false);
-    expect(isCovered("whatwaf", scanCoverage({ whatwaf: parseWhatWafOutput('{"is_protected":false}') }), "whatwaf.waf-detected")).toBe(true);
+    expect(isCovered("whatwaf", scanCoverage({ whatwaf: parseWhatWafOutput(NO_WAF) }), "whatwaf.waf-detected")).toBe(true);
   });
 });
