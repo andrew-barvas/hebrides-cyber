@@ -8,13 +8,20 @@ const { authenticateApiRequestMock } = vi.hoisted(() => ({
 
 type QueueMap = Record<string, unknown[]>;
 let queues: QueueMap = {};
+let writes: { op: "insert" | "update"; row: Record<string, unknown> }[] = [];
 
 function makeBuilder(table: string) {
   const next = () => Promise.resolve(queues[table]?.shift() ?? { data: null, error: null });
   const builder: Record<string, unknown> = {
     select: () => builder,
-    insert: () => builder,
-    update: () => builder,
+    insert: (row: Record<string, unknown>) => {
+      writes.push({ op: "insert", row });
+      return builder;
+    },
+    update: (row: Record<string, unknown>) => {
+      writes.push({ op: "update", row });
+      return builder;
+    },
     delete: () => builder,
     eq: () => builder,
     order: () => next(),
@@ -40,6 +47,7 @@ function mockReqRes(method: RequestMethod, body: Record<string, unknown> = {}) {
 describe("GET/POST/PATCH/DELETE /api/account/scheduled-reports", () => {
   beforeEach(() => {
     queues = {};
+    writes = [];
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: OWNER_ID, via: "session" });
   });
 
@@ -82,6 +90,48 @@ describe("GET/POST/PATCH/DELETE /api/account/scheduled-reports", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(201);
+  });
+
+  it("POST defaults the format to pdf, which the sender now attaches as a real PDF", async () => {
+    queues.scheduled_reports = [{ data: { id: "1" }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { frequency: "weekly", recipients: ["a@example.com"] });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(201);
+    expect(writes).toEqual([{ op: "insert", row: expect.objectContaining({ format: "pdf", frequency: "weekly", target_url: null }) }]);
+  });
+
+  it.each(["pdf", "csv", "json"])("POST stores an explicit %s format as given", async (format) => {
+    queues.scheduled_reports = [{ data: { id: "1" }, error: null }];
+
+    const { req, res } = mockReqRes("POST", { frequency: "daily", format, recipients: ["a@example.com"] });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(201);
+    expect(writes[0].row.format).toBe(format);
+  });
+
+  it("POST and PATCH reject a format the sender can't produce with 400, writing nothing", async () => {
+    const { req, res } = mockReqRes("POST", { frequency: "weekly", format: "xlsx", recipients: ["a@example.com"] });
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(400);
+
+    const patch = mockReqRes("PATCH", { id: "11111111-1111-4111-8111-111111111111", format: "html" });
+    await handler(patch.req, patch.res);
+    expect(patch.res._getStatusCode()).toBe(400);
+
+    expect(writes).toEqual([]);
+  });
+
+  it("PATCH can switch an existing report to pdf", async () => {
+    queues.scheduled_reports = [{ error: null }];
+
+    const { req, res } = mockReqRes("PATCH", { id: "11111111-1111-4111-8111-111111111111", format: "pdf" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(writes).toEqual([{ op: "update", row: expect.objectContaining({ format: "pdf" }) }]);
   });
 
   it("POST returns 503 (not 500) when migration 032 hasn't been applied", async () => {
