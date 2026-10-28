@@ -24,6 +24,9 @@ on:
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
       - "hebridescyber-app/src/worker/tools/networkExposure*.ts"
+      - "hebridescyber-app/src/worker/tools/nmap*.ts"
+      - "hebridescyber-app/src/worker/tools/zap*.ts"
+      - "hebridescyber-app/src/worker/tools/arjun*.ts"
       - "hebridescyber-app/src/lib/execTool.ts"
       - "hebridescyber-app/tests/fixtures/test-app/**"
       - ".github/workflows/tool-integration.yml"
@@ -34,7 +37,7 @@ permissions:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: hebridescyber-app
@@ -81,6 +84,8 @@ jobs:
         env:
           NUCLEI_VERSION: v3.3.9
           NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
+          # Same pinned templates release as scheduled-scans.yml.
+          NUCLEI_TEMPLATES_VERSION: v10.5.1
           GOSPIDER_VERSION: 1.1.6
           GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
           KITERUNNER_VERSION: 1.0.2
@@ -99,7 +104,16 @@ jobs:
           curl -fsSL "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" -o /tmp/nuclei.zip
           echo "${NUCLEI_SHA256}  /tmp/nuclei.zip" | sha256sum -c -
           sudo unzip -o /tmp/nuclei.zip -d /usr/local/bin nuclei && sudo chmod +x /usr/local/bin/nuclei
-          nuclei -update-templates -silent || true
+          # Pin templates to the same tag as scheduled-scans.yml (not
+          # `-update-templates`). Fail hard if the pinned set didn't land — this
+          # job exists to catch exactly that kind of silent breakage.
+          TEMPLATES_DIR="$HOME/nuclei-templates"
+          git clone --depth 1 --branch "${NUCLEI_TEMPLATES_VERSION}" https://github.com/projectdiscovery/nuclei-templates.git "$TEMPLATES_DIR"
+          mkdir -p "$HOME/.config/nuclei"
+          printf '{"nuclei-templates-directory":"%s","nuclei-templates-version":"%s"}\n' "$TEMPLATES_DIR" "${NUCLEI_TEMPLATES_VERSION}" > "$HOME/.config/nuclei/.templates-config.json"
+          count="$(find "$TEMPLATES_DIR" -name '*.yaml' | wc -l)"
+          echo "nuclei templates ${NUCLEI_TEMPLATES_VERSION}: $count templates"
+          [ "$count" -gt 1000 ] || { echo "::error::nuclei templates pin loaded only $count templates"; exit 1; }
 
           curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip" -o /tmp/httpx.zip
           echo "${HTTPX_SHA256}  /tmp/httpx.zip" | sha256sum -c -
@@ -133,6 +147,11 @@ jobs:
           sudo mkdir -p /opt/kiterunner
           kr kb convert src/worker/tools/wordlists/api-routes.txt /opt/kiterunner/api-routes.kite
 
+      - name: Install arjun (pinned)
+        # Same pin as scheduled-scans.yml, so the integration test exercises
+        # exactly what production installs.
+        run: pip3 install --break-system-packages arjun==2.2.7
+
       - name: Start the local test app
         run: |
           nohup python3 tests/fixtures/test-app/app.py > /tmp/test-app.log 2>&1 &
@@ -140,7 +159,31 @@ jobs:
           curl -fs "http://127.0.0.1:8099/item?id=1"
           curl -fs "http://127.0.0.1:8099/api/health"
 
-      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner)
+      - name: Start ZAP daemon
+        run: |
+          # Same pinned-by-digest ZAP image as scheduled-scans.yml, with a
+          # random per-run API key. --network host so the container's loopback
+          # reaches the test app bound to 127.0.0.1:8099. ZAP_API_URL and
+          # ZAP_API_KEY are exported for the test step via $GITHUB_ENV.
+          ZAP_KEY="$(openssl rand -hex 24)"
+          echo "::add-mask::$ZAP_KEY"
+          echo "ZAP_API_KEY=$ZAP_KEY" >> "$GITHUB_ENV"
+          echo "ZAP_API_URL=http://localhost:8090" >> "$GITHUB_ENV"
+          docker run -d --name zap --network host \
+            ghcr.io/zaproxy/zaproxy@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 \
+            zap.sh -daemon -host 0.0.0.0 -port 8090 \
+            -config api.key="$ZAP_KEY" \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true
+          for i in $(seq 1 24); do
+            if curl -sf "http://localhost:8090/JSON/core/view/version/?apikey=$ZAP_KEY" >/dev/null; then
+              echo "ZAP is ready"; exit 0
+            fi
+            echo "Waiting for ZAP ($i/24)..."; sleep 5
+          done
+          echo "::error::ZAP did not become ready in time"; exit 1
+
+      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner, nmap, arjun, zap)
         env:
           RUN_TOOL_INTEGRATION: "1"
           KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
@@ -156,6 +199,13 @@ jobs:
           src/worker/tools/badsecrets.integration.test.ts
           src/worker/tools/katana.integration.test.ts
           src/worker/tools/networkExposure.integration.test.ts
+          src/worker/tools/nmap.integration.test.ts
+          src/worker/tools/arjun.integration.test.ts
+          src/worker/tools/zap.integration.test.ts
+
+      - name: Stop ZAP daemon
+        if: always()
+        run: docker rm -f zap || true
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it
@@ -165,13 +215,44 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p /tmp/capture
-          git clone --depth 1 https://github.com/commixproject/commix.git /tmp/commix || true
+          # Same v4.1 tag as scheduled-scans.yml, so this captures what production runs.
+          git clone --depth 1 --branch v4.1 https://github.com/commixproject/commix.git /tmp/commix || true
           if [ -f /tmp/commix/commix.py ]; then
             python3 /tmp/commix/commix.py --version > /tmp/capture/commix.version.txt 2>&1 || true
             timeout 120 python3 /tmp/commix/commix.py --url="http://127.0.0.1:8099/search?q=a" --batch > /tmp/capture/commix.clean.stdout.txt 2> /tmp/capture/commix.clean.stderr.txt || true
           else
             echo "commix could not be cloned" > /tmp/capture/commix.not-installed.txt
           fi
+
+      # cmsmap has no PyPI package, so scheduled-scans.yml installs it from a
+      # pinned git commit. That install only ever ran on the daily job, where a
+      # failure is deliberately soft, so a broken pin would have gone unnoticed
+      # (the way `pip install cmsmap` did until 2026-10-28). This runs the same
+      # install hard: it must resolve and put a working `cmsmap` on PATH.
+      - name: Check the pinned cmsmap install
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone https://github.com/Dionach/CMSmap.git /opt/cmsmap
+          sudo git -C /opt/cmsmap checkout 59dd0e2b3b0c751c6da2b0565374ab83c736b0e6
+          sudo pip3 install --break-system-packages /opt/cmsmap
+          command -v cmsmap
+          cmsmap --help > /tmp/capture/cmsmap.help.txt 2>&1 || true
+          head -5 /tmp/capture/cmsmap.help.txt
+
+      # The same hard check for whatwaf, with the recipe scheduled-scans.yml now
+      # uses. #124's first version of that install (sudo pip3 install of the
+      # clone) was never run on a runner and does not work: bs4 must be
+      # installed before setup.py runs, and a root install prompts via raw_input
+      # and writes ~/.whatwaf in root's home. This must put a `whatwaf` on PATH.
+      - name: Check the pinned whatwaf install
+        run: |
+          git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf-check
+          pip3 install --break-system-packages -r /tmp/whatwaf-check/requirements.txt
+          pip3 install --break-system-packages /tmp/whatwaf-check
+          command -v whatwaf
+          # install_helper.sh rsyncs the plugins into ~/.whatwaf and setup.py
+          # ignores its exit status, so a missing rsync would leave this empty.
+          test -n "$(ls -A "$HOME/.whatwaf/plugins")"
 
       - name: Print captured output
         if: always()

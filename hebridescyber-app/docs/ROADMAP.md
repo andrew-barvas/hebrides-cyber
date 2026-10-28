@@ -244,3 +244,5 @@ triage precision/recall benchmark. Positioning follows the review: compete on ev
 continuity and fixes, not tool count, and do not claim autonomous AI pentesting until a CI job
 proves it.
 
+**Added 2026-10-23 (uptime monitoring):** bring-your-own UptimeRobot is built (Pro and above). Native monitoring as a sellable product is Phase 2 and unscheduled; it needs demand evidence, a scheduler decision and an uptime-commitment wording review.
+

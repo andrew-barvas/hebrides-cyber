@@ -540,6 +540,13 @@ describe("sendAttackSurfaceAlerts", () => {
     expect(snapshot()?.mx).toEqual(["5 new.example"]);
   });
 
+  it("alerts a Tier A owner, who is on a paid plan like any other", async () => {
+    db.subscriptions[0].plan = "tier_a";
+    db.asset_inventory.push(asset("new.example.com", false));
+    const recon = { ...RECON, subdomains: [{ name: "new.example.com", issuer: "R11", notBefore: daysAgo(1), firstNotBefore: daysAgo(1) }] } as ReconResult;
+    expect((await run(ZONE, TARGET, recon)).delivered).toBe(true);
+  });
+
   it("treats a cancelled subscription as no alerting plan, and alerts an admin without one", async () => {
     db.subscriptions[0].status = "canceled";
     await run();

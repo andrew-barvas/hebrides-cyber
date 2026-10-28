@@ -69,6 +69,7 @@ describe("encryptExistingSecrets", () => {
         { id: "a1", auth_type: "cookie", cookie_value: "session=1", basic_password: null },
         { id: "a2", auth_type: "basic", cookie_value: null, basic_password: "pw", basic_username: "svc" },
       ] as Row[],
+      uptime_integrations: [{ id: "u1", provider: "uptimerobot", api_key: "ur-plain" }] as Row[],
       cloud_credentials: [
         { id: "c1", provider: "aws", credentials_encrypted: { accessKeyId: "AKIA", secretAccessKey: "s" } },
         { id: "c2", provider: "azure", credentials_encrypted: encryptCredentials({ clientSecret: "x" }) },
@@ -84,8 +85,10 @@ describe("encryptExistingSecrets", () => {
     expect(report).toEqual([
       { table: "ticket_integrations", scanned: 3, rewritten: 2, alreadySecure: 1, failed: 0 },
       { table: "target_auth_credentials", scanned: 2, rewritten: 2, alreadySecure: 0, failed: 0 },
+      { table: "uptime_integrations", scanned: 1, rewritten: 1, alreadySecure: 0, failed: 0 },
       { table: "cloud_credentials", scanned: 2, rewritten: 1, alreadySecure: 1, failed: 0 },
     ]);
+    expect(decryptSecret(tables.uptime_integrations[0].api_key as string)).toBe("ur-plain");
 
     expect(isEncryptedSecret(tables.ticket_integrations[0].github_token)).toBe(true);
     expect(decryptSecret(tables.ticket_integrations[0].github_token as string)).toBe("ghp_plain");
@@ -120,7 +123,7 @@ describe("encryptExistingSecrets", () => {
     const report = await encryptExistingSecrets(db, { dryRun: true });
     expect(updates).toHaveLength(0);
     expect(JSON.stringify(tables)).toBe(before);
-    expect(report.map((r) => r.rewritten)).toEqual([2, 2, 1]);
+    expect(report.map((r) => r.rewritten)).toEqual([2, 2, 1, 1]);
   });
 
   it("keeps going past a row it cannot update and counts it as failed", async () => {
@@ -135,7 +138,7 @@ describe("encryptExistingSecrets", () => {
   it("skips a table whose migration hasn't been applied yet", async () => {
     const { db } = fakeDb(seed(), { missing: ["cloud_credentials"] });
     const report = await encryptExistingSecrets(db, { dryRun: false });
-    expect(report[2]).toMatchObject({ table: "cloud_credentials", missing: true, scanned: 0 });
+    expect(report[3]).toMatchObject({ table: "cloud_credentials", missing: true, scanned: 0 });
     expect(report[0].rewritten).toBe(2);
   });
 

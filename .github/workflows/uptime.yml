@@ -1,0 +1,97 @@
+name: Uptime
+
+# A free, signup-free uptime monitor: probes the live site's /api/health every
+# 10 minutes and opens a GitHub issue (which emails everyone watching the repo)
+# when it is down or degraded, then closes it on recovery. It complements, and
+# does not replace, a dedicated monitor such as UptimeRobot (docs/OWNER-SETUP.md):
+# Actions cron is best-effort and can run late, so it is a backstop, not the
+# primary pager.
+#
+# Distinguishes "down" (no HTTP answer or a 5xx other than the app's own 503)
+# from "degraded" (the app answered 503 with its sub-check booleans: Supabase,
+# Stripe or the queue check failed). /api/health returns only booleans, so the
+# issue body is safe to be public.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe /api/health
+        id: probe
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          base="${SITE_URL:-https://www.hebridescyber.co.uk}"
+          base="${base%/}"
+          for attempt in 1 2 3; do
+            # The last attempt decides, so clear what an earlier one left behind.
+            state=down
+            rm -f /tmp/health.json
+            # curl's -w already prints 000 when it gets no answer; `|| true` only stops -e from exiting.
+            # -L: the bare domain 301s to www, and a redirect is not an outage. The code is the final hop's.
+            code=$(curl -s -L --max-redirs 3 -m 20 -o /tmp/health.json -w "%{http_code}" "$base/api/health" || true)
+            code="${code:-000}"
+            if [ "$code" = "200" ]; then state=ok; break; fi
+            if [ "$code" = "503" ] && grep -q '"status":"degraded"' /tmp/health.json 2>/dev/null; then state=degraded; fi
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
+          done
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "Probe result: $state (HTTP $code)"
+          if [ "$state" = "degraded" ]; then
+            # Booleans only by design, but keep it to the checks object regardless.
+            python3 -c 'import json;d=json.load(open("/tmp/health.json"));print(json.dumps(d.get("checks",{})))' > /tmp/checks.txt || echo "{}" > /tmp/checks.txt
+          else
+            echo "{}" > /tmp/checks.txt
+          fi
+
+      - name: Open, update or close the incident issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # There is no checkout in this job, so gh can't infer the repository from git.
+          GH_REPO: ${{ github.repository }}
+          STATE: ${{ steps.probe.outputs.state }}
+          CODE: ${{ steps.probe.outputs.code }}
+          BASE: ${{ steps.probe.outputs.base }}
+        run: |
+          gh label create uptime --color B60205 --description "Automated uptime incident" 2>/dev/null || true
+          existing=$(gh issue list --label uptime --state open --json number --jq '.[0].number // empty')
+          now=$(date -u +"%Y-%m-%d %H:%M UTC")
+          if [ "$STATE" = "ok" ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "Recovered at $now: \`$BASE/api/health\` returned 200."
+              gh issue close "$existing"
+            fi
+            exit 0
+          fi
+          body="At $now \`$BASE/api/health\` is **$STATE** (HTTP $CODE, 3 attempts 20s apart).
+
+          Sub-checks: \`$(cat /tmp/checks.txt)\`
+
+          Next steps: check the Azure Static Web Apps deployment, Supabase and Stripe status, then \`/api/health\` directly."
+          title="Site $STATE: $BASE/api/health"
+          if [ -n "$existing" ]; then
+            # One email per change of state, not one every 10 minutes for the length of an outage.
+            if [ "$(gh issue view "$existing" --json title --jq .title)" = "$title" ]; then
+              echo "Still $STATE; issue #$existing already says so."
+              exit 0
+            fi
+            gh issue comment "$existing" --body "$body"
+            gh issue edit "$existing" --title "$title"
+          else
+            gh issue create --label uptime --title "$title" --body "$body"
+          fi

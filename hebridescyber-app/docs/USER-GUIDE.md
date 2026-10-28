@@ -127,6 +127,14 @@ three," never a forced mapping.
 - **Score trend chart** across every past scan of the same target.
 - **PDF export** and **CSV/JSON export** (the latter for spreadsheets or
   a customer's own reporting pipeline).
+- **Scheduled reports** (paid plans, Dashboard → Integrations → Cloud &
+  reporting) — a daily, weekly or monthly email covering every monitored
+  site: each site's score, finding counts by severity and last scan date.
+  PDF (attached; the default), CSV or JSON (both in the email body). If the
+  PDF can't be generated on the day, that email carries CSV instead and says
+  so. Counts are before triage, so false positives and accepted risks are
+  included; the dashboard has the triaged view. The API (`docs/API.md`) can
+  also schedule a report for a single site.
 - **Shareable, read-only report links** and a **score badge** for embedding.
 - **White-label branding** (Agency) — a customer's own logo/name on PDF
   reports.
@@ -172,6 +180,8 @@ neither), critical-finding email alerts (every active plan, including
 Basic), outbound webhooks on scan completion (HMAC-signed, for anyone
 building their own integration), and the monthly digest email.
 
+**Uptime monitoring (Pro and above).** Connect your own UptimeRobot account under Dashboard → Integrations → Uptime monitoring (the free UptimeRobot plan checks every 5 minutes). Hebrides creates monitors for your verified sites in your account, shows whether each is up or down (on the Integrations card and next to each site under Assets → monitored sites), and sends one message (email, plus Slack/Teams if set) when a site goes down and one when it recovers. Your monitors and UptimeRobot's terms stay with your account; disconnecting here does not delete them.
+
 ### 3.6 Scheduling and the public API
 
 Scans run on-demand (dashboard button or `POST /api/v1/scans`, queued and
@@ -200,8 +210,7 @@ during them:
   monitored domain via Certificate Transparency. A subdomain that gets its
   first certificate shows up in your discovered-assets inventory within hours
   rather than at your next full scan, and the next scheduled scan alerts you to
-  it. It never brute-forces (that stays behind the Tier A offensive profile);
-  it only populates the inventory.
+  it. It never brute-forces; it only populates the inventory.
 - **DMARC aggregate (RUA) reports** (E-66) — the half of the retired NCSC Mail
   Check a DNS lookup can't give you. A DNS check only tells you a DMARC record
   exists and its policy; the daily aggregate reports mailbox providers send to
@@ -460,23 +469,17 @@ the concrete needs each feature area above exists to satisfy.
 
 Worth stating plainly, since it shapes several design decisions above:
 
-- **No destructive payloads — outside the opt-in Tier A offensive mode.** On
-  every plan below Tier A, every passive check is read-only and the active-tool
+- **No destructive payloads.** Every passive check is read-only and the active-tool
   suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's curated-wordlist
   API-route discovery, Gospider's crawl and httpx's one-GET-per-host live-host
   probing) only runs against ownership-verified domains and sends no payload
   intended to alter, damage or persist on your systems — it reads what is there,
   and we do not run autonomous exploitation agents.
-  **Tier A** adds an explicitly opt-in "offensive readiness" mode you turn on
-  per target, after acknowledging in writing that the platform will send **real
-  attack traffic** to that host: bounded content/path discovery (a brute-force
-  of a curated path list), credential-defence testing, and — where you enable
-  them — controlled credential-spraying (against a test account you designate)
-  and exploitation. It runs only on a Tier A plan, only against a domain you
-  have verified you own, and only while a current per-target authorization is on
-  file; every offensive scan is audited. This is for testing your own readiness
-  for these attacks, under your own authorisation — make sure your own contracts
-  and change-control cover it before enabling it.
+  An opt-in "offensive readiness" mode (real attack traffic against a verified
+  domain under a written per-target authorisation) exists in the code as
+  groundwork, but **it is not offered**: its exploitation and
+  credential-spraying tools are not configured, no plan on the pricing page
+  includes it, and there is no way to turn it on from the dashboard.
 - **No fabricated findings.** A check that can't evidence something
   reports nothing, rather than guessing — see `/what-we-check`'s
   "How we avoid false positives" section for the concrete mechanisms

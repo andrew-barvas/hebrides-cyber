@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CookieSettingsButton } from "./CookieConsent";
+import { statusPageUrl } from "@/lib/statusPage";
 
 // The landing pages a visitor arriving from search or a campaign needs to
 // find from anywhere, not only from a link they were sent.
@@ -28,6 +29,7 @@ const legalLinks = [
 ];
 
 export default function Footer() {
+  const status = statusPageUrl();
   return (
     <footer className="border-t border-cyberborder bg-cyberbg py-8 text-center text-sm text-cybertext/60">
       <nav aria-label="Resources" className="mb-4 flex flex-wrap justify-center gap-x-5 gap-y-2 px-4">
@@ -53,6 +55,11 @@ export default function Footer() {
         {/* The privacy policy (section 2e) promises this control: withdrawing
             consent has to be as easy as giving it. */}
         <CookieSettingsButton className="hover:text-neon transition-colors" />
+        {status && (
+          <a href={status} target="_blank" rel="noopener noreferrer" className="hover:text-neon transition-colors">
+            Status
+          </a>
+        )}
       </nav>
       <p className="font-mono">
         <span aria-hidden="true" className="text-neon">$</span>{" "}
