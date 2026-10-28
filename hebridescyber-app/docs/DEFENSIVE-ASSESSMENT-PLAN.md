@@ -3,7 +3,7 @@
 **Status (2026-10-28):**
 - Plan approved by the owner and committed for handover.
 - Step 1 is done.
-- Step 2: scanner facts are verified (below), but the branch has not been synced with master yet.
+- Step 2: scanner facts are verified (below). The branch was synced with master on 2026-10-28 (merge `c845963`); `PRODUCT-IDEAS.md` and the newer `SCANNER-INVENTORY.md` are now available to read, which is still to do.
 - Steps 3 to 9 have not started.
 - Q1 to Q3 are still open with the owner.
 
@@ -76,6 +76,8 @@ These are worktree paths on branch `claude/awesome-pentest-defensive-review-ab2b
   - repository scanning: trivy, gitleaks, opengrep, zizmor
   - **sqlmap, commix, dalfox**
 
+**Update after master sync:** `scanProfiles.ts` now has `EXCLUDED_FROM_FULL` (wpscan, cmsmap, photon are held out of `full` because CI cannot verify them). sqlmap, commix and dalfox are **still** in `full`.
+
 **Important:** sqlmap, commix and dalfox (injection testers) run in the **`full` profile**, which is the default for monitored targets (`scanProfiles.ts:117`).
 - A "defensive-safe, no payloads" product therefore **must not use `full`**.
 - Use `safe`, or a new curated profile/bundle (e.g. `exposure`) that excludes injection and offensive tools. Bundles are in migration `021`; profile overrides are in `scanProfiles.ts`.
@@ -97,7 +99,7 @@ These are worktree paths on branch `claude/awesome-pentest-defensive-review-ab2b
 
 **Scheduling:**
 - GitHub Actions cron `scheduled-scans.yml` (enqueue → 3 worker shards → verify job).
-- Cadence is in `src/lib/scanCadence.ts`. `tier_a` is missing there (OT-04).
+- Cadence is in `src/lib/scanCadence.ts`. Since the 2026-10-28 master sync `tier_a` is there (daily, #132), so the old OT-04 gap is closed.
 
 **Prior art:** `docs/SPRINT-PLAN.md:618-635` (H6/H7) sketches a future `pentest.hebridescyber.co.uk` on the offensive tier. `docs/PRODUCT-REVIEW-2026-10.md` calls that tier "vaporware". This product deliberately takes the **non-offensive** route instead.
 
