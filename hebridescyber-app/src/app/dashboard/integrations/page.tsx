@@ -16,6 +16,7 @@ import NotificationPrefsSection from "@/components/NotificationPrefsSection";
 import OncallIntegrationConfig from "@/components/OncallIntegrationConfig";
 import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
 import TicketIntegration from "@/components/TicketIntegration";
+import UptimeMonitoringConfig from "@/components/UptimeMonitoringConfig";
 import Webhooks from "@/components/Webhooks";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
@@ -70,6 +71,15 @@ export default function IntegrationsPage() {
           />
         )}
         <OncallIntegrationConfig />
+        {chatAlerts ? (
+          <UptimeMonitoringConfig />
+        ) : (
+          <LockedFeature
+            title="uptime monitoring"
+            description="Connect your own UptimeRobot account to watch your verified sites and get a message here, in Slack or by email when one goes down."
+            availableOn="Pro & Agency"
+          />
+        )}
         <Webhooks token={accessToken} />
       </Group>
 

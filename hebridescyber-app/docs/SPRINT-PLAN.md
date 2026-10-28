@@ -42,7 +42,7 @@ with the evidence named.
 | E-32 / E-33 cloud posture, API spec | ⬜ | ✅ | `scanners/cloudPosture.ts` (AWS/Azure/GCP), `scanners/apiSpec.ts` |
 | E-21 httpOnly cookie auth | ⬜ | ✅ | `@supabase/ssr` + `middleware.ts`. e2e asserts server-side redirects (LIVE-5) |
 | E-56 auto-migration in CI | ⬜ | ⚠️ code done, **inactive** | `deploy.yml` psql step gated on a `DATABASE_URL` secret that doesn't exist. **Before** adding it, the step needs a migrations ledger: today it would re-run every migration on every deploy |
-| E-57 post-deploy health check | ⬜ | ⚠️ code done, **inactive** | Step gated on a `SITE_URL` secret that doesn't exist |
+| E-57 post-deploy health check | ✅ | ✅ active | `SITE_URL` is set; the curl follows the bare-domain redirect (2026-10-27; before that it logged a 301 and warned) |
 | E-03 Sentry | 🔄 | ⛔ code done, no DSN | `src/sentry.*.config.ts` wired. No `SENTRY_DSN` anywhere |
 | Branch protection | ⛔ manual | ⛔ **needs GitHub Pro** | GitHub API returns 403 "Upgrade to GitHub Pro or make this repository public". Deploys are still gated: `deploy.yml` runs lint/tsc/unit/e2e first |
 | Staging Supabase + PR previews | ⬜ | ⬜ | No `STAGING_SUPABASE_*` secrets |

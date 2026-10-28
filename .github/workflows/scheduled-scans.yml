@@ -585,3 +585,34 @@ jobs:
       - name: Stop ZAP daemon
         if: always()
         run: docker rm -f zap || true
+
+  # SPRINT-PLAN H3: prove this run's shards actually scanned. Reads the
+  # scan_jobs claimed as gha-<run_id>-<shard> and fails the run when scans ran
+  # the extended tier but no tool completed (src/lib/scanRunVerification.ts).
+  verify:
+    needs: [enqueue, work]
+    if: always() && needs.enqueue.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Verify the run scanned
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUN_ID: ${{ github.run_id }}
+        run: npm run queue:verify-run
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: scan-run-verification
+          path: hebridescyber-app/scan-run-verification.json
+          if-no-files-found: ignore
