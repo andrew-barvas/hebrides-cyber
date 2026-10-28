@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { escapeHtml, incompleteChecks, plainText, prioritise, ratingFor, renderExecutiveReportHtml, safeLogoUrl, type ExecutiveReportInput } from "./executiveReport";
+import { escapeHtml, incompleteChecks, plainText, prioritise, ratingFor, renderExecutiveReportHtml, safeLogoUrl, REPORT_MUTED, REPORT_TEXT, type ExecutiveReportInput } from "./executiveReport";
 import { buildTriageIndex, EMPTY_TRIAGE_INDEX, type TriageDbRow } from "./findingTriage";
 import type { Finding } from "./scanners";
 
@@ -62,6 +62,13 @@ describe("helpers", () => {
 });
 
 describe("renderExecutiveReportHtml", () => {
+  it("prints text in the shared dark report colours, not the old hard-to-read grey", () => {
+    const html = renderExecutiveReportHtml(input());
+    expect(html).toContain(`color: ${REPORT_TEXT}`);
+    expect(html).toContain(`color: ${REPORT_MUTED}`);
+    expect(html).not.toMatch(/#64727f|#1f2933/i);
+  });
+
   it("shows the score, severity counts, ordered priorities and the default identity", () => {
     const html = renderExecutiveReportHtml(input());
     expect(html).toContain("Hebrides Cyber");

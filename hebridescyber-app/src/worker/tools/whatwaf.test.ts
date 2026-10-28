@@ -46,8 +46,33 @@ describe("runWhatWaf", () => {
     await runWhatWaf("https://example.com");
     const [file, args] = execToolMock.mock.calls[0] as [string, string[]];
     expect(file).toBe("whatwaf");
-    expect(args).toEqual(["-u", "https://example.com", "--ra", "--throttle", "3", "--skip"]);
+    expect(args).toEqual(["-u", "https://example.com", "--ra", "--throttle", "1", "--skip"]);
     expect(args).not.toContain("--json");
+  });
+
+  // WhatWaf prints its verdict, then asks "create an issue?" on stdin (EOF with execTool) and exits non-zero.
+  function failedExit(text: string, extra: Record<string, unknown> = {}) {
+    execToolMock.mockRejectedValueOnce(Object.assign(new Error("Command failed: whatwaf"), { code: 1, stdout: text, stderr: "EOFError", ...extra }));
+  }
+  const UNIDENTIFIED = [...START, line("INFO", "target seems to be behind some kind of protection for the following reasons:")].join("\n");
+
+  it("keeps a WAF verdict WhatWaf printed before crashing on its interactive prompt", async () => {
+    failedExit(UNIDENTIFIED);
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "completed", waf: "Unidentified WAF" });
+    failedExit(ONE_WAF);
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "completed", waf: "Cloudflare Web Application Firewall (CloudFlare)" });
+  });
+
+  it("never reads 'no WAF' from a failed exit", async () => {
+    failedExit(NO_WAF);
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "error", note: expect.stringContaining("exited with error") });
+  });
+
+  it("is an error when a failed exit has no verdict, or the run was killed by the timeout", async () => {
+    failedExit("Traceback (most recent call last):\nEOFError");
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "error" });
+    failedExit(ONE_WAF, { killed: true });
+    expect(await runWhatWaf("https://example.com")).toMatchObject({ status: "error" });
   });
 
   it("returns completed with the detected WAF and no invented confidence", async () => {

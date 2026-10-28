@@ -22,7 +22,7 @@ export default function ScheduledReportsConfig() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
-  const [format, setFormat] = useState<"csv" | "json">("csv");
+  const [format, setFormat] = useState<ScheduledReport["format"]>("pdf");
   const [recipients, setRecipients] = useState("");
 
   const loadReports = useCallback(async () => {
@@ -148,6 +148,7 @@ export default function ScheduledReportsConfig() {
                 onChange={(e) => setFormat(e.target.value as typeof format)}
                 className="rounded-md border border-cyberborder bg-cyberbg px-2 py-1.5 text-xs text-cybertext"
               >
+                <option value="pdf">PDF (attached)</option>
                 <option value="csv">CSV</option>
                 <option value="json">JSON</option>
               </select>

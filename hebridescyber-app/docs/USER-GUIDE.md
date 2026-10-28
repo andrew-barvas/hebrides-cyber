@@ -127,6 +127,14 @@ three," never a forced mapping.
 - **Score trend chart** across every past scan of the same target.
 - **PDF export** and **CSV/JSON export** (the latter for spreadsheets or
   a customer's own reporting pipeline).
+- **Scheduled reports** (paid plans, Dashboard → Integrations → Cloud &
+  reporting) — a daily, weekly or monthly email covering every monitored
+  site: each site's score, finding counts by severity and last scan date.
+  PDF (attached; the default), CSV or JSON (both in the email body). If the
+  PDF can't be generated on the day, that email carries CSV instead and says
+  so. Counts are before triage, so false positives and accepted risks are
+  included; the dashboard has the triaged view. The API (`docs/API.md`) can
+  also schedule a report for a single site.
 - **Shareable, read-only report links** and a **score badge** for embedding.
 - **White-label branding** (Agency) — a customer's own logo/name on PDF
   reports.

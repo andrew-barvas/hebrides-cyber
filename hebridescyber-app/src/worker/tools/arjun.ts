@@ -33,8 +33,12 @@ export async function runArjun(targetUrl: string): Promise<ArjunResult> {
       [
         "-u", targetUrl,
         "-oJ", outFile,
+        // No `--stable`: arjun forces threads=1 whenever it is set, overriding
+        // this -t. Single-threaded over the full built-in wordlist, a run
+        // against even a trivial local endpoint was killed at ARJUN_TIMEOUT_MS
+        // (the tool-integration job caught it, 2026-10-28), so every real scan
+        // came back "error". Without it the same run finishes in about a second.
         "-t", "5",
-        "--stable",
       ],
       { timeout: ARJUN_TIMEOUT_MS }
     );
@@ -42,15 +46,19 @@ export async function runArjun(targetUrl: string): Promise<ArjunResult> {
     let parsed: ArjunParameter[] = [];
     try {
       const raw = await readFile(outFile, "utf8");
-      const data = JSON.parse(raw) as Array<{
-        url?: string;
-        method?: string;
-        params?: string[];
-      }>;
-      parsed = data
-        .filter((entry) => entry.url && entry.params && entry.params.length > 0)
-        .map((entry) => ({
-          url: entry.url!,
+      // arjun's -oJ output is a JSON object keyed by URL, each value holding the
+      // discovered params plus the method and headers — it is NOT an array (see
+      // arjun's core/exporter.py `json_export`). Parsing it as an array made
+      // `.filter` throw, which this function then swallowed, so a real run that
+      // found parameters still returned an empty list on every scan.
+      const data = JSON.parse(raw) as Record<
+        string,
+        { method?: string; params?: string[]; headers?: Record<string, string> }
+      >;
+      parsed = Object.entries(data)
+        .filter(([url, entry]) => url && Array.isArray(entry?.params) && entry.params!.length > 0)
+        .map(([url, entry]) => ({
+          url,
           method: entry.method ?? "GET",
           params: entry.params!,
         }));

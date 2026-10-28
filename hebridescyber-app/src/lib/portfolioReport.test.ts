@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Finding } from "./scanners";
 import { buildTriageIndex } from "./findingTriage";
 import { renderPortfolioReportHtml, summarisePortfolio, type PortfolioInput } from "./portfolioReport";
+import { REPORT_MUTED, REPORT_TEXT } from "./executiveReport";
 
 const NOW = new Date("2026-10-06T12:00:00Z");
 const f = (checkId: string, severity: Finding["severity"], extra: Partial<Finding> = {}): Finding => ({
@@ -94,6 +95,13 @@ describe("renderPortfolioReportHtml", () => {
     triage: noTriage,
     now: NOW,
   };
+
+  it("prints text in the shared dark report colours, not the old hard-to-read grey", () => {
+    const html = renderPortfolioReportHtml(input);
+    expect(html).toContain(`color: ${REPORT_TEXT}`);
+    expect(html).toContain(`color: ${REPORT_MUTED}`);
+    expect(html).not.toMatch(/#64727f|#1f2933/i);
+  });
 
   it("summarises the portfolio, escapes every value, and is honest about unscanned sites", () => {
     const html = renderPortfolioReportHtml(input);

@@ -47,6 +47,7 @@ describe("deriveOnboardingFlags", () => {
   it("suggests Slack/Teams on Pro and Agency, a webhook otherwise", () => {
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "pro" }).alertChannelIsSlackTeams).toBe(true);
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "agency" }).alertChannelIsSlackTeams).toBe(true);
+    expect(deriveOnboardingFlags({ ...nothing, activePlan: "tier_a" }).alertChannelIsSlackTeams).toBe(true);
     expect(deriveOnboardingFlags({ ...nothing, activePlan: "basic" }).alertChannelIsSlackTeams).toBe(false);
   });
 });
