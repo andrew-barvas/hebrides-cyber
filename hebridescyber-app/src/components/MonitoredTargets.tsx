@@ -146,7 +146,7 @@ export default function MonitoredTargets() {
           placeholder={atCap ? "Upgrade your plan to add more sites" : "https://client-site.com"}
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors disabled:opacity-50"
+          className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors disabled:opacity-50"
         />
         <button
           type="submit"
@@ -174,7 +174,7 @@ export default function MonitoredTargets() {
                     <span className="font-mono text-xs text-neon/80">{t.target_url}</span>
                     {badge && (
                       <span
-                        className={`rounded border border-cyberborder px-1.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
+                        className={`rounded-sm border border-cyberborder px-1.5 py-0.5 text-[11px] font-semibold ${badge.className}`}
                         title="From your UptimeRobot account (Integrations → Uptime monitoring)"
                       >
                         Uptime: {badge.text}
@@ -345,7 +345,7 @@ function AuthenticatedScanConfig({
           placeholder="e.g. session=abc123; other=xyz"
           value={cookieValue}
           onChange={(e) => setCookieValue(e.target.value)}
-          className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
         />
       ) : authType === "basic" ? (
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -355,7 +355,7 @@ function AuthenticatedScanConfig({
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
           />
           <input
             type="password"
@@ -363,7 +363,7 @@ function AuthenticatedScanConfig({
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
           />
         </div>
       ) : (
@@ -379,7 +379,7 @@ function AuthenticatedScanConfig({
             placeholder="Login page URL, e.g. https://app.example.com/login"
             value={loginUrl}
             onChange={(e) => setLoginUrl(e.target.value)}
-            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
           />
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -388,7 +388,7 @@ function AuthenticatedScanConfig({
               placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
             />
             <input
               type="password"
@@ -396,7 +396,7 @@ function AuthenticatedScanConfig({
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
             />
           </div>
           <label className="flex items-start gap-2 text-[11px] text-cybertext/60">

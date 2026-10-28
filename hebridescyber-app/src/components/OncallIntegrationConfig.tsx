@@ -183,7 +183,7 @@ export default function OncallIntegrationConfig() {
                     placeholder="PagerDuty Events API v2 integration routing key"
                     value={routingKey}
                     onChange={(e) => setRoutingKey(e.target.value)}
-                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                    className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
                   />
                 ) : (
                   <>
@@ -193,14 +193,14 @@ export default function OncallIntegrationConfig() {
                       placeholder="Opsgenie API key"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                      className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
                     />
                     <div>
                       <label className="block text-xs text-cybertext/60 mb-1">Region</label>
                       <select
                         value={region}
                         onChange={(e) => setRegion(e.target.value as "us" | "eu")}
-                        className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
+                        className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext focus:border-neon focus:outline-hidden transition-colors"
                       >
                         <option value="us">US</option>
                         <option value="eu">EU</option>

@@ -100,15 +100,15 @@ export default function BlogTab({ token }: { token: string }) {
                     <>
                       <span>·</span>
                       {p.tags.slice(0, 3).map((t) => (
-                        <span key={t} className="rounded border border-cyberborder px-1.5 py-0.5 text-neon/60">{t}</span>
+                        <span key={t} className="rounded-sm border border-cyberborder px-1.5 py-0.5 text-neon/60">{t}</span>
                       ))}
                     </>
                   )}
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
-                <button onClick={() => openPost(p.slug)} className="rounded border border-cyberborder px-2.5 py-1 text-xs text-cybertext/70 hover:border-neon hover:text-neon transition-colors">Edit</button>
-                <button onClick={() => deletePost(p.slug)} className="rounded bg-red-400/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-400/20 transition-colors">Delete</button>
+                <button onClick={() => openPost(p.slug)} className="rounded-sm border border-cyberborder px-2.5 py-1 text-xs text-cybertext/70 hover:border-neon hover:text-neon transition-colors">Edit</button>
+                <button onClick={() => deletePost(p.slug)} className="rounded-sm bg-red-400/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-400/20 transition-colors">Delete</button>
               </div>
             </div>
           ))}
@@ -253,13 +253,13 @@ function BlogEditor({
           <span className="font-mono text-xs text-cybermuted">{wordCount} words · {readMins} min read</span>
           <button
             onClick={() => setShowSeo((v) => !v)}
-            className="rounded border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+            className="rounded-sm border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
           >
             SEO {showSeo ? "▲" : "▼"}
           </button>
           <button
             onClick={() => setPreview((v) => !v)}
-            className="rounded border border-cyberborder px-3 py-1.5 text-sm text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+            className="rounded-sm border border-cyberborder px-3 py-1.5 text-sm text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
           >
             {preview ? "Edit" : "Preview"}
           </button>
@@ -277,7 +277,7 @@ function BlogEditor({
               value={publishAt}
               min={toLocalInput(new Date().toISOString())}
               onChange={(e) => { setPublishAt(e.target.value); markDirty(); }}
-              className="rounded border border-cyberborder bg-cyberbg px-2 py-1.5 text-sm text-cybertext"
+              className="rounded-sm border border-cyberborder bg-cyberbg px-2 py-1.5 text-sm text-cybertext"
               aria-label="Publish at"
             />
           )}
@@ -292,7 +292,7 @@ function BlogEditor({
       </div>
 
       {error && (
-        <p className="rounded border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
+        <p className="rounded-sm border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
       )}
 
       {/* SEO panel */}
@@ -351,7 +351,7 @@ function BlogEditor({
               type="text"
               value={slug}
               onChange={(e) => { setSlug(e.target.value.toLowerCase().replace(/\s/g, "-")); markDirty(); }}
-              className={`flex-1 rounded border bg-cyberbg px-2 py-1 font-mono text-xs text-cybertext focus:outline-none transition-colors ${
+              className={`flex-1 rounded border bg-cyberbg px-2 py-1 font-mono text-xs text-cybertext focus:outline-hidden transition-colors ${
                 slugError ? "border-red-400 focus:border-red-400" : "border-cyberborder focus:border-neon"
               }`}
             />
@@ -366,7 +366,7 @@ function BlogEditor({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="rounded border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
+                className="rounded-sm border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-50 transition-colors"
               >
                 {uploading ? "Uploading…" : "Upload"}
               </button>
