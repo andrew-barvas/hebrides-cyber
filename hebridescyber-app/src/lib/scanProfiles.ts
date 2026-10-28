@@ -107,6 +107,26 @@ export const OFFENSIVE_ONLY_TOOLS: ReadonlySet<ExtendedToolName> = new Set<Exten
   "cairn",
 ]);
 
+// Tools that stay in the suite but are held OUT of the default `full` profile
+// because they can't be verified against a hermetic local target in CI (they
+// have no real-binary `*.integration.test.ts`), per CLAUDE.md rule 15: "take a
+// tool out of the full profile rather than leave it unverified."
+//   - wpscan / cmsmap: need a real WordPress/CMS target to exercise, which CI
+//     has no hermetic fixture for; they remain in the opt-in, CMS-detection-
+//     gated `cms` profile.
+//   - photon: the installable PyPI `photon` is a third-party upload whose CLI
+//     can't be verified against photon.ts (s0md3v/Photon ships no pip entry
+//     point); it remains in the opt-in `osint` profile.
+// nmap, zap and arjun, which DO now have integration tests, stay in `full`.
+// This only narrows `full`: a tool here is still reachable through whichever
+// explicit profile lists it, and through offensive/ai-pentest (which spread
+// every key). whatwaf's full-profile membership is handled separately.
+export const EXCLUDED_FROM_FULL: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
+  "wpscan",
+  "cmsmap",
+  "photon",
+]);
+
 export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "offensive" | "ai-pentest";
 
 // A reasonable starting proposal for the api/cms/osint subsets, not a
@@ -114,7 +134,7 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "offensive
 // table with no other code depending on the exact membership.
 const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolean>>> = {
   safe: {},
-  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
+  full: Object.fromEntries(EXTENDED_TOOL_NAMES.filter((n) => !OFFENSIVE_ONLY_TOOLS.has(n) && !EXCLUDED_FROM_FULL.has(n)).map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Request/response attack surface: injection + active scanning + authenticated headers.
   api: { nuclei: true, zap: true, sqlmap: true, commix: true, dalfox: true, authCheck: true, whatwaf: true, zapAjaxSpider: true, kiterunner: true, arjun: true, sessionCheck: true, jwtAnalysis: true, apiSpecInjection: true, badsecrets: true, katana: true },
   // CMS-specific attack surface: nuclei's tech-scoped tags cover WP/Drupal/Joomla;

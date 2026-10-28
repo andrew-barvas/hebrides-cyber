@@ -38,6 +38,7 @@ entry).
   real product gaps are | [`COMPETITIVE-ANALYSIS.md`](COMPETITIVE-ANALYSIS.md) |
 | ...see the backlog of things that could be built, with reasoning and an
   ID to reference | [`ENHANCEMENTS.md`](ENHANCEMENTS.md) |
+| ...weigh a new product or revenue line (who pays, effort, kill criteria), or log an emerging threat against product ideas | [`PRODUCT-IDEAS.md`](PRODUCT-IDEAS.md) |
 | ...see what's actually blocking this from being safe to sell/scale, with
   verifiable exit criteria | [`ROADMAP.md`](ROADMAP.md) |
 | ...see what stands between this and a paid launch, with acceptance criteria | [`LAUNCH-PRIORITY.md`](LAUNCH-PRIORITY.md) |
