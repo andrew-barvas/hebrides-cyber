@@ -57,10 +57,10 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
 | OT-26 | `SENTRY_DSN` GitHub secret (scan-worker errors) | — | Done | 2026-10-23 | 2026-10-23 |
 | OT-27 | Create a public status page and set `NEXT_PUBLIC_STATUS_PAGE_URL` | 🟡 Medium | Open | 2026-10-28 | |
-| OT-28 | Lookout: check the name (UK trademark, domain) and sign off prices | 🟡 Medium | Decision | 2026-10-30 | |
-| OT-29 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
-| OT-30 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
-| OT-31 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
+| OT-33 | Lookout: check the name (UK trademark, domain) and sign off prices | 🟡 Medium | Decision | 2026-10-30 | |
+| OT-34 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
+| OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
+| OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
 
 ## Items
 
@@ -331,7 +331,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** the live footer shows "Status" and the link opens the page.
 - **Raised:** 2026-10-28 (launch priority #2, AC4).
 
-### OT-28: Lookout name and prices 🟡
+### OT-33: Lookout name and prices 🟡
 - **What and why:** the plan (`DEFENSIVE-ASSESSMENT-PLAN.md`) uses the working
   name "Lookout" and proposes Essentials £149/mo and Assured £299/mo. You chose
   these on 2026-10-30, but the name has not been checked.
@@ -341,7 +341,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a short written result (clear, or pick Beacon / Harbour Watch).
 - **Raised:** 2026-10-30.
 
-### OT-29: Lookout Stripe prices 🟡
+### OT-34: Lookout Stripe prices 🟡
 - **What and why:** you chose Stripe checkout from day one. Billing is
   monthly-only today, so this needs six new prices: Essentials and Assured, each
   monthly, quarterly and annual.
@@ -351,7 +351,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a test-mode checkout completes for each price.
 - **Raised:** 2026-10-30.
 
-### OT-30: ToS wording for the managed exposure review 🟡
+### OT-35: ToS wording for the managed exposure review 🟡
 - **What and why:** `src/app/terms/page.tsx` §2 lists the services. Lookout is a
   recurring, analyst-written service with scan windows and fair-use hours, and
   it uses active (non-injecting) scanning on verified domains. Wording needs a
@@ -361,7 +361,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** approved wording merged into the terms.
 - **Raised:** 2026-10-30.
 
-### OT-31: Where OpenVAS runs 🟢
+### OT-36: Where OpenVAS runs 🟢
 - **What and why:** you chose to add OpenVAS and Nikto. OpenVAS needs a large
   feed sync and several services, which may not fit the ephemeral Actions
   runners. Decide after the prototype in the plan.
