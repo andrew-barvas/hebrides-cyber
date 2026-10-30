@@ -224,6 +224,33 @@ describe("FindingCard proof of exploit", () => {
   });
 });
 
+describe("FindingCard evidence", () => {
+  const evidence = {
+    request: { method: "GET" as const, url: "https://example.com/.env" },
+    response: { status: 200, headers: { "content-type": "text/plain" }, bodyExcerpt: "DB_PASSWORD=[redacted]", truncated: true },
+    matched: "DB_",
+    capturedAt: "2026-10-30T12:00:00.000Z",
+  };
+
+  it("shows the request, status, headers, match and redacted excerpt", () => {
+    render(<FindingCard finding={finding({ evidence })} />);
+    const block = screen.getByTestId("finding-evidence");
+    expect(block).toHaveTextContent("GET https://example.com/.env → 200");
+    expect(block).toHaveTextContent("content-type: text/plain");
+    expect(block).toHaveTextContent("Matched: DB_");
+    expect(block).toHaveTextContent("DB_PASSWORD=[redacted]");
+    expect(block).toHaveTextContent("Captured 2026-10-30 12:00 UTC");
+  });
+
+  it("renders nothing for a finding without evidence, or with malformed stored evidence", () => {
+    const { unmount } = render(<FindingCard finding={finding()} />);
+    expect(screen.queryByTestId("finding-evidence")).not.toBeInTheDocument();
+    unmount();
+    render(<FindingCard finding={finding({ evidence: { request: {} } as never })} />);
+    expect(screen.queryByTestId("finding-evidence")).not.toBeInTheDocument();
+  });
+});
+
 describe("FindingCard AI triage", () => {
   const triage = (over: Record<string, unknown>) => finding({ metadata: { aiTriage: { reasoning: "r", ...over } } });
 

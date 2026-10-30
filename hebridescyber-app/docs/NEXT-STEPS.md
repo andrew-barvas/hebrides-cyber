@@ -51,9 +51,18 @@ in-repo summary.
    unit test (non-safe `totalChecks === 58`); a controlled vulnerable staging
    target + bench fixture; a `/api/health` smoke step in `deploy.yml`; confirm a
    Basic subscriber receives a scheduled scan (POC-1).
-4. **Sprint 4** — bounded, redacted `evidence` field on findings. *(The
-   scheduled-report `pdf` half is done, 2026-10-27: a real PDF attachment via
-   `htmlToPdf()`, CSV fallback that says so; see `SPRINT-PLAN.md` H4.)*
+4. **Sprint 4: done (2026-10-30).**
+   - `Finding.evidence` (`src/lib/findingEvidence.ts`): the GET that produced
+     the finding, with an allowlist of response headers, a body excerpt of at
+     most 400 characters, and the matched text, all redacted at capture.
+     Stored in `scan_results`, so it is deleted with the scan.
+   - Set by `exposure.ts` and `directoryListing.ts`. Shown as "Evidence" on
+     the finding card, in `/api/v1/scans/{id}`, in the JSON export, the CSV
+     `evidence` column and the executive PDF.
+   - The scheduled-report PDF half shipped 2026-10-27 (#123).
+   - Follow-up: give the other request-making checks evidence too (headers,
+     backend/Firebase exposure, GraphQL, and proof-of-exploit's replay). Each
+     needs its own redaction review.
 5. **Sprint 5** — gating decision for the open routes
    (`ai-fix`/`keys`/`shares`/tickets); reconcile stale docs; prune ~20 merged
    remote branches; branch protection (owner).

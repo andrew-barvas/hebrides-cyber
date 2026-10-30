@@ -37,6 +37,19 @@ describe("checkExposure — real exposures", () => {
     expect(await exposedPaths()).toContain("critical:/.env");
   });
 
+  it("records redacted evidence: the keys prove exposure, the values are never stored", async () => {
+    serve({ "/.env": { body: "APP_ENV=production\nDB_PASSWORD=hunter2\n", headers: { "set-cookie": "sid=abc" } } });
+    const result = await checkExposure("https://example.com");
+    if (result.status !== "checked") throw new Error("expected checked");
+    const env = result.exposed.find((f) => f.path === "/.env")!;
+    expect(env.evidence).toMatchObject({
+      request: { method: "GET", url: "https://example.com/.env" },
+      response: { status: 200, headers: { "content-type": "text/plain" }, bodyExcerpt: "APP_ENV=[redacted]\nDB_PASSWORD=[redacted]" },
+    });
+    expect(env.evidence!.response.headers).not.toHaveProperty("set-cookie");
+    expect(JSON.stringify(env.evidence)).not.toMatch(/hunter2|production|sid=abc/);
+  });
+
   it("reports an exposed git repository", async () => {
     serve({ "/.git/HEAD": { body: "ref: refs/heads/main\n" } });
     expect(await exposedPaths()).toContain("critical:/.git/HEAD");
