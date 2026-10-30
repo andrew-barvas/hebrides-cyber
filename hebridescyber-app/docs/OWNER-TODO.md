@@ -157,6 +157,10 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 - **How:** follow `OWNER-SETUP.md` §5. Create a free Upstash Redis database
   and add both values as Azure Static Web App settings.
 - **Verify:** hammering `POST /api/scan` from one IP returns 429.
+- **Also gates `/check`:** the no-signup website check (`POST /api/instant-check`) scans
+  sites its visitors do not own, so it answers 503 in production until these
+  two values are set, and it refuses traffic if Upstash errors. Once set,
+  `/check` works with no further change.
 - **Raised:** 2026-08-17.
 
 ### OT-07: Branch protection on `master` 🟠
