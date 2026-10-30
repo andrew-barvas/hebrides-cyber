@@ -35,6 +35,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-03 | Review and merge #107 (cookie settings, Sentry in the privacy policy) | 🔴 High | Open | 2026-10-26 | |
 | OT-04 | Decide on #110 (Tier A plan checks), closed unmerged | 🟠 High | Decision | 2026-10-27 | |
 | OT-05 | Confirm `CREDENTIALS_ENC_KEY` in Azure and encrypt stored secrets | 🟠 High | Check | 2026-10-14 | |
+| OT-28 | Decide whether to rotate `CREDENTIALS_ENC_KEY` (it was exposed as a plaintext variable) | 🟠 High | Decision | 2026-10-28 | |
+| OT-29 | `AZURE_STORAGE_CONNECTION_STRING` (the 90-day report PDF retention job skips without it) | 🟠 High | Check | 2026-10-28 | |
 | OT-06 | Upstash Redis for rate limiting (fails open without it) | 🟠 High | Check | 2026-08-17 | |
 | OT-07 | Branch protection on `master` | 🟠 High | Open | 2026-08-26 | |
 | OT-08 | `NEXT_PUBLIC_SENTRY_DSN`, plus `SENTRY_DSN` in Azure | 🟡 Medium | Open | 2026-09-04 | |
@@ -52,11 +54,14 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-20 | Publish the GitHub Action from a public repository | 🟢 Low | Open | 2026-10-06 | |
 | OT-21 | NCSC replacement campaign: blog post and marketing drafts | 🟢 Low | Open | 2026-10-06 | |
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
+| OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
+| OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
 | OT-26 | `SENTRY_DSN` GitHub secret (scan-worker errors) | — | Done | 2026-10-23 | 2026-10-23 |
 | OT-27 | Create a public status page and set `NEXT_PUBLIC_STATUS_PAGE_URL` | 🟡 Medium | Open | 2026-10-28 | |
+| OT-32 | `NEXT_PUBLIC_SITE_URL` variable pointed at the Azure hostname | — | Done | 2026-10-28 | 2026-10-26 |
 | OT-33 | Lookout: check the name (UK trademark, domain) and sign off prices | 🟡 Medium | Decision | 2026-10-30 | |
 | OT-34 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
 | OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
@@ -331,6 +336,71 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** the live footer shows "Status" and the link opens the page.
 - **Raised:** 2026-10-28 (launch priority #2, AC4).
 
+### OT-28: Decide whether to rotate `CREDENTIALS_ENC_KEY` 🟠
+- **What and why:** from 2026-10-14 to 2026-10-26 a GitHub **repository
+  variable** named `CREDENTIALS_ENC_KEY` held the encryption key in plaintext.
+  Variables are not hidden the way secrets are, so anyone with read access to
+  the repo could see it, and it was printed into a Claude session transcript
+  on 2026-10-25. Nothing read it, and it was deleted on 2026-10-26. If the
+  real secret (set 2026-10-15) holds the same value, treat that key as
+  exposed. The code supports exactly one key, so rotating makes anything
+  already encrypted unreadable until it is entered again.
+- **How:**
+  1. In the Supabase table editor, count the rows in `ticket_integrations`,
+     `target_auth_credentials` and `cloud_credentials`.
+  2. If no customer has saved a credential, rotate. Generate a key with
+     `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`,
+     then set it as the GitHub secret `CREDENTIALS_ENC_KEY` and as the Azure
+     app setting, with the same value. This is also OT-05 step 1.
+  3. If customers have saved credentials, ask a session to build a
+     previous-key fallback and a re-encrypt step first. That is not built.
+- **Verify:** `gh secret list` shows `CREDENTIALS_ENC_KEY` dated after
+  2026-10-26, and saving an integration on the Integrations page succeeds.
+- **Raised:** 2026-10-28 (found 2026-10-25 while auditing GitHub variables).
+
+### OT-29: `AZURE_STORAGE_CONNECTION_STRING` GitHub secret 🟠
+- **What and why:** `/privacy` promises report PDFs are deleted after 90 days.
+  `data-retention-cleanup.yml` does that against the "reports" Blob container,
+  but only when this secret is set. Without it the job logs "skipping PDF
+  report cleanup" and deletes nothing, so any PDFs stored in Blob Storage stay
+  past the published window. A session can't see whether the site is storing
+  PDFs there, which needs the same value as an Azure app setting.
+- **How:**
+  1. In the Azure portal open the storage account, then Security +
+     networking → Access keys, and copy a connection string.
+  2. Add it as the GitHub secret `AZURE_STORAGE_CONNECTION_STRING`.
+  3. Run Actions → "Data Retention Cleanup" once.
+- **Verify:** the run log no longer says "skipping PDF report cleanup" and
+  reports how many blobs it deleted (0 is fine if none are over 90 days old).
+- **Raised:** 2026-10-28 (secrets audit).
+
+### OT-30: Delete three unused GitHub secrets 🟢
+- **What and why:** `DIGEST_SERVICE_TOKEN`, `NEWSLETTER_SERVICE_TOKEN` and
+  `NEXT_PUBLIC_AZURE_FUNCTIONS_URL` belonged to routes and a Functions app
+  that no longer exist. No workflow or source file reads them; the only
+  mentions of `DIGEST_SERVICE_TOKEN` are comments saying it is no longer
+  needed. An unused secret is a credential nobody is watching.
+- **How:** Settings → Secrets and variables → Actions → delete each one, or
+  `gh secret delete <NAME> --repo andrew-barvas/hebrides-cyber`.
+- **Verify:** `gh secret list` no longer shows them, and the next push to
+  `master` still deploys.
+- **Raised:** 2026-10-28 (secrets audit).
+
+### OT-31: Optional: `CONTACT_EMAIL` and a GitHub App 🟢
+- **What and why:** two optional settings that are blank today.
+  - `CONTACT_EMAIL` is where the erasure-deadline reminder is sent. It
+    defaults to `hello@hebridescyber.co.uk`, so set it only if that is not the
+    mailbox you read.
+  - `GH_APP_ID` and `GH_APP_PRIVATE_KEY` let fix pull requests and repo scans
+    use a per-repo GitHub App token instead of the shared `GH_PAT`, which
+    reaches more than it needs to. The header of `src/lib/githubApp.ts`
+    explains the trade-off.
+- **How:** add each as a GitHub secret. For the App, create it with contents
+  and pull-request write access and install it on the repos it should reach.
+- **Verify:** `gh secret list` shows the names. For the App, a fix pull request
+  on an installed repo opens without using `GH_PAT`.
+- **Raised:** 2026-10-28 (secrets audit).
+
 ### OT-33: Lookout name and prices 🟡
 - **What and why:** the plan (`DEFENSIVE-ASSESSMENT-PLAN.md`) uses the working
   name "Lookout" and proposes Essentials £149/mo and Assured £299/mo. You chose
@@ -373,3 +443,10 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
 for the browser and API side.
+
+### OT-32: `NEXT_PUBLIC_SITE_URL` variable ✅
+Done 2026-10-26 (recorded 2026-10-28). The repository variable pointed at the
+raw `proud-stone-04a76350f.7.azurestaticapps.net` hostname, so links in emails
+sent by the workers (scheduled reports, digests, emerging-threat alerts) used
+it instead of the canonical `https://www.hebridescyber.co.uk`. It now holds the
+`www` address (`gh variable list`, updated 2026-10-26T08:18Z).
