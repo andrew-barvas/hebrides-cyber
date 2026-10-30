@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveToolConfig, enablesOffensiveTools, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS, EXCLUDED_FROM_FULL } from "./scanProfiles";
+import { resolveToolConfig, enablesOffensiveTools, isNonIntrusiveProfile, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS, EXCLUDED_FROM_FULL, EXPOSURE_TOOLS } from "./scanProfiles";
 
 describe("resolveToolConfig", () => {
   it("'full' enables every extended tool except the offensive-only suite and the tools excluded from full", () => {
@@ -35,7 +35,7 @@ describe("resolveToolConfig", () => {
   });
 
   it("offensive-only tools (brute-force / exploit) are off in every non-offensive profile", () => {
-    for (const profile of ["safe", "full", "api", "cms", "osint"] as const) {
+    for (const profile of ["safe", "full", "api", "cms", "osint", "exposure"] as const) {
       const config = resolveToolConfig(profile);
       for (const name of OFFENSIVE_ONLY_TOOLS) {
         expect(config[name], `${name} must be off in ${profile}`).toBe(false);
@@ -115,6 +115,38 @@ describe("resolveToolConfig", () => {
   });
 });
 
+describe("'exposure' (managed exposure review)", () => {
+  // Sold as "no exploitation, no test payloads" (docs/DEFENSIVE-ASSESSMENT-PLAN.md).
+  const PAYLOAD_TOOLS = ["sqlmap", "commix", "dalfox", "zap", "zapAjaxSpider", "apiSpecInjection", "arjun", "kiterunner", "sessionCheck", ...OFFENSIVE_ONLY_TOOLS] as const;
+
+  it("enables exactly its own tool list", () => {
+    const config = resolveToolConfig("exposure");
+    for (const name of EXTENDED_TOOL_NAMES) expect(config[name], name).toBe(EXPOSURE_TOOLS.has(name));
+    expect([...EXPOSURE_TOOLS].sort()).toEqual(["httpx", "networkExposure", "nmap", "nuclei"]);
+  });
+
+  it("never enables an injection tester, ZAP's active scan or an offensive-only tool", () => {
+    const config = resolveToolConfig("exposure");
+    for (const name of PAYLOAD_TOOLS) expect(config[name], name).toBe(false);
+  });
+
+  it("a bundle can switch its tools off but cannot add a payload-sending one", () => {
+    const everything = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, true]));
+    const config = resolveToolConfig("exposure", everything);
+    for (const name of EXTENDED_TOOL_NAMES) expect(config[name], name).toBe(EXPOSURE_TOOLS.has(name));
+    expect(resolveToolConfig("exposure", { nmap: false }).nmap).toBe(false);
+    expect(enablesOffensiveTools("exposure", everything)).toBe(false);
+  });
+
+  it("counts as non-intrusive, like 'safe', and no active profile does", () => {
+    expect(isNonIntrusiveProfile("exposure")).toBe(true);
+    expect(isNonIntrusiveProfile("safe")).toBe(true);
+    for (const profile of ["full", "api", "cms", "osint", "offensive", "ai-pentest"] as const) {
+      expect(isNonIntrusiveProfile(profile), profile).toBe(false);
+    }
+  });
+});
+
 describe("enablesOffensiveTools", () => {
   // The queue worker's Tier A + per-target-authorization gate keys off this
   // function. It used to compare the profile to "offensive" directly, which
@@ -129,7 +161,7 @@ describe("enablesOffensiveTools", () => {
   });
 
   it("is false for every profile that enables no offensive-only tool", () => {
-    for (const profile of ["safe", "full", "api", "cms", "osint"] as const) {
+    for (const profile of ["safe", "full", "api", "cms", "osint", "exposure"] as const) {
       expect(enablesOffensiveTools(profile), profile).toBe(false);
     }
   });
@@ -137,7 +169,7 @@ describe("enablesOffensiveTools", () => {
   it("is true for any profile the table gives an offensive-only tool to", () => {
     // Guards the table itself rather than a hand-kept list of profile names:
     // add an offensive-only tool to any profile and that profile must gate.
-    for (const profile of ["safe", "full", "api", "cms", "osint", "offensive", "ai-pentest"] as const) {
+    for (const profile of ["safe", "full", "api", "cms", "osint", "exposure", "offensive", "ai-pentest"] as const) {
       const config = resolveToolConfig(profile);
       const hasOffensive = [...OFFENSIVE_ONLY_TOOLS].some((t) => config[t]);
       expect(enablesOffensiveTools(profile), profile).toBe(hasOffensive);

@@ -127,7 +127,33 @@ export const EXCLUDED_FROM_FULL: ReadonlySet<ExtendedToolName> = new Set<Extende
   "photon",
 ]);
 
-export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "offensive" | "ai-pentest";
+export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure" | "offensive" | "ai-pentest";
+
+// The `exposure` profile's whole tool list, and its ceiling: the managed
+// exposure review (Lookout, docs/DEFENSIVE-ASSESSMENT-PLAN.md) is sold as
+// "no exploitation, no test payloads", so nothing that sends one may run under
+// it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP (its
+// wrapper runs an active scan, not passive rules only), the offensive-only
+// suite, and proof-of-exploit re-checks (see isNonIntrusiveProfile). Only tools
+// with a real-binary *.integration.test.ts are listed (CLAUDE.md rule 15):
+// deepTls and subdomains have none yet, and the base suite already covers TLS
+// and certificate-transparency subdomains. nuclei runs in its non-intrusive
+// mode here (nuclei.ts), never with the payload-sending baseline tags.
+export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
+  "httpx",
+  "networkExposure",
+  "nmap",
+  "nuclei",
+]);
+
+/**
+ * Profiles that must never send a test payload: no injection testers, no
+ * active scan, no proof-of-exploit re-check. `safe` runs no extended tools at
+ * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei restricted.
+ */
+export function isNonIntrusiveProfile(profile: ScanProfile): boolean {
+  return profile === "safe" || profile === "exposure";
+}
 
 // A reasonable starting proposal for the api/cms/osint subsets, not a
 // locked product decision — easy to adjust later since it's one config
@@ -160,6 +186,9 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     httpx: true,
     katana: true,
   },
+  // Managed exposure review: open ports, services and known misconfigurations,
+  // with no payloads. See EXPOSURE_TOOLS for why each tool is in or out.
+  exposure: Object.fromEntries([...EXPOSURE_TOOLS].map((n) => [n, true])) as Record<ExtendedToolName, boolean>,
   // Tier A opt-in offensive mode: the full active suite PLUS the offensive-only
   // tools (directory/vhost brute-force, login credential spraying, and the
   // autonomous exploit agents). Reachable ONLY by a Tier A account that has
@@ -192,7 +221,9 @@ export function resolveToolConfig(
   const merged = { ...SCAN_PROFILES[profile], ...bundleOverrides };
   const result = {} as Record<ExtendedToolName, boolean>;
   for (const name of EXTENDED_TOOL_NAMES) {
-    result[name] = merged[name] ?? false;
+    // A bundle over `exposure` may switch its tools off but never add one:
+    // the profile's promise of no payloads has to survive a tool_overrides row.
+    result[name] = (merged[name] ?? false) && (profile !== "exposure" || EXPOSURE_TOOLS.has(name));
   }
   return result;
 }

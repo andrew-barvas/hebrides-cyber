@@ -141,6 +141,21 @@ describe("renderExecutiveReportHtml", () => {
     expect(html).toContain("under an hour");
   });
 
+  it("names the CWE and ATT&CK technique for a mapped finding, with MITRE's attribution", () => {
+    const html = renderExecutiveReportHtml(input({ findings: [f({ title: "Open RDP", severity: "high", checkId: "network-exposure.open-port:3389" })] }));
+    expect(html).toContain('<a href="https://attack.mitre.org/techniques/T1133/">T1133</a> External Remote Services');
+    expect(html).toContain("<td>T1133, T1190</td>");
+    expect(html).toContain("registered trademark of The MITRE Corporation");
+  });
+
+  it("uses refs stored on the finding over the checkId lookup, and leaves unmapped findings and the attribution out", () => {
+    const stored = f({ title: "SQLi", severity: "high", checkId: "unmapped.thing", cwe: ["CWE-89"], attackRefs: [{ id: "T1190", name: "Exploit Public-Facing Application", url: "https://attack.mitre.org/techniques/T1190/" }] });
+    expect(renderExecutiveReportHtml(input({ findings: [stored] }))).toContain("<td>CWE-89, T1190</td>");
+    const plain = renderExecutiveReportHtml(input());
+    expect(plain).not.toContain("Why it matters");
+    expect(plain).not.toContain("MITRE Corporation");
+  });
+
   it("falls back to the raw target when it is not a URL", () => {
     expect(renderExecutiveReportHtml(input({ targetUrl: "unknown" }))).toContain("<b>Site:</b> unknown");
   });
