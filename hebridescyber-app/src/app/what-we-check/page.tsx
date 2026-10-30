@@ -593,7 +593,7 @@ export default function WhatWeCheckPage() {
                 <span className="flex-shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Real active scanning, most of the time</strong> —
-                  nmap/nuclei/sqlmap/commix/a real ZAP active scan only run on the scheduled monitoring path,
+                  nmap/nuclei/a real ZAP active scan only run on the scheduled monitoring path,
                   where domain ownership has already been verified. An on-demand dashboard scan is
                   passive/read-only checks only.
                 </span>
