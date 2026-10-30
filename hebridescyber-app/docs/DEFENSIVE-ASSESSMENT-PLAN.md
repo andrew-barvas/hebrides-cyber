@@ -152,6 +152,21 @@ Four public resources the owner asked to include. They fit different places, so 
 - Scanner: only the ATT&CK Techniques mapping applies, and only if the owner wants it in the main product's findings too. Add it as a separate `E-nn` in `ENHANCEMENTS.md` if so.
 - A quarterly review task: re-check the technique IDs against the current ATT&CK version, since IDs and names change between releases.
 
+## Work ownership (2026-10-30, to avoid duplicated effort)
+
+Several Claude sessions work in this repo. Claim a step here (edit this table in your PR) before starting it.
+
+| Step | Owner | Status |
+|---|---|---|
+| Plan, copy draft, P-06, OT-33 to OT-36 | awesome-pentest defensive review session (PR #130) | Done |
+| `exposure` scan profile, migration, restricted nuclei tags, profile tests | awesome-pentest defensive review session | Not started |
+| ZAP passive-only mode | unclaimed | Not started |
+| `attackRefs` map and report rendering | unclaimed | Not started |
+| OpenVAS prototype, Nikto wrapper | unclaimed | Not started |
+| awesome-pentest ATT&CK Software join (catalogue step 3) | unclaimed | Not started |
+
+Known overlapping sessions and PRs: "Lookout managed-assessment plan" (a second session on the same topic; message sent), #139 (stale-docs pass, edits `USER-GUIDE.md`, which #137 also touched), #135 (OT-28 to OT-32, so Lookout uses OT-33 to OT-36). Two idle sessions ("Pentest tools defensive catalogue", "Defensive threat intelligence catalogue builder") started the awesome-pentest catalogue earlier and have no commits; the catalogue under `research/awesome-pentest/` supersedes them.
+
 ## Steps
 
 ### 1. Commit this plan for handover
