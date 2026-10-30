@@ -1,0 +1,71 @@
+name: Set account plan
+
+# Manual, one-off. Runs hebridescyber-app/src/scripts/set-plan.ts — a manual
+# subscription grant outside Stripe (comps, pilots, giving a staff account
+# the full feature set). Mirrors POST /api/admin/subscription: upserts the
+# subscriptions row tagged source='admin' and writes an
+# admin.subscription_overridden audit event.
+#
+# Dry run unless you tick "confirm" — the first run only prints what it
+# would do.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Account email"
+        type: string
+        required: true
+      plan:
+        description: "Plan to grant"
+        type: choice
+        options:
+          - basic
+          - pro
+          - agency
+          - tier_a
+        required: true
+      reason:
+        description: "Reason (recorded on the subscription row and in the audit log)"
+        type: string
+        default: "manual plan grant via set-plan workflow"
+      confirm:
+        description: "Tick to actually write the change. Leave unticked for a dry run that only reports."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  set-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Set plan
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EMAIL: ${{ inputs.email }}
+          PLAN: ${{ inputs.plan }}
+          REASON: ${{ inputs.reason }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" = "true" ]; then
+            npm run account:set-plan -- "${EMAIL}" "${PLAN}" "${REASON}" --confirm
+          else
+            npm run account:set-plan -- "${EMAIL}" "${PLAN}" "${REASON}"
+          fi
