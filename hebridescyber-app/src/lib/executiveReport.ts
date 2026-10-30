@@ -26,6 +26,7 @@ import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./find
 import { hostOf } from "./findingLifecycle";
 import { confirmedProof } from "./proofEvidence";
 import { ATTACK_ATTRIBUTION, getAttackRefs, getCweIds } from "./scanners/attackMap";
+import { evidenceSummary, readEvidence } from "./findingEvidence";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
 
@@ -186,6 +187,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
               <div>${badge(f.severity)} <b>${e(f.title)}</b>${confirmedProof(f) ? ' <span class="kev">confirmed exploitable</span>' : ""}${f.threatIntel?.knownExploited ? ' <span class="kev">actively exploited</span>' : ""}</div>
               <p>${e(plainText(f.detail, DETAIL_CHARS))}</p>
               ${techniqueLine(f)}
+              ${readEvidence(f.evidence) ? `<p class="ev"><b>Evidence:</b> <code>${e(evidenceSummary(readEvidence(f.evidence)))}</code></p>` : ""}
               ${f.remediation ? `<p class="fix"><b>How to fix:</b> ${e(plainText(f.remediation, FIX_CHARS))} <i>(effort: ${effort(f)})</i></p>` : ""}
             </div>
           </div>`
@@ -194,7 +196,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
     : `<p>No open findings above informational level were recorded.</p>`;
 
   const rows = ordered
-    .map((f) => `<tr><td>${badge(f.severity)}</td><td>${e(f.title)}</td><td>${e(plainText(f.detail, DETAIL_CHARS))}</td><td>${refIds(f)}</td><td>${effort(f)}</td></tr>`)
+    .map((f) => `<tr><td>${badge(f.severity)}</td><td>${e(f.title)}</td><td>${e(plainText(f.detail, DETAIL_CHARS))}${readEvidence(f.evidence) ? `<br><code class="ev">${e(evidenceSummary(readEvidence(f.evidence)))}</code>` : ""}</td><td>${refIds(f)}</td><td>${effort(f)}</td></tr>`)
     .join("");
 
   const frameworkRows = compliance.frameworks
@@ -255,6 +257,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   .kev { color: #7f1d1d; font-weight: bold; font-size: 10px; }
   .priority { display: flex; gap: 10px; margin: 10px 0; page-break-inside: avoid; } .pn { font-size: 18px; font-weight: bold; color: #0b3d5b; width: 20px; }
   .pb p { margin: 3px 0; } .refs { font-size: 10px; } .refs a { color: #0b3d5b; } .fix { background: #f1f5f8; padding: 6px 8px; border-radius: 4px; }
+  .ev, .ev code, code.ev { font-size: 10px; color: ${REPORT_MUTED}; word-break: break-all; }
   table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; vertical-align: top; font-size: 11px; }
   th { background: #f1f5f8; } tr { page-break-inside: avoid; }
   .chain { margin: 10px 0; page-break-inside: avoid; } .chain > div:first-child { margin-bottom: 4px; }
