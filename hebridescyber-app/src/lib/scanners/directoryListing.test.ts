@@ -30,7 +30,15 @@ async function listed(url = "https://example.com") {
 describe("checkDirectoryListing", () => {
   it("reports a real Apache-style autoindex with an approximate file count", async () => {
     serve({ "/uploads/": { body: autoindex("/uploads/", ["invoice.pdf", "passport.jpg", "db.sql"]) } });
-    expect(await listed()).toEqual([{ path: "/uploads/", fileCount: 3 }]);
+    const [dir] = await listed();
+    expect(dir).toMatchObject({ path: "/uploads/", fileCount: 3 });
+    // The GET that proved it: status, type, and the "Index of" heading, never the HTML body.
+    expect(dir.evidence).toMatchObject({
+      request: { method: "GET", url: "https://example.com/uploads/" },
+      response: { status: 200, headers: { "content-type": "text/html" } },
+      matched: "Index of /uploads/",
+    });
+    expect(dir.evidence!.response.bodyExcerpt).toBeUndefined();
   });
 
   // Found by the accuracy benchmark: nginx's autoindex links "../" with no
@@ -38,7 +46,7 @@ describe("checkDirectoryListing", () => {
   it("reports an nginx-style autoindex", async () => {
     const nginx = `<html><head><title>Index of /assets/</title></head><body><h1>Index of /assets/</h1><hr><pre><a href="../">../</a>\n<a href="app.js">app.js</a>\n<a href="logo.png">logo.png</a>\n</pre><hr></body></html>`;
     serve({ "/assets/": { body: nginx } });
-    expect(await listed()).toEqual([{ path: "/assets/", fileCount: 2 }]);
+    expect(await listed()).toMatchObject([{ path: "/assets/", fileCount: 2, evidence: { matched: "Index of /assets/" } }]);
   });
 
   it("still needs the 'Index of' heading when the page only has a ../ link", async () => {
