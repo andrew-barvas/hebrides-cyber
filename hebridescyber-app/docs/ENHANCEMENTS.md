@@ -1508,6 +1508,10 @@ annotation rather than failing the workflow outright (the deploy already
 succeeded at that point — a degraded health check is worth surfacing, not
 worth reverting a deploy over automatically). Requires the `SITE_URL`
 GitHub secret (the live `hebridescyber.co.uk` URL) — owner action.
+**2026-10-27:** the secret is set to the bare domain, which 301s to `www`, so
+every deploy logged "HTTP 301" and warned without ever checking health. The
+curl now follows redirects (`-L --max-redirs 3`, 20 s timeout), so either form
+of the URL works, and a dead host reports `000` instead of `000000`.
 
 **What**: `docs/ROADMAP.md` BETA-2 says "`GET /api/health` returns 200 with
 Supabase/Stripe/queue-depth sub-checks" and lists "curl in CI immediately
@@ -1627,7 +1631,7 @@ Intruder and HostedScan. It's also the missing half of SLA reporting.
 
 ## E-65 — Lookalike-domain monitoring
 
-**Status: open.**
+**Status: done (2026-10-13, cced57a).** `lookalikeDomainMonitor.ts`: one-edit-away candidates checked against crt.sh, reported only when a certificate exists for the exact candidate. DNS/MX-only lookalikes are not covered yet (see `NEXT-STEPS.md`).
 **What**: generate typo, omission, transposition, homoglyph and TLD-swap
 permutations of the customer's domain, and report registered ones,
 highlighting those with MX records. Passive DNS only, capped at a few
@@ -1639,7 +1643,7 @@ UK SMEs report.
 
 ## E-66 — DMARC aggregate-report processing
 
-**Status: open.**
+**Status: done (2026-10-15, c4b0b46).** `dmarcAggregate.ts`, `POST /api/dmarc/ingest`, `GET /api/dmarc/reports`, migration 060.
 **What**: accept DMARC `rua` reports at a mailbox we operate, parse the XML
 and show which senders pass or fail for the domain. This is the part of
 NCSC Mail Check that `dns.ts` doesn't replace.
@@ -1725,7 +1729,7 @@ false-positive feedback loop (see E-64).
 
 ## E-70 — Site crawler, with page-level checks on every crawled page
 
-**Status: open — next up.** Full brief in `docs/NEXT-STEPS.md` item 1.
+**Status: done (2026-10-05, 5d9ae40).** `crawler.ts`, `crawlFindings.ts`; signed-in crawl follow-up in `AUTHENTICATED-CRAWL.md`.
 **What**: bounded, read-only, robots-aware crawl (~50 pages, depth 3, same
 origin) feeding headers, cookies, mixed content, SRI, script inventory and
 error disclosure per page, aggregated so one site-wide gap is one finding.
@@ -1735,7 +1739,7 @@ error disclosure per page, aggregated so one site-wide gap is one finding.
 
 ## E-71 — Pull-request dependency checks
 
-**Status: open.** Brief in `docs/NEXT-STEPS.md` item 2.
+**Status: done (2026-10-05, d5b60e6).** `POST /api/v1/dependency-diff`, `dependencyDiff.ts`, Action `mode: dependencies`.
 **What**: `POST /api/v1/dependency-diff` plus `mode: dependencies` in the
 GitHub Action, reusing E-67's lockfile parsers to report only newly
 introduced vulnerable packages on a PR.
@@ -1744,7 +1748,7 @@ introduced vulnerable packages on a PR.
 
 ## E-72 — Fix sqlmap result reading; verify xsser output (E-18)
 
-**Status: open.** Brief in `docs/NEXT-STEPS.md` item 3.
+**Status: done (2026-10-05, 038f59e).** sqlmap result reading fixed; xsser retired rather than verified (`xsser.ts` removed), with dalfox covering reflected XSS.
 **What**: `sqlmap.ts` reads a log path sqlmap never writes, so it can never
 report a finding; `xsser.ts`'s parser has never been checked against the
 real binary. Fix both against real captured output.
@@ -1753,7 +1757,7 @@ real binary. Fix both against real captured output.
 
 ## E-73 — Scanner accuracy benchmark suite
 
-**Status: open.** Brief in `docs/NEXT-STEPS.md` item 4.
+**Status: done (2026-10-05, 038f59e).** `bench/` corpus with per-module precision/recall; extended tools, DNS and ports are not benchmarked yet.
 **What**: a corpus of known-vulnerable and known-clean targets with
 must-find / must-not-find checkIds, run in CI, reporting precision and
 recall per module and failing on regressions.
@@ -1762,7 +1766,7 @@ recall per module and failing on regressions.
 
 ## E-74 — Cross-site findings view with bulk triage
 
-**Status: open.** Brief in `docs/NEXT-STEPS.md` item 5.
+**Status: done (2026-10-05, 038f59e).** `/dashboard/findings` cross-site view with bulk triage.
 **What**: `/dashboard/findings` — every open finding across all sites,
 filterable and groupable, with bulk triage (E-64's bulk API) and export.
 **Impact/effort**: high / medium. **Category**: code (UI).

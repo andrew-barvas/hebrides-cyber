@@ -286,12 +286,12 @@ function CategoryCard({ category }: { category: CheckCategory }) {
   return (
     <div className="group relative rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm flex flex-col">
       <div className="mb-3 flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{category.icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{category.icon}</span>
         <div className="flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-mono text-sm font-semibold text-neon leading-snug">{category.name}</h3>
             {category.badge && (
-              <span className="flex-shrink-0 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon border border-neon/20">
+              <span className="shrink-0 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon border border-neon/20">
                 {category.badge}
               </span>
             )}
@@ -303,7 +303,7 @@ function CategoryCard({ category }: { category: CheckCategory }) {
       <ul className="mt-3 space-y-1.5 flex-1">
         {category.checks.map((item) => (
           <li key={item} className="flex items-start gap-2 text-xs text-cybertext/60">
-            <span className="flex-shrink-0 mt-0.5 text-neon/50">›</span>
+            <span className="shrink-0 mt-0.5 text-neon/50">›</span>
             <span>{item}</span>
           </li>
         ))}
@@ -549,7 +549,7 @@ export default function WhatWeCheckPage() {
           <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6">
             <ul className="space-y-3 text-sm text-cybertext/70">
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Business logic flaws</strong> — price manipulation,
                   privilege escalation through a legitimate workflow, coupon/quantity abuse. These
@@ -558,7 +558,7 @@ export default function WhatWeCheckPage() {
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Deep authenticated testing</strong> — every
                   scan here is unauthenticated (black-box against the public site) by default. Connecting a
@@ -572,7 +572,7 @@ export default function WhatWeCheckPage() {
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Zero-days and unknown vulnerabilities</strong> —
                   nuclei and the fingerprinting checks match against known template/CVE databases.
@@ -580,7 +580,7 @@ export default function WhatWeCheckPage() {
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">DKIM on a custom selector</strong> — a DKIM key
                   lives at a selector name chosen freely by whoever set it up, and it cannot be
@@ -590,16 +590,16 @@ export default function WhatWeCheckPage() {
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Real active scanning, most of the time</strong> —
-                  nmap/nuclei/sqlmap/commix/a real ZAP active scan only run on the scheduled monitoring path,
+                  nmap/nuclei/a real ZAP active scan only run on the scheduled monitoring path,
                   where domain ownership has already been verified. An on-demand dashboard scan is
                   passive/read-only checks only.
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex-shrink-0 text-amber-400">▸</span>
+                <span className="shrink-0 text-amber-400">▸</span>
                 <span>
                   <strong className="text-cybertext">Physical, social, and process risk</strong> — phishing
                   susceptibility, insider threats, physical access controls, offline backup hygiene. None

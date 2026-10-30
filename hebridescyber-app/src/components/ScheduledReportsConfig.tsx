@@ -22,7 +22,7 @@ export default function ScheduledReportsConfig() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
-  const [format, setFormat] = useState<"csv" | "json">("csv");
+  const [format, setFormat] = useState<ScheduledReport["format"]>("pdf");
   const [recipients, setRecipients] = useState("");
 
   const loadReports = useCallback(async () => {
@@ -148,6 +148,7 @@ export default function ScheduledReportsConfig() {
                 onChange={(e) => setFormat(e.target.value as typeof format)}
                 className="rounded-md border border-cyberborder bg-cyberbg px-2 py-1.5 text-xs text-cybertext"
               >
+                <option value="pdf">PDF (attached)</option>
                 <option value="csv">CSV</option>
                 <option value="json">JSON</option>
               </select>
@@ -160,7 +161,7 @@ export default function ScheduledReportsConfig() {
               value={recipients}
               onChange={(e) => setRecipients(e.target.value)}
               placeholder="security@example.com, cto@example.com"
-              className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none"
+              className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden"
             />
           </label>
           <button
@@ -183,7 +184,7 @@ export default function ScheduledReportsConfig() {
             <div key={r.id} className="flex items-center gap-3 rounded-lg border border-cyberborder bg-cyberbg/40 px-4 py-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${r.enabled ? "bg-neon" : "bg-cybertext/20"}`} />
+                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${r.enabled ? "bg-neon" : "bg-cybertext/20"}`} />
                   <span className="text-sm text-cybertext font-medium capitalize">{r.frequency}</span>
                   <span className="text-xs text-cybermuted uppercase">{r.format}</span>
                 </div>

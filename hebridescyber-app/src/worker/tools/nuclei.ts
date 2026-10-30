@@ -1,8 +1,9 @@
 // Nuclei scanner integration.
 //
-// Uses the nuclei binary (pinned to v3.3.9 in worker.Dockerfile). When the
-// binary is absent, returns { status: "not_configured" } so the worker
-// continues gracefully instead of failing the whole scan job.
+// Uses the nuclei binary (pinned to v3.3.9, by version and SHA-256, in
+// .github/workflows/scheduled-scans.yml — there is no worker.Dockerfile).
+// When the binary is absent, returns { status: "not_configured" } so the
+// worker continues gracefully instead of failing the whole scan job.
 //
 // targetUrl has already been SSRF-validated by run-scan before it was
 // enqueued — the worker trusts it.

@@ -95,9 +95,9 @@ export default function AuditTab({ token }: { token: string }) {
 
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
           <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
-          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
     </div>

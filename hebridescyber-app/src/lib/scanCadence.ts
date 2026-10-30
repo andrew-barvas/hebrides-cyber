@@ -20,12 +20,13 @@
 //     is multi-site monitoring and white-label reports, not scan speed, so
 //     there's no need to invent a faster-than-daily tier that the current
 //     once-a-day cron can't deliver anyway.
-export type Plan = "basic" | "pro" | "agency";
+export type Plan = "basic" | "pro" | "agency" | "tier_a";
 
 export const SCAN_INTERVAL_DAYS: Record<Plan, number> = {
   basic: 7,
   pro: 1,
   agency: 1,
+  tier_a: 1,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

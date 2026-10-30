@@ -101,7 +101,7 @@ export default function ShareLinks({ scanId, token }: { scanId: string; token: s
         <select
           value={expiryDays ?? "none"}
           onChange={(e) => setExpiryDays(e.target.value === "none" ? null : Number(e.target.value))}
-          className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
+          className="rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-hidden transition-colors"
         >
           {EXPIRY_OPTIONS.map((opt) => (
             <option key={opt.label} value={opt.days ?? "none"}>{opt.label}</option>

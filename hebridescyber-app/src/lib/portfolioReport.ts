@@ -12,7 +12,7 @@
 //   a while, says so instead of looking clean.
 // Pure: data in, HTML out, tested without a browser.
 import type { Finding } from "./scanners";
-import { escapeHtml, plainText, prioritise, ratingFor, safeLogoUrl, type ReportBranding } from "./executiveReport";
+import { escapeHtml, plainText, prioritise, ratingFor, safeLogoUrl, REPORT_MUTED, REPORT_TEXT, type ReportBranding } from "./executiveReport";
 import { hostOf } from "./findingLifecycle";
 import { partitionByTriage, type TriageIndex } from "./findingTriage";
 
@@ -180,23 +180,23 @@ export function renderPortfolioReportHtml(input: PortfolioInput): string {
 <html lang="en"><head><meta charset="utf-8" /><title>${e(brandName)} — security portfolio</title>
 <style>
   @page { size: A4; margin: 18mm 16mm; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #1f2933; font-size: 12px; line-height: 1.45; }
+  body { font-family: Arial, Helvetica, sans-serif; color: ${REPORT_TEXT}; font-size: 12px; line-height: 1.45; }
   h1 { font-size: 22px; margin: 0; color: #0b3d5b; } h2 { font-size: 15px; margin: 22px 0 8px; color: #0b3d5b; border-bottom: 1px solid #d5dde5; padding-bottom: 4px; }
   h3 { font-size: 13px; margin: 14px 0 4px; }
   .head { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #0b3d5b; padding-bottom: 12px; }
   .head img { height: 40px; max-width: 160px; object-fit: contain; }
-  .muted { color: #64727f; } .warn { color: #b45309; font-weight: bold; }
+  .muted { color: ${REPORT_MUTED}; } .warn { color: #b45309; font-weight: bold; }
   .overview { display: flex; gap: 18px; margin-top: 14px; }
   .score { min-width: 140px; text-align: center; border: 2px solid ${average.colour}; border-radius: 8px; padding: 12px; }
-  .score b { font-size: 34px; color: ${average.colour}; display: block; line-height: 1; } .score span { font-size: 11px; color: #64727f; }
+  .score b { font-size: 34px; color: ${average.colour}; display: block; line-height: 1; } .score span { font-size: 11px; color: ${REPORT_MUTED}; }
   .chips { display: flex; gap: 8px; flex: 1; } .chip { flex: 1; border: 1px solid #d5dde5; border-radius: 8px; text-align: center; padding: 12px 4px; }
-  .chip b { display: block; font-size: 24px; } .chip span { text-transform: uppercase; font-size: 10px; color: #64727f; }
+  .chip b { display: block; font-size: 24px; } .chip span { text-transform: uppercase; font-size: 10px; color: ${REPORT_MUTED}; }
   table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #e4e9ee; vertical-align: top; }
-  th { font-size: 10px; text-transform: uppercase; color: #64727f; } td.num { text-align: center; }
+  th { font-size: 10px; text-transform: uppercase; color: ${REPORT_MUTED}; } td.num { text-align: center; }
   .sev { display: inline-block; color: #fff; text-transform: uppercase; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
   .kev { color: #7f1d1d; font-weight: bold; font-size: 10px; }
   .site { page-break-inside: avoid; } ol { margin: 4px 0 0 18px; padding: 0; } li { margin-bottom: 6px; }
-  .foot { margin-top: 26px; border-top: 1px solid #d5dde5; padding-top: 8px; font-size: 10px; color: #64727f; }
+  .foot { margin-top: 26px; border-top: 1px solid #d5dde5; padding-top: 8px; font-size: 10px; color: ${REPORT_MUTED}; }
 </style></head>
 <body>
   <div class="head">${logo ? `<img src="${e(logo)}" alt="" />` : ""}<div><h1>Security portfolio</h1><div class="muted">${e(brandName)} · ${summary.sites.length} site${summary.sites.length === 1 ? "" : "s"} · generated ${e(generated)}</div></div></div>

@@ -106,11 +106,13 @@ jobs:
           fi
 
       # --- Extended tool suite ---------------------------------------------
-      # Same tools/versions as worker.Dockerfile (the never-connected BullMQ
-      # worker this replaced) — installed fresh per run rather than baked
-      # into a custom runner image, since this workflow only runs once a
-      # day and a several-minute setup cost is cheap compared to maintaining
-      # a custom image. src/worker/tools/*.ts already degrade to
+      # Installed fresh per run rather than baked into a custom runner image,
+      # since this workflow only runs once a day and a several-minute setup
+      # cost is cheap compared to maintaining a custom image. (There is no
+      # worker.Dockerfile: the BullMQ+Redis worker these tools were first
+      # written for was never connected to anything, so this job is their only
+      # runtime; the pinned versions live here, not in an image.)
+      # src/worker/tools/*.ts already degrade to
       # "not_configured" gracefully if any of these fail to install, so a
       # broken step here fails soft (fewer findings that run), not the whole
       # job.
@@ -126,13 +128,16 @@ jobs:
 
       - name: Install commix
         # commix has no official PyPI release and is normally run from a git
-        # checkout (see the CONFIDENCE NOTE in src/worker/tools/commix.ts). A
-        # failed clone is handled: a missing binary makes runCommix() return
-        # status "not_configured" rather than throwing, so it degrades this one
-        # check, not the whole job. (xsser was retired: it is not installable
-        # on the runner image and ZAP already covers XSS.)
+        # checkout (see the CONFIDENCE NOTE in src/worker/tools/commix.ts).
+        # Pinned to the v4.1 release tag rather than the default branch's HEAD:
+        # this job holds the Supabase service-role key, so what it clones and
+        # runs must not change whenever upstream pushes to master. A failed
+        # clone is handled: a missing binary makes runCommix() return status
+        # "not_configured" rather than throwing, so it degrades this one check,
+        # not the whole job. (xsser was retired: it is not installable on the
+        # runner image and ZAP already covers XSS.)
         run: |
-          sudo git clone --depth 1 https://github.com/commixproject/commix.git /opt/commix || echo "commix clone failed — commix.ts will report status: not_configured"
+          sudo git clone --depth 1 --branch v4.1 https://github.com/commixproject/commix.git /opt/commix || echo "commix clone failed — commix.ts will report status: not_configured"
           if [ -f /opt/commix/commix.py ]; then
             sudo ln -sf /opt/commix/commix.py /usr/local/bin/commix
             sudo chmod +x /usr/local/bin/commix
@@ -164,6 +169,13 @@ jobs:
         env:
           NUCLEI_VERSION: v3.3.9
           NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
+          # Templates pinned to a release tag instead of `-update-templates`'
+          # floating "latest", so a scheduled scan is reproducible and a
+          # compromised templates push can't change what this secret-holding job
+          # runs. The version is recorded in nuclei's config (and the job log).
+          # Bump this deliberately; cross-check compatibility with the pinned
+          # nuclei binary above.
+          NUCLEI_TEMPLATES_VERSION: v10.5.1
         run: |
           curl -fsSL \
             "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" \
@@ -172,7 +184,20 @@ jobs:
           sudo unzip -o /tmp/nuclei.zip -d /usr/local/bin
           rm /tmp/nuclei.zip
           sudo chmod +x /usr/local/bin/nuclei
-          nuclei -update-templates -silent || true
+          # Shallow-clone the pinned templates tag into nuclei's default
+          # templates directory ($HOME/nuclei-templates) and record the version
+          # in its config. nuclei loads every template there and filters by
+          # -tags at scan time exactly as before — only the version is fixed,
+          # and no `-update-templates` network pull happens. Fail-soft like the
+          # other installs: a failed clone leaves nuclei with no templates
+          # (fewer findings), it does not fail the scan job.
+          TEMPLATES_DIR="$HOME/nuclei-templates"
+          git clone --depth 1 --branch "${NUCLEI_TEMPLATES_VERSION}" \
+            https://github.com/projectdiscovery/nuclei-templates.git "$TEMPLATES_DIR" \
+            && mkdir -p "$HOME/.config/nuclei" \
+            && printf '{"nuclei-templates-directory":"%s","nuclei-templates-version":"%s"}\n' "$TEMPLATES_DIR" "${NUCLEI_TEMPLATES_VERSION}" > "$HOME/.config/nuclei/.templates-config.json" \
+            && echo "nuclei templates ${NUCLEI_TEMPLATES_VERSION}: $(find "$TEMPLATES_DIR" -name '*.yaml' | wc -l) templates" \
+            || echo "nuclei templates pin failed — nuclei.ts will run with no templates (fewer findings), not a failed job"
 
       - name: Install subfinder
         # src/lib/scanners/subdomains.ts shells out to `subfinder`, but this
@@ -304,7 +329,9 @@ jobs:
             sudo chmod +x /usr/local/bin/gitleaks
             rm /tmp/gitleaks.tar.gz
           fi
-          sudo git clone --depth 1 https://github.com/testssl/testssl.sh.git /opt/testssl.sh \
+          # Pinned to the v3.2.4 release tag, not the default branch's HEAD, so
+          # this secret-holding job runs a known testssl.sh revision.
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh \
             || echo "testssl.sh clone failed — deepTls.ts will report status: not_configured"
 
       - name: Install trivy
@@ -387,14 +414,42 @@ jobs:
 
       - name: Install whatwaf, wpscan, and cmsmap
         run: |
-          pip3 install --break-system-packages whatwaf \
+          # WhatWaf has no PyPI package, so `pip install whatwaf` never resolved
+          # and whatwaf.ts has always been not_configured. Install from the
+          # pinned v1.9 release tag instead. A first attempt here (sudo pip3
+          # install of the clone) never worked either; the real install, run on
+          # a runner in tool-integration.yml, has three traps:
+          #   1. setup.py imports bs4 at metadata time, so install its
+          #      requirements FIRST.
+          #   2. setup.py prompts via raw_input when run as root, which aborts
+          #      under pip's closed stdin, so install UNPRIVILEGED (no sudo).
+          #   3. its install_helper.sh writes ~/.whatwaf in the installing
+          #      user's home, so it must be the runner user that scans.
+          # ~/.local/bin is already on the runner PATH (the sqlmap step above
+          # relies on that too). Soft in this job like every other install;
+          # tool-integration.yml runs the same recipe hard.
+          ( git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf \
+            && pip3 install --break-system-packages -r /tmp/whatwaf/requirements.txt \
+            && pip3 install --break-system-packages /tmp/whatwaf \
+            && command -v whatwaf \
+            && test -n "$(ls -A "$HOME/.whatwaf/plugins")" ) \
             || echo "whatwaf install failed — whatwaf.ts will report status: not_configured"
-          sudo gem install wpscan --no-document \
+          # 3.8.28 is the newest wpscan that runs on the runner's Ruby: every 4.x
+          # release needs Ruby >= 3.3 and ubuntu-latest ships 3.2.3, so the 4.2.0
+          # pin #124 first used could not install (found by tool-integration.yml's
+          # hard check, before a scheduled run hit it).
+          sudo gem install wpscan -v 3.8.28 --no-document \
             || echo "wpscan install failed — wpscan.ts will report status: not_configured"
-          pip3 install --break-system-packages cmsmap \
+          # CMSmap has no PyPI package and no release tags, so `pip install cmsmap`
+          # never resolved — cmsmap.ts was silently not_configured on every run.
+          # Install from a pinned git commit instead (its setup.py registers the
+          # `cmsmap` console script the wrapper calls).
+          sudo git clone https://github.com/Dionach/CMSmap.git /opt/cmsmap \
+            && sudo git -C /opt/cmsmap checkout 59dd0e2b3b0c751c6da2b0565374ab83c736b0e6 \
+            && sudo pip3 install --break-system-packages /opt/cmsmap \
             || echo "cmsmap install failed — cmsmap.ts will report status: not_configured"
 
-      - name: Install photon and gospider
+      - name: Install gospider
         # gospider never installed before: the asset name was wrong
         # (linux_amd64 vs linux_x86_64) and the binary lives inside a folder
         # in the zip. Correct name + SHA-256 of the downloaded asset (jaeles
@@ -404,8 +459,14 @@ jobs:
           GOSPIDER_VERSION: 1.1.6
           GOSPIDER_SHA256: 41bdd76aff8d063655dc473f035ca7659f8549fbf264be5185f50d288666f93d
         run: |
-          pip3 install --break-system-packages photon \
-            || echo "photon install failed — photon.ts will report status: not_configured"
+          # No photon install. The PyPI `photon` package (1.1.8.3) installs but
+          # puts no `photon` command on PATH, which tool-integration.yml showed
+          # on a runner, so photon.ts has always got ENOENT and reported
+          # not_configured. Installing it only added third-party code to a job
+          # that holds the service-role key. s0md3v/Photon itself ships no
+          # setup.py and runs as `python3 photon.py`, so a real install would be a
+          # pinned clone plus a launcher, and photon.ts has never been run against
+          # its output. Until then photon stays not_configured, and out of `full`.
           curl -fsSL \
             "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" \
             -o /tmp/gospider.zip
@@ -440,59 +501,41 @@ jobs:
           # failing the whole scan shard (it no-ops without KITERUNNER_WORDLIST).
           kr kb convert hebridescyber-app/src/worker/tools/wordlists/api-routes.txt /opt/kiterunner/api-routes.kite \
             || echo "kiterunner wordlist convert failed — kiterunner.ts will report status: not_configured"
-          pip3 install --break-system-packages arjun \
+          pip3 install --break-system-packages arjun==2.2.7 \
             || echo "arjun install failed — arjun.ts will report status: not_configured"
 
-      - name: Install strix
-        # Strix AI pentest agent (Apache 2.0, https://github.com/usestrix/strix).
-        # Needs Docker (available on GitHub Actions runners) and an LLM API key
-        # (STRIX_LLM_API_KEY secret). strix.ts degrades to status: "not_configured"
-        # when the binary is absent. Both the "offensive" and "ai-pentest"
-        # profiles enable it (it is in OFFENSIVE_ONLY_TOOLS, and both spread
-        # every tool key); every other profile skips it entirely.
-        env:
-          STRIX_VERSION: 0.5.0
-        run: |
-          curl -fsSL \
-            "https://github.com/usestrix/strix/releases/download/v${STRIX_VERSION}/strix_${STRIX_VERSION}_linux_amd64.tar.gz" \
-            -o /tmp/strix.tar.gz \
-            || echo "strix download failed — strix.ts will report status: not_configured"
-          if [ -f /tmp/strix.tar.gz ]; then
-            sudo tar -xzf /tmp/strix.tar.gz -C /usr/local/bin strix
-            sudo chmod +x /usr/local/bin/strix
-            rm /tmp/strix.tar.gz
-          fi
-
-      - name: Install cairn
-        # Cairn autonomous exploitation engine (AGPL-3.0).
-        # AGPL ISOLATION: Cairn runs as a completely separate OS process via
-        # child_process.execFile. No linking, no embedding, no shared libraries,
-        # no API route execution. Only normalized JSON output is consumed.
-        # This is the "aggregate" model under AGPL-3.0 — invoking a binary
-        # via CLI and reading its output does not create a derivative work.
-        # See src/worker/tools/cairn.ts header for the full legal rationale.
-        env:
-          CAIRN_VERSION: 1.0.0
-        run: |
-          curl -fsSL \
-            "https://github.com/oritera/Cairn/releases/download/v${CAIRN_VERSION}/cairn_${CAIRN_VERSION}_linux_amd64.tar.gz" \
-            -o /tmp/cairn.tar.gz \
-            || echo "cairn download failed — cairn.ts will report status: not_configured"
-          if [ -f /tmp/cairn.tar.gz ]; then
-            sudo tar -xzf /tmp/cairn.tar.gz -C /usr/local/bin cairn
-            sudo chmod +x /usr/local/bin/cairn
-            rm /tmp/cairn.tar.gz
-          fi
+      # strix (STRIX_VERSION 0.5.0) and cairn (CAIRN_VERSION 1.0.0) were
+      # installed here with no checksum. Those release tags do not exist
+      # (strix publishes v1.x, cairn v0.2.x), so both downloads silently failed
+      # and the tools stayed not_configured. The owner decision of 2026-10-23
+      # is to leave strix/cairn/credentialSpray not_configured and not market
+      # them (docs/NEXT-STEPS.md), so these unverifiable, unchecksummed
+      # downloads are removed rather than left running in a job that holds the
+      # Supabase service-role key. Both are OFFENSIVE_ONLY_TOOLS, so no default
+      # profile ever ran them; re-pin to real tags (strix v1.x / cairn v0.2.x)
+      # with a SHA-256 check before any future attempt.
 
       - name: Start ZAP daemon
         run: |
-          docker run -d --name zap -p 8090:8090 ghcr.io/zaproxy/zaproxy:stable \
+          # Image pinned by digest, not the floating :stable tag — this job
+          # holds the Supabase service-role key, so the image it runs must not
+          # change under us. Digest resolved from ghcr.io/zaproxy/zaproxy:stable
+          # on 2026-10-27 (`docker buildx imagetools inspect` to re-resolve on a
+          # deliberate bump). The API key is a random per-run value, never the
+          # old literal "changeme": generated here, masked in the logs, and
+          # handed to the worker step via $GITHUB_ENV so it never appears in the
+          # workflow file.
+          ZAP_KEY="$(openssl rand -hex 24)"
+          echo "::add-mask::$ZAP_KEY"
+          echo "ZAP_API_KEY=$ZAP_KEY" >> "$GITHUB_ENV"
+          docker run -d --name zap -p 8090:8090 \
+            ghcr.io/zaproxy/zaproxy@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 \
             zap.sh -daemon -host 0.0.0.0 -port 8090 \
-            -config api.key=changeme \
+            -config api.key="$ZAP_KEY" \
             -config api.addrs.addr.name=.* \
             -config api.addrs.addr.regex=true
           for i in $(seq 1 12); do
-            if curl -sf "http://localhost:8090/JSON/core/view/version/?apikey=changeme" >/dev/null; then
+            if curl -sf "http://localhost:8090/JSON/core/view/version/?apikey=$ZAP_KEY" >/dev/null; then
               echo "ZAP is ready"
               exit 0
             fi
@@ -532,7 +575,9 @@ jobs:
           CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
-          ZAP_API_KEY: changeme
+          # Random per-run key exported to $GITHUB_ENV by the "Start ZAP daemon"
+          # step above; never the literal "changeme".
+          ZAP_API_KEY: ${{ env.ZAP_API_KEY }}
           TESTSSL_PATH: /opt/testssl.sh/testssl.sh
           # Compiled by the "Install kiterunner" step above; kiterunner.ts
           # no-ops to not_configured without it.
@@ -585,3 +630,34 @@ jobs:
       - name: Stop ZAP daemon
         if: always()
         run: docker rm -f zap || true
+
+  # SPRINT-PLAN H3: prove this run's shards actually scanned. Reads the
+  # scan_jobs claimed as gha-<run_id>-<shard> and fails the run when scans ran
+  # the extended tier but no tool completed (src/lib/scanRunVerification.ts).
+  verify:
+    needs: [enqueue, work]
+    if: always() && needs.enqueue.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Verify the run scanned
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUN_ID: ${{ github.run_id }}
+        run: npm run queue:verify-run
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: scan-run-verification
+          path: hebridescyber-app/scan-run-verification.json
+          if-no-files-found: ignore

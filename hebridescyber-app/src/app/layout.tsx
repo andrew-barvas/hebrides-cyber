@@ -11,7 +11,7 @@ import GoogleAnalytics from "@/components/GoogleAnalytics";
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
-  variable: "--font-mono",
+  variable: "--font-jetbrains-mono",
   display: "swap",
   preload: true,
 });
@@ -139,7 +139,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <GoogleAnalytics nonce={nonce} />
         </Suspense>
         <Header />
-        <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+        <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-hidden">
           {children}
         </main>
         <Footer />

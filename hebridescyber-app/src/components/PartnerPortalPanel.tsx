@@ -39,8 +39,8 @@ export default function PartnerPortalPanel() {
   if (loading) {
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-5 animate-pulse">
-        <div className="h-4 w-32 rounded bg-cyberborder/50 mb-4" />
-        <div className="h-20 rounded bg-cyberborder/30" />
+        <div className="h-4 w-32 rounded-sm bg-cyberborder/50 mb-4" />
+        <div className="h-20 rounded-sm bg-cyberborder/30" />
       </div>
     );
   }
@@ -65,10 +65,10 @@ export default function PartnerPortalPanel() {
           <img
             src={stats.brandLogoUrl}
             alt={stats.brandName ?? "Brand logo"}
-            className="h-8 w-8 rounded object-contain bg-cyberbg border border-cyberborder"
+            className="h-8 w-8 rounded-sm object-contain bg-cyberbg border border-cyberborder"
           />
         ) : (
-          <div className="h-8 w-8 rounded bg-cyberbg border border-cyberborder flex items-center justify-center">
+          <div className="h-8 w-8 rounded-sm bg-cyberbg border border-cyberborder flex items-center justify-center">
             <span className="text-xs text-cybermuted">?</span>
           </div>
         )}

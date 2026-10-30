@@ -29,6 +29,36 @@ jobs:
       - name: Install dependencies
         working-directory: hebridescyber-app
         run: npm ci
+
+      # A PDF report is printed by headless Chromium (src/lib/reportPdf.ts),
+      # which npm ci doesn't download. This job runs hourly, so the browser is
+      # installed only when a PDF report is about to fall due. A failed install
+      # only warns: the sender then emails that report as CSV, says so in the
+      # email, and fails the run.
+      - name: Check for a due PDF report
+        id: pdf
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run reports:send -- --pdf-due-check
+      - name: Cache Playwright browsers
+        if: steps.pdf.outputs.pdf_due == 'true'
+        id: pw-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('hebridescyber-app/package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.pdf.outputs.pdf_due == 'true'
+        working-directory: hebridescyber-app
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium || echo "::warning::Playwright system deps failed to install"
+          else
+            npx playwright install --with-deps chromium || echo "::warning::Playwright Chromium failed to install"
+          fi
+
       - name: Send due scheduled reports
         working-directory: hebridescyber-app
         env:

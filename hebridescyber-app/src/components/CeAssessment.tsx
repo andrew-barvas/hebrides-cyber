@@ -171,7 +171,7 @@ export default function CeAssessment({ token }: { token: string | null }) {
           <Card key={control.control}>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-sm">{control.control}</CardTitle>
-              <span className={`inline-block rounded border px-2 py-0.5 font-mono text-xs font-semibold ${style.badge}`}>{style.label}</span>
+              <span className={`inline-block rounded-sm border px-2 py-0.5 font-mono text-xs font-semibold ${style.badge}`}>{style.label}</span>
             </div>
             {control.scanStatus && (
               <p className="mt-1 text-[11px] text-cybermuted">
