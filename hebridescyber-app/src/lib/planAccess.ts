@@ -10,22 +10,38 @@
 //   everything Agency and Pro have.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type PlanTier = "pro" | "agency" | "tier_a";
+/** "basic" is any paid plan. */
+export type PlanTier = "basic" | "pro" | "agency" | "tier_a";
 
 type SubscriptionRow = { plan?: string | null; status?: string | null } | null | undefined;
 
 // Each tier's set of satisfying `plan` values, highest-inclusive-downward. A
 // plan satisfies a required tier when it appears in that tier's set.
 const PLANS_FOR_TIER: Record<PlanTier, readonly string[]> = {
+  basic: ["basic", "pro", "agency", "tier_a"],
   pro: ["pro", "agency", "tier_a"],
   agency: ["agency", "tier_a"],
   tier_a: ["tier_a"],
 };
 
+/** The `plan` values that satisfy `tier`, for queries that filter on `plan`. */
+export function plansFor(tier: PlanTier): readonly string[] {
+  return PLANS_FOR_TIER[tier];
+}
+
+/**
+ * Pure: does this plan satisfy the tier? Ignores status, so callers that have
+ * already checked the subscription is active (or are admins) use this rather
+ * than comparing plan strings, which leave Tier A out.
+ */
+export function planIncludes(plan: string | null | undefined, tier: PlanTier): boolean {
+  return Boolean(plan) && PLANS_FOR_TIER[tier].includes(plan as string);
+}
+
 /** Pure: does this subscription row grant the tier? */
 export function subscriptionGrants(sub: SubscriptionRow, tier: PlanTier): boolean {
-  if (!sub || sub.status !== "active" || !sub.plan) return false;
-  return PLANS_FOR_TIER[tier].includes(sub.plan);
+  if (!sub || sub.status !== "active") return false;
+  return planIncludes(sub.plan, tier);
 }
 
 /**

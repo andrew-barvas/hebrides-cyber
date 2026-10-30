@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, subscriptionGrants } from "./planAccess";
+import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, planIncludes, plansFor, subscriptionGrants } from "./planAccess";
 
 type Reply = { data: unknown; error?: { message: string } | null };
 
@@ -34,6 +34,27 @@ describe("subscriptionGrants", () => {
     }
     expect(subscriptionGrants(null, "pro")).toBe(false);
     expect(subscriptionGrants(undefined, "pro")).toBe(false);
+  });
+});
+
+describe("planIncludes / plansFor", () => {
+  it("'basic' is any paid plan, Tier A included; nothing else is", () => {
+    for (const plan of ["basic", "pro", "agency", "tier_a"]) expect(planIncludes(plan, "basic")).toBe(true);
+    for (const plan of [null, undefined, "", "none", "free"]) expect(planIncludes(plan, "basic")).toBe(false);
+    expect(subscriptionGrants({ plan: "tier_a", status: "active" }, "basic")).toBe(true);
+    expect(subscriptionGrants({ plan: "tier_a", status: "past_due" }, "basic")).toBe(false);
+  });
+
+  it("nests upward, with no status check", () => {
+    expect(planIncludes("tier_a", "pro")).toBe(true);
+    expect(planIncludes("tier_a", "agency")).toBe(true);
+    expect(planIncludes("agency", "tier_a")).toBe(false);
+    expect(planIncludes("basic", "pro")).toBe(false);
+  });
+
+  it("lists the plans that satisfy a tier, for queries that filter on plan", () => {
+    expect([...plansFor("basic")]).toEqual(["basic", "pro", "agency", "tier_a"]);
+    expect([...plansFor("agency")]).toEqual(["agency", "tier_a"]);
   });
 });
 

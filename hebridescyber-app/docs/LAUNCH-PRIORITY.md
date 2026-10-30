@@ -30,7 +30,7 @@ missing is configuration, not code.
 
 **Why:** buyers ask what happens when it breaks.
 **State:** CI gates, auto-applied migrations, a post-deploy health check
-(runs once `SITE_URL` exists), the queue-stall recovery, and an RLS test
+(runs on every deploy), the queue-stall recovery, and an RLS test
 suite exist. Not in place: error monitoring, a public status page, a
 staging environment, a rehearsed restore, and any uptime commitment (the
 free hosting tier has none).

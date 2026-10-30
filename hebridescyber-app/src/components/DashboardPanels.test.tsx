@@ -44,14 +44,30 @@ describe("WafIndicator", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows the detected WAF name and confidence", () => {
+  it("shows the detected WAF name and what WhatWaf reported, with no invented confidence", () => {
     render(
       <WafIndicator
-        results={{ extended: { whatwaf: { status: "completed", waf: "Cloudflare", vendor: "Cloudflare Inc.", confidence: 90 } } }}
+        results={{ extended: { whatwaf: { status: "completed", waf: "Cloudflare", vendor: "Cloudflare Inc.", evidence: `WhatWaf reported: "[FIREWALL] detected website protection identified as 'Cloudflare'".` } } }}
       />
     );
     expect(screen.getByText("Cloudflare")).toBeInTheDocument();
-    expect(screen.getByText(/Confidence: 90%/)).toBeInTheDocument();
+    expect(screen.getByText(`WhatWaf reported: "[FIREWALL] detected website protection identified as 'Cloudflare'".`)).toBeInTheDocument();
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when whatwaf errored, rather than 'No WAF detected'", () => {
+    const { container } = render(<WafIndicator results={{ extended: { whatwaf: { status: "error" } } }} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows 'No WAF detected' with its evidence when WhatWaf reported none", () => {
+    render(
+      <WafIndicator
+        results={{ extended: { whatwaf: { status: "completed", waf: null, vendor: null, evidence: 'WhatWaf reported: "[SUCCESS] no protection identified on target".' } } }}
+      />
+    );
+    expect(screen.getByText("No WAF detected")).toBeInTheDocument();
+    expect(screen.getByText('WhatWaf reported: "[SUCCESS] no protection identified on target".')).toBeInTheDocument();
   });
 });
 
