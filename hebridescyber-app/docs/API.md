@@ -279,6 +279,28 @@ with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
 
+### `GET /api/v1/scans/{id}/sbom`
+
+A CycloneDX 1.5 JSON SBOM of the scan's dependencies, downloaded as
+`<host>-sbom.cdx.json` (`Content-Type: application/vnd.cyclonedx+json;
+version=1.5`). It's built from the dependency inventory stored with the scan:
+every package with its scope, dependency graph and linked vulnerabilities.
+Older scans fall back to their dependency findings. It needs a connected
+repository with a lockfile or manifest, and returns `404` when the scan has
+no dependency data at all.
+
+### `GET /api/v1/scans/{id}/remediation-pack`
+
+Every actionable finding from the scan's latest result, grouped by category,
+as a Markdown download (`<host>-remediation-pack.md`). It's the same fix
+content a fix PR carries, but needs no connected repository, so it works for
+every scan.
+
+Both routes take the same auth as the other scan routes (API key or session).
+They return `401` without credentials, `403` for someone else's scan, `404`
+for an unknown scan or one with no results yet, and `405` for anything but
+`GET`.
+
 ### `POST /api/v1/dependency-diff`
 
 The vulnerable packages a pull request **introduces** — Pro and Agency plans.

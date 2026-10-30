@@ -65,7 +65,7 @@ Instances** (ACA/ACI were considered and rejected — see
 `docs/decisions/ENGINEERING-LOG-2026-08.md`'s "17 Aug" note — since GitHub Actions already
 gives fresh, destroyed-after-each-run compute for free, and installing
 real tools per run avoids maintaining a second infra surface). ZAP, nmap,
-nuclei, sqlmap, and commix only ever run inside
+nuclei, and (in the opt-in `api` profile) sqlmap and commix only ever run inside
 `.github/workflows/scheduled-scans.yml`'s `work` job
 (`runExtendedTools: true` on `executeScan()`), never inline in an
 interactive request:
