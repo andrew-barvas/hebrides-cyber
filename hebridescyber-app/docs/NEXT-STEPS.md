@@ -55,7 +55,7 @@ post-deploy checks, COEP `require-corp` against live GA/Stripe and the SSG
    - Set by `exposure.ts` and `directoryListing.ts`. Shown as "Evidence" on
      the finding card, in `/api/v1/scans/{id}`, in the JSON export, the CSV
      `evidence` column and the executive PDF.
-   - The scheduled-report PDF half shipped 2026-10-27 (#123).
+   - The scheduled-report PDF half shipped 2026-10-27 (#123), hardened 2026-10-30 (#142): plan gate, failed sends no longer marked sent, triaged counts (`SPRINT-PLAN.md` H4).
    - Follow-up: give the other request-making checks evidence too (headers,
      backend/Firebase exposure, GraphQL, and proof-of-exploit's replay). Each
      needs its own redaction review.
