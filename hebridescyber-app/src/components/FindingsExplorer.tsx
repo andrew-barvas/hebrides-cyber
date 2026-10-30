@@ -83,7 +83,7 @@ const BULK_ACTIONS: ReadonlyArray<{ value: BulkChoice; label: string }> = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SELECT_CLASS =
-  "h-10 w-full rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon/40";
+  "h-10 w-full rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40";
 
 function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "csv"): string {
   const p = new URLSearchParams();
@@ -117,7 +117,7 @@ function FilterSelect({
 }) {
   const id = useId();
   return (
-    <div className="min-w-[9rem] flex-1 space-y-1.5">
+    <div className="min-w-36 flex-1 space-y-1.5">
       <Label htmlFor={id} className="text-xs text-cybermuted">
         {label}
       </Label>
@@ -134,7 +134,7 @@ function FilterSelect({
 
 function SeverityBadge({ severity }: { severity: FindingSeverity }) {
   return (
-    <span className={cn("rounded border px-1.5 py-0.5 font-mono text-[11px] uppercase", SEVERITY_CLASS[severity])}>{severity}</span>
+    <span className={cn("rounded-sm border px-1.5 py-0.5 font-mono text-[11px] uppercase", SEVERITY_CLASS[severity])}>{severity}</span>
   );
 }
 
@@ -142,12 +142,12 @@ function Flags({ row }: { row: Pick<FindingRow, "knownExploited" | "ransomware" 
   return (
     <>
       {row.knownExploited && (
-        <span className="rounded border border-danger/40 px-1.5 py-0.5 text-[11px] font-semibold text-danger">
+        <span className="rounded-sm border border-danger/40 px-1.5 py-0.5 text-[11px] font-semibold text-danger">
           {row.ransomware ? "Known exploited · ransomware" : "Known exploited"}
         </span>
       )}
       {row.epss !== null && (
-        <span className="rounded border border-cyberborder px-1.5 py-0.5 text-[11px] text-cybermuted">EPSS {Math.round(row.epss * 100)}%</span>
+        <span className="rounded-sm border border-cyberborder px-1.5 py-0.5 text-[11px] text-cybermuted">EPSS {Math.round(row.epss * 100)}%</span>
       )}
     </>
   );
@@ -181,7 +181,7 @@ function FindingLine({
           <span className="break-all text-sm font-medium text-cybertext">{showTitle ? row.title : row.host}</span>
           <Flags row={row} />
           {row.triage && (
-            <span className="rounded border border-neon/30 px-1.5 py-0.5 text-[11px] text-neon">{TRIAGE_STATE_LABELS[row.triage.state]}</span>
+            <span className="rounded-sm border border-neon/30 px-1.5 py-0.5 text-[11px] text-neon">{TRIAGE_STATE_LABELS[row.triage.state]}</span>
           )}
         </div>
         <p className="break-all text-xs text-cybermuted">

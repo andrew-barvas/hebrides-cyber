@@ -12,7 +12,7 @@ function StatusBadge({ status }: { status: CeControlAssessment["status"] }) {
   };
   const labels = { pass: "Pass", fail: "Fail", partial: "Partial", "not-assessed": "N/A" };
   return (
-    <span className={`inline-block rounded border px-2 py-0.5 font-mono text-xs font-semibold ${styles[status]}`}>
+    <span className={`inline-block rounded-sm border px-2 py-0.5 font-mono text-xs font-semibold ${styles[status]}`}>
       {labels[status]}
     </span>
   );

@@ -77,21 +77,21 @@ export default function CustomersTab({ token }: { token: string }) {
                   <td className="px-4 py-2.5 font-mono text-xs text-neon">
                     {c.email}
                     {c.is_admin && (
-                      <span className="ml-1 rounded bg-neon/10 px-1 text-[10px] text-neon">admin</span>
+                      <span className="ml-1 rounded-sm bg-neon/10 px-1 text-[10px] text-neon">admin</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-cybertext/60">{c.company_name ?? "—"}</td>
                   <td className="px-4 py-2.5 capitalize text-cybertext/70">
                     {c.plan ?? "none"}
                     {c.plan_source === "admin" && (
-                      <span className="ml-1 rounded bg-amber-400/10 px-1 text-[10px] normal-case text-amber-400">manual</span>
+                      <span className="ml-1 rounded-sm bg-amber-400/10 px-1 text-[10px] normal-case text-amber-400">manual</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">{c.subscription_status ? statusBadge(c.subscription_status) : "—"}</td>
                   <td className="px-4 py-2.5 text-cybertext/70">{c.scan_count}</td>
                   <td className="px-4 py-2.5 text-cybermuted">{reltime(c.created_at)}</td>
                   <td className="px-4 py-2.5">
-                    <button onClick={() => setViewingId(c.id)} className="rounded border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors">
+                    <button onClick={() => setViewingId(c.id)} className="rounded-sm border border-cyberborder px-2 py-0.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors">
                       View
                     </button>
                   </td>
@@ -104,9 +104,9 @@ export default function CustomersTab({ token }: { token: string }) {
 
       {total > PAGE_SIZE && (
         <div className="flex justify-end gap-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
           <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
-          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+          <button disabled={page * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
         </div>
       )}
     </div>
@@ -179,7 +179,7 @@ function CustomerDetailPanel({
         <h3 className="font-mono text-xs uppercase tracking-wide text-cybermuted">// profile</h3>
         <p className="mt-2 text-sm text-cybertext">
           <span className="font-mono text-neon">{user.email}</span>
-          {user.is_admin && <span className="ml-1 rounded bg-neon/10 px-1 text-[10px] text-neon">admin</span>}
+          {user.is_admin && <span className="ml-1 rounded-sm bg-neon/10 px-1 text-[10px] text-neon">admin</span>}
         </p>
         <p className="text-sm text-cybertext/60">{user.company_name ?? "No company set"}</p>
         <p className="mt-1 text-xs text-cybermuted">Joined {reltime(user.created_at)} · {scanCount} total scans</p>
@@ -191,7 +191,7 @@ function CustomerDetailPanel({
           <span className="capitalize text-cybertext/80">{subscription?.plan ?? "none"}</span>
           {subscription?.status && statusBadge(subscription.status)}
           {subscription?.source === "admin" && (
-            <span className="rounded bg-amber-400/10 px-1 text-[10px] text-amber-400">manually granted</span>
+            <span className="rounded-sm bg-amber-400/10 px-1 text-[10px] text-amber-400">manually granted</span>
           )}
         </div>
         {subscription?.grant_reason && (
@@ -222,7 +222,7 @@ function CustomerDetailPanel({
             <button
               onClick={overridePlan}
               disabled={saving}
-              className="rounded bg-neon/10 px-3 py-2 text-xs text-neon hover:bg-neon/20 disabled:opacity-40 transition-colors"
+              className="rounded-sm bg-neon/10 px-3 py-2 text-xs text-neon hover:bg-neon/20 disabled:opacity-40 transition-colors"
             >
               {saving ? "Saving…" : "Apply override"}
             </button>

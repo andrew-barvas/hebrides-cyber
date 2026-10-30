@@ -133,7 +133,7 @@ export default function TwoFactor() {
           <p className="text-sm text-cybertext/80">Scan this with your authenticator app:</p>
           {/* Supabase returns qr_code as an inline SVG data URI — safe as an <img> src. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrCode} alt="Two-factor authentication QR code" className="h-40 w-40 rounded bg-white p-1" />
+          <img src={qrCode} alt="Two-factor authentication QR code" className="h-40 w-40 rounded-sm bg-white p-1" />
           <p className="text-xs text-cybermuted">
             Can&apos;t scan? Enter manually:{" "}
             <code className="break-all font-mono text-neon/80">{secret}</code>
@@ -145,7 +145,7 @@ export default function TwoFactor() {
             placeholder="6-digit code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
           />
           <button
             type="submit"

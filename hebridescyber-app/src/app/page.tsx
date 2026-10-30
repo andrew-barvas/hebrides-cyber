@@ -128,7 +128,7 @@ export default function HomePage() {
 
 function Card({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-cyberborder p-6 shadow-sm transition hover:border-atlantic/40 dark:hover:border-neon/40 hover:shadow-md bg-white dark:bg-cyberpanel">
+    <div className="rounded-lg border border-slate-200 dark:border-cyberborder p-6 shadow-xs transition hover:border-atlantic/40 dark:hover:border-neon/40 hover:shadow-md bg-white dark:bg-cyberpanel">
       <h3 className="mb-2 font-mono text-lg font-semibold text-atlantic dark:text-neon">{title}</h3>
       <p className="text-sm text-slatedark/80 dark:text-cybertext/70" dangerouslySetInnerHTML={{ __html: body }} />
     </div>
@@ -176,7 +176,7 @@ function TrustBadges() {
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-8 gap-y-4">
         {trustBadges.map((b) => (
           <div key={b.label} className="flex flex-col items-center gap-1">
-            <span className="rounded border border-neon/30 bg-neon/10 px-3 py-1 font-mono text-xs font-semibold text-neon">
+            <span className="rounded-sm border border-neon/30 bg-neon/10 px-3 py-1 font-mono text-xs font-semibold text-neon">
               {b.label}
             </span>
             <span className="text-[10px] text-cybermuted">{b.desc}</span>

@@ -132,7 +132,7 @@ export function ScoreGauge({ score }: { score: number }) {
   const ring   = score >= 80 ? "border-neon" : score >= 60 ? "border-yellow-400" : score >= 40 ? "border-orange-400" : "border-red-400";
   const label  = score >= 80 ? "Good" : score >= 60 ? "Fair" : score >= 40 ? "Poor" : "Critical";
   return (
-    <div className={`inline-flex flex-col items-center justify-center rounded-full border-4 ${ring} h-28 w-28 flex-shrink-0`}>
+    <div className={`inline-flex flex-col items-center justify-center rounded-full border-4 ${ring} h-28 w-28 shrink-0`}>
       <span className={`text-4xl font-bold ${colour}`}>{score}</span>
       <span className="text-xs text-cybermuted">/100 · {label}</span>
     </div>
@@ -267,7 +267,7 @@ function renderInline(text: string) {
       return (
         <code
           key={i}
-          className="rounded bg-cyberbg px-1 py-0.5 font-mono text-[11px] text-neon print:bg-slate-100 print:text-slate-800"
+          className="rounded-sm bg-cyberbg px-1 py-0.5 font-mono text-[11px] text-neon print:bg-slate-100 print:text-slate-800"
         >
           {part.slice(1, -1)}
         </code>
@@ -550,7 +550,7 @@ export function FindingCard({
   return (
     <div className={`rounded-lg border ${meta.border} ${meta.bg} p-4`}>
       <div className="mb-1 flex items-center gap-2">
-        <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
+        <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${meta.dot}`} />
         <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
         {finding.cvssScore != null && (
           <span
@@ -638,7 +638,7 @@ export function FindingCard({
               href={`https://nvd.nist.gov/vuln/detail/${cve}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-cybertext/60 hover:border-neon hover:text-neon transition-colors print:text-slate-500"
+              className="rounded-sm border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-cybertext/60 hover:border-neon hover:text-neon transition-colors print:text-slate-500"
             >
               {cve} ↗
             </a>
@@ -731,7 +731,7 @@ export function TriagedFindings({
           return (
             <li key={f.checkId ?? i} className="rounded-lg border border-cyberborder bg-cyberbg/40 p-3">
               <div className="mb-1 flex flex-wrap items-center gap-2">
-                <span className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
+                <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
                 <span className={`text-xs font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
                 <span className="rounded-full border border-cyberborder px-1.5 py-0.5 text-[10px] font-semibold text-cybertext">
                   {TRIAGE_STATE_LABELS[f.triage.state]}
@@ -1061,10 +1061,10 @@ export function ExecutiveSummary({ findings, score }: { findings: ViewFinding[];
               const meta = SEVERITY_META[f.severity];
               return (
                 <li key={f.checkId ?? i} className="flex items-start gap-2 text-xs">
-                  <span className={`mt-0.5 inline-block h-2 w-2 flex-shrink-0 rounded-full ${meta.dot}`} />
+                  <span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
                   <span className="text-cybertext/80">{f.title}</span>
                   {f.fixDifficulty && (
-                    <span className={`ml-auto flex-shrink-0 ${FIX_DIFFICULTY_META[f.fixDifficulty].text} text-[10px]`}>
+                    <span className={`ml-auto shrink-0 ${FIX_DIFFICULTY_META[f.fixDifficulty].text} text-[10px]`}>
                       {FIX_DIFFICULTY_META[f.fixDifficulty].time}
                     </span>
                   )}
@@ -1197,7 +1197,7 @@ export function ScriptInventorySection({ inventory }: { inventory: ScriptInvento
 export function CheckRow({ label, pass, detail }: { label: string; pass: boolean | undefined; detail: string }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
-      <span className={`mt-0.5 flex-shrink-0 text-sm font-bold ${pass ? "text-neon" : "text-red-400"}`}>
+      <span className={`mt-0.5 shrink-0 text-sm font-bold ${pass ? "text-neon" : "text-red-400"}`}>
         {pass ? "✓" : "✗"}
       </span>
       <div>
