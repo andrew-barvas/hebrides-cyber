@@ -159,9 +159,9 @@ Several Claude sessions work in this repo. Claim a step here (edit this table in
 | Step | Owner | Status |
 |---|---|---|
 | Plan, copy draft, P-06, OT-33 to OT-36 | awesome-pentest defensive review session (PR #130) | Done |
-| `exposure` scan profile, migration, restricted nuclei tags, profile tests | awesome-pentest defensive review session | Not started |
+| `exposure` scan profile, migration 064, restricted nuclei tags, profile tests | Lookout managed-assessment plan session, draft PR #144 | Written; in review. Nuclei tag lists need the owner's check (see the PR body) |
 | ZAP passive-only mode | unclaimed | Not started |
-| `attackRefs` map and report rendering | unclaimed | Not started |
+| `attackRefs` map (ATT&CK v17, re-check quarterly) and report rendering | Lookout managed-assessment plan session, draft PR #144 | Written; in review |
 | OpenVAS prototype, Nikto wrapper | unclaimed | Not started |
 | awesome-pentest ATT&CK Software join (catalogue step 3) | unclaimed | Not started |
 
