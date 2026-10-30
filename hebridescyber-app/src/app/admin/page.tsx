@@ -97,8 +97,8 @@ export default function AdminPage() {
             <p>Could not verify admin access. Common causes:</p>
             <ul className="list-disc pl-5 space-y-1 text-cybertext/50">
               <li>You&apos;re not signed in — <Link href="/login" className="text-neon underline">sign in first</Link></li>
-              <li>Your account doesn&apos;t have <code className="font-mono bg-cyberpanel px-1 rounded text-neon">is_admin = true</code> in Supabase</li>
-              <li><code className="font-mono bg-cyberpanel px-1 rounded text-neon">SUPABASE_SERVICE_ROLE_KEY</code> not set in Azure app settings</li>
+              <li>Your account doesn&apos;t have <code className="font-mono bg-cyberpanel px-1 rounded-sm text-neon">is_admin = true</code> in Supabase</li>
+              <li><code className="font-mono bg-cyberpanel px-1 rounded-sm text-neon">SUPABASE_SERVICE_ROLE_KEY</code> not set in Azure app settings</li>
               <li>API routes not deployed yet — wait for CI to finish</li>
             </ul>
           </div>

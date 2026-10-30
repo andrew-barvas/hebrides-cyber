@@ -211,7 +211,7 @@ export default function ApiKeys({ token }: { token: string }) {
             Copy this key now — it won&apos;t be shown again.
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="flex-1 break-all rounded border border-cyberborder bg-cyberbg px-2 py-1.5 font-mono text-xs text-neon">
+            <code className="flex-1 break-all rounded-sm border border-cyberborder bg-cyberbg px-2 py-1.5 font-mono text-xs text-neon">
               {freshKey}
             </code>
             <button
@@ -240,7 +240,7 @@ export default function ApiKeys({ token }: { token: string }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Key name (e.g. GitHub Actions)"
-          className="min-w-0 flex-1 sm:min-w-[200px] rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="min-w-0 flex-1 sm:min-w-[200px] rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
         />
         <button
           type="submit"

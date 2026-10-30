@@ -19,6 +19,7 @@ on:
       - "hebridescyber-app/src/worker/tools/httpProbe*.ts"
       - "hebridescyber-app/src/worker/tools/contentDiscovery*.ts"
       - "hebridescyber-app/src/worker/tools/badsecrets*.ts"
+      - "hebridescyber-app/src/worker/tools/whatwaf*.ts"
       - "hebridescyber-app/src/worker/tools/katana*.ts"
       - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
@@ -52,6 +53,34 @@ jobs:
 
       - name: Install sqlmap
         run: pip3 install --break-system-packages sqlmap
+
+      - name: Install whatwaf (pinned to v1.9; not on PyPI)
+        # WhatWaf has no PyPI package; install from the pinned v1.9 tag, whose
+        # setup.py installs the `whatwaf` script the wrapper calls. Three traps,
+        # all only reachable by actually running the install — which
+        # scheduled-scans.yml (schedule-only) never did in CI, so its sudo
+        # `pip install /opt/whatwaf` has never worked and whatwaf has been
+        # silently not_configured in production:
+        #   1. setup.py imports lib.settings -> bs4 at metadata-generation time,
+        #      so the runtime deps must be installed FIRST or egg_info fails
+        #      with ModuleNotFoundError.
+        #   2. setup.py calls raw_input for a username only when run as root
+        #      (os.getuid() == 0); under pip's closed stdin that is an EOFError
+        #      that aborts the build. So install UNPRIVILEGED (no sudo):
+        #      getpass.getuser() is used instead and there is no prompt.
+        #   3. setup.py's install_helper.sh populates ~/.whatwaf (plugins,
+        #      tampers) in the INVOKING user's home; a sudo install would put it
+        #      in /root/.whatwaf, but whatwaf runs as the runner at scan time
+        #      and reads /home/runner/.whatwaf. Unprivileged install puts it in
+        #      the right home.
+        # ~/.local/bin is already on the runner PATH (the sqlmap step relies on
+        # that too). No `|| true`: a failed install must fail the job (rule 15),
+        # and `command -v` proves the script is on PATH.
+        run: |
+          git clone --depth 1 --branch v1.9 https://github.com/Ekultek/WhatWaf.git /tmp/whatwaf
+          pip3 install --break-system-packages -r /tmp/whatwaf/requirements.txt
+          pip3 install --break-system-packages /tmp/whatwaf
+          command -v whatwaf
 
       - name: Install nmap (for networkExposure service detection)
         run: sudo apt-get update && sudo apt-get install -y nmap
@@ -197,6 +226,7 @@ jobs:
           src/worker/tools/httpProbe.integration.test.ts
           src/worker/tools/contentDiscovery.integration.test.ts
           src/worker/tools/badsecrets.integration.test.ts
+          src/worker/tools/whatwaf.integration.test.ts
           src/worker/tools/katana.integration.test.ts
           src/worker/tools/networkExposure.integration.test.ts
           src/worker/tools/nmap.integration.test.ts
@@ -206,6 +236,26 @@ jobs:
       - name: Stop ZAP daemon
         if: always()
         run: docker rm -f zap || true
+
+      # Captures the real WhatWaf stdout/stderr against the local app, exactly
+      # as whatwaf.ts invokes it and with stdin closed like execTool does, so
+      # the true verdict lines and any interactive-prompt crash are visible in
+      # the job log and the uploaded artifact (readable straight from the log
+      # below). Informational: never fails the job.
+      - name: Capture whatwaf output
+        # always(): the whatwaf test step above may fail, and a step without
+        # this is skipped after an earlier failure (continue-on-error only stops
+        # a step's OWN failure from failing the job), so the capture must be
+        # unconditional to record the real output either way.
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p /tmp/capture
+          whatwaf -u http://127.0.0.1:8099/ --ra --throttle 3 --skip \
+            > /tmp/capture/whatwaf.local.stdout.txt \
+            2> /tmp/capture/whatwaf.local.stderr.txt < /dev/null
+          echo "whatwaf exit=$?" > /tmp/capture/whatwaf.exit.txt
 
       # commix's output format has only been checked against a captured negative
       # run so far (src/worker/tools/fixtures). This step installs it, runs it
@@ -253,6 +303,32 @@ jobs:
           # install_helper.sh rsyncs the plugins into ~/.whatwaf and setup.py
           # ignores its exit status, so a missing rsync would leave this empty.
           test -n "$(ls -A "$HOME/.whatwaf/plugins")"
+
+      # The last installs from scheduled-scans.yml that no job ran, each hard,
+      # run the way production runs it. always() so one failure doesn't hide the
+      # others in the same run (whatwaf's install only looked fine until it was
+      # actually run; these were in the same position). Running them found that
+      # wpscan 4.2.0 needs Ruby >= 3.3 (the runner has 3.2.3) and that PyPI
+      # `photon` installs no `photon` command, so the photon install was removed.
+      - name: Check the pinned wpscan install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo gem install wpscan -v 3.8.28 --no-document
+          command -v wpscan
+          gem list -i wpscan -v 3.8.28
+          wpscan --version > /tmp/capture/wpscan.version.txt 2>&1 || true
+          head -5 /tmp/capture/wpscan.version.txt
+
+      - name: Check the pinned testssl.sh install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
+          test -x /opt/testssl.sh/testssl.sh
+          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
+          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
+          head -5 /tmp/capture/testssl.version.txt
 
       - name: Print captured output
         if: always()

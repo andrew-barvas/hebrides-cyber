@@ -82,7 +82,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
   return (
     <div className="rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm">
       <div className="mb-3 flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{capability.icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{capability.icon}</span>
         <div>
           <h3 className="font-mono text-sm font-semibold text-neon leading-snug">{capability.title}</h3>
           <p className="mt-1.5 text-sm text-cybertext/70 leading-relaxed">{capability.body}</p>
@@ -157,7 +157,7 @@ export default function AgenciesPage() {
             {roadmap.map((c) => (
               <div key={c.title} className="rounded-lg border border-dashed border-cyberborder p-5">
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex-shrink-0 text-xl opacity-70" aria-hidden="true">
+                  <span className="mt-0.5 shrink-0 text-xl opacity-70" aria-hidden="true">
                     {c.icon}
                   </span>
                   <div>
@@ -180,7 +180,7 @@ export default function AgenciesPage() {
           <div className="grid gap-2 sm:grid-cols-2">
             {pricingFeatures.map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm text-cybertext/70">
-                <span className="text-neon flex-shrink-0">✓</span>
+                <span className="text-neon shrink-0">✓</span>
                 {f}
               </div>
             ))}

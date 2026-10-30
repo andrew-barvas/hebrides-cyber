@@ -146,7 +146,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
                     {post.tags.slice(0, 4).map((t) => (
                       <span
                         key={t}
-                        className="rounded border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-neon/70"
+                        className="rounded-sm border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-neon/70"
                       >
                         {t}
                       </span>

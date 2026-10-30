@@ -55,12 +55,12 @@ function ConcernCard({ concern }: { concern: Concern }) {
   return (
     <div className="group relative rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm flex flex-col">
       <div className="mb-3 flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{concern.icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{concern.icon}</span>
         <div className="flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-mono text-sm font-semibold text-neon leading-snug">{concern.title}</h3>
             <span
-              className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium border ${
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium border ${
                 concern.scope === "Automated"
                   ? "bg-neon/10 text-neon border-neon/20"
                   : "bg-cybertext/5 text-cybertext/60 border-cybertext/20"

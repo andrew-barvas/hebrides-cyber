@@ -151,7 +151,7 @@ export function statusBadge(status: string) {
     waiting:   "bg-amber-400/20 text-amber-400",
   };
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-cyberborder text-cybertext/60"}`}>
+    <span className={`inline-block rounded-sm px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-cyberborder text-cybertext/60"}`}>
       {status}
     </span>
   );
@@ -213,7 +213,7 @@ export function UsageRow({ label, count, cap }: { label: string; count: number; 
 export function AdminInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors ${className}`}
       {...props}
     />
   );
@@ -222,7 +222,7 @@ export function AdminInput({ className = "", ...props }: React.InputHTMLAttribut
 export function AdminTextarea({ className = "", ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors ${className}`}
       {...props}
     />
   );
@@ -231,7 +231,7 @@ export function AdminTextarea({ className = "", ...props }: React.TextareaHTMLAt
 export function AdminSelect({ className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors ${className}`}
+      className={`rounded-lg border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext focus:border-neon focus:outline-hidden transition-colors ${className}`}
       {...props}
     />
   );

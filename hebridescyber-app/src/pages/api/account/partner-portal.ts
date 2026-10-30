@@ -1,8 +1,8 @@
 // GET /api/account/partner-portal — E-39 server-side Agency gate.
 // Previously PartnerPortalPanel.tsx fetched its data directly from the
-// browser's Supabase client, relying on a client-side `plan === "agency"`
-// check that any user could bypass by calling the component directly.
-// This route enforces the Agency-tier gate server-side and returns the
+// browser's Supabase client, relying on a client-side plan check that any
+// user could bypass by calling the component directly.
+// This route enforces the Agency-tier gate (Agency and up) server-side and returns the
 // same stats the component needs, so the component no longer needs DB access.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";

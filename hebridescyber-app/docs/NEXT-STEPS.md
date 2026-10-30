@@ -35,32 +35,37 @@ in-repo summary.
   (`BURP-PARITY.md`, `AI-TRIAGE-DESIGN.md`). Verified wired + green.
 - **#92** strategy addendum (Burp/AI review) merged.
 
-**Todo (next session, in order):**
-1. **Merge #88** (verdict: safe), then run the two post-deploy checks the local
-   preview couldn't: COEP `require-corp` vs live GA/Stripe, and the SSG
-   `/blog/[slug]` route under the strict CSP.
-2. **Sprint 2 (next undone, code-only)** — reliability/observability: add
-   `src/sentry.worker.config.ts` (`@sentry/node`, reuse `scrubSentryEvent` as
-   `beforeSend`); wire `Sentry.init`/`captureException`/`await Sentry.flush()`
-   into `src/scripts/run-queued-scan-jobs.ts` (`main`, `failJob`, `main().catch`,
-   the claim/reset error paths); add a `crypto.randomUUID()` correlation id
-   threaded into the `[job …]` logs + the `executeScan()` call + `Sentry.setTag`;
-   add a no-op-without-DSN unit test. No schema change for v1.
-3. **Sprint 3** — a `verify` job in `scheduled-scans.yml` asserting ≥1 extended
-   tool `status === "completed"` + per-tool artifact + alert; a progress-total
-   unit test (non-safe `totalChecks === 58`); a controlled vulnerable staging
-   target + bench fixture; a `/api/health` smoke step in `deploy.yml`; confirm a
-   Basic subscriber receives a scheduled scan (POC-1).
+**Todo (next session, in order):** *(updated 2026-10-30. #88, the nonce CSP,
+and Sprint 2, worker Sentry (#95), are merged. Still owed from #88: the two
+post-deploy checks, COEP `require-corp` against live GA/Stripe and the SSG
+`/blog/[slug]` route under the strict CSP.)*
+3. **Sprint 3**: mostly done (2026-10-27/28).
+   - Done: the `verify` job in `scheduled-scans.yml` (#120, `scanRunVerification.ts`).
+   - Done: the post-deploy `/api/health` check now really checks (#111; it logged 200 on 2026-10-28).
+   - Done: real-binary tests for nmap, ZAP, arjun and whatwaf (#124, #126).
+   - Left: the vulnerable staging target (owner, `OWNER-TODO.md` OT-11).
+   - Left: confirm a Basic subscriber receives a scheduled scan (POC-1).
+   - Left (optional): a unit test pinning the progress total. `totalChecks` is
+     derived from the tool list, so it is 22 + 37 = 59 today, not 58.
 4. **Sprint 4** — bounded, redacted `evidence` field on findings. *(The
    scheduled-report `pdf` half is done, 2026-10-27: a real PDF attachment via
    `htmlToPdf()`, CSV fallback that says so; see `SPRINT-PLAN.md` H4.)*
-5. **Sprint 5** — gating decision for the open routes
-   (`ai-fix`/`keys`/`shares`/tickets); reconcile stale docs; prune ~20 merged
-   remote branches; branch protection (owner).
-6. **Sprint 6** — make the offensive tier real **and admin-only** (real
-   `strix`/`cairn` pins + SHA-256; `is_admin` runtime gate; lock the consent
-   route).
-7. **Sprint 7** — admin-scoped API key + `profile` param on `POST /api/v1/scans`.
+5. **Sprint 5:**
+   - Waiting on the owner: the gating decision for the open routes
+     (`ai-fix`/`keys`/`shares`/tickets, `OWNER-TODO.md` OT-10), pruning merged
+     branches (OT-15) and branch protection (OT-07).
+   - Done: stale-docs pass (2026-10-30).
+6. **Sprint 6:** the offensive tier is off the pricing page (#113). Making it
+   real is deferred by the owner's 2026-10-23 decision ("leave
+   not_configured, do not market"). The `is_admin` runtime gate is still worth
+   doing before any revival.
+7. **Sprint 7: deferred (2026-10-30).** Its point is admin/pentest API access
+   to the offensive profiles, which Sprint 6 defers. A `profile` param for
+   ordinary profiles isn't a small change either: `POST /api/v1/scans`
+   pre-sets `scan_id`, which keeps on-demand runs passive-only
+   (`run-queued-scan-jobs.ts`). Running extended tools on demand would need
+   the on-demand workflow to install and run the tool suite first. Revisit
+   with Sprint 6.
 8. **Part B (post-launch)** — capability track. **C1 (token/JWT entropy) and
    much of C5 (configurable OOB + bounded replay) are now delivered by #90**,
    and AI triage shipped off-by-default. Remaining: **C2** GraphQL/API depth →
@@ -150,7 +155,9 @@ branches / functions / lines) — raised after adding tests for
 `lockfileSyntax.ts`, `authenticatedCheck.ts` and `apiKeys.ts` (previously
 untested). Lint: 0 errors (38 known warnings).
 
-**Dependency scanning of this repo (2026-10-14).** `npm audit` found 18 vulnerabilities, including a critical in Next.js 16.3.1 (three RCE advisories — Windows servers, the image-optimizer with AVIF, `next/og` — plus an image-optimizer SSRF and cache-poisoning issues; we don't call `next/og` or `next/image`, but Next serves `/_next/image` regardless, so it was treated as exposed). `npm audit fix` took production dependencies to **0** (Next 16.4.1; build, 3127 unit tests and 35 e2e tests pass on it). New `.github/workflows/dependency-audit.yml` fails on high/critical in production dependencies (on PRs that touch the lockfile, pushes to master, and a weekly run for newly published advisories) and lists dev-dependency advisories in the job summary without failing; it is separate from `deploy.yml` so a new advisory can't block unrelated PRs or the deploy of its own fix. Dependabot now covers npm as well as Actions (weekly, minor/patch grouped, majors held back). The 10 advisories left are build-time only (`tailwindcss`, `@tailwindcss/typography`, `eslint-config-next` and their glob/chokidar chains — ReDoS-type issues that need attacker-controlled input to a build tool) and need major bumps, notably Tailwind 3 → 4, which is a deliberate migration rather than a drive-by; npm's own suggested `eslint-config-next@14` is a downgrade and should be ignored.
+**Dependency scanning of this repo (2026-10-14).** `npm audit` found 18 vulnerabilities, including a critical in Next.js 16.3.1 (three RCE advisories — Windows servers, the image-optimizer with AVIF, `next/og` — plus an image-optimizer SSRF and cache-poisoning issues; we don't call `next/og` or `next/image`, but Next serves `/_next/image` regardless, so it was treated as exposed). `npm audit fix` took production dependencies to **0** (Next 16.4.1; build, 3127 unit tests and 35 e2e tests pass on it). New `.github/workflows/dependency-audit.yml` fails on high/critical in production dependencies (on PRs that touch the lockfile, pushes to master, and a weekly run for newly published advisories) and lists dev-dependency advisories in the job summary without failing; it is separate from `deploy.yml` so a new advisory can't block unrelated PRs or the deploy of its own fix. Dependabot now covers npm as well as Actions (weekly, minor/patch grouped, majors held back). Of the 10 advisories left at that point, most needed Tailwind 3 → 4 (a deliberate migration, not a drive-by); npm's own suggested `eslint-config-next@14` is a downgrade and was ignored.
+
+**Tailwind 4 migration + remaining advisories closed (2026-10-28).** Migrated `tailwindcss` 3→4 (`@tailwindcss/postcss`, CSS-first config — `tailwind.config.cjs` deleted, theme moved into `globals.css`'s `@theme` block, `components.json`'s `config` cleared). Fixed three behaviour changes the mechanical upgrade left broken: element-level global rules moved inside `@layer base` (v4 utilities are layered; unlayered CSS always wins regardless of specificity, so unlayered global rules were silently beating component utilities), the `next/font` mono variable renamed `--font-jetbrains-mono` (it collided with Tailwind's own `--font-mono` theme variable, which referenced itself), and the v3 default border colour (`#e5e7eb`) pinned explicitly in the compat block rather than inheriting v4's oklch grey. `lint`/`tsc`/unit coverage/build all green on the result. Remaining advisories: `npm audit fix` closed `qs` (DoS) and `vite` (high, indirect, dev-only); `postcss-selector-parser` (pulled in by `@tailwindcss/typography`) closed via a `postcss-selector-parser` override to `^6.1.5` rather than downgrading typography. `npm audit` (full tree) and `npm audit --omit=dev --audit-level=high` both now report **0 vulnerabilities**.
 
 ## Rules that kept biting — follow these
 
