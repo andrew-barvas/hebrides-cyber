@@ -25,6 +25,7 @@ name: Deploy
 # Optional (blank = feature off):
 #   NEXT_PUBLIC_SENTRY_DSN             - browser-side error reporting
 #   NEXT_PUBLIC_GA_MEASUREMENT_ID      - Google Analytics 4 id, looks like G-XXXXXXXXXX
+#   NEXT_PUBLIC_STATUS_PAGE_URL        - public status page (https), linked from the footer
 
 on:
   push:
@@ -240,6 +241,8 @@ jobs:
           # Google Analytics 4 (consent-gated, see GoogleAnalytics.tsx). Same reason as above: inlined at
           # build time. Blank = analytics never loads, even after a visitor accepts the cookie banner.
           NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
+          # Footer "Status" link (statusPage.ts). Inlined at build time like the two above. Blank = no link.
+          NEXT_PUBLIC_STATUS_PAGE_URL: ${{ secrets.NEXT_PUBLIC_STATUS_PAGE_URL }}
 
       # E-57: post-deploy health check — curls /api/health on the live site
       # to catch runtime failures that pass the build. Waits 45s for Azure
@@ -256,7 +259,11 @@ jobs:
           fi
           echo "Waiting 45s for Azure Functions warm-up..."
           sleep 45
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${SITE_URL}/api/health" || echo "000")
+          base="${SITE_URL%/}"
+          # -L: the bare domain 301s to www, and a redirect is not health. The code is the final hop's.
+          # curl's -w already prints 000 when it gets no answer; `|| true` only stops -e from exiting.
+          STATUS=$(curl -s -L --max-redirs 3 -m 20 -o /dev/null -w "%{http_code}" "${base}/api/health" || true)
+          STATUS="${STATUS:-000}"
           echo "Health check returned HTTP ${STATUS}"
           if [ "$STATUS" != "200" ]; then
             echo "::warning::Post-deploy health check returned ${STATUS} — site may be degraded"

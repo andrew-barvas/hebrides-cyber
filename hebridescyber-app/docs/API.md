@@ -255,6 +255,28 @@ with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
 
+### `GET /api/v1/scans/{id}/sbom`
+
+A CycloneDX 1.5 JSON SBOM of the scan's dependencies, downloaded as
+`<host>-sbom.cdx.json` (`Content-Type: application/vnd.cyclonedx+json;
+version=1.5`). It's built from the dependency inventory stored with the scan:
+every package with its scope, dependency graph and linked vulnerabilities.
+Older scans fall back to their dependency findings. It needs a connected
+repository with a lockfile or manifest, and returns `404` when the scan has
+no dependency data at all.
+
+### `GET /api/v1/scans/{id}/remediation-pack`
+
+Every actionable finding from the scan's latest result, grouped by category,
+as a Markdown download (`<host>-remediation-pack.md`). It's the same fix
+content a fix PR carries, but needs no connected repository, so it works for
+every scan.
+
+Both routes take the same auth as the other scan routes (API key or session).
+They return `401` without credentials, `403` for someone else's scan, `404`
+for an unknown scan or one with no results yet, and `405` for anything but
+`GET`.
+
 ### `POST /api/v1/dependency-diff`
 
 The vulnerable packages a pull request **introduces** — Pro and Agency plans.
@@ -361,6 +383,43 @@ curl -o portfolio.pdf https://www.hebridescyber.co.uk/api/portfolio-report \
 
 `403 { "code": "plan_required" }` below an active Agency plan; `404 { "code":
 "no_sites" }` when nothing is monitored yet; `429` when rate-limited.
+
+### `GET /POST /PATCH /DELETE /api/account/scheduled-reports`
+
+A security summary emailed daily, weekly or monthly. Session or API key.
+
+- `GET` returns `{ "reports": [...] }`, newest first.
+- `POST { "frequency", "recipients", "format"?, "targetUrl"? }` creates one
+  (`201`, the stored row). `frequency` is `daily`, `weekly` or `monthly`;
+  `recipients` is at least one email address; `targetUrl` is one monitored site,
+  or `null` (the default) for every site.
+- `PATCH { "id", "enabled"?, "frequency"?, "format"?, "recipients"? }` changes one.
+- `DELETE { "id" }` removes one.
+
+`format` decides how the same per-site rows (score, finding counts by severity,
+last scan date) arrive:
+
+| `format` | Delivered as |
+|---|---|
+| `pdf` (default) | A PDF attachment, with the headline figures in the email body |
+| `csv` | CSV in the email body |
+| `json` | JSON in the email body |
+
+If a PDF can't be generated when the report is sent, that email carries the
+same figures as CSV and says so; the stored format stays `pdf`. Counts are
+taken from each site's latest completed scan before triage, so false positives
+and accepted risks are included. An hourly job sends each report once its
+`next_due` has passed; a report with no monitored sites is skipped.
+
+```bash
+curl -X POST https://www.hebridescyber.co.uk/api/account/scheduled-reports \
+  -H "Authorization: Bearer $HEBRIDES_CYBER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"frequency":"weekly","recipients":["security@example.com"]}'
+```
+
+`400` for any other `format` or an invalid field; `503` while the feature isn't
+available on the account's database yet.
 
 ### `GET /api/v1/targets/{host}/trend`
 

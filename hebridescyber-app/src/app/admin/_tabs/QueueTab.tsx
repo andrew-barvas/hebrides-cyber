@@ -66,7 +66,7 @@ export default function QueueTab({ token }: { token: string }) {
           <button
             onClick={recoverStale}
             disabled={recovering}
-            className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-40 transition-colors"
+            className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-40 transition-colors"
             title="Reset jobs stuck 'running' for longer than any live scan can take (390 minutes) back to pending, without waiting for the next scheduled worker run."
           >
             {recovering ? "Recovering…" : "Recover stuck jobs"}
@@ -116,7 +116,7 @@ export default function QueueTab({ token }: { token: string }) {
                       <button
                         onClick={() => retryJob(j.scanId)}
                         disabled={retryingScanId === j.scanId}
-                        className="rounded bg-seafoam/10 px-2 py-0.5 text-xs text-seafoam hover:bg-seafoam/20 disabled:opacity-40 transition-colors"
+                        className="rounded-sm bg-seafoam/10 px-2 py-0.5 text-xs text-seafoam hover:bg-seafoam/20 disabled:opacity-40 transition-colors"
                       >
                         {retryingScanId === j.scanId ? "Retrying…" : "Retry"}
                       </button>

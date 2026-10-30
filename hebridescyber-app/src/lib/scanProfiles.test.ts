@@ -1,17 +1,39 @@
 import { describe, it, expect } from "vitest";
-import { resolveToolConfig, enablesOffensiveTools, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS } from "./scanProfiles";
+import { resolveToolConfig, enablesOffensiveTools, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS, EXCLUDED_FROM_FULL } from "./scanProfiles";
 
 describe("resolveToolConfig", () => {
-  it("'full' enables every extended tool except the offensive-only suite", () => {
+  it("'full' enables every extended tool except the offensive-only suite and the tools excluded from full", () => {
     const config = resolveToolConfig("full");
     for (const name of EXTENDED_TOOL_NAMES) {
-      if (OFFENSIVE_ONLY_TOOLS.has(name)) {
-        expect(config[name]).toBe(false);
+      if (OFFENSIVE_ONLY_TOOLS.has(name) || EXCLUDED_FROM_FULL.has(name)) {
+        expect(config[name], `${name} must be off in full`).toBe(false);
       } else {
-        expect(config[name]).toBe(true);
+        expect(config[name], `${name} must be on in full`).toBe(true);
       }
     }
     expect(Object.keys(config).length).toBe(EXTENDED_TOOL_NAMES.length);
+  });
+
+  it("'full' keeps the verified tools and drops the unverified ones", () => {
+    const config = resolveToolConfig("full");
+    // Verified by real-binary integration tests, so they stay in the default profile.
+    expect(config.nmap).toBe(true);
+    expect(config.zap).toBe(true);
+    expect(config.arjun).toBe(true);
+    // Excluded from full until they can be verified against a hermetic target.
+    expect(config.wpscan).toBe(false);
+    expect(config.cmsmap).toBe(false);
+    expect(config.photon).toBe(false);
+  });
+
+  it("'full' does not run the injection testers; 'api' and 'offensive' still do", () => {
+    const full = resolveToolConfig("full");
+    for (const name of ["sqlmap", "commix", "dalfox"] as const) {
+      expect(full[name], `${name} must be off in full`).toBe(false);
+      expect(EXCLUDED_FROM_FULL.has(name)).toBe(true);
+      expect(resolveToolConfig("api")[name], `${name} must stay on in api`).toBe(true);
+      expect(resolveToolConfig("offensive")[name], `${name} must stay on in offensive`).toBe(true);
+    }
   });
 
   it("'offensive' (Tier A) enables every extended tool, including the offensive-only suite", () => {

@@ -35,6 +35,7 @@ import {
   type ThreatMatch,
 } from "./emergingThreats";
 import { sendTeamsThreatAlert } from "./msTeams";
+import { planIncludes, plansFor } from "./planAccess";
 import { emergingThreatSteps } from "./scanners/remediationText";
 import { collectTechInventory } from "./scanners/techInventory";
 import type { FingerprintResult } from "./scanners/fingerprint";
@@ -140,12 +141,11 @@ export type OwnerContext = {
 
 type SubRow = { owner: string; plan: string | null; status: string | null; slack_webhook_url: string | null; ms_teams_webhook_url: string | null };
 const SUB_SELECT = "owner, plan, status, slack_webhook_url, ms_teams_webhook_url";
-const PAID_PLANS = ["basic", "pro", "agency"];
 
 /** Owners on an active paid plan, plus admins (who may have no subscription). */
 export async function loadEligibleOwners(supabase: SupabaseClient): Promise<OwnerContext[]> {
   const [subs, admins] = await Promise.all([
-    supabase.from("subscriptions").select(SUB_SELECT).eq("status", "active").in("plan", PAID_PLANS),
+    supabase.from("subscriptions").select(SUB_SELECT).eq("status", "active").in("plan", [...plansFor("basic")]),
     supabase.from("users").select("id").eq("is_admin", true),
   ]);
   if (subs.error) throw new Error(`Could not load subscriptions: ${subs.error.message}`);
@@ -319,7 +319,7 @@ export type RunSummary = {
 
 /** Which channels an owner gets: email on every paid plan; Slack/Teams on Pro/Agency (admins exempt). */
 export function channelsFor(owner: OwnerContext): { slack: boolean; teams: boolean } {
-  const chatPlan = owner.isAdmin || (owner.status === "active" && (owner.plan === "pro" || owner.plan === "agency"));
+  const chatPlan = owner.isAdmin || (owner.status === "active" && planIncludes(owner.plan, "pro"));
   return { slack: chatPlan && Boolean(owner.slackWebhookUrl), teams: chatPlan && Boolean(owner.teamsWebhookUrl) };
 }
 

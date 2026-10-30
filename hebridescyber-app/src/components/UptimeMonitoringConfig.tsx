@@ -230,7 +230,7 @@ export default function UptimeMonitoringConfig() {
               placeholder="From UptimeRobot → Integrations → API"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
             />
             <p className="text-xs text-cybermuted">
               Create a free account at{" "}

@@ -91,12 +91,12 @@ export default function DmarcReports({ token, paidPlan }: { token: string | null
       </CardHeader>
 
       {/* Ingest URL setup */}
-      <div className="rounded border border-cyberborder bg-cyberbg/40 p-3">
+      <div className="rounded-sm border border-cyberborder bg-cyberbg/40 p-3">
         {ingestUrl ? (
           <>
             <p className="text-xs text-cybermuted">Point a mailbox/forwarding provider at this URL to receive your reports:</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded bg-cybertext/5 px-2 py-1 font-mono text-xs text-cybertext">{ingestUrl}</code>
+              <code className="min-w-0 flex-1 truncate rounded-sm bg-cybertext/5 px-2 py-1 font-mono text-xs text-cybertext">{ingestUrl}</code>
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -145,10 +145,10 @@ export default function DmarcReports({ token, paidPlan }: { token: string | null
                   <span
                     className={
                       p >= 95
-                        ? "shrink-0 rounded border border-neon/30 bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon"
+                        ? "shrink-0 rounded-sm border border-neon/30 bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon"
                         : p >= 80
-                          ? "shrink-0 rounded border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
-                          : "shrink-0 rounded border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
+                          ? "shrink-0 rounded-sm border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                          : "shrink-0 rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
                     }
                   >
                     {p}% aligned
