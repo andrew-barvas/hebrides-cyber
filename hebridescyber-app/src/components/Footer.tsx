@@ -5,6 +5,7 @@ import { statusPageUrl } from "@/lib/statusPage";
 // The landing pages a visitor arriving from search or a campaign needs to
 // find from anywhere, not only from a link they were sent.
 const resourceLinks = [
+  { href: "/check", label: "Free website check" },
   { href: "/web-check-alternative", label: "NCSC Web Check alternative" },
   { href: "/cyber-essentials", label: "Cyber Essentials readiness" },
   { href: "/ai-threats", label: "AI-driven threats" },
