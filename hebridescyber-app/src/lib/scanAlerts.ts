@@ -3,7 +3,7 @@
 //
 // The pricing page sells Basic as including "critical alerts", but until
 // this file existed the only alerting path was Slack's sendChangeAlertIfDue
-// (src/lib/scanExecution.ts), which is gated to plan === "pro" || "agency"
+// (src/lib/scanExecution.ts), which is gated to Pro and up (planIncludes)
 // because a Slack webhook is itself a paid-tier configuration item. Email
 // has no such reason to be gated — every paying customer, Basic included,
 // should hear about new critical findings by email even without Slack

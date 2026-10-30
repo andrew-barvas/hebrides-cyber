@@ -100,8 +100,8 @@ export default function EmergingThreatsPanel({ token, paidPlan }: { token: strin
               <span
                 className={
                   a.confidence === "affected"
-                    ? "shrink-0 rounded border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
-                    : "shrink-0 rounded border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                    ? "shrink-0 rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
+                    : "shrink-0 rounded-sm border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
                 }
               >
                 {a.confidence === "affected" ? "Affected" : "Check version"}

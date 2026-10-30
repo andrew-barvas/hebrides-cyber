@@ -6,8 +6,8 @@
 // (base64 data-URL, image/* only, 5 MB cap, Azure Blob Storage), but:
 //   - session-authenticated as the account owner, not requireAdmin — this is
 //     the user branding their own reports, not a CMS action.
-//   - gated server-side to plan === "agency" by reading the caller's own
-//     subscriptions row. Never trust a client-supplied plan claim.
+//   - gated server-side to Agency and up (planGate) by reading the caller's
+//     own subscriptions row. Never trust a client-supplied plan claim.
 //   - blobs land under `branding/` instead of `blog/`.
 //
 // Session-only (mirrors src/pages/api/webhooks.ts): this is an account-

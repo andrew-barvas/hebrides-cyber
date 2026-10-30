@@ -15,7 +15,7 @@
 > reasoning; the live page is the current, actual terms.
 
 **Why this exists now**: the live site takes Stripe Checkout payments and
-the product fires real attack payloads (sqlmap, commix, XSSer, nuclei)
+the product fires real attack payloads (sqlmap, commix, dalfox, nuclei)
 at customer-specified third-party infrastructure, with no contract,
 liability cap, or acceptable-use policy in place today. That combination
 is the highest-priority legal gap identified in the readiness audit.
