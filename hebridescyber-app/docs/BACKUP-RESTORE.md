@@ -56,10 +56,11 @@ Run this against a **scratch Supabase project** (free tier), not
 production, to prove the procedure works without risk.
 
 1. Create a free Supabase project for testing.
-2. Apply all migrations:
+2. Apply all migrations with the project's runner (which records them in the
+   `schema_migrations` ledger, as production does):
    ```bash
    cd hebridescyber-app
-   cat sql/migrations/*.sql | psql "$TEST_DATABASE_URL"
+   DATABASE_URL="$TEST_DATABASE_URL" npx tsx src/scripts/apply-migrations.ts apply
    ```
 3. Seed some test data (a user, a subscription, a scan).
 4. Take note of the data state.
@@ -70,17 +71,23 @@ production, to prove the procedure works without risk.
 
 ## Migrations are forward-only
 
-There are no `down` migration scripts. Restoring to a point before a
-migration was applied means the migration must be re-applied manually
-after restore.
-
-All migrations in `sql/migrations/` are idempotent (`IF NOT EXISTS`),
-so re-applying them after a restore is safe:
+There are no `down` migration scripts. A restore brings back the
+`schema_migrations` ledger with the data, so the ledger and the schema stay
+consistent. Restoring to a point before a migration was applied means that
+migration is now pending: apply it with the project's runner (not
+`supabase db push`, which does not know the ledger):
 
 ```bash
 cd hebridescyber-app
-supabase db push --db-url "$DATABASE_URL"
+export DATABASE_URL='<direct postgres connection string>'
+npx tsx src/scripts/apply-migrations.ts status   # applied, pending, drift
+npx tsx src/scripts/apply-migrations.ts apply
 ```
+
+Migrations are written to re-apply safely (`create or replace`,
+`if not exists`); the few documented exceptions are listed in
+`migrations.db.test.ts`. The full incident and disaster-recovery procedures,
+including what to reconcile after a restore, are in `RUNBOOK.md` section 8.
 
 ## Emergency contacts
 
