@@ -379,12 +379,14 @@ docs-describe-reality rule this guide follows throughout, including where
   targets stay in the database (just never scanned again) rather than
   being archived or flagged.
 - **A customer asks to delete their data.** `/privacy` §7 commits to
-  responding within 30 days, which is a real, legally sufficient process
-  today — email the address in `/privacy`. There is **no self-service or
-  automated path**: no dashboard "delete my account" action, no admin
-  one-click deletion, no scheduled retention cleanup at all. See
-  `docs/security.md`'s Data Retention section and `docs/ENHANCEMENTS.md`
-  E-10 for the full gap.
+  responding within 30 days. The customer can request it themselves from
+  **Account → Request account deletion** (`AccountDeletion`, which records a
+  `deletion_requests` row with a due date), or by emailing the address in
+  `/privacy`. The erasure itself stays a deliberate operator step
+  (`npm run account:erase`), never a web button; the admin "Erasure" tab lists
+  pending requests soonest-deadline first, and `deletion-requests.yml` sends
+  deadline reminders (needs `RESEND_API_KEY`, `OWNER-TODO.md` OT-02).
+  `data-retention-cleanup.yml` handles scheduled retention cleanup.
 
 ---
 
