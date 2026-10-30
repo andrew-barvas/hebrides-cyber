@@ -99,7 +99,7 @@ function DefenceCard({ point }: { point: DefencePoint }) {
   return (
     <div className="group rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm">
       <div className="flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{point.icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{point.icon}</span>
         <div>
           <h3 className="font-mono text-sm font-semibold text-neon">{point.title}</h3>
           <p className="mt-1.5 text-sm text-cybertext/70 leading-relaxed">{point.description}</p>
@@ -170,28 +170,28 @@ export default function AiThreatsPage() {
           <h2 className="mb-4 text-2xl font-bold">The AI attack chain</h2>
           <div className="space-y-4">
             <div className="flex gap-4 items-start">
-              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">1</span>
+              <span className="shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">1</span>
               <div>
                 <p className="text-sm font-semibold text-cybertext">Reconnaissance</p>
                 <p className="text-sm text-cybertext/70">AI agents scan your website, identify technologies, find exposed endpoints, and map your attack surface &mdash; automatically, in minutes.</p>
               </div>
             </div>
             <div className="flex gap-4 items-start">
-              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">2</span>
+              <span className="shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">2</span>
               <div>
                 <p className="text-sm font-semibold text-cybertext">Vulnerability discovery</p>
                 <p className="text-sm text-cybertext/70">The agents test for injection, XSS, authentication bypass, exposed APIs, outdated libraries with known CVEs, and misconfigured security headers.</p>
               </div>
             </div>
             <div className="flex gap-4 items-start">
-              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">3</span>
+              <span className="shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">3</span>
               <div>
                 <p className="text-sm font-semibold text-cybertext">Exploitation</p>
                 <p className="text-sm text-cybertext/70">Once a vulnerability is found, the AI chains it with other weaknesses to gain access &mdash; installing payment skimmers, extracting databases, or establishing persistent backdoors.</p>
               </div>
             </div>
             <div className="flex gap-4 items-start">
-              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">4</span>
+              <span className="shrink-0 w-8 h-8 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center text-neon text-sm font-bold">4</span>
               <div>
                 <p className="text-sm font-semibold text-cybertext">Data theft</p>
                 <p className="text-sm text-cybertext/70">Payment card details, customer records, and credentials are extracted and sold. The tools run 24/7, targeting hundreds of businesses in parallel.</p>

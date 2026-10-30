@@ -196,7 +196,7 @@ function ScoreRing({ score }: { score: number }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <svg width="88" height="88" viewBox="0 0 88 88" className="rotate-[-90deg]">
+      <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
         <circle cx="44" cy="44" r={r} fill="none" stroke="#1a2535" strokeWidth="8" />
         <circle
           cx="44"
@@ -209,7 +209,7 @@ function ScoreRing({ score }: { score: number }) {
           strokeLinecap="round"
         />
       </svg>
-      <div className="-mt-[72px] flex flex-col items-center">
+      <div className="mt-[-72px] flex flex-col items-center">
         <span className="text-2xl font-bold" style={{ color }}>{score}</span>
         <span className="text-xs text-cybermuted font-mono -mt-0.5">/100</span>
       </div>
@@ -224,7 +224,7 @@ function FindingRow({ finding }: { finding: Finding }) {
       <div className="flex items-start justify-between gap-3 mb-2">
         <p className="text-sm font-medium text-cybertext leading-snug">{finding.title}</p>
         <span
-          className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${SEVERITY_COLOR[finding.severity]}`}
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${SEVERITY_COLOR[finding.severity]}`}
         >
           {finding.severity}
         </span>
@@ -233,7 +233,7 @@ function FindingRow({ finding }: { finding: Finding }) {
         <span className="font-mono text-neon/60">[{finding.category}]</span>
       </p>
       <p className="text-xs text-cybertext/70 mb-2">{finding.detail}</p>
-      <div className="rounded bg-neon/5 border border-neon/10 px-3 py-2">
+      <div className="rounded-sm bg-neon/5 border border-neon/10 px-3 py-2">
         <p className="text-xs text-neon/70">
           <span className="font-mono text-neon/40">// fix: </span>
           {finding.remediation}
@@ -280,7 +280,7 @@ function ReportCard({ report }: { report: SampleReport }) {
           </div>
         </div>
         {/* Finding counts */}
-        <div className="flex flex-row sm:flex-col gap-2 sm:items-end flex-shrink-0">
+        <div className="flex flex-row sm:flex-col gap-2 sm:items-end shrink-0">
           {critCount > 0 && (
             <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${SEVERITY_COLOR.critical}`}>
               {critCount} critical

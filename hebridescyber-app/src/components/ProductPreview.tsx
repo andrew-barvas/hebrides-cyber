@@ -85,8 +85,8 @@ function DesktopFrame() {
 
 function MobileFrame() {
   return (
-    <div className="w-40 shrink-0 rounded-[1.5rem] border-4 border-cyberborder bg-cyberpanel p-1 shadow-glowsm sm:w-44">
-      <div className="rounded-[1rem] border border-cyberborder/60 bg-cyberpanel p-2.5">
+    <div className="w-40 shrink-0 rounded-3xl border-4 border-cyberborder bg-cyberpanel p-1 shadow-glowsm sm:w-44">
+      <div className="rounded-2xl border border-cyberborder/60 bg-cyberpanel p-2.5">
         <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-cyberborder/60" />
         <DashboardMock compact />
       </div>

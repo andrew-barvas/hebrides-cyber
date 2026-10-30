@@ -175,8 +175,9 @@ without needing to be asked.
     Any new inline `<script>` or `next/script` must take the nonce from
     `headers().get("x-nonce")`, and every page renders dynamically as a result.
     `tests/e2e/csp.spec.ts` fails on a browser-reported violation.
-29. **Never run `shadcn init`** — it overwrites `globals.css` and
-    `tailwind.config.cjs`. `npx shadcn@2 add <component>` is fine.
+29. **Never run `shadcn init`** — it overwrites `globals.css`.
+    `npx shadcn@2 add <component>` is fine (Tailwind 4 has no JS config; the
+    theme lives in `globals.css`'s `@theme` block).
 30. **E2E tests must never use real Supabase credentials.**
     `playwright.config.ts` hardcodes `example-project` as the project ref;
     it must stay that.
@@ -227,11 +228,24 @@ Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark`
 to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`.
 Default is dark (cyber theme).
 
-**The cyber tokens are CSS variables, not fixed hex.** `tailwind.config.cjs`
-maps them to `rgb(var(--c-*) / <alpha-value>)`, and the `:root` / `.dark` blocks
-in `src/app/globals.css` hold the two palettes. This is what makes light mode
-work: any surface built from these tokens re-themes automatically, with no
-`dark:` variant on any of the ~700 usages.
+**The cyber tokens are CSS variables, not fixed hex.** The `@theme` block in
+`src/app/globals.css` maps them to `rgb(var(--c-*))` (Tailwind 4 has no
+`tailwind.config`; it builds `/50` opacity modifiers with `color-mix()`, so no
+`<alpha-value>` placeholder is needed), and the `:root` / `.dark` blocks in the
+same file hold the two palettes. This is what makes light mode work: any
+surface built from these tokens re-themes automatically, with no `dark:`
+variant on any of the ~700 usages.
+
+**Tailwind 4 cascade-layer rule (easy to break, silent when you do).** In v4
+utilities live in a CSS layer, and *unlayered* CSS beats every layered rule
+whatever its specificity. So any element-level rule in `globals.css` (`html`,
+`body`, `a, button`, `input`, `:focus-visible`…) must sit inside `@layer base`,
+or it will override a component's own `h-6` / `min-h-0` / `text-sm` /
+`focus-visible:outline-none`. Custom classes meant to *beat* utilities (the
+light/dark opacity-parity overrides, `.bg-grid`, `.text-glow`) are deliberately
+unlayered. Also: the `next/font` variable is `--font-jetbrains-mono`, not
+`--font-mono` — Tailwind's own `--font-mono` theme variable points at it, and
+naming them the same makes the variable reference itself.
 
 | Token | Role | Light | Dark |
 |-------|------|-------|------|

@@ -169,7 +169,7 @@ export default function TicketIntegration() {
               checked={status.autoCloseEnabled}
               disabled={busy}
               onChange={(e) => setAutoClose(status.provider, e.target.checked)}
-              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-neon"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-neon"
             />
             <span className="text-sm text-cybertext">
               Close tickets automatically when fixed

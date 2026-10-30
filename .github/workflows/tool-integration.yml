@@ -304,6 +304,32 @@ jobs:
           # ignores its exit status, so a missing rsync would leave this empty.
           test -n "$(ls -A "$HOME/.whatwaf/plugins")"
 
+      # The last installs from scheduled-scans.yml that no job ran, each hard,
+      # run the way production runs it. always() so one failure doesn't hide the
+      # others in the same run (whatwaf's install only looked fine until it was
+      # actually run; these were in the same position). Running them found that
+      # wpscan 4.2.0 needs Ruby >= 3.3 (the runner has 3.2.3) and that PyPI
+      # `photon` installs no `photon` command, so the photon install was removed.
+      - name: Check the pinned wpscan install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo gem install wpscan -v 3.8.28 --no-document
+          command -v wpscan
+          gem list -i wpscan -v 3.8.28
+          wpscan --version > /tmp/capture/wpscan.version.txt 2>&1 || true
+          head -5 /tmp/capture/wpscan.version.txt
+
+      - name: Check the pinned testssl.sh install
+        if: always()
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
+          test -x /opt/testssl.sh/testssl.sh
+          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
+          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
+          head -5 /tmp/capture/testssl.version.txt
+
       - name: Print captured output
         if: always()
         run: |
