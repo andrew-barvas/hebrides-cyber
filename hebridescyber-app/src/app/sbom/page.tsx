@@ -50,7 +50,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
   return (
     <div className="rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm">
       <div className="mb-3 flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{feature.icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{feature.icon}</span>
         <div>
           <h3 className="font-mono text-sm font-semibold text-neon leading-snug">{feature.title}</h3>
           <p className="mt-1.5 text-sm text-cybertext/70 leading-relaxed">{feature.body}</p>

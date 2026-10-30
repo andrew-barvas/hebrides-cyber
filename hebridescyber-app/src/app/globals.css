@@ -1,9 +1,87 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-html {
-  scroll-behavior: smooth;
+@plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-atlantic: #0b3d5b;
+  --color-heather: #6b4c7a;
+  --color-seafoam: #7fd3c7;
+  --color-slatelight: #f6f7f9;
+  --color-slatedark: #2f3a44;
+  --color-cyberbg: rgb(var(--c-bg));
+  --color-cyberpanel: rgb(var(--c-panel));
+  --color-cyberborder: rgb(var(--c-border));
+  --color-cybertext: rgb(var(--c-text));
+  --color-neon: rgb(var(--c-neon));
+  --color-cybermuted: rgb(var(--c-muted));
+  --color-danger: rgb(var(--c-danger));
+  --color-warning: rgb(var(--c-warning));
+  --color-background: rgb(var(--c-bg));
+  --color-foreground: rgb(var(--c-text));
+
+  --color-card: rgb(var(--c-panel));
+  --color-card-foreground: rgb(var(--c-text));
+
+  --color-popover: rgb(var(--c-panel));
+  --color-popover-foreground: rgb(var(--c-text));
+
+  --color-primary: rgb(var(--c-neon));
+  --color-primary-foreground: rgb(var(--c-bg));
+
+  --color-secondary: rgb(var(--c-border));
+  --color-secondary-foreground: rgb(var(--c-text));
+
+  --color-muted: rgb(var(--c-border));
+  --color-muted-foreground: rgb(var(--c-muted));
+
+  --color-accent: rgb(var(--c-border));
+  --color-accent-foreground: rgb(var(--c-text));
+
+  --color-destructive: rgb(var(--c-danger));
+  --color-destructive-foreground: rgb(var(--c-bg));
+
+  --color-border: rgb(var(--c-border));
+  --color-input: rgb(var(--c-border));
+  --color-ring: rgb(var(--c-neon));
+
+  /* next/font exposes JetBrains Mono as --font-jetbrains-mono (layout.tsx). It must
+     not be named --font-mono: that is this theme variable, and the two would
+     reference each other. */
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --shadow-glow: 0 0 24px rgb(var(--c-neon) / var(--c-glow, 0.35));
+  --shadow-glowsm: 0 0 12px rgb(var(--c-neon) / var(--c-glow-sm, 0.45));
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb; /* Tailwind v3's gray-200, the pre-v4 default */
+  }
+}
+
+/* Element-level rules live in @layer base. In Tailwind 4 utilities are in a
+   layer, and UNLAYERED CSS beats every layered rule regardless of specificity,
+   so unlayered element rules would override a component's own classes (h-6,
+   min-h-0, text-sm, focus-visible:outline-none). In v3 they lost to them by
+   specificity; the layer keeps that. */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -11,11 +89,12 @@ html {
 
    The whole app chrome is built from five semantic colours (cyberbg,
    cyberpanel, cyberborder, cybertext, neon) which Tailwind resolves to these
-   variables — see tailwind.config.cjs. Swapping the values here re-themes
+   variables — see the @theme block above. Swapping the values here re-themes
    every surface at once, so no component needs a `dark:` variant.
 
-   Values are space-separated RGB channels (not hex) because Tailwind wraps
-   them as rgb(var(--x) / <alpha-value>) to keep /50 opacity modifiers working.
+   Values are space-separated RGB channels (not hex) so the @theme colours can
+   wrap them as rgb(var(--x)); Tailwind 4 builds /50 opacity modifiers with
+   color-mix(), which works on any colour value.
 
    :root is LIGHT. The `dark` class on <html> — set by ThemeScript in
    layout.tsx, toggled in Header.tsx — switches to the cyber palette. Dark is
@@ -54,8 +133,10 @@ html {
   --c-warning: 251 191 36; /* amber-400 */
 }
 
-body {
-  @apply bg-cyberbg text-cybertext;
+@layer base {
+  body {
+    @apply bg-cyberbg text-cybertext;
+  }
 }
 
 /* Opacity parity between themes.
@@ -182,9 +263,11 @@ body {
    specificity at 0,1,0 (just the pseudo-class), so a component's explicit
    focus:/focus-visible: utilities always win — this only fills the gaps where
    the browser default ring was near-invisible on the dark theme. */
-:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid rgb(var(--c-neon));
-  outline-offset: 2px;
+@layer base {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--c-neon));
+    outline-offset: 2px;
+  }
 }
 
 /* WCAG 2.3.3 — respect the OS "reduce motion" setting. Durations go to
@@ -204,15 +287,19 @@ body {
 }
 
 /* Prevent iOS Safari from zooming in on form-field focus (requires ≥16px) */
-@media (max-width: 767px) {
-  input, select, textarea {
-    font-size: max(16px, 1em);
+@layer base {
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: max(16px, 1em);
+    }
   }
 }
 
 /* Ensure all interactive elements meet 44px minimum touch target */
-@media (max-width: 767px) {
-  a, button {
-    min-height: 44px;
+@layer base {
+  @media (max-width: 767px) {
+    a, button {
+      min-height: 44px;
+    }
   }
 }

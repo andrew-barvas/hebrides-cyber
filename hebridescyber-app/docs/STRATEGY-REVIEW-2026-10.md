@@ -6,6 +6,17 @@ worth doing now, the owner's manual (non-code) TODO list in detail, an updated
 roadmap + sprint plan for the runway, competitor gaps, 50 tools not yet wired
 (with a keep/skip call each), and spitball ideas.
 
+> **Out of date in places (checked 2026-10-30).** This is a dated snapshot, so
+> its body is left as written. These have shipped since it was written:
+> - Dalfox, jwt analysis (`jwtAnalysis.ts`), MTA-STS, TLS-RPT, DKIM selector
+>   checks and CAA, all of which it lists as "to add".
+> - whatwaf on the dashboard (`src/components/DashboardPanels.tsx`), with a fixed
+>   no-evidence verdict (#122, #129).
+> - The fix-PR button.
+> - The owner TODO list, which now lives in `OWNER-TODO.md`.
+>
+> For current state, read `NEXT-STEPS.md` and `SCANNER-INVENTORY.md`.
+
 Source-of-truth note: this is a dated review (like `PRODUCT-REVIEW-2026-10.md`).
 Where it proposes changes to near-term ordering they belong in `SPRINT-PLAN.md`,
 and stage-gate changes in `ROADMAP.md`, once agreed.

@@ -12,6 +12,7 @@ import ChannelWebhookIntegration from "@/components/ChannelWebhookIntegration";
 import CloudCredentialsConfig from "@/components/CloudCredentialsConfig";
 import ConnectRepo from "@/components/ConnectRepo";
 import LockedFeature from "@/components/LockedFeature";
+import { planIncludes } from "@/lib/planAccess";
 import NotificationPrefsSection from "@/components/NotificationPrefsSection";
 import OncallIntegrationConfig from "@/components/OncallIntegrationConfig";
 import ScheduledReportsConfig from "@/components/ScheduledReportsConfig";
@@ -38,7 +39,7 @@ function Group({ id, title, description, children }: { id: string; title: string
 export default function IntegrationsPage() {
   const { plan, accessToken } = useAppSession();
   const paid = plan !== "none";
-  const chatAlerts = plan === "pro" || plan === "agency";
+  const chatAlerts = planIncludes(plan, "pro");
 
   return (
     <div className="space-y-10">
@@ -103,7 +104,7 @@ export default function IntegrationsPage() {
             availableOn="Paid plans"
           />
         )}
-        {plan === "agency" ? (
+        {planIncludes(plan, "agency") ? (
           <CloudCredentialsConfig />
         ) : (
           <LockedFeature
