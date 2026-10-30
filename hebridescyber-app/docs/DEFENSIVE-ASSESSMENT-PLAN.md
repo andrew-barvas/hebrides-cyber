@@ -3,7 +3,7 @@
 **Status (2026-10-28):**
 - Plan approved by the owner and committed for handover.
 - Step 1 is done.
-- Step 2: scanner facts are verified (below). The branch was synced with master on 2026-10-28 (merge `c845963`); `PRODUCT-IDEAS.md` and the newer `SCANNER-INVENTORY.md` are now available to read, which is still to do.
+- Step 2: done. Scanner facts are verified against `SCANNER-INVENTORY.md` and the code. The branch was synced with master on 2026-10-28 (`c845963`) and 2026-10-30 (`88c14c5`). Two assumptions in the first draft were wrong and are corrected below (ZAP runs an *active* scan; nuclei's baseline tags include probing templates).
 - Steps 3 to 9 have not started.
 - Q1 to Q3 are still open with the owner.
 
@@ -103,13 +103,25 @@ These are worktree paths on branch `claude/awesome-pentest-defensive-review-ab2b
 
 **Prior art:** `docs/SPRINT-PLAN.md:618-635` (H6/H7) sketches a future `pentest.hebridescyber.co.uk` on the offensive tier. `docs/PRODUCT-REVIEW-2026-10.md` calls that tier "vaporware". This product deliberately takes the **non-offensive** route instead.
 
+### Fit with `PRODUCT-IDEAS.md` (read 2026-10-30)
+
+That file is the registry for new products (`P-nn`), with a required template: who pays, problem, what we reuse, what's new, effort, first test, kill criteria. Greenlit ideas become `E-nn` items in `ENHANCEMENTS.md`.
+
+- **Register Lookout as `P-06` there** (IDs are never renumbered) using that template, with status `idea`. This plan stays the detailed design.
+- **Overlaps to resolve:**
+  - `P-04` (insurance readiness pack) is also an add-on here.
+  - `P-05` (agency client workspaces) overlaps with Agency.
+  - `P-01` (Kit Watch) is the nearest "managed" idea.
+- **First test and kill criteria are mandatory.** Proposed: sell 3 pilot Lookout reviews by hand using the existing scanner and a manually written report. Kill it if fewer than 2 of 5 prospects would pay £149/mo, or if a quarterly report takes more than 4 analyst hours.
+- **Prerequisite noted there:** plan checks in the UI must go through `planAccess.ts` (PR #110 was closed unmerged; #132 fixed Tier A access).
+
 ## Steps
 
 ### 1. Commit this plan for handover
 - Copy this file to `hebridescyber-app/docs/DEFENSIVE-ASSESSMENT-PLAN.md`.
 - Commit it to `claude/awesome-pentest-defensive-review-ab2b1b`, push, and add one line to the PR #130 description pointing at it.
 
-### 2. Sync and verify the scanner facts
+### 2. Sync and verify the scanner facts (DONE 2026-10-30)
 - Bring the branch up to date with `master` using the ccd_host `sync_with_base_branch` tool. Don't run `git merge` by hand.
 - Read `hebridescyber-app/docs/SCANNER-INVENTORY.md`, `hebridescyber-app/CLAUDE.md` ("Tier A offensive scanning") and `docs/PRODUCT-IDEAS.md`.
 - Record in the plan doc:
@@ -128,9 +140,9 @@ Prefer tools that already exist. Only add a new tool where it fills a real gap.
 | subfinder + crt.sh (exists) | Use; it does the job Amass would | External attack-surface / subdomain inventory | Passive (third-party data) | Standard |
 | In-house fingerprint + httpx (exists) | Use; it does the job WhatWeb/Wappalyzer would | Technology and version fingerprinting mapped to CVEs | Light active (normal HTTP) | Standard |
 | testssl.sh (exists) | Use | TLS configuration weaknesses | Light active | Standard |
-| ZAP, passive rules only (exists) | Use; confirm no active-scan rules run in the new profile | Header, cookie and config weaknesses | Light active | Standard |
+| ZAP (exists) | **Not as it stands.** `src/worker/tools/zap.ts` runs a spider **plus a full active scan** (`/JSON/ascan/action/scan/`, L128-142). Needs a new passive-only mode (spider, then read passive alerts, no ascan) before it can go in this product. Until then, exclude | Header, cookie and config weaknesses | Active scan = intrusive; passive-only = light active | Standard once a passive-only mode exists |
 | nmap / naabu (exists) | Use | Open-port and service exposure map | Active, non-intrusive | Standard, verified domains/IPs only |
-| nuclei (exists) | Use with exposure/misconfig/tech tags only; exclude intrusive tags | Known misconfigurations and exposed panels | Active | Standard, with an owner check on the tag list |
+| nuclei (exists) | Use **only with a restricted tag list**. `BASELINE_TAGS` in `src/worker/tools/nuclei.ts:105` is `cve, exposure, misconfig, default-login, takeover, ssrf, oast`. `default-login` tests default credentials and `ssrf`/`oast` send out-of-band callback payloads, so neither belongs here. Needs a code change so the profile can pass its own tag list (e.g. `exposure, misconfig, takeover, cve`) | Known misconfigurations and exposed panels | Active | Standard once the tag list is restricted and the owner has approved it |
 | Masscan | **Don't add**; naabu covers it | — | — | — |
 | Amass, WhatWeb | **Don't add**; duplicates (amass already rejected in `subdomains.ts:9`) | — | — | — |
 | OpenVAS/GVM | Not present; heavy to host on GitHub Actions workers | Network vulnerability detection | Active | Owner decision (Q1); probably a later phase |
@@ -173,7 +185,7 @@ Target: `hebridescyber-app/docs/DEFENSIVE-ASSESSMENT-PLAN.md`, in a section of i
 
 **Add-ons:**
 - Cyber Essentials readiness pack
-- Cyber-insurance evidence pack (links to PRODUCT-IDEAS P-04)
+- Cyber-insurance evidence pack (this is `P-04` in `PRODUCT-IDEAS.md`; build it there rather than twice)
 - Extra IP range
 - Board-ready summary
 - CI/CD hardening workshop, using the existing £300 offering
@@ -203,13 +215,20 @@ Always cap analyst hours per tier and write the cap down.
 
 **Data model:**
 - Add an optional `attackRefs` field (plus optional `cwe` and `businessImpact`) to `Finding` in `src/lib/scanners/index.ts`.
-- Fill it in a final enrichment pass keyed on `checkId`, mirroring `src/lib/scanners/compliance.ts` with a static map file such as `src/lib/scanners/attackMap.ts`.
+- Fill it in a final enrichment pass keyed on the **base of the `checkId`** (the part before its first `:`), mirroring `compliance.ts` and `fixDifficulty.ts`. Both run in `summariseResults()` and again for extended and cloud findings in `executeScan()`. Put the map in a static file such as `src/lib/scanners/attackMap.ts`.
+- Follow the convention in `SCANNER-INVENTORY.md`: a `checkId` with no entry gets no refs, meaning "not yet categorised" or "genuinely doesn't fit", never a forced mapping.
 - No SQL migration is needed, because findings are JSON.
 - Render the new fields in `executiveReport.ts`.
 
-**New scan profile:**
-- Add an `exposure` profile to `scanProfiles.ts`: `safe` + network exposure + testssl + nuclei (non-intrusive tags) + ZAP passive.
-- Add unit tests asserting it never enables sqlmap, commix, dalfox, or any `OFFENSIVE_ONLY_TOOLS`.
+**New scan profile (`exposure`):**
+- Add it to `ScanProfile` and `SCAN_PROFILES` in `src/lib/scanProfiles.ts`. Proposed tools: `subdomains`, `httpx`, `deepTls`, `networkExposure`, `nmap`, and `nuclei` with a restricted tag list. ZAP only once a passive-only mode exists. `safe` already runs the base passive suite on top of these.
+- **A SQL migration is needed** (unlike the findings fields). `monitored_targets.scan_profile` and `scan_jobs.scan_profile` have CHECK constraints listing the allowed profiles (`sql/migrations/020_scan_profiles.sql`, widened in `051_offensive_profile.sql:28-34`). Add a new migration that widens both to include `'exposure'`, following the 051 pattern.
+- **On-demand scans are always `safe`** (`run-queued-scan-jobs.ts`). Only scheduled jobs use the target's profile or bundle, so Lookout runs on the schedule.
+- Cover the new profile with unit tests in `src/lib/scanProfiles.test.ts`:
+  - it never enables sqlmap, commix, dalfox, or anything in `OFFENSIVE_ONLY_TOOLS`
+  - it never enables `zap` unless the passive-only mode is in
+  - `enablesOffensiveTools()` returns false for it
+- CLAUDE.md rule 15: any tool in a profile needs a real-binary `*.integration.test.ts` in CI. nmap, zap and arjun have one; real-binary integration tests exist today for nmap, networkExposure (naabu+nmap), httpx (`httpProbe`), nuclei and zap. **deepTls (testssl.sh) and subdomains (subfinder) have none**, so either add tests or leave them out of the first release of the profile.
 
 ### 6. Write the business case (in the plan doc)
 - **Why SMEs buy it:** compliance and insurance pressure, no in-house expertise, and they want a human answer rather than a dashboard. It is cheaper than a one-off pen test (£800 to £1,800) and it recurs.
