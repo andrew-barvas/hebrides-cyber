@@ -2,6 +2,7 @@
 // should never be publicly accessible: git repos, env files, backups,
 // debug pages, and admin panels. Uses only HTTP fetch — no binary tools.
 import { type Baseline, normaliseBody, fetchBaseline, matchesBaselineHeaders, isCatchAllBody } from "./httpProbe";
+import { buildHttpEvidence, type FindingEvidence } from "../findingEvidence";
 
 export type ExposureResult =
   | { status: "checked"; exposed: ExposedFile[]; securityTxt: boolean }
@@ -12,6 +13,8 @@ export type ExposedFile = {
   name: string;
   severity: "critical" | "high" | "medium" | "info";
   hint: string;
+  /** The GET that proved it, redacted and bounded (findingEvidence.ts). */
+  evidence?: FindingEvidence;
 };
 
 type ProbeTarget = {
@@ -142,8 +145,11 @@ async function probeFile(baseUrl: string, target: ProbeTarget, baseline: Baselin
     const needsBody =
       Boolean(target.bodyContains) || Boolean(target.bodyPattern) || baseline.servesCatchAll;
 
+    let body: string | undefined;
+    let matched: string | undefined;
     if (needsBody) {
       const text = await res.text().catch(() => "");
+      body = text;
 
       // The decisive check: this path returns the same document as a URL we know
       // does not exist, so nothing is actually exposed here.
@@ -158,9 +164,16 @@ async function probeFile(baseUrl: string, target: ProbeTarget, baseline: Baselin
       // No content assertion available and the server 200s for everything —
       // we cannot prove exposure, so stay silent rather than guess.
       if (!target.bodyContains && !target.bodyPattern && baseline.servesCatchAll) return null;
+      matched = target.bodyPattern ? target.bodyPattern.exec(text)?.[0] : target.bodyContains;
     }
 
-    return { path: target.path, name: target.name, severity: target.severity, hint: target.hint };
+    return {
+      path: target.path,
+      name: target.name,
+      severity: target.severity,
+      hint: target.hint,
+      evidence: buildHttpEvidence({ url, status: res.status, headers: res.headers, body, matched }),
+    };
   } catch {
     return null; // Network errors are not findings.
   }
