@@ -38,7 +38,7 @@ Full diagram set: [`diagrams/`](diagrams/) · architecture narrative:
   tech fingerprint, ports, CMS deep scans, JS-lib CVEs, SRI, EOL software, domain
   registration, dangling-DNS takeover, CT subdomains, crawler, GraphQL).
 - **~27 extended active tools** on scheduled scans (nmap, nuclei + interactsh OOB
-  SSRF, sqlmap, commix, ZAP, Subfinder, httpx, testssl, Gitleaks, dependency +
+  SSRF, ZAP, Subfinder, httpx, testssl, Gitleaks, dependency +
   CycloneDX SBOM, Trivy, Opengrep SAST with an in-house rule pack, zizmor).
 - **Threat intel**: CISA KEV + FIRST EPSS + NVD + OSV enrichment on every CVE.
 - **Remediation ladder**: static text → AI-tailored fix → ticket (Jira/Linear/
