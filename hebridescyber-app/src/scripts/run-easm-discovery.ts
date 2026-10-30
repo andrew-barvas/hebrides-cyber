@@ -29,11 +29,24 @@ async function main() {
   const r = await runEasmPipeline(supabaseAdmin, { dryRun });
   console.log(
     `EASM sweep: ${r.targetsSwept}/${r.targetsConsidered} target(s) swept, ` +
-      `${r.newAssets} new asset(s), ${r.skippedUnverified} unverified, ` +
-      `${r.skippedNoDomain} no-domain, ${r.errors} error(s).`,
+      `${r.newAssets} new asset(s), ${r.hostnamesReported} new hostname(s) reported, ` +
+      `${r.skippedUnverified} unverified, ${r.skippedNoDomain} no-domain, ${r.errors} error(s).`,
   );
+  if (r.ctFailed > 0) {
+    // Not fatal: crt.sh is often briefly down and the next sweep tries again. But say so,
+    // because those targets got no certificate evidence and so no alert decision this run.
+    console.warn(`crt.sh could not be read for ${r.ctFailed} target(s); their pending hostnames were left for the next sweep.`);
+  }
   // A sweep error on an individual target is tolerated (counted, not fatal);
   // only a top-level failure (bad DB) throws out of runEasmPipeline below.
+  // An alert that was due but could not be delivered fails the run, the same as
+  // the erasure-deadline reminder: otherwise a missing RESEND_API_KEY would let
+  // customers go unwarned with every run still green. The hostnames are released
+  // and retried on the next sweep.
+  if (r.alertFailures > 0) {
+    console.error(`${r.alertFailures} new-hostname alert(s) could not be delivered (is RESEND_API_KEY set?). They will be retried.`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

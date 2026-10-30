@@ -54,6 +54,21 @@ describe("buildScanReport fixed findings", () => {
   });
 });
 
+describe("buildScanReport evidence", () => {
+  it("passes recorded evidence through and omits malformed or missing evidence", () => {
+    const evidence = {
+      request: { method: "GET" as const, url: "https://shop.example/.env" },
+      response: { status: 200, headers: { "content-type": "text/plain" }, bodyExcerpt: "A=[redacted]" },
+      capturedAt: "2026-10-30T12:00:00.000Z",
+    };
+    const withEvidence: Finding = { severity: "critical", title: "e", detail: "d", checkId: "exposure.exposed-file:/.env", evidence };
+    const broken = { severity: "low", title: "b", detail: "d", checkId: "x.b", evidence: { request: {} } } as unknown as Finding;
+    const report = buildScanReport(scan, { ...result, results: { findings: [withEvidence, broken] } }, null);
+    expect(report.findings[0].evidence).toEqual(evidence);
+    expect(report.findings[1].evidence).toBeUndefined();
+  });
+});
+
 describe("buildScanReport proof of exploit", () => {
   it("reports proof_of_exploit only on confirmed findings", () => {
     const proven: Finding = { severity: "high", title: "p", detail: "d", checkId: "headers.cors-reflected", metadata: { proofOfExploit: { confirmed: true, evidence: "e", validatedAt: "2026-10-05T00:00:00Z" } } };
