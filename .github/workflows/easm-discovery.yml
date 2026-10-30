@@ -6,13 +6,15 @@ name: EASM Discovery
 # crt.sh + HTTP HEAD probes). It calls runEasmDiscovery for every verified
 # monitored target of an active-subscription owner, independent of the scan
 # cadence, so a newly-certificated subdomain lands in asset_inventory within
-# hours. Alerting is deliberately left to the next scheduled scan's
-# sendAttackSurfaceAlerts (which has the crt.sh cert-date evidence) — this job
-# only populates the inventory. Never brute-forces (that stays Tier-A gated in
-# the scan path). See src/lib/easmPipeline.ts.
+# hours, and then alerts the owner to it (email, plus Slack/Teams where set up)
+# using the certificate dates it just read. A crt.sh outage decides nothing: those
+# hostnames stay pending for the next sweep. Never brute-forces (that stays
+# Tier-A gated in the scan path). See src/lib/easmPipeline.ts.
 #
-# Requires: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. Run manually with dry_run
-# to enumerate targets without discovering.
+# Requires: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY, and RESEND_API_KEY to send the
+# email (a due alert that cannot be delivered fails the run, and is retried next
+# sweep). NEXT_PUBLIC_SITE_URL is the repository variable used for the dashboard link.
+# Run manually with dry_run to enumerate targets without discovering.
 
 on:
   schedule:
@@ -51,5 +53,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: npm run easm:discover -- $DRY_RUN

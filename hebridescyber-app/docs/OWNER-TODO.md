@@ -62,6 +62,10 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-26 | `SENTRY_DSN` GitHub secret (scan-worker errors) | — | Done | 2026-10-23 | 2026-10-23 |
 | OT-27 | Create a public status page and set `NEXT_PUBLIC_STATUS_PAGE_URL` | 🟡 Medium | Open | 2026-10-28 | |
 | OT-32 | `NEXT_PUBLIC_SITE_URL` variable pointed at the Azure hostname | — | Done | 2026-10-28 | 2026-10-26 |
+| OT-33 | Lookout: check the name (UK trademark, domain) and sign off prices | 🟡 Medium | Decision | 2026-10-30 | |
+| OT-34 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
+| OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
+| OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
 
 ## Items
 
@@ -78,12 +82,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 
 ### OT-02: Add `RESEND_API_KEY` 🔴
 - **What and why:** every worker email goes through Resend (`src/lib/email.ts`),
-  and the secret isn't set. Seven workflows use it: `scheduled-scans.yml`,
+  and the secret isn't set. Eight workflows use it: `scheduled-scans.yml`,
   `on-demand-scan.yml`, `scheduled-reports.yml`, `monthly-digest.yml`,
-  `emerging-threats.yml`, `uptime-sync.yml` and `deletion-requests.yml`.
-  Without it there are no critical-finding or scan-complete emails, no
-  scheduled reports, no digest, no uptime-down emails, and no erasure-deadline
-  reminders. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
+  `emerging-threats.yml`, `uptime-sync.yml`, `deletion-requests.yml` and
+  `easm-discovery.yml`. Without it there are no critical-finding or scan-complete
+  emails, no scheduled reports, no digest, no uptime-down emails, no new-hostname
+  alerts from the 6-hourly EASM sweep, and no erasure-deadline reminders. The EASM
+  sweep run fails (red in Actions) whenever a new-hostname alert is due and cannot
+  be delivered, then retries on the next sweep, so it will show the problem rather
+  than stay green. Owners with Slack or Teams set up are still told through those. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
   empty and "sent 0".
 - **How:**
   1. Create a Resend account.
@@ -396,6 +403,45 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** `gh secret list` shows the names. For the App, a fix pull request
   on an installed repo opens without using `GH_PAT`.
 - **Raised:** 2026-10-28 (secrets audit).
+
+### OT-33: Lookout name and prices 🟡
+- **What and why:** the plan (`DEFENSIVE-ASSESSMENT-PLAN.md`) uses the working
+  name "Lookout" and proposes Essentials £149/mo and Assured £299/mo. You chose
+  these on 2026-10-30, but the name has not been checked.
+- **How:** search the UK IPO trade-mark register and Companies House for
+  "Lookout" in cyber security (class 42, and 9 if it becomes software); check a
+  domain or subdomain is free. Confirm VAT treatment of the prices.
+- **Verify:** a short written result (clear, or pick Beacon / Harbour Watch).
+- **Raised:** 2026-10-30.
+
+### OT-34: Lookout Stripe prices 🟡
+- **What and why:** you chose Stripe checkout from day one. Billing is
+  monthly-only today, so this needs six new prices: Essentials and Assured, each
+  monthly, quarterly and annual.
+- **How:** create the six recurring prices in the Stripe dashboard, then add
+  their IDs as env vars once the code names them (`create-checkout-session.ts`
+  `PRICE_IDS`). Do not publish checkout before the pilot criteria in the plan.
+- **Verify:** a test-mode checkout completes for each price.
+- **Raised:** 2026-10-30.
+
+### OT-35: ToS wording for the managed exposure review 🟡
+- **What and why:** `src/app/terms/page.tsx` §2 lists the services. Lookout is a
+  recurring, analyst-written service with scan windows and fair-use hours, and
+  it uses active (non-injecting) scanning on verified domains. Wording needs a
+  solicitor, together with OT-13.
+- **How:** send the plan's service description and the copy draft
+  (`marketing/17-lookout-managed-exposure-review.md`) with the OT-13 brief.
+- **Verify:** approved wording merged into the terms.
+- **Raised:** 2026-10-30.
+
+### OT-36: Where OpenVAS runs 🟢
+- **What and why:** you chose to add OpenVAS and Nikto. OpenVAS needs a large
+  feed sync and several services, which may not fit the ephemeral Actions
+  runners. Decide after the prototype in the plan.
+- **How:** once the prototype reports feed size and time-to-first-scan, choose
+  Actions, a small VM, or a Container Apps job.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-30.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
