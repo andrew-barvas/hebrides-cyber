@@ -107,7 +107,7 @@ export default function ConnectRepo() {
             placeholder="owner/repo"
             value={repoInput}
             onChange={(e) => setRepoInput(e.target.value)}
-            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+            className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
           />
           <button
             disabled={busy || !repoInput.trim()}

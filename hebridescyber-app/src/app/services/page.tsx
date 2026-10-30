@@ -246,12 +246,12 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
   return (
     <div className="group relative rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm flex flex-col">
       <div className="mb-3 flex items-start gap-3">
-        <span className="text-xl flex-shrink-0 mt-0.5">{icon}</span>
+        <span className="text-xl shrink-0 mt-0.5">{icon}</span>
         <div className="flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-mono text-sm font-semibold text-neon leading-snug">{name}</h3>
             {tag && (
-              <span className="flex-shrink-0 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon border border-neon/20">
+              <span className="shrink-0 rounded-full bg-neon/10 px-2 py-0.5 text-xs font-medium text-neon border border-neon/20">
                 {tag}
               </span>
             )}
@@ -263,7 +263,7 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
       <ul className="mt-3 space-y-1.5 flex-1">
         {includes.map((item) => (
           <li key={item} className="flex items-start gap-2 text-xs text-cybertext/60">
-            <span className="flex-shrink-0 mt-0.5 text-neon/50">›</span>
+            <span className="shrink-0 mt-0.5 text-neon/50">›</span>
             <span>{item}</span>
           </li>
         ))}
