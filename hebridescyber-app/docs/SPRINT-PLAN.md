@@ -601,6 +601,17 @@ dashboard offers PDF. If Chromium fails the email carries CSV and says so, and
 the run fails. `scheduled-reports.yml` installs Chromium only when a PDF report
 is due (`--pdf-due-check`). The evidence half of H4 is still open.
 
+✅ **Done 2026-10-30 — scheduled-report hardening** (found while doing the
+above). The API had no plan gate (only the dashboard hid the card): create and
+edit now need an active paid plan (`planGate(…, "basic")`), and the sender skips
+a lapsed owner's reports. The sender ignored `sendEmail`'s `{ ok: false }` and
+marked every report sent, even with no `RESEND_API_KEY`: a report is now marked
+sent only once a recipient was emailed (`deliverReportEmail`, `runDueReport`),
+and `markReportSent` throws on a failed write instead of letting the next run
+resend. `gatherReportData` turned a failed read into a "not scanned" row or a
+zero-finding site: it now throws, and counts the open findings after the
+account's triage, like the dashboard and the other reports.
+
 ---
 
 ### H5 — Launch readiness: gating decision, integrity, branches

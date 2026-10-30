@@ -364,7 +364,11 @@ curl -o portfolio.pdf https://www.hebridescyber.co.uk/api/portfolio-report \
 
 ### `GET /POST /PATCH /DELETE /api/account/scheduled-reports`
 
-A security summary emailed daily, weekly or monthly. Session or API key.
+A security summary emailed daily, weekly or monthly. Session or API key. Paid
+plans: creating or editing a schedule needs an active paid plan (a lapsed
+subscription doesn't count). `GET`, `DELETE` and pausing (`PATCH` with only
+`"enabled": false`) work on any plan, so a lapsed account can still see and
+clear what it set up; its schedules aren't sent while the plan is inactive.
 
 - `GET` returns `{ "reports": [...] }`, newest first.
 - `POST { "frequency", "recipients", "format"?, "targetUrl"? }` creates one
@@ -384,10 +388,16 @@ last scan date) arrive:
 | `json` | JSON in the email body |
 
 If a PDF can't be generated when the report is sent, that email carries the
-same figures as CSV and says so; the stored format stays `pdf`. Counts are
-taken from each site's latest completed scan before triage, so false positives
-and accepted risks are included. An hourly job sends each report once its
-`next_due` has passed; a report with no monitored sites is skipped.
+same figures as CSV and says so; the stored format stays `pdf`. Counts are the
+open findings in each site's latest completed scan: false positives and
+accepted or snoozed risks are left out, as on the dashboard. A site with no
+completed scan, or a scan with no stored results, is listed as having no
+results rather than as clean.
+
+An hourly job sends each report once its `next_due` has passed. A report is
+recorded as sent only after at least one recipient was actually emailed; if
+none was (or a database read failed while building it), it stays due and the
+next run tries again. A report with no monitored sites is skipped.
 
 ```bash
 curl -X POST https://www.hebridescyber.co.uk/api/account/scheduled-reports \
@@ -396,8 +406,9 @@ curl -X POST https://www.hebridescyber.co.uk/api/account/scheduled-reports \
   -d '{"frequency":"weekly","recipients":["security@example.com"]}'
 ```
 
-`400` for any other `format` or an invalid field; `503` while the feature isn't
-available on the account's database yet.
+`400` for any other `format` or an invalid field; `403 { "code":
+"plan_required" }` below an active paid plan; `500` when the plan couldn't be
+checked; `503` while the feature isn't available on the account's database yet.
 
 ### `GET /api/v1/targets/{host}/trend`
 

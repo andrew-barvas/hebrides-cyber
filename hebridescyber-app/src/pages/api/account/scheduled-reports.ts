@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
+import { planGate } from "@/lib/planAccess";
 
 // "pdf" (the default here and in migration 032) is attached as a real PDF by
 // send-scheduled-reports.ts; CSV and JSON go inline in the email body.
@@ -24,6 +25,19 @@ const updateSchema = z.object({
 const deleteSchema = z.object({
   id: z.string().uuid(),
 });
+
+// Scheduled reports are a paid-plan feature. The dashboard hides the card
+// below a paid plan, but the API is open to any signed-in or keyed caller, so
+// the gate has to be here too. Creating or editing needs an active paid plan;
+// reading, deleting and pausing don't, so a lapsed account can still see and
+// clear what it set up (the sender skips a lapsed owner's reports anyway).
+async function requirePaidPlan(ownerId: string, res: NextApiResponse): Promise<boolean> {
+  const gate = await planGate(supabaseAdmin, ownerId, "basic");
+  if (gate === "ok") return true;
+  if (gate === "error") res.status(500).json({ error: "Could not check your plan — try again." });
+  else res.status(403).json({ error: "Scheduled reports are part of the paid plans.", code: "plan_required" });
+  return false;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const caller = await authenticateApiRequest(req);
@@ -48,6 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "POST") {
     const body = parseBody(createSchema, req.body, res);
     if (!body) return;
+    if (!(await requirePaidPlan(caller.ownerId, res))) return;
 
     const { data, error } = await supabaseAdmin
       .from("scheduled_reports")
@@ -74,6 +89,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "PATCH") {
     const body = parseBody(updateSchema, req.body, res);
     if (!body) return;
+    const pausingOnly = body.enabled === false && !body.frequency && !body.format && !body.recipients;
+    if (!pausingOnly && !(await requirePaidPlan(caller.ownerId, res))) return;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.enabled !== undefined) updates.enabled = body.enabled;
