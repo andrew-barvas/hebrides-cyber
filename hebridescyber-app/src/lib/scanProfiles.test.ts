@@ -26,6 +26,16 @@ describe("resolveToolConfig", () => {
     expect(config.photon).toBe(false);
   });
 
+  it("'full' does not run the injection testers; 'api' and 'offensive' still do", () => {
+    const full = resolveToolConfig("full");
+    for (const name of ["sqlmap", "commix", "dalfox"] as const) {
+      expect(full[name], `${name} must be off in full`).toBe(false);
+      expect(EXCLUDED_FROM_FULL.has(name)).toBe(true);
+      expect(resolveToolConfig("api")[name], `${name} must stay on in api`).toBe(true);
+      expect(resolveToolConfig("offensive")[name], `${name} must stay on in offensive`).toBe(true);
+    }
+  });
+
   it("'offensive' (Tier A) enables every extended tool, including the offensive-only suite", () => {
     const config = resolveToolConfig("offensive");
     for (const name of EXTENDED_TOOL_NAMES) {
