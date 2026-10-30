@@ -92,8 +92,7 @@ exposure scanning (naabu top-1000 port discovery feeding nmap service detection
 on whatever's open — so a risky service on an unusual port is caught, not just
 the 30 fixed ports the base scan checks), nuclei
 (template set scoped to the target's actual detected technologies, not the
-entire default template library), sqlmap, commix (dedicated OS command injection
-confirmation), Subfinder subdomain takeover detection, httpx live-host probing
+entire default template library), Subfinder subdomain takeover detection, httpx live-host probing
 (which of the discovered subdomains actually serve a web app, and what each one
 runs), testssl.sh deep TLS
 analysis. A connected GitHub repository
@@ -168,7 +167,7 @@ three," never a forced mapping.
    suite runs, same as any "Scan now" click), not something scoped to just
    that check — you may see other findings change too, and a Pro/Agency
    Slack/Teams alert can fire if they do. **Not available for findings from
-   the extended scan tools** (nuclei, ZAP, sqlmap, commix, nmap,
+   the extended scan tools** (nuclei, ZAP, nmap,
    subdomain discovery, deep TLS, secret scanning, dependency-manifest
    scanning, Docker base-image checks, or the authenticated-scan check) —
    those only run on the scheduled cadence, so the button doesn't appear for
@@ -380,12 +379,14 @@ docs-describe-reality rule this guide follows throughout, including where
   targets stay in the database (just never scanned again) rather than
   being archived or flagged.
 - **A customer asks to delete their data.** `/privacy` §7 commits to
-  responding within 30 days, which is a real, legally sufficient process
-  today — email the address in `/privacy`. There is **no self-service or
-  automated path**: no dashboard "delete my account" action, no admin
-  one-click deletion, no scheduled retention cleanup at all. See
-  `docs/security.md`'s Data Retention section and `docs/ENHANCEMENTS.md`
-  E-10 for the full gap.
+  responding within 30 days. The customer can request it themselves from
+  **Account → Request account deletion** (`AccountDeletion`, which records a
+  `deletion_requests` row with a due date), or by emailing the address in
+  `/privacy`. The erasure itself stays a deliberate operator step
+  (`npm run account:erase`), never a web button; the admin "Erasure" tab lists
+  pending requests soonest-deadline first, and `deletion-requests.yml` sends
+  deadline reminders (needs `RESEND_API_KEY`, `OWNER-TODO.md` OT-02).
+  `data-retention-cleanup.yml` handles scheduled retention cleanup.
 
 ---
 
@@ -471,7 +472,7 @@ the concrete needs each feature area above exists to satisfy.
 Worth stating plainly, since it shapes several design decisions above:
 
 - **No destructive payloads.** Every passive check is read-only and the active-tool
-  suite (nuclei/sqlmap/commix/nmap/ZAP, plus Kiterunner's curated-wordlist
+  suite (nuclei/nmap/ZAP, plus Kiterunner's curated-wordlist
   API-route discovery, Gospider's crawl and httpx's one-GET-per-host live-host
   probing) only runs against ownership-verified domains and sends no payload
   intended to alter, damage or persist on your systems — it reads what is there,

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CookieSettingsButton } from "./CookieConsent";
 import { statusPageUrl } from "@/lib/statusPage";
 
 // The landing pages a visitor arriving from search or a campaign needs to
@@ -51,6 +52,9 @@ export default function Footer() {
             {label}
           </Link>
         ))}
+        {/* The privacy policy (section 2e) promises this control: withdrawing
+            consent has to be as easy as giving it. */}
+        <CookieSettingsButton className="hover:text-neon transition-colors" />
         {status && (
           <a href={status} target="_blank" rel="noopener noreferrer" className="hover:text-neon transition-colors">
             Status
