@@ -133,6 +133,25 @@ That file is the registry for new products (`P-nn`), with a required template: w
 - **Analyst hours.** Checkout makes it easy to oversell. Enforce the per-tier hour caps and an onboarding limit per month, in the copy and the terms.
 - **OT-14.** Every launch claim must match a built, tested feature. Do not publish copy naming OpenVAS or Nikto until their integration tests pass in CI.
 
+## Defensive reference sources (added 2026-10-30)
+
+Four public resources the owner asked to include. They fit different places, so each has a stated home. Rule for all of them: **link to them and map to their IDs; do not copy rule text or scrape them at runtime.** Confirm each licence before reuse (see the last column).
+
+| Source | What it gives | Best fit | How to use it | Licence (verify before reuse) |
+|---|---|---|---|---|
+| **MITRE ATT&CK** (attack.mitre.org), Techniques | Technique IDs and names, with mitigations and data sources | **Scanner + Lookout reports** | The `attackRefs` map keyed on check ID base (step 5). Examples for exposure findings: T1190 Exploit Public-Facing Application, T1133 External Remote Services, T1078 Valid Accounts, T1595 Active Scanning (as the attacker's view of the exposure). Store ID, name and URL only | Free to use under MITRE's ATT&CK terms of use; keep the attribution |
+| **MITRE ATT&CK** Software (attack.mitre.org/software) | Entries for named tools and malware (e.g. mimikatz, Responder, Rubeus, Empire, impacket), each with technique mappings and detection links | **awesome-pentest catalogue**, not the scanner | Post-compromise tooling does not map to an external exposure scan, so it adds nothing to Lookout findings. Use it for the catalogue's deferred step 3: join on tool name, record the `Sxxxx` ID, mark the rest "unmapped" (see `research/awesome-pentest/HANDOVER.md`) | As above |
+| **SigmaHQ rules** (github.com/SigmaHQ/sigma) | Vendor-neutral detection rules tagged with ATT&CK and a log source | **Lookout, optional "detection guidance" add-on** (Assured) | Report appendix: for a finding's technique, link to the matching Sigma rules and name the log source the customer would need. Most SMEs have no SIEM, so keep this as a short "what to log" note, not a deliverable | Check the Detection Rule License (DRL) 1.1 terms before quoting any rule |
+| **Elastic detection-rules** (github.com/elastic/detection-rules) | Production detections with the telemetry required and ATT&CK tags | **Lookout, same add-on** | Link only. **Do not bundle rule text.** | **Elastic License 2.0**, which restricts offering the content as a hosted or managed service. Treat as link-only unless a solicitor says otherwise |
+| **Splunk Security Content** (github.com/splunk/security_content) | Detections and analytic stories with data sources and ATT&CK tags | **Lookout, same add-on** | Link only, for customers who already run Splunk | Check the repository licence before reuse |
+| **MITRE CAR** (car.mitre.org) | Analytics tied to techniques and data sources, with pseudocode | **Lookout reports; also useful for the customer's IT supplier** | Use to name the data source a technique needs (e.g. web server logs, firewall logs) in the "what to log" note | Check the repository licence before reuse |
+
+**Where this lands in the build:**
+- Step 5: `attackRefs` entries get an optional `detectionLinks` list (URLs to ATT&CK technique, Sigma, Elastic, Splunk and CAR pages), held in the same static map file as the technique IDs. Curated by hand, per **technique** (about 15 to 25 techniques cover the exposure findings), not per tool.
+- Step 7: the copy may say "mapped to MITRE ATT&CK" once `attackRefs` ships. It may **not** claim Lookout provides SIEM detections or monitoring.
+- Scanner: only the ATT&CK Techniques mapping applies, and only if the owner wants it in the main product's findings too. Add it as a separate `E-nn` in `ENHANCEMENTS.md` if so.
+- A quarterly review task: re-check the technique IDs against the current ATT&CK version, since IDs and names change between releases.
+
 ## Steps
 
 ### 1. Commit this plan for handover
