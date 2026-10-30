@@ -81,6 +81,18 @@ describe("renderExecutiveReportHtml", () => {
     expect(html).toContain("Scanned:</b> 2026-10-04");
   });
 
+  it("prints a finding's evidence in one escaped line, and nothing for findings without it", () => {
+    const evidence = {
+      request: { method: "GET" as const, url: "https://www.example.com/.env" },
+      response: { status: 200, headers: { "content-type": "text/plain" } },
+      matched: "<DB_>",
+      capturedAt: "2026-10-30T12:00:00.000Z",
+    };
+    const html = renderExecutiveReportHtml(input({ findings: [f({ title: "Env", severity: "critical", evidence }), f({ title: "Plain", severity: "low" })] }));
+    expect(html).toContain("GET https://www.example.com/.env → 200 (text/plain); matched: &lt;DB_&gt;");
+    expect(html.match(/class="ev"/g)?.length).toBe(2); // the priority card and the table row, only for "Env"
+  });
+
   it("is white-labelled: no Hebrides Cyber anywhere, agency name in header and footer, https logo only", () => {
     const html = renderExecutiveReportHtml(input({ branding: { name: "Acme Secure", logoUrl: "https://cdn.test/logo.png" } }));
     expect(html).not.toMatch(/Hebrides/i);
