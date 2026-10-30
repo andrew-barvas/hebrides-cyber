@@ -129,7 +129,7 @@ export default function BrandingSection({ token, initialLogoUrl, initialBrandNam
           value={brandName}
           onChange={(e) => setBrandName(e.target.value)}
           placeholder="Report brand name (e.g. Acme Security)"
-          className="min-w-0 w-full sm:min-w-[240px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+          className="min-w-0 w-full sm:min-w-[240px] flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
         />
         <button
           type="submit"

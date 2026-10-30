@@ -95,12 +95,12 @@ export default function ScansTab({ token }: { token: string }) {
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
                       {(s.status === "running" || s.status === "pending") && (
-                        <button onClick={() => action(s.id, "cancel")} className="rounded bg-red-400/10 px-2 py-0.5 text-xs text-red-400 hover:bg-red-400/20 transition-colors">
+                        <button onClick={() => action(s.id, "cancel")} className="rounded-sm bg-red-400/10 px-2 py-0.5 text-xs text-red-400 hover:bg-red-400/20 transition-colors">
                           Cancel
                         </button>
                       )}
                       {s.status === "failed" && (
-                        <button onClick={() => action(s.id, "retry")} className="rounded bg-seafoam/10 px-2 py-0.5 text-xs text-seafoam hover:bg-seafoam/20 transition-colors">
+                        <button onClick={() => action(s.id, "retry")} className="rounded-sm bg-seafoam/10 px-2 py-0.5 text-xs text-seafoam hover:bg-seafoam/20 transition-colors">
                           Retry
                         </button>
                       )}
@@ -114,9 +114,9 @@ export default function ScansTab({ token }: { token: string }) {
       </div>
 
       <div className="flex justify-end gap-2">
-        <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
+        <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">← Prev</button>
         <span className="px-2 py-1 font-mono text-xs text-cybermuted">Page {page}</span>
-        <button disabled={scans.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="rounded border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
+        <button disabled={scans.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-cyberborder px-3 py-1 text-xs text-cybertext/60 hover:border-neon hover:text-neon disabled:opacity-30 transition-colors">Next →</button>
       </div>
     </div>
   );
