@@ -1166,8 +1166,10 @@ export async function executeScan(
     // EASM: independently-sourced subdomain discovery (crt.sh), beyond what
     // this scan's own recon/subdomain enumeration found. Also swallows its
     // own errors (see its header). Rows it inserts into asset_inventory are
-    // picked up for free by sendAttackSurfaceAlerts below — no separate
-    // alert wiring needed. DNS brute-force only runs once this scan has
+    // picked up by sendAttackSurfaceAlerts below, which reads pending rows by
+    // exact target_url, so they are stored under the scanned URL (not just the
+    // bare domain, which never matched a site scanned as https://www.<domain>).
+    // DNS brute-force only runs once this scan has
     // already cleared the Tier A offensive-profile gate (contentDiscovery
     // is that profile's other active-discovery tool, so its having run is
     // the signal this scan is authorized for it).
@@ -1175,6 +1177,7 @@ export async function executeScan(
     if (domain) {
       await runEasmDiscovery(supabaseAdmin, ownerId, domain, {
         bruteForce: (extended?.contentDiscovery as { status?: string } | undefined)?.status === "completed",
+        targetUrl,
       });
     }
   } catch (err) {
