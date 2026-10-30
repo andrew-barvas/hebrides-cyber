@@ -8,6 +8,7 @@ import MonitoredTargets from "@/components/MonitoredTargets";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
+import { planIncludes } from "@/lib/planAccess";
 
 export default function AssetsPage() {
   const { plan, accessToken } = useAppSession();
@@ -53,7 +54,7 @@ export default function AssetsPage() {
           lookup can't show. Panel self-hides before migration 060 or for a
           free account with no ingest URL set. */}
       <section aria-label="DMARC reports">
-        <DmarcReports token={accessToken} paidPlan={plan === "basic" || plan === "pro" || plan === "agency"} />
+        <DmarcReports token={accessToken} paidPlan={planIncludes(plan, "basic")} />
       </section>
     </div>
   );

@@ -35,12 +35,12 @@ export function activeNavHref(pathname: string): string | null {
   return best;
 }
 
-const PLAN_NAMES: Record<Plan, string> = { none: "Free", basic: "Basic", pro: "Pro", agency: "Agency" };
+const PLAN_NAMES: Record<Plan, string> = { none: "Free", basic: "Basic", pro: "Pro", agency: "Agency", tier_a: "Tier A" };
 
 type PlanSummary = { plan: Plan; billingPlan: Plan; planStatus: string | null } | null;
 
 function PlanBadge({ summary }: { summary: PlanSummary }) {
-  if (!summary) return <Skeleton className="h-[4.5rem] w-full rounded-lg" />;
+  if (!summary) return <Skeleton className="h-18 w-full rounded-lg" />;
 
   if (summary.planStatus === "past_due") {
     return (

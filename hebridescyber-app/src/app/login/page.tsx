@@ -87,7 +87,7 @@ function LoginForm() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
+              className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
             />
             {usePassword && (
               <>
@@ -100,7 +100,7 @@ function LoginForm() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
+                className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40 transition-colors"
               />
               </>
             )}

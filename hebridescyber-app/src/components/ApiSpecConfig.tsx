@@ -129,7 +129,7 @@ export default function ApiSpecConfig() {
         <h3 className="font-mono text-sm font-semibold text-neon">API Spec Scanning</h3>
         <button
           onClick={() => { setShowForm(!showForm); resetForm(); setMessage(null); }}
-          className="rounded border border-neon/30 px-3 py-1 text-xs text-neon hover:bg-neon/10"
+          className="rounded-sm border border-neon/30 px-3 py-1 text-xs text-neon hover:bg-neon/10"
         >
           {showForm ? "Cancel" : "+ Import spec"}
         </button>
@@ -142,13 +142,13 @@ export default function ApiSpecConfig() {
       </p>
 
       {message && (
-        <div className="mb-3 rounded border border-neon/30 bg-neon/5 px-3 py-2 text-xs text-neon">
+        <div className="mb-3 rounded-sm border border-neon/30 bg-neon/5 px-3 py-2 text-xs text-neon">
           {message}
         </div>
       )}
 
       {showForm && (
-        <form onSubmit={importSpec} className="mb-4 space-y-3 rounded border border-cyberborder bg-cyberbg p-4">
+        <form onSubmit={importSpec} className="mb-4 space-y-3 rounded-sm border border-cyberborder bg-cyberbg p-4">
           <div>
             <label className="block text-xs text-cybertext/60 mb-1">Target URL</label>
             <input
@@ -157,7 +157,7 @@ export default function ApiSpecConfig() {
               onChange={(e) => setTargetUrl(e.target.value)}
               placeholder="https://api.example.com"
               required
-              className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext"
+              className="w-full rounded-sm border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext"
             />
             <p className="mt-1 text-xs text-cybermuted">
               The base URL of the API this spec describes. Must match a monitored target.
@@ -201,7 +201,7 @@ export default function ApiSpecConfig() {
                 onChange={(e) => setSpecUrl(e.target.value)}
                 placeholder="https://api.example.com/openapi.json"
                 required
-                className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
+                className="w-full rounded-sm border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
               />
               <p className="mt-1 text-xs text-cybermuted">
                 Must serve JSON. YAML is not currently supported.
@@ -216,7 +216,7 @@ export default function ApiSpecConfig() {
                 placeholder='{"openapi": "3.0.0", "info": {...}, "paths": {...}}'
                 required
                 rows={8}
-                className="w-full rounded border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
+                className="w-full rounded-sm border border-cyberborder bg-cyberpanel px-3 py-1.5 text-sm text-cybertext font-mono"
               />
               <p className="mt-1 text-xs text-cybermuted">
                 Paste the full OpenAPI/Swagger spec as a JSON object. Max 5MB.
@@ -227,7 +227,7 @@ export default function ApiSpecConfig() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded bg-neon px-4 py-1.5 text-sm font-semibold text-cyberbg shadow-glow hover:opacity-90 disabled:opacity-50"
+            className="rounded-sm bg-neon px-4 py-1.5 text-sm font-semibold text-cyberbg shadow-glow hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Importing..." : "Import spec"}
           </button>
@@ -245,10 +245,10 @@ export default function ApiSpecConfig() {
           {specs.map((spec) => (
             <li
               key={spec.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded border border-cyberborder bg-cyberbg px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-cyberborder bg-cyberbg px-3 py-2"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-block rounded bg-neon/10 px-2 py-0.5 text-xs font-mono text-neon">
+                <span className="inline-block rounded-sm bg-neon/10 px-2 py-0.5 text-xs font-mono text-neon">
                   {formatLabel[spec.spec_format] ?? spec.spec_format}
                 </span>
                 <span className="text-sm text-cybertext truncate max-w-[200px]" title={spec.target_url}>

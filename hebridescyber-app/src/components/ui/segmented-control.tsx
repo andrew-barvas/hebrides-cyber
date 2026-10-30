@@ -30,7 +30,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, c
             onClick={() => onChange(o.value)}
             className={cn(
               "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon",
+              "focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon",
               selected
                 ? "border-neon bg-neon/10 text-neon"
                 : "border-cyberborder text-cybermuted hover:border-cybertext/30 hover:text-cybertext"

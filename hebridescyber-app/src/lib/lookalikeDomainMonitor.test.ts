@@ -287,6 +287,12 @@ describe("sendLookalikeDomainAlerts", () => {
     expect(checkCandidate).not.toHaveBeenCalled();
   });
 
+  it("sweeps for a Tier A owner, who is on a paid plan like any other", async () => {
+    const { supabase } = fakeSupabase({ subscription: { ...PAID_SUB, plan: "tier_a" }, user: USER });
+    const result = await sendLookalikeDomainAlerts(supabase as never, "owner-1", "https://example.com/", { checkCandidate: vi.fn() });
+    expect(result.swept).toBe(true);
+  });
+
   it("reports migrationPending before the table exists", async () => {
     const { supabase } = fakeSupabase({ subscription: PAID_SUB, user: USER, sweepTableMissing: true });
     const result = await sendLookalikeDomainAlerts(supabase as never, "owner-1", "https://example.com/", { checkCandidate: vi.fn() });

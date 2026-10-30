@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-export type Plan = "none" | "basic" | "pro" | "agency";
+export type Plan = "none" | "basic" | "pro" | "agency" | "tier_a";
 
 const COPY: Record<Plan, { label: string; message: string; cta: string; href: string }> = {
   none: {
@@ -25,6 +25,12 @@ const COPY: Record<Plan, { label: string; message: string; cta: string; href: st
   },
   agency: {
     label: "Agency plan",
+    message: "Need deeper assurance? Tier A adds opt-in offensive readiness testing on sites you authorise.",
+    cta: "See Tier A",
+    href: "/pricing",
+  },
+  tier_a: {
+    label: "Tier A plan",
     message: "You're on our top tier. Need deeper assurance? Ask about a manual penetration test or an incident response retainer.",
     cta: "Enquire",
     href: "/contact",
