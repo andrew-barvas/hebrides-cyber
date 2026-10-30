@@ -439,6 +439,7 @@ const PROFILE_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
   { value: "api", label: "API", hint: "Injection + active scanning + authenticated headers" },
   { value: "cms", label: "CMS", hint: "WPScan/CMSmap + active scan + XSS" },
   { value: "osint", label: "OSINT", hint: "Subfinder, testssl.sh, Trivy, dependency/secret scanning" },
+  { value: "exposure", label: "Exposure", hint: "Open ports, services and known misconfigurations; no test payloads" },
   { value: "safe", label: "Safe", hint: "Base passive checks only, no active tools" },
 ];
 
