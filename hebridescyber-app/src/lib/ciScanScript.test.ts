@@ -16,7 +16,8 @@ const hasTools = spawnSync("sh", ["-c", "command -v curl && command -v jq"]).sta
 const SHELLS = ["dash", "bash", "busybox"].filter((s) => spawnSync("sh", ["-c", `command -v ${s}`]).status === 0);
 
 type Reply = { status: number; body: unknown };
-let replies: { post: Reply; gets: Reply[] };
+// `sarif`, when set, answers the SARIF export endpoint; every other GET gets the scan result as before.
+let replies: { post: Reply; gets: Reply[]; sarif?: Reply };
 let requests: { method: string; url: string; auth: string | undefined; body: string }[];
 let server: Server;
 let base: string;
@@ -30,7 +31,8 @@ beforeAll(async () => {
     });
     req.on("end", () => {
       requests.push({ method: req.method ?? "", url: req.url ?? "", auth: req.headers.authorization, body });
-      const reply = req.method === "POST" ? replies.post : replies.gets.length > 1 ? replies.gets.shift()! : replies.gets[0];
+      const isSarif = req.method === "GET" && (req.url ?? "").includes("/export?format=sarif");
+      const reply = isSarif && replies.sarif ? replies.sarif : req.method === "POST" ? replies.post : replies.gets.length > 1 ? replies.gets.shift()! : replies.gets[0];
       res.writeHead(reply.status, { "content-type": "application/json" });
       res.end(typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body));
     });
@@ -152,6 +154,51 @@ describe.skipIf(!hasTools).each(SHELLS.length ? SHELLS : ["sh"])("hebrides-scan.
     replies = { post: queued, gets: [done([])] };
     await run({ HEBRIDES_JUNIT_FILE: "junit.xml" });
     expect(readFileSync(path.join(dir, "junit.xml"), "utf8")).toContain('name="No new findings since the previous scan"');
+  });
+
+  describe("SARIF report", () => {
+    const sarifBody = { version: "2.1.0", runs: [{ tool: { driver: { name: "Hebrides Cyber" } }, results: [] }] };
+
+    it("writes it from the export endpoint when HEBRIDES_SARIF_FILE is set, using the same key", async () => {
+      replies = { post: queued, gets: [done([])], sarif: { status: 200, body: sarifBody } };
+      const { code, out } = await run({ HEBRIDES_SARIF_FILE: "out.sarif" });
+      expect(code).toBe(0);
+      expect(out).toContain("SARIF report written to out.sarif");
+      expect(JSON.parse(readFileSync(path.join(dir, "out.sarif"), "utf8"))).toEqual(sarifBody);
+      const fetched = requests.find((r) => r.url.includes("/export?format=sarif"));
+      expect(fetched).toMatchObject({ method: "GET", url: `/api/v1/scans/${SCAN_ID}/export?format=sarif`, auth: "Bearer hc_test_key" });
+    });
+
+    it("asks for nothing extra when it is not set", async () => {
+      replies = { post: queued, gets: [done([])], sarif: { status: 200, body: sarifBody } };
+      await run({});
+      expect(requests.some((r) => r.url.includes("export"))).toBe(false);
+    });
+
+    it("is written on the first scan too, which has no baseline to gate on", async () => {
+      replies = { post: queued, gets: [done([f("x", "critical", { status: null })], false)], sarif: { status: 200, body: sarifBody } };
+      const { code } = await run({ HEBRIDES_SARIF_FILE: "out.sarif" });
+      expect(code).toBe(0);
+      expect(existsSync(path.join(dir, "out.sarif"))).toBe(true);
+    });
+
+    it("only warns when it cannot be fetched, and never changes the gate: a pass stays a pass, a block stays a block", async () => {
+      replies = { post: queued, gets: [done([])], sarif: { status: 500, body: { error: "boom" } } };
+      const pass = await run({ HEBRIDES_SARIF_FILE: "out.sarif" });
+      expect(pass.code).toBe(0);
+      expect(pass.out).toContain("could not fetch the SARIF report (HTTP 500)");
+      expect(existsSync(path.join(dir, "out.sarif"))).toBe(false);
+
+      replies = { post: queued, gets: [done([f("tls.weak", "high")])], sarif: { status: 500, body: { error: "boom" } } };
+      expect((await run({ HEBRIDES_SARIF_FILE: "out.sarif" })).code).toBe(1);
+    });
+
+    it("only warns when the file cannot be written", async () => {
+      replies = { post: queued, gets: [done([])], sarif: { status: 200, body: sarifBody } };
+      const { code, out } = await run({ HEBRIDES_SARIF_FILE: "no/such/directory/out.sarif" });
+      expect(code).toBe(0);
+      expect(out).toContain("could not write the SARIF report");
+    });
   });
 
   it("annotates for GitHub Actions and Azure DevOps", async () => {

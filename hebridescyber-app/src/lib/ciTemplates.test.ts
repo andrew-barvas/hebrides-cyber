@@ -23,7 +23,7 @@ describe("CI files", () => {
   it("knows the settings the script reads", () => {
     expect([...SCRIPT_VARS].sort()).toEqual([
       "HEBRIDES_API_BASE_URL", "HEBRIDES_CYBER_API_KEY", "HEBRIDES_FAIL_ON", "HEBRIDES_JUNIT_FILE",
-      "HEBRIDES_POLL_SECONDS", "HEBRIDES_RESULT_FILE", "HEBRIDES_TARGET_URL", "HEBRIDES_TIMEOUT_SECONDS",
+      "HEBRIDES_POLL_SECONDS", "HEBRIDES_RESULT_FILE", "HEBRIDES_SARIF_FILE", "HEBRIDES_TARGET_URL", "HEBRIDES_TIMEOUT_SECONDS",
     ]);
   });
 
@@ -53,6 +53,15 @@ describe("CI files", () => {
       expect(text).toContain("hebrides-scan.json");
       expect(text).not.toMatch(/hebrides-scan\.sh[^\n]*\|\|\s*true/);
     });
+  });
+
+  it("ships the GitHub code scanning upload switched off, so a repository without code scanning does not start failing", () => {
+    const text = readCiFile("github-actions.yml");
+    const active = text.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    expect(active).not.toMatch(/upload-sarif|HEBRIDES_SARIF_FILE/);
+    // ...but the instructions for turning it on are there, including the permission it needs.
+    expect(text).toMatch(/# - name: Upload findings to GitHub code scanning/);
+    expect(text).toMatch(/security-events: write/);
   });
 
   it("checksums the file's bytes as served", () => {
