@@ -73,12 +73,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 
 ### OT-02: Add `RESEND_API_KEY` 🔴
 - **What and why:** every worker email goes through Resend (`src/lib/email.ts`),
-  and the secret isn't set. Seven workflows use it: `scheduled-scans.yml`,
+  and the secret isn't set. Eight workflows use it: `scheduled-scans.yml`,
   `on-demand-scan.yml`, `scheduled-reports.yml`, `monthly-digest.yml`,
-  `emerging-threats.yml`, `uptime-sync.yml` and `deletion-requests.yml`.
-  Without it there are no critical-finding or scan-complete emails, no
-  scheduled reports, no digest, no uptime-down emails, and no erasure-deadline
-  reminders. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
+  `emerging-threats.yml`, `uptime-sync.yml`, `deletion-requests.yml` and
+  `easm-discovery.yml`. Without it there are no critical-finding or scan-complete
+  emails, no scheduled reports, no digest, no uptime-down emails, no new-hostname
+  alerts from the 6-hourly EASM sweep, and no erasure-deadline reminders. The EASM
+  sweep run fails (red in Actions) whenever a new-hostname alert is due and cannot
+  be delivered, then retries on the next sweep, so it will show the problem rather
+  than stay green. Owners with Slack or Teams set up are still told through those. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
   empty and "sent 0".
 - **How:**
   1. Create a Resend account.

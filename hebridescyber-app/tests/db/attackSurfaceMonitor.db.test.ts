@@ -15,7 +15,7 @@ vi.mock("../../src/lib/email", async (orig) => ({ ...(await orig<typeof import("
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DB_TESTS_ENABLED, createTestDb, type TestDb } from "./harness";
 import { POSTGREST_BIN, startPostgrest, type Postgrest } from "./postgrest";
-import { sendAttackSurfaceAlerts, type DnsResolver } from "../../src/lib/attackSurfaceMonitor";
+import { firstCertificates, sendAttackSurfaceAlerts, sendSweepHostnameAlerts, type DnsResolver } from "../../src/lib/attackSurfaceMonitor";
 import type { ReconResult } from "../../src/lib/scanners/recon";
 
 const enabled = DB_TESTS_ENABLED && !!POSTGREST_BIN;
@@ -130,5 +130,38 @@ describe.skipIf(!enabled)("attack-surface alerts against real PostgREST + Postgr
     expect(result.errors).toEqual([]);
     expect(result.silentlyRecorded).toHaveLength(2102);
     expect(await pending()).toEqual([]);
+  });
+
+  describe("the standalone EASM sweep's alert", () => {
+    const sweep = () => sendSweepHostnameAlerts(client, OWNER, TARGET, { firstCertificates: firstCertificates(RECON), ctRead: true }, { now: new Date() });
+
+    it("reports hostnames stored under a different URL, which the scan alert never could", async () => {
+      // The EASM step used to store https://<domain>; a scan of https://www.<domain> reads by its own exact URL.
+      await q("delete from asset_inventory where owner = $1", [OWNER]);
+      await q("insert into asset_inventory (owner, target_url, hostname, kind) values ($1, 'https://example.com', 'new.example.com', 'subdomain')", [OWNER]);
+
+      expect((await run("mail.example.com")).reported).toBeNull(); // the scan alert cannot see the row...
+      expect(await pending()).toEqual(["new.example.com"]); // ...so it stays pending
+
+      const result = await sweep(); // the sweep reads by owner and domain, through the real .or(ilike) filter
+      expect(result.errors).toEqual([]);
+      expect(result.reported?.newHostnames.map((h) => h.name)).toEqual(["new.example.com"]);
+      expect(await pending()).toEqual([]);
+    });
+
+    it("sends each hostname once when a scan and two sweeps finish together", async () => {
+      const results = await Promise.all([sweep(), sweep(), run("mail.example.com")]);
+      const sent = results.flatMap((r) => (r.reported ? r.reported.newHostnames.map((h) => h.name) : []));
+      expect(sent).toEqual(["new.example.com"]);
+      expect(results.flatMap((r) => r.errors)).toEqual([]);
+      expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a hostname pending when crt.sh could not be read", async () => {
+      const result = await sendSweepHostnameAlerts(client, OWNER, TARGET, { firstCertificates: new Map(), ctRead: false }, { now: new Date() });
+      expect(result).toMatchObject({ hostnamesDeferred: true, delivered: false });
+      expect(await pending()).toEqual(["new.example.com", "old.example.com", "www.shop.example.com"]);
+      expect(sendEmailMock).not.toHaveBeenCalled();
+    });
   });
 });

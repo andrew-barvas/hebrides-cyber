@@ -27,6 +27,7 @@ import {
   noticeTitle,
   observeDns,
   sendAttackSurfaceAlerts,
+  sendSweepHostnameAlerts,
   type DnsResolver,
   type DnsSnapshot,
   type DnsValues,
@@ -715,5 +716,185 @@ describe("sendAttackSurfaceAlerts", () => {
     const broken = { from: () => { throw new Error("client exploded"); } } as never;
     const result = await sendAttackSurfaceAlerts(broken, OWNER, SCAN, TARGET, RECON, { resolver: resolverFor(ZONE) });
     expect(result.errors).toEqual(["client exploded"]);
+  });
+});
+
+// ---- The standalone EASM sweep's alert ---------------------------------------------------------
+
+describe("sendSweepHostnameAlerts", () => {
+  /** What the sweep's own crt.sh read yields for the fixture: api and dev are new, staging is years old. */
+  const EVIDENCE = { firstCertificates: firstCertificates(RECON), ctRead: true };
+  const sweep = (evidence: { firstCertificates: Map<string, string>; ctRead: boolean } = EVIDENCE, target = TARGET) =>
+    sendSweepHostnameAlerts(makeClient(), OWNER, target, evidence, { now: NOW, siteUrl: "https://app.example" });
+
+  it("reports hostnames with certificate evidence they are new, and records the rest as known", async () => {
+    const result = await sweep();
+
+    expect(result).toMatchObject({ delivered: true, hostnamesDeferred: false, migrationPending: false, errors: [] });
+    expect(result.reported).toEqual({
+      site: "example.com",
+      newHostnames: [
+        { name: "api.example.com", firstCertificate: daysAgo(1) },
+        { name: "dev.example.com", firstCertificate: daysAgo(3) },
+      ],
+      dnsChanges: [],
+      source: "sweep",
+    });
+    // Same evidence rules as the scan path: the scanned host itself, old certificates and names with no certificate date are known, not new.
+    expect(result.silentlyRecorded).toEqual(["staging.example.com", "subfinder-only.example.com", "www.shop.example.com"]);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toMatchObject({ to: "owner@shop.example.com", subject: "2 new hostnames found for example.com" });
+    expect(pending()).toEqual([]);
+    expect(notifiedAt("api.example.com")).toBe(NOW.toISOString());
+    expect(upsertCalls).toEqual([]); // a sweep never touches the DNS snapshot
+  });
+
+  it("words the email as the sweep's own check, not as the result of a scan the owner did not just run", async () => {
+    await sweep();
+    const html = sendEmailMock.mock.calls[0][0].html as string;
+    expect(html).toContain("Our regular check of public certificate logs for example.com found these changes.");
+    expect(html).not.toContain("Your latest scan");
+    expect(html).not.toContain("DNS changes");
+  });
+
+  it("tells the owner once, however many sweeps run", async () => {
+    await sweep();
+    sendEmailMock.mockClear();
+
+    expect((await sweep()).reported).toBeNull();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat what a scan already reported", async () => {
+    await run(); // the scan's own alert goes first
+    sendEmailMock.mockClear();
+
+    expect((await sweep()).reported).toBeNull();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  describe("rows stored under a different URL than the monitored site", () => {
+    // The EASM step used to store https://<domain> for every hostname it found, while a scan
+    // of https://www.<domain> reads pending rows by its own exact URL. Those rows were never
+    // reported and never marked known.
+    beforeEach(() => {
+      db.asset_inventory = [asset("api.example.com", false, "https://example.com")];
+    });
+
+    it("the scan alert cannot see them (the defect)", async () => {
+      expect((await run()).reported).toBeNull();
+      expect(pending()).toEqual(["api.example.com"]); // stuck pending forever
+    });
+
+    it("the sweep finds them by owner and domain, so they are finally reported", async () => {
+      const result = await sweep();
+      expect(result.reported?.newHostnames.map((h) => h.name)).toEqual(["api.example.com"]);
+      expect(pending()).toEqual([]);
+    });
+  });
+
+  it("leaves other domains and other owners' rows alone", async () => {
+    db.asset_inventory = [
+      asset("api.example.com", false),
+      asset("api.other.net", false, "https://other.net"),
+      asset("notexample.com", false, "https://notexample.com"), // ends with the same letters, is not in the domain
+      { ...asset("dev.example.com", false), owner: "someone-else" },
+    ];
+    const evidence = {
+      ctRead: true,
+      firstCertificates: new Map([
+        ["api.example.com", daysAgo(1)],
+        ["api.other.net", daysAgo(1)],
+        ["notexample.com", daysAgo(1)],
+        ["dev.example.com", daysAgo(1)],
+      ]),
+    };
+
+    const result = await sweep(evidence);
+
+    expect(result.reported?.newHostnames.map((h) => h.name)).toEqual(["api.example.com"]);
+    expect(pending()).toEqual(["api.other.net", "notexample.com", "dev.example.com"]);
+  });
+
+  it("decides nothing when crt.sh could not be read: no email, nothing marked, rows stay pending", async () => {
+    const before = pending();
+    const result = await sweep({ firstCertificates: new Map(), ctRead: false });
+
+    expect(result).toMatchObject({ hostnamesDeferred: true, delivered: false, reported: null, silentlyRecorded: [] });
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(updateCalls).toEqual([]);
+    expect(pending()).toEqual(before);
+  });
+
+  it("looks back to the previous scan when it was more than 14 days ago", async () => {
+    // A sweep has no scan in progress, so unlike the scan path's fixture there is no "current" scan row
+    // to exclude: the only scan is the old one, taken a month and more ago.
+    db.scans = [{ ...db.scans[1], created_at: "2026-08-01T00:00:00Z" }];
+    db.asset_inventory = [asset("month.example.com", false)];
+    const evidence = { ctRead: true, firstCertificates: new Map([["month.example.com", daysAgo(30)]]) };
+    expect((await sweep(evidence)).reported?.newHostnames.map((h) => h.name)).toEqual(["month.example.com"]);
+  });
+
+  it("does not look back past a recent scan: a hostname that scan already evaluated is not pending", async () => {
+    // The fixture's latest scan is recent (the scan row for NOW), so the window stays at 14 days
+    // and a 30-day-old certificate is not new.
+    db.asset_inventory = [asset("month.example.com", false)];
+    const evidence = { ctRead: true, firstCertificates: new Map([["month.example.com", daysAgo(30)]]) };
+    expect((await sweep(evidence)).silentlyRecorded).toEqual(["month.example.com"]);
+  });
+
+  it("uses the 14-day window when the previous scan was recent", async () => {
+    db.asset_inventory = [asset("month.example.com", false)];
+    const evidence = { ctRead: true, firstCertificates: new Map([["month.example.com", daysAgo(20)]]) };
+    expect((await sweep(evidence)).silentlyRecorded).toEqual(["month.example.com"]);
+  });
+
+  it("records everything as known for an owner without an alerting plan, so upgrading doesn't replay old hostnames", async () => {
+    db.subscriptions[0].status = "cancelled";
+    const result = await sweep({ firstCertificates: new Map(), ctRead: false }); // even with no certificate evidence
+
+    expect(result.silentlyRecorded).toHaveLength(5);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(pending()).toEqual([]);
+  });
+
+  it("releases its claims when nothing was delivered, and the next sweep retries and succeeds", async () => {
+    sendEmailMock.mockResolvedValue({ ok: false, error: "RESEND_API_KEY not configured" });
+
+    const failed = await sweep();
+    expect(failed).toMatchObject({ delivered: false, reported: null });
+    expect(failed.errors).toContain("email failed: RESEND_API_KEY not configured");
+    // The two reportable hostnames are pending again; the ones recorded as known stay known.
+    expect(pending()).toEqual(["api.example.com", "dev.example.com"]);
+
+    sendEmailMock.mockResolvedValue({ ok: true });
+    expect((await sweep()).reported?.newHostnames.map((h) => h.name)).toEqual(["api.example.com", "dev.example.com"]);
+    expect(pending()).toEqual([]);
+  });
+
+  it("also tells the owner's Slack channel, like the scan alert does", async () => {
+    db.subscriptions[0].slack_webhook_url = SLACK;
+    await sweep();
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain(SLACK);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing before the schema change is applied, instead of failing", async () => {
+    dbErrors["asset_inventory:select"] = { code: "42703", message: "column asset_inventory.notified_at does not exist" };
+    expect(await sweep()).toMatchObject({ migrationPending: true, errors: [], delivered: false });
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a site with no registrable domain", async () => {
+    const result = await sweep(EVIDENCE, "https://localhost");
+    expect(result).toMatchObject({ reported: null, delivered: false, errors: [] });
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("never throws: a database error is returned, not raised", async () => {
+    dbErrors["asset_inventory:select"] = { code: "XX000", message: "connection reset" };
+    const result = await sweep();
+    expect(result.errors).toEqual(["could not load unreported hostnames: connection reset"]);
+    expect(result.delivered).toBe(false);
   });
 });
