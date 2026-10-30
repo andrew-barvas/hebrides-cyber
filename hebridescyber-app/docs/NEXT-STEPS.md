@@ -35,32 +35,37 @@ in-repo summary.
   (`BURP-PARITY.md`, `AI-TRIAGE-DESIGN.md`). Verified wired + green.
 - **#92** strategy addendum (Burp/AI review) merged.
 
-**Todo (next session, in order):**
-1. **Merge #88** (verdict: safe), then run the two post-deploy checks the local
-   preview couldn't: COEP `require-corp` vs live GA/Stripe, and the SSG
-   `/blog/[slug]` route under the strict CSP.
-2. **Sprint 2 (next undone, code-only)** — reliability/observability: add
-   `src/sentry.worker.config.ts` (`@sentry/node`, reuse `scrubSentryEvent` as
-   `beforeSend`); wire `Sentry.init`/`captureException`/`await Sentry.flush()`
-   into `src/scripts/run-queued-scan-jobs.ts` (`main`, `failJob`, `main().catch`,
-   the claim/reset error paths); add a `crypto.randomUUID()` correlation id
-   threaded into the `[job …]` logs + the `executeScan()` call + `Sentry.setTag`;
-   add a no-op-without-DSN unit test. No schema change for v1.
-3. **Sprint 3** — a `verify` job in `scheduled-scans.yml` asserting ≥1 extended
-   tool `status === "completed"` + per-tool artifact + alert; a progress-total
-   unit test (non-safe `totalChecks === 58`); a controlled vulnerable staging
-   target + bench fixture; a `/api/health` smoke step in `deploy.yml`; confirm a
-   Basic subscriber receives a scheduled scan (POC-1).
+**Todo (next session, in order):** *(updated 2026-10-30. #88, the nonce CSP,
+and Sprint 2, worker Sentry (#95), are merged. Still owed from #88: the two
+post-deploy checks, COEP `require-corp` against live GA/Stripe and the SSG
+`/blog/[slug]` route under the strict CSP.)*
+3. **Sprint 3**: mostly done (2026-10-27/28).
+   - Done: the `verify` job in `scheduled-scans.yml` (#120, `scanRunVerification.ts`).
+   - Done: the post-deploy `/api/health` check now really checks (#111; it logged 200 on 2026-10-28).
+   - Done: real-binary tests for nmap, ZAP, arjun and whatwaf (#124, #126).
+   - Left: the vulnerable staging target (owner, `OWNER-TODO.md` OT-11).
+   - Left: confirm a Basic subscriber receives a scheduled scan (POC-1).
+   - Left (optional): a unit test pinning the progress total. `totalChecks` is
+     derived from the tool list, so it is 22 + 37 = 59 today, not 58.
 4. **Sprint 4** — bounded, redacted `evidence` field on findings. *(The
    scheduled-report `pdf` half is done, 2026-10-27: a real PDF attachment via
    `htmlToPdf()`, CSV fallback that says so; see `SPRINT-PLAN.md` H4.)*
-5. **Sprint 5** — gating decision for the open routes
-   (`ai-fix`/`keys`/`shares`/tickets); reconcile stale docs; prune ~20 merged
-   remote branches; branch protection (owner).
-6. **Sprint 6** — make the offensive tier real **and admin-only** (real
-   `strix`/`cairn` pins + SHA-256; `is_admin` runtime gate; lock the consent
-   route).
-7. **Sprint 7** — admin-scoped API key + `profile` param on `POST /api/v1/scans`.
+5. **Sprint 5:**
+   - Waiting on the owner: the gating decision for the open routes
+     (`ai-fix`/`keys`/`shares`/tickets, `OWNER-TODO.md` OT-10), pruning merged
+     branches (OT-15) and branch protection (OT-07).
+   - Done: stale-docs pass (2026-10-30).
+6. **Sprint 6:** the offensive tier is off the pricing page (#113). Making it
+   real is deferred by the owner's 2026-10-23 decision ("leave
+   not_configured, do not market"). The `is_admin` runtime gate is still worth
+   doing before any revival.
+7. **Sprint 7: deferred (2026-10-30).** Its point is admin/pentest API access
+   to the offensive profiles, which Sprint 6 defers. A `profile` param for
+   ordinary profiles isn't a small change either: `POST /api/v1/scans`
+   pre-sets `scan_id`, which keeps on-demand runs passive-only
+   (`run-queued-scan-jobs.ts`). Running extended tools on demand would need
+   the on-demand workflow to install and run the tool suite first. Revisit
+   with Sprint 6.
 8. **Part B (post-launch)** — capability track. **C1 (token/JWT entropy) and
    much of C5 (configurable OOB + bounded replay) are now delivered by #90**,
    and AI triage shipped off-by-default. Remaining: **C2** GraphQL/API depth →
