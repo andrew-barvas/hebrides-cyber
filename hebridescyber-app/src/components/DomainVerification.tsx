@@ -50,7 +50,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-2">
       <span className="w-14 shrink-0 text-xs text-cybermuted">{label}</span>
-      <code className="min-w-0 flex-1 break-all rounded border border-cyberborder bg-cyberpanel px-2 py-1 text-xs text-neon">{value}</code>
+      <code className="min-w-0 flex-1 break-all rounded-sm border border-cyberborder bg-cyberpanel px-2 py-1 text-xs text-neon">{value}</code>
       <CopyButton text={value} label={label.toLowerCase()} />
     </div>
   );

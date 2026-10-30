@@ -91,8 +91,8 @@ function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete:
   if (!status) {
     return (
       <div className="rounded-xl border border-cyberborder bg-cyberpanel p-6 animate-pulse">
-        <div className="h-4 w-48 rounded bg-cyberborder/50 mb-3" />
-        <div className="h-3 w-32 rounded bg-cyberborder/30" />
+        <div className="h-4 w-48 rounded-sm bg-cyberborder/50 mb-3" />
+        <div className="h-3 w-32 rounded-sm bg-cyberborder/30" />
       </div>
     );
   }
@@ -857,7 +857,7 @@ export default function ScanDetailPage() {
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
             <p className="font-mono text-xs text-cybermuted uppercase tracking-wide mb-3">// embed your score badge</p>
-            <code className="block break-all rounded border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
+            <code className="block break-all rounded-sm border border-cyberborder bg-cyberbg p-3 text-xs text-neon">
               {/* The www host: the bare domain only forwards its homepage, so
                   an embedded badge pointing there was a broken image. */}
               {`<img src="${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk"}/api/badge/${result.scan_id}.svg" alt="Security Score ${result.score ?? '?'}/100" />`}

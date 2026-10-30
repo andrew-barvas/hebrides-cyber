@@ -81,7 +81,7 @@ export default function NotificationPrefsSection() {
             type="checkbox"
             checked={emailEnabled}
             onChange={(e) => setEmailEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-cyberborder bg-cyberbg text-neon focus:ring-neon"
+            className="h-4 w-4 rounded-sm border-cyberborder bg-cyberbg text-neon focus:ring-neon"
           />
           <span className="text-sm text-cybertext/80">
             Send email on scan completion
@@ -104,7 +104,7 @@ export default function NotificationPrefsSection() {
                     setScoreThreshold(e.target.value ? parseInt(e.target.value, 10) : null)
                   }
                   placeholder="Any score"
-                  className="w-28 rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-none transition-colors"
+                  className="w-28 rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
                 />
                 <span className="text-xs text-cybermuted">
                   {scoreThreshold != null
@@ -123,7 +123,7 @@ export default function NotificationPrefsSection() {
                 onChange={(e) =>
                   setSeverityMin((e.target.value || null) as Severity | null)
                 }
-                className="w-full sm:w-auto rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext focus:border-neon focus:outline-none transition-colors"
+                className="w-full sm:w-auto rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext focus:border-neon focus:outline-hidden transition-colors"
               >
                 <option value="">Any new finding</option>
                 <option value="low">Low or higher</option>

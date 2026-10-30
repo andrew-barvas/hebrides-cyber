@@ -28,7 +28,7 @@ const EXIT_CODES: { code: string; meaning: string }[] = [
 ];
 
 function Code({ children }: { children: string }) {
-  return <code className="rounded bg-cyberbg px-1 py-0.5 font-mono text-xs text-neon">{children}</code>;
+  return <code className="rounded-sm bg-cyberbg px-1 py-0.5 font-mono text-xs text-neon">{children}</code>;
 }
 
 export default function CiDocsPage() {

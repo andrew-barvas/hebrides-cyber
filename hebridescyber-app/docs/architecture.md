@@ -160,8 +160,8 @@ between an on-demand scan and a scheduled one.
   Joomla/Drupal deep scans, JS library CVEs, SRI, Safe Browsing, Wayback,
   HaveIBeenPwned, WPScan plugin CVE matching.
 - Pass `runExtendedTools: true` to also run the **extended active-tool
-  suite** — nmap, nuclei (template-scoped to detected technology), sqlmap,
-  commix, Subfinder, testssl.sh, plus (with a connected GitHub repo) Gitleaks
+  suite** — nmap, nuclei (template-scoped to detected technology),
+  Subfinder, testssl.sh, plus (with a connected GitHub repo) Gitleaks
   secret scanning, dependency-manifest scanning (npm/pip/Composer), and
   Dockerfile base-image checks, plus (with a saved credential) the
   authenticated header/cookie recheck.
