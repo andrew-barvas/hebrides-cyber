@@ -5,7 +5,7 @@
 - Step 1 is done.
 - Step 2: done. Scanner facts are verified against `SCANNER-INVENTORY.md` and the code. The branch was synced with master on 2026-10-28 (`c845963`) and 2026-10-30 (`88c14c5`). Two assumptions in the first draft were wrong and are corrected below (ZAP runs an *active* scan; nuclei's baseline tags include probing templates).
 - Steps 3 to 9 have not started.
-- Q1 to Q3 are still open with the owner.
+- Q1, Q1b, Q2 and Q3 were answered by the owner on 2026-10-30 (see "Owner decisions"). Implementation has not started.
 
 ## Context
 
@@ -114,6 +114,24 @@ That file is the registry for new products (`P-nn`), with a required template: w
   - `P-01` (Kit Watch) is the nearest "managed" idea.
 - **First test and kill criteria are mandatory.** Proposed: sell 3 pilot Lookout reviews by hand using the existing scanner and a manually written report. Kill it if fewer than 2 of 5 prospects would pay £149/mo, or if a quarterly report takes more than 4 analyst hours.
 - **Prerequisite noted there:** plan checks in the UI must go through `planAccess.ts` (PR #110 was closed unmerged; #132 fixed Tier A access).
+
+## Owner decisions (2026-10-30)
+
+| Q | Decision | What it means for the work |
+|---|---|---|
+| Q1 | **Add OpenVAS and Nikto now.** | New installs, version pins/SHA-256 and real-binary `*.integration.test.ts` in CI for both (CLAUDE.md rule 15), plus wrappers under `src/worker/tools/`, new `EXTENDED_TOOL_NAMES` keys, and entries in `SCANNER-INVENTORY.md`. See risks below. |
+| Q1b | **Move sqlmap, commix and dalfox out of `full`.** | Add them to `EXCLUDED_FROM_FULL` in `src/lib/scanProfiles.ts`. They stay available via `api`, `offensive` and `ai-pentest`. Separate PR from this product. |
+| Q2 | **Lookout; Essentials £149/mo, Assured £299/mo**, with the quarterly and annual prices in the plan. | Prices go into copy and Stripe. Name still needs a trademark/domain check (not done). |
+| Q3 | **Stripe checkout from day one.** | Owner creates 4 Stripe prices (2 tiers x quarterly and annual, plus monthly = 6) and adds env vars; code changes in `create-checkout-session.ts`, `planAccess.ts`, pricing page and webhook. Billing is monthly-only today, so quarterly/annual is new. |
+
+### Risks created by these decisions (read before starting)
+
+- **OpenVAS on GitHub Actions.** GVM needs a large vulnerability-feed sync, a database and several services, which is heavy for the current ephemeral runners in `scheduled-scans.yml` and slow to start per job. Prototype it first (feed size, time-to-first-scan, runner cost) and, if it does not fit, run it on a small dedicated VM or container and call it from the worker. Decide only after the prototype; do not block the other work on it.
+- **Nikto is noisy.** It sends many probe requests and many known-bad test URLs. It must run only on ownership-verified domains, be rate-limited, and be covered by the ToS wording (OT-13, solicitor). It is not injection testing, but it is not passive either; say so accurately in copy.
+- **Safe-check configuration.** OpenVAS must use a scan config that excludes destructive and denial-of-service checks, and this must be tested, not assumed. Nikto must exclude its DoS/exploit-related tuning categories. Put both settings in the wrapper, not in a runtime option the customer can change.
+- **Stripe before the pilot.** Selling by checkout before the first-test pilot (see PRODUCT-IDEAS fit) removes the cheap demand test. Mitigation: keep the pricing page entry gated by a visible "limited places" cap and a manual onboarding call after payment, and still run the pilot criteria on the first 5 customers.
+- **Analyst hours.** Checkout makes it easy to oversell. Enforce the per-tier hour caps and an onboarding limit per month, in the copy and the terms.
+- **OT-14.** Every launch claim must match a built, tested feature. Do not publish copy naming OpenVAS or Nikto until their integration tests pass in CI.
 
 ## Steps
 
@@ -245,24 +263,26 @@ Always cap analyst hours per tier and write the cap down.
 - Keep every claim true to built features (OT-14). Say "not a penetration test" plainly.
 - Use the canonical domain `www.hebridescyber.co.uk`.
 
-### 8. Site integration (only after owner approval of Q1 to Q3)
-- Add a `Service` entry to `src/app/services/page.tsx`, with "Enquire" pointing to `/contact`. No Stripe checkout yet.
+### 8. Site integration (Q1 to Q3 are decided)
+- Add a `Service` entry to `src/app/services/page.tsx`. Q3 chose Stripe checkout, so the call to action is a checkout button, not an enquiry link; keep an "Enquire" link for annual or custom scopes.
 - Optionally add a landing `Card` in `src/app/page.tsx`.
 - Add the product to terms §2.
-- Quarterly and annual Stripe prices plus `PRICE_IDS` entries become a later step: they need owner-created prices (an OT item in `hebridescyber-app/docs/OWNER-TODO.md`).
+- Stripe: add `PRICE_IDS` entries and env vars for each tier and period in `create-checkout-session.ts`, add `lookout_essentials` and `lookout_assured` to the plan type and `planAccess.ts`, handle them in `webhook.ts`, and extend `pricing-checkout.spec.ts`. The owner creates the Stripe prices first (OT item).
 
 ### 9. Owner to-dos
 Add OT items to `hebridescyber-app/docs/OWNER-TODO.md`:
 - approve name and prices
 - decide Q1 (gating for OpenVAS and Nikto)
-- create the Stripe prices
+- create the six Stripe prices (monthly, quarterly, annual for each tier) and add the env vars
 - solicitor wording for "managed exposure review" in the ToS
 
 ## Open questions for the owner
-- **Q1:** Should OpenVAS and Nikto be added at all (neither exists today), or deferred? Injection testers (Wapiti, sqlmap, commix, dalfox) are excluded in either case.
-- **Q1b:** sqlmap, commix and dalfox run in the default `full` profile of the existing scanner. Is that intended, given the copy and OT-13? This is separate from the new product, but it was found during this work.
-- **Q2:** Do you approve the working name and price points, or want alternatives?
-- **Q3:** Should it launch as enquiry-only (recommended), or with Stripe checkout from day one?
+
+Q1 to Q3 are answered (see "Owner decisions"). Remaining:
+
+- **Q4:** where should OpenVAS run if the Actions prototype does not fit: a small dedicated VM, or a Container Apps job? (Decide after the prototype.)
+- **Q5:** is a pilot-first launch acceptable in addition to checkout (first 5 customers get a manual onboarding call and the cap above)?
+- **Q6:** has the name "Lookout" been checked for an existing UK trademark and a free domain/subdomain?
 
 ## Verification
 - Run `npm run lint`, `npm run typecheck` and the unit tests in `hebridescyber-app` after any TSX change. Run `pricing/page.test.tsx` if pricing is touched.
