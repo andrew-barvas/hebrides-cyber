@@ -26,6 +26,7 @@ import type { ScriptFoundBy, ScriptIntegrity, ScriptInventoryResult } from "@/li
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { aiTriageView, aiVerifiedTitle, confirmedProof } from "@/lib/proofEvidence";
+import { readEvidence, type FindingEvidence } from "@/lib/findingEvidence";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -54,6 +55,8 @@ export type ViewFinding = {
   };
   /** Scanner metadata; only `proofOfExploit` is read here (see proofEvidence.ts). */
   metadata?: Record<string, unknown>;
+  /** The redacted request/response behind the finding — see src/lib/findingEvidence.ts. */
+  evidence?: FindingEvidence;
   /** The owner's active triage (accepted / false positive / snoozed) — see
    *  src/lib/findingTriage.ts. Only ever set on the owner's dashboard. */
   triage?: ViewTriage;
@@ -515,6 +518,39 @@ function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token
   );
 }
 
+/** The redacted request/response behind a finding, collapsed by default. */
+export function EvidenceBlock({ evidence }: { evidence: FindingEvidence | undefined }) {
+  if (!evidence) return null;
+  const { request, response, matched } = evidence;
+  const headerLines = Object.entries(response.headers).map(([k, v]) => `${k}: ${v}`);
+  return (
+    <details data-testid="finding-evidence" className="mt-2 rounded-md border border-cyberborder bg-cyberbg/50">
+      <summary className="cursor-pointer px-2 py-1 text-[11px] font-semibold text-cybertext/70 hover:text-cybertext">Evidence</summary>
+      <div className="space-y-1.5 px-2 pb-2 font-mono text-[11px] text-cybertext/70">
+        <p className="break-all">
+          {request.method} {request.url} → <span className="text-cybertext">{response.status}</span>
+        </p>
+        {headerLines.length > 0 && <pre className="whitespace-pre-wrap break-all">{headerLines.join("\n")}</pre>}
+        {matched && (
+          <p className="break-all">
+            Matched: <span className="text-cybertext">{matched}</span>
+          </p>
+        )}
+        {response.bodyExcerpt && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-sm bg-cyberbg p-1.5">
+            {response.bodyExcerpt}
+            {response.truncated ? "\n…" : ""}
+          </pre>
+        )}
+        <p className="font-sans text-[10px] text-cybermuted">
+          Secrets, hashes, tokens and email addresses are replaced with [redacted] before anything is stored. Captured{" "}
+          {new Date(evidence.capturedAt).toISOString().slice(0, 16).replace("T", " ")} UTC.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 export function FindingCard({
   finding,
   scanId,
@@ -619,6 +655,8 @@ export function FindingCard({
       </div>
       <p className="font-medium text-cybertext text-sm">{finding.title}</p>
       {finding.detail && <p className="mt-1 text-xs text-cybertext/60 leading-relaxed">{finding.detail}</p>}
+
+      <EvidenceBlock evidence={readEvidence(finding.evidence)} />
 
       {finding.corroboratedBy && finding.corroboratedBy.length > 0 && (
         <p
