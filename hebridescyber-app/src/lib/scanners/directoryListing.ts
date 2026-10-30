@@ -11,6 +11,7 @@ import {
   matchesBaselineHeaders,
   isCatchAllBody,
 } from "./httpProbe";
+import { buildHttpEvidence, type FindingEvidence } from "../findingEvidence";
 
 export type DirectoryListingResult =
   | { status: "checked"; listings: OpenDirectory[] }
@@ -20,6 +21,8 @@ export type OpenDirectory = {
   path: string;
   // Approximate — derived from anchor count, not a guaranteed exact total.
   fileCount: number | null;
+  /** The GET that proved it (findingEvidence.ts). The body is HTML, so only the "Index of" heading is kept. */
+  evidence?: FindingEvidence;
 };
 
 const CANDIDATE_PATHS = [
@@ -77,7 +80,12 @@ async function probeDirectory(baseUrl: string, path: string, baseline: Baseline)
     const masked = normaliseBody(text, path);
     if (isCatchAllBody(baseline, masked)) return null;
 
-    return { path, fileCount: countListedEntries(text) };
+    const heading = INDEX_TITLE.exec(text)?.[0].replace(/<[^>]+>/g, "").trim();
+    return {
+      path,
+      fileCount: countListedEntries(text),
+      evidence: buildHttpEvidence({ url, status: res.status, headers: res.headers, matched: heading }),
+    };
   } catch {
     return null; // Network errors are not findings.
   }

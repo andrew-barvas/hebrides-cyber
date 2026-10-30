@@ -154,7 +154,31 @@ is actually exploiting the CVE:
 A finding that other tools also reported (nuclei, ZAP, testssl) carries
 `corroborated_by: [{ tool, check_id, title }]`; those duplicates are merged into
 this one finding and not listed separately. The field is omitted when nothing
-corroborated it. The CSV export has a matching `corroborated_by` column (last).
+corroborated it. The CSV export has a matching `corroborated_by` column.
+
+A finding from a check that made a request it can show (today: exposed files
+and directory listings) carries `evidence`:
+
+```json
+"evidence": {
+  "request": { "method": "GET", "url": "https://example.com/.env" },
+  "response": { "status": 200, "headers": { "content-type": "text/plain" }, "bodyExcerpt": "APP_ENV=[redacted]\nDB_PASSWORD=[redacted]" },
+  "matched": "DB_",
+  "capturedAt": "2026-10-30T12:00:00.000Z"
+}
+```
+
+`response.headers` is an allowlist (content type and length, server,
+last-modified, x-powered-by). Cookies and auth headers are never recorded.
+`response.bodyExcerpt` is at most 400 characters, with `truncated: true` when
+it was cut. It's redacted before it's stored: every `key=value` or `key:
+value` value, token, hash, private key, credential in a URL and email address
+becomes `[redacted]`, so you see which keys were exposed but not their values.
+It's omitted when the check never read the body, as for directory listings,
+which keep only the "Index of" heading in `matched`. Evidence is stored with
+the scan result and deleted with it, and is absent on scans from before
+2026-10-30. The CSV export puts it in one `evidence` column (last), as
+`GET <url> → <status> (<type>); matched: …`.
 
 Each finding also carries `triage` — your current decision about it on this
 site, or `null`:

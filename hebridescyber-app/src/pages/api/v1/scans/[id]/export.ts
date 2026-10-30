@@ -13,12 +13,13 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
+import { evidenceSummary, readEvidence } from "@/lib/findingEvidence";
 import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
 
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
     "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
-    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by",
+    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence",
   ];
   const rows = findings.map((f) => [
     f.severity,
@@ -37,6 +38,8 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
     f.triage?.expiresAt ?? "",
     // "nuclei: <title>; ZAP: <title>" — other tools that reported the same issue.
     (f.corroboratedBy ?? []).map((c) => `${c.tool}: ${c.title}`).join("; "),
+    // One line, "GET <url> → 200 (type); matched: …", redacted at capture.
+    evidenceSummary(readEvidence(f.evidence)),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }
