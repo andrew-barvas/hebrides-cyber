@@ -180,9 +180,9 @@ export default async function BlogPostPage({ params }: Props) {
             // Dark mode prose overrides
             "dark:prose-invert",
             "prose-headings:text-atlantic dark:prose-headings:text-neon",
-            "prose-a:text-atlantic dark:prose-a:text-neon prose-a:no-underline hover:prose-a:underline",
+            "prose-a:text-atlantic dark:prose-a:text-neon prose-a:no-underline prose-a:hover:underline",
             "prose-strong:text-slatedark dark:prose-strong:text-cybertext",
-            "prose-code:rounded prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm",
+            "prose-code:rounded-sm prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm",
             "prose-code:bg-slate-100 prose-code:text-atlantic dark:prose-code:bg-cyberpanel dark:prose-code:text-neon",
             "prose-pre:bg-slate-100 prose-pre:border prose-pre:border-slate-200",
             "dark:prose-pre:bg-cyberpanel dark:prose-pre:border-cyberborder",
