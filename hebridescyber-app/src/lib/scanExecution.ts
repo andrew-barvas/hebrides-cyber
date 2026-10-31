@@ -72,6 +72,7 @@ import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
+import { runProwlerIam } from "../worker/tools/prowlerIam";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -1075,6 +1076,27 @@ export async function executeScan(
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).cloudPosture = { status: "error", note: "Cloud posture check failed" };
+        }
+      }
+
+      // Prowler IAM / privilege-escalation posture (src/worker/tools/prowlerIam.ts).
+      // Same reason to live here: it needs supabaseAdmin + ownerId. Findings
+      // from a partly failed run are still real evidence, so they are kept;
+      // the "error" status stops them (and last scan's) being read as fixed.
+      if (toolConfig.prowler) {
+        try {
+          const pr = await runProwlerIam(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).prowler = pr;
+          if ("findings" in pr && pr.findings.length > 0) {
+            for (const finding of pr.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+            }
+            findings.push(...pr.findings);
+            for (const f of pr.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
         }
       }
     }
