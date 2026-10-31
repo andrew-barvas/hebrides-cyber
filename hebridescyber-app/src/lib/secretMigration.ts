@@ -17,7 +17,7 @@ export const STRING_SECRET_TARGETS: ReadonlyArray<{ table: string; fields: reado
     table: "ticket_integrations",
     fields: ["jira_api_token", "linear_api_key", "servicenow_password", "github_token", "pagerduty_routing_key", "opsgenie_api_key"],
   },
-  { table: "target_auth_credentials", fields: ["cookie_value", "basic_password"] },
+  { table: "target_auth_credentials", fields: ["cookie_value", "basic_password", "totp_secret"] },
   { table: "uptime_integrations", fields: ["api_key"] },
 ];
 

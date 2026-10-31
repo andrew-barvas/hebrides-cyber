@@ -56,8 +56,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
 | OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
 | OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
-| OT-38 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
-| OT-39 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
+| OT-42 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
+| OT-43 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
@@ -69,6 +69,10 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
 | OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
 | OT-37 | Decide whether the container registry stays on the Basic SKU | 🟢 Low | Decision | 2026-10-30 | |
+| OT-38 | Choose an auditor and SOC 2 / ISO 27001 scope | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-39 | Write the core security policies | 🟢 Strategic | Open | 2026-10-31 | |
+| OT-40 | Choose a compliance automation platform | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-41 | Commission an independent penetration test | 🟢 Strategic | Open | 2026-10-31 | |
 
 ## Items
 
@@ -461,7 +465,43 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 
-### OT-38: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
+### OT-38: Choose an auditor and certification scope 🟢
+- **What and why:** the repo-side evidence map is `CONTROLS-EVIDENCE.md` and
+  the public `/trust` page says we are not certified. Getting attested needs
+  an external auditor and a decision on SOC 2 Type I/II versus ISO 27001, and
+  on whether it is worth the cost yet.
+- **How:** get two or three quotes; share `docs/CONTROLS-EVIDENCE.md` with them.
+- **Verify:** a decision recorded here. Only after an auditor's report may
+  `/trust` change its certification wording.
+- **Raised:** 2026-10-31.
+
+### OT-39: Write the core security policies 🟢
+- **What and why:** auditors need written policies (information security,
+  access control, incident response, change management, supplier management,
+  data classification and retention, ISMS scope and roles). The repo has
+  engineering controls but not these documents.
+- **How:** draft them yourself or via the platform chosen in OT-40, then
+  record the approval date and owner for each.
+- **Verify:** policies exist and are linked from the evidence map.
+- **Raised:** 2026-10-31.
+
+### OT-40: Choose a compliance automation platform 🟢
+- **What and why:** tools such as Vanta, Drata or Secureframe collect
+  evidence continuously and supply policy templates. Optional; an auditor can
+  work without one. It costs money each year.
+- **How:** decide after OT-38, since some auditors partner with a platform.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-31.
+
+### OT-41: Commission an independent penetration test 🟢
+- **What and why:** an external test of the platform itself is expected
+  evidence for both standards. Needs a budget and a written scope and
+  agreement with the tester.
+- **How:** pick a CREST-accredited provider, agree scope, and run it against a
+  staging copy where possible. Keep the report private.
+- **Verify:** a report received and findings triaged.
+
+### OT-42: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
 - **What and why:** the Prowler IAM / privilege-escalation check
   (`src/worker/tools/prowlerIam.ts`) assumes each customer's read-only role
   from an AWS identity of ours. That identity doesn't exist yet, so for any
@@ -489,7 +529,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** `completed` result with the account listed; real fixture merged.
 - **Raised:** 2026-10-31.
 
-### OT-39: Optional: hash-pin Prowler's Python dependencies 🟢
+### OT-43: Optional: hash-pin Prowler's Python dependencies 🟢
 - **What and why:** the workflow verifies Prowler's own wheel by SHA-256, but
   pip resolves its dependencies at install time without hashes.
 - **How:** generate a hashed lockfile (`pip-compile --generate-hashes`) in a

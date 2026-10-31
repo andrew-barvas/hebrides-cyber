@@ -284,3 +284,26 @@ In order of impact:
 - **Recreate a monitor deleted in UptimeRobot** without disconnecting: the card marks it "Not found", but `createMonitorsForTargets` still treats the stored row as existing.
 - **Real-account verification** of the UptimeRobot v3 client (see above).
 
+
+## Product-line plans: Lookout (P-06) and Exploit (P-07) — shared dev tasks
+
+Two product plans build on the existing engine: `docs/DEFENSIVE-ASSESSMENT-PLAN.md`
+(Lookout, defensive) and `docs/EXPLOIT-PRODUCT-PLAN.md` (Exploit, authorised
+offensive — gated behind OT-13). The following items should be **built once and
+shared** rather than duplicated per product. Several touch files a concurrent
+Lookout session owns (`DEFENSIVE-ASSESSMENT-PLAN.md`, `marketing/`,
+`PRODUCT-IDEAS.md`); coordinate before editing those.
+
+- **L-S1**: generalise the `attackRefs` MITRE ATT&CK map and report-reference
+  rendering (Lookout PR #144) so a second report template can consume it.
+- **L-S2**: factor the bounded/redacted evidence capture (H4 / PR #140) into a
+  shared helper both Lookout findings and Exploit validation evidence call.
+- **L-S3**: when the OpenVAS hosting prototype runs (OWNER-TODO OT-36), size the
+  decision for both Lookout and a future Exploit engagement, and record it once.
+- **L-S4**: design the Stripe price model to carry both recurring (Lookout
+  quarterly/annual) and engagement/one-off (Exploit) billing without a second
+  checkout path.
+
+Exploit is **idea-stage and owner-gated**: no offensive product surface is built
+or marketed before OT-13 (PI insurance + solicitor-reviewed engagement contract)
+is signed off. See `EXPLOIT-PRODUCT-PLAN.md` for the full governance design.

@@ -47,7 +47,7 @@ Needs, on the worker: `prowler` on PATH (installed pinned by SHA-256 in
 `.github/workflows/scheduled-scans.yml`), and `PROWLER_AWS_ACCESS_KEY_ID` /
 `PROWLER_AWS_SECRET_ACCESS_KEY` for our scan identity (only `sts:AssumeRole`).
 The app needs `PROWLER_PLATFORM_AWS_ACCOUNT_ID` to show customers the trust
-principal. Owner steps: OT-38, OT-39 in `OWNER-TODO.md`.
+principal. Owner steps: OT-42, OT-43 in `OWNER-TODO.md`.
 
 To upgrade Prowler: bump `PROWLER_VERSION` and `PROWLER_SHA256` in the workflow,
 re-capture the fixture in `src/worker/tools/fixtures/prowler/`, run the tests.
