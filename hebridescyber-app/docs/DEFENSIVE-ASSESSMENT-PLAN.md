@@ -4,8 +4,10 @@
 - Plan approved by the owner and committed for handover.
 - Step 1 is done.
 - Step 2: done. Scanner facts are verified against `SCANNER-INVENTORY.md` and the code. The branch was synced with master on 2026-10-28 (`c845963`) and 2026-10-30 (`88c14c5`). Two assumptions in the first draft were wrong and are corrected below (ZAP runs an *active* scan; nuclei's baseline tags include probing templates).
-- Steps 3 to 9 have not started.
-- Q1, Q1b, Q2 and Q3 were answered by the owner on 2026-10-30 (see "Owner decisions"). Implementation has not started.
+- Step 3: the code half (the `exposure` profile, restricted nuclei tags) is in draft PR #144; ZAP passive-only mode is in draft PR #152. Neither is merged as of 2026-10-31.
+- Steps 4, 5, 6, 7 and 9: written 2026-10-31 in "Lookout service design" below, with the website copy in `marketing/17-lookout-managed-exposure-review.md` and owner items OT-42 to OT-45.
+- Step 8 (site and Stripe integration) has not started.
+- Q1, Q1b, Q2 and Q3 were answered by the owner on 2026-10-30 (see "Owner decisions").
 
 ## Context
 
@@ -160,12 +162,248 @@ Several Claude sessions work in this repo. Claim a step here (edit this table in
 |---|---|---|
 | Plan, copy draft, P-06, OT-33 to OT-36 | awesome-pentest defensive review session (PR #130) | Done |
 | `exposure` scan profile, migration 064, restricted nuclei tags, profile tests | Lookout managed-assessment plan session, draft PR #144 | Written; in review. Nuclei tag lists need the owner's check (see the PR body) |
-| ZAP passive-only mode | unclaimed | Not started |
+| ZAP passive-only mode | ZAP passive-only session, draft PR #152 | Written; in review (not merged 2026-10-31) |
+| Steps 4 to 7 and 9: concept, workflow, reporting, business case, copy, OT-42 to OT-45 | Lookout plan refinement session (this PR) | Written 2026-10-31; in review |
+| Step 8: services entry, terms §2, Stripe prices and checkout | unclaimed | Not started; blocked on OT-33 to OT-35 |
 | `attackRefs` map (ATT&CK v17, re-check quarterly) and report rendering | Lookout managed-assessment plan session, draft PR #144 | Written; in review |
 | OpenVAS prototype, Nikto wrapper | unclaimed | Not started |
 | awesome-pentest ATT&CK Software join (catalogue step 3) | unclaimed | Not started |
 
 Known overlapping sessions and PRs: "Lookout managed-assessment plan" (a second session on the same topic; message sent), #139 (stale-docs pass, edits `USER-GUIDE.md`, which #137 also touched), #135 (OT-28 to OT-32, so Lookout uses OT-33 to OT-36). Two idle sessions ("Pentest tools defensive catalogue", "Defensive threat intelligence catalogue builder") started the awesome-pentest catalogue earlier and have no commits; the catalogue under `research/awesome-pentest/` supersedes them.
+
+## Lookout service design (steps 4 to 7 and 9, written 2026-10-31)
+
+This section is the product design that steps 4 to 7 and 9 asked for. The steps further down keep the original brief; where the two differ, this section wins.
+
+**Wording used here.** Tools are described only as components of the existing pipeline and by what they help a defender find. There are no commands, options or usage steps. Prose avoids "scan", "probe", "run", "attack" and "payload" where a plain alternative is just as accurate ("check", "assessment", "testing", "request"). They remain in four places: code identifiers and file names (`scan_profile`, `run-queued-scan-jobs.ts`), the proper name MITRE ATT&CK, the quoted ToS heading "Authorisation to scan", and "the scanner" as the name of the existing product line. Accuracy comes first: where avoiding a word would hide what traffic reaches a customer's systems, the text says it plainly. The PR that added this section lists each such case.
+
+### Product Concept
+
+**Lookout by HebridesCyber** is a managed external exposure review: recurring automated checks of what an organisation exposes to the internet, read and prioritised by a named engineer, and delivered as a short, risk-based report with a review call.
+
+- **What it is:** an outside-in view of the organisation's public estate (websites, subdomains, DNS and email settings, certificates, open network services and the software versions they reveal), checked against known weaknesses and misconfigurations, then triaged by a person.
+- **What it is not:**
+  - not a penetration test, and no exploitation is performed
+  - no injection testing, no password guessing and no attempts to gain access
+  - not 24/7 monitoring, a SOC, incident response or a certification
+- **Where the value sits:** the automated detection already exists in the scanner. What Lookout adds is the managed part: the whole estate rather than one site, false-positive removal, business-impact wording, a fix plan, a call, and confirmation that fixes worked.
+- **Relationship to the scanner subscriptions:**
+
+| | Scanner (Basic, Pro, Agency) | Lookout (Essentials, Assured) |
+|---|---|---|
+| Who reads the results | The customer, in the dashboard | An engineer first, then the customer |
+| Scope | Sites the customer adds | The organisation's verified external estate, agreed at scoping |
+| Output | Alerts and self-serve reports | Analyst-written report, review call, fix tracking |
+| Check set | Profile per site; `full` includes injection testers today (until Q1b lands) | The `exposure` profile only: no injection testers, no offensive tools |
+| Effort for the customer | They triage | We triage |
+
+- **Name:** "Lookout" (a nod to coastal watch), still subject to the trade-mark and domain check in OT-33. Alternatives if it fails: "Beacon", "Harbour Watch".
+
+### Target Customer
+
+**Primary:** UK organisations with roughly 10 to 250 staff and no in-house security person, where IT is one generalist or an outside supplier.
+
+**Buying triggers** (each one is a moment the owner is asked a security question they cannot answer alone):
+- Cyber Essentials preparation or renewal
+- a cyber-insurance proposal or renewal questionnaire
+- a customer's or supplier's security questionnaire, often from a larger firm or the public sector
+- a recent incident at a peer, or a board or trustee asking "are we exposed?"
+
+**Good fits:**
+- professional services (accountants, solicitors, surveyors, agencies) holding client data
+- small manufacturers and distributors in larger firms' supply chains
+- charities, housing associations and membership bodies with a modest web estate
+- local firms in the Highlands and Islands, where a named local engineer matters (see `marketing/06-marketing-plan.md`)
+
+**Poor fits (say no or refer elsewhere):**
+- organisations that need a penetration test for a contract or regulator: offer the existing one-off audits or refer on
+- organisations that need 24/7 monitoring or incident response
+- estates too large for the tier caps: quote separately or decline
+- anyone who cannot prove ownership of, or authority over, the assets in scope
+
+**Decision maker and reader:** the owner, practice manager or finance director buys it; the IT supplier acts on it. The report is written for both, in that order.
+
+### Service Workflow
+
+Six stages. Stages 1, 2 and 4 to 6 are human; stage 3 is the existing automated pipeline.
+
+1. **Intake (before any automated check):**
+   - Customer signs up (Stripe checkout, Q3) and agrees the terms, including §4 "Authorisation to scan" and the Lookout wording from OT-35.
+   - An onboarding call within the onboarding cap for the month (OT-42).
+   - Customer lists domains and public IP addresses, and names an alert contact and their IT supplier, if any.
+2. **Scoping and verification:**
+   - Each domain is verified by DNS TXT record or well-known file (`src/lib/ownership.ts`). Nothing is checked until verification passes; this is enforced at enqueue and again in the worker.
+   - IP addresses need written confirmation of authority, because they cannot be verified by DNS. Shared hosting and third-party platforms (the customer's website builder, SaaS, CDN) are confirmed as in or out of scope, and out-of-scope hosts are recorded as exclusions.
+   - A check window is agreed and stored on the monitored target (`scan_window_start/end/tz`, migration 031).
+   - Each in-scope asset becomes a monitored target on the `exposure` profile (PR #144).
+3. **Automated detection (existing pipeline):**
+   - The scheduler checks each target on its cadence; on-demand checks always use the narrower `safe` profile.
+   - Every check sends real network traffic to the customer's systems. The "Integration Notes" below list what each component sends.
+   - Lookout targets use only the `exposure` profile. A bundle over it can switch tools off but never add one (PR #144 tests this).
+4. **Defensive analysis (analyst):**
+   - Deduplicate across assets (the same weakness on five subdomains is one fix).
+   - Remove false positives and record the verdict in `finding_triage` so it does not return.
+   - Prioritise by exposure (reachable from the internet, and by whom), severity (CVSS, KEV/EPSS where present) and business impact (what the asset does for this customer, from the onboarding call).
+   - Record accepted risks with a reason and a review date.
+5. **Reporting and review call:** see "Reporting Structure". Essentials: quarterly report and one 30-minute call. Assured: monthly report and two calls per quarter.
+6. **Fix confirmation and feedback:**
+   - When the customer reports a fix, the analyst confirms it from the next scheduled check (`finding_lifecycle` marks it fixed). On-demand re-checks use the `safe` profile, so port and service findings are confirmed only at the next scheduled `exposure` check. The report says so rather than promising an instant re-test.
+   - Assets discovered during the period (new subdomains, new services) are raised with the customer for scoping, never added silently.
+   - Recurring finding types become candidate automated checks in the scanner (an `E-nn` item each).
+
+**Urgent findings between reports:** a critical exposure (for example an exposed database port or a leaked secret) is sent to the alert contact by email within one working day of an analyst seeing it. This is a best-effort notice from a solo operator, not an SLA, and the copy must say so.
+
+### Reporting Structure
+
+The report extends the existing executive report (`src/lib/executiveReport.ts`, printed to PDF by `reportPdf.ts`). The CWE and ATT&CK fields come from PR #144; the analyst sections are new.
+
+1. **Cover and scope:** organisation, period, assets in scope, exclusions, check window, and a one-line statement that the review is non-exploitative and not a penetration test.
+2. **Executive summary (one page, business language):**
+   - overall position and change since last period
+   - the three most important things to fix, each with what could happen and who should fix it
+   - what improved
+3. **Priority findings:** for each, in plain English:
+   - what we found and where
+   - why it matters to this business
+   - how to fix it, and roughly how long it takes (`fixDifficulty.ts`)
+   - severity, CVE and CWE where they apply
+   - the MITRE ATT&CK technique an adversary could use against this exposure (from `attackMap.ts`, per finding type, IDs and links only), with MITRE's attribution
+   - compliance references: "mapped to" Cyber Essentials, ISO 27001 and others (`compliance.ts`), never "compliant with"
+4. **Asset inventory:** domains, subdomains, open services and detected technologies, with anything new since last period highlighted.
+5. **Trend and fix tracker:** new, unchanged, fixed and accepted findings since last period (`findingsDiff.ts`, `finding_lifecycle`), and time to fix.
+6. **Accepted risks:** each with its reason and review date.
+7. **Appendix A, method:** which categories of check were used and what traffic each sends (from the Integration Notes table, in customer language), and what was out of scope.
+8. **Appendix B, "what to log" (Assured, optional):** for the techniques in this report, the log source a defender would need and links to public detection content (ATT&CK, Sigma, Elastic, Splunk, CAR), link-only as set out in "Defensive reference sources". Not a detection service.
+
+**Pilot-stage delivery:** the first reports are the executive report PDF plus a hand-written cover document from a template. An analyst-notes field and Lookout report builder are built only if the pilot passes its criteria (see "Implementation Steps").
+
+### Pricing & Tiers
+
+Prices are the owner's decision of 2026-10-30. Hour caps, asset limits and the onboarding cap below are **proposals for the owner (OT-42)**.
+
+| | Essentials | Assured |
+|---|---|---|
+| Monthly | £149 / month | £299 / month |
+| Quarterly | £399 / quarter (about 11% below monthly) | £799 / quarter (about 11% below monthly) |
+| Annual | £1,490 / year (ten months' price) | £2,990 / year (ten months' price) |
+| Automated checks | Daily, on the `exposure` profile | Daily, on the `exposure` profile |
+| Analyst report | Quarterly | Monthly |
+| Review calls | One 30-minute call per quarter | Two calls per quarter |
+| Fix confirmation | At the next quarterly report | Within the month, from the next scheduled check |
+| Questionnaire support | Not included | Cyber Essentials and insurance questionnaires: help answering the external-exposure questions |
+| "What to log" appendix | Not included | Included on request |
+| Proposed asset limit | Up to 3 registered domains and 5 public IP addresses | Up to 10 registered domains and 16 public IP addresses |
+| Proposed analyst-hour cap | 4 hours per quarter | 9 hours per quarter |
+| Dashboard access | Proposed: Pro features | Proposed: Agency features |
+
+- **Add-ons** (quoted, not on checkout at launch): Cyber Essentials readiness pack; insurance evidence pack (build once, as `P-04`); extra domains or IP range; board-ready summary; CI/CD hardening workshop (existing £300 offer).
+- **Onboarding cap:** proposed two new Lookout customers per month during the pilot, shown on the page as "limited places" only while it is true.
+- **VAT:** treatment to confirm (OT-33).
+- **Daily cadence** needs `lookout_essentials` and `lookout_assured` added to `scanCadence.ts`; the cron is already daily.
+
+### Integration Notes
+
+How each part of the existing pipeline contributes to Lookout, what it sends to the customer's systems, and what a defender learns from it. Statuses are as of 2026-10-31.
+
+**Traffic classes:**
+- **Third-party data:** no traffic to the customer; public sources only.
+- **Light active:** ordinary requests any visitor or browser makes.
+- **Active, non-intrusive:** connections and requests a normal visitor would not make (connecting to many ports, requesting known file paths, identifying service versions), but no injected input and no exploitation.
+- **Intrusive:** sends test input designed to trigger a vulnerability. Excluded from Lookout.
+
+| Component | Role in Lookout | Traffic class | Status for Lookout | What defenders learn |
+|---|---|---|---|---|
+| Certificate transparency, Shodan InternetDB, RDAP, breach data (base suite) | Subdomain inventory, known CVEs on exposed IPs, domain expiry, breach exposure | Third-party data | Live (part of every check) | Forgotten subdomains, expiring domains, published breaches |
+| TLS, security headers, cookies, DNS and email authentication (base suite) | Configuration review | Light active | Live | Weak encryption, missing headers, spoofable email domains (SPF, DKIM, DMARC) |
+| Technology fingerprinting with end-of-life and CVE lookups (base suite) | Version and support status of exposed software | Light active | Live | Which software is out of support or has published CVEs, for the patch list |
+| Sensitive-file, directory-listing and archived-path checks (base suite) | Exposure of files that should not be public | Active, non-intrusive: requests up to 41 known paths, 18 directories and 40 archived paths | Live | Exposed backups, configuration files and repositories |
+| Site crawl and form review (base suite) | Page health, injected content, client-side secrets, forms | Light active (up to 50 pages, GET only, robots.txt honoured), plus **5 login submissions with made-up credentials** to check for rate limiting | Live | Signs of compromise, secrets shipped to browsers, login forms with no rate limiting |
+| Client-side script check (base suite) | Whether page script writes untrusted URL content into the page | Light active: an inert marker in the URL fragment, which browsers never send to the server | Live | Client-side script weaknesses, without any request to the server carrying test input |
+| Fixed-port check (base suite) | Whether 30 high-risk ports are reachable | Active, non-intrusive (TCP connections) | Live | Databases, remote desktop and admin services reachable from the internet |
+| httpx (`exposure` profile) | Live-host and web-service inventory across discovered subdomains | Light active | Draft PR #144 | Which subdomains serve content, and what |
+| naabu + nmap (`networkExposure`, `nmap`; `exposure` profile) | Open-port and service-version map | Active, non-intrusive: connects to up to 1,000 common ports, then identifies the services that answer | Draft PR #144 | Which services should be firewalled or removed |
+| nuclei, restricted (`exposure` profile) | Known misconfigurations, exposed panels, subdomain takeover, version-matched CVEs | Active, non-intrusive: default-login, out-of-band and every input-injecting template category excluded; out-of-band interaction off | Draft PR #144; **owner tag review needed (OT-44)** | Exposed admin panels, misconfigurations, dangling DNS |
+| ZAP, passive-only | Header, cookie and configuration alerts from a crawl, with no active testing | Light active | Draft PR #152, **not merged**; excluded until it is | Configuration weaknesses across the crawled site |
+| Document and photo metadata (`metadataLeak`, PR #153, merged) | Author names, emails, internal paths and hosts, software versions and GPS location in published documents and images | Light active (downloads files already linked from the site) | Built and tested, but **not in `exposure`**: it reads URLs found by the gospider crawler, which is not in the profile. Needs gospider and `metadataLeak` added to `EXPOSURE_TOOLS` (unclaimed) | What staff names, internal hostnames and locations public files reveal |
+| deepTls (testssl.sh), subfinder | Deeper TLS review; wider subdomain discovery | Light active; third-party data | Left out of `exposure` until each has a real-binary integration test (rule 15). The base suite already covers TLS and CT subdomains | — |
+| Proof-of-exploit re-checks | — | Intrusive (re-sends test input) | Off for `exposure` (PR #144) | — |
+| OpenVAS / GVM | Network vulnerability detection | Active | Planned (Q1); prototype first (OT-36). **Not to be named in copy** until its integration test passes in CI | Missing patches on network services |
+| Nikto | Web-server misconfiguration | Active, high request volume, including many known-bad URLs | Planned (Q1); safe-check configuration fixed in the wrapper. **Not to be named in copy** until its integration test passes in CI | Default files and server misconfiguration |
+| sqlmap, commix, dalfox, Wapiti; offensive-only tools | Injection and offensive testing | Intrusive | **Excluded** from Lookout permanently | — |
+| Masscan, Amass, WhatWeb | — | — | Not added: naabu, subfinder with CT, and in-house fingerprinting already do these jobs | — |
+
+**Notes:**
+- The base suite is part of every check whatever the profile, so its rows apply to Lookout too. The form review's five login submissions may appear in a customer's logs or lockout alerts; scoping must mention them, and the copy discloses them.
+- Customer-facing copy names no tools. It describes the categories above and says plainly that the checks send active traffic.
+- If the owner wants the five login submissions off for Lookout, that is a code change to the base suite, not a profile setting (OT-43).
+- When PR #152 merges, update the ZAP row and the copy's feature list together.
+
+### Business Case
+
+**Why SMEs buy it:**
+- External pressure: Cyber Essentials, insurers and customers now ask questions an owner cannot answer from a dashboard.
+- No in-house expertise: the buyer wants a person to tell them what matters and in what order.
+- Price: Essentials costs £1,490 a year on annual billing, less than the £1,800 one-off audit and in the range of the £800 one, and it recurs instead of going stale.
+
+**How it complements the scanner:**
+- Upsell path: Pro and Agency customers who stop triaging their own alerts move up to Lookout. The dashboard stays available to them.
+- Reuse: the same pipeline, findings model, reports, triage, lifecycle and compliance mapping. New build is mainly plan plumbing (Stripe, gating, cadence) and the report's analyst sections.
+- Feedback: triage verdicts improve the scanner's false-positive suppression for every customer, and recurring manual findings become automated checks.
+- Positioning: a defensive, non-exploitative product is easier to sell, insure and explain than the hidden offensive tier.
+
+**Unit economics (proposals, to be measured in the pilot):**
+- Essentials: £447 per quarter at monthly billing for a 4-hour cap, about £110 per analyst hour before card fees and compute.
+- Assured: £897 per quarter at monthly billing for a 9-hour cap, about £100 per analyst hour.
+- Compute: daily checks on GitHub Actions runners. The `exposure` profile is smaller than `full`, but its per-target cost has not been measured; measure it on pilot targets before checkout opens.
+- Capacity: at the proposed caps, one person delivering 10 analyst hours a week supports roughly 15 to 25 Lookout customers alongside the scanner business. The onboarding cap keeps growth inside that.
+
+**Overhead, stated honestly:**
+- Automation does the detection. Analyst time, calls and scoping are real and grow with each customer.
+- Mitigations: hour caps written into the terms, templated reports, a monthly onboarding cap, and asset limits per tier.
+- Never claim "zero overhead", "fully automated" or round-the-clock cover.
+
+**Risks:**
+- Overselling through checkout before the pilot proves the hours (mitigation: onboarding cap and manual call; Q5).
+- A customer expects a penetration test (mitigation: "not a penetration test" on the page, in the terms and on the report cover).
+- Active traffic causes a customer concern or a hosting provider's alert (mitigation: verified domains only, agreed check window, written disclosure of what is sent, alert contact).
+- Copy outruns the build (mitigation: the claims checklist in the copy file and OT-14).
+
+**First test and kill criteria (from `PRODUCT-IDEAS.md` P-06):** sell 3 pilot reviews by hand on the existing pipeline with a manual report. Stop if fewer than 2 of 5 prospects would pay £149 a month, or if a quarterly report takes more than 4 analyst hours.
+
+### Website Copy
+
+Customer-facing copy is in `marketing/17-lookout-managed-exposure-review.md` (rewritten 2026-10-31): landing section, pitch, features, "What Lookout sends to your systems", plans, "Why choose us", FAQ and a claims checklist.
+
+Rules it follows:
+- Brand voice: professional, direct and accessible (`marketing/02-branding.md`). No 24/7, SOC, SLA or certification claims.
+- No tool names. Categories of check only, and never OpenVAS or Nikto until their integration tests pass in CI.
+- A plain disclosure that the checks send active traffic, including the five login submissions, in place of "we only look".
+- "Not a penetration test" stated on the landing section, in the FAQ and in the plan table's small print.
+- Items that depend on unmerged work are marked **[VERIFY]** and must be cut or reworded if not true at launch.
+- Canonical host `https://www.hebridescyber.co.uk`.
+
+### Owner To-Dos
+
+Already raised (2026-10-30): OT-33 name and prices, OT-34 six Stripe prices, OT-35 ToS wording, OT-36 where OpenVAS is hosted. Added 2026-10-31 (OT-38 to OT-41 are claimed by open PR #157, and OT-46 and OT-47 by #158):
+
+- **OT-42:** approve the tier limits: analyst-hour caps, asset limits, the monthly onboarding cap and which dashboard features each Lookout plan grants.
+- **OT-43:** approve the traffic disclosure in the copy and decide whether the base suite's five login submissions stay on for Lookout customers; confirm professional indemnity cover extends to an advisory review service.
+- **OT-44:** review the restricted nuclei tag lists in PR #144 before Lookout launches.
+- **OT-45:** decide on a pilot-first launch (Q5) and line up the first five pilot prospects; record the kill-criteria result.
+
+### Implementation Steps
+
+In order. Each step lands as its own PR unless noted.
+
+1. **Merge PR #144** (`exposure` profile, nuclei restrictions, ATT&CK and CWE refs) after OT-44.
+2. **Merge PR #152** (ZAP passive-only under `exposure`). Update the Integration Notes row and the copy's feature list in the same change.
+3. **Metadata in `exposure`** (unclaimed, small): add gospider and `metadataLeak` to `EXPOSURE_TOOLS`, extend the profile tests, and update `SCANNER-INVENTORY.md`. Both already have tests.
+4. **Pilot (manual, no code):** three to five customers on the `exposure` profile via a monitored target, reports from the executive report plus a templated cover document. Log analyst hours per report. Decide go or stop against the kill criteria (OT-45).
+5. **Plan plumbing (step 8):** `lookout_essentials` and `lookout_assured` in `planAccess.ts` and `scanCadence.ts`; six `PRICE_IDS` entries and env vars in `create-checkout-session.ts`; webhook handling; Lookout targets forced to the `exposure` profile; pricing-page and checkout tests. Needs OT-34 and OT-42.
+6. **Site:** `Service` entry in `src/app/services/page.tsx`, optional landing card, terms §2 (OT-35). Copy from `marketing/17`, after the claims checklist passes (OT-14).
+7. **Report builder** (only if the pilot passes): stored analyst notes per period, the cover and scope page, accepted-risk section and method appendix in the executive report.
+8. **"What to log" appendix** (Assured): add `detectionLinks` to the `attackRefs` map, link-only.
+9. **OpenVAS prototype and Nikto wrapper** (later phase, unclaimed): safe-check configuration fixed in the wrapper, real-binary integration tests in CI, inventory entries. Copy names them only after their tests pass.
 
 ## Steps
 
@@ -207,6 +445,8 @@ Notes:
 
 ### 4. Write the product concept
 
+**Done 2026-10-31:** see "Product Concept", "Target Customer" and "Pricing & Tiers" above.
+
 Target: `hebridescyber-app/docs/DEFENSIVE-ASSESSMENT-PLAN.md`, in a section of its own.
 
 **Name:**
@@ -222,7 +462,7 @@ Target: `hebridescyber-app/docs/DEFENSIVE-ASSESSMENT-PLAN.md`, in a section of i
 **How it differs from the scanner subscriptions:**
 - The scanner is self-serve: dashboard alerts, per site.
 - Lookout is managed and organisation-wide:
-  - the whole external estate (domains, subdomains and IPs found via Amass)
+  - the whole external estate (domains, subdomains and IPs from subfinder and certificate transparency; Amass was rejected, see step 3)
   - analyst triage and false-positive removal
   - a business-impact report
   - a remediation call
@@ -245,6 +485,8 @@ Target: `hebridescyber-app/docs/DEFENSIVE-ASSESSMENT-PLAN.md`, in a section of i
 Always cap analyst hours per tier and write the cap down.
 
 ### 5. Define the service workflow and reporting
+
+**Done 2026-10-31 (design):** see "Service Workflow", "Reporting Structure" and "Integration Notes" above. The code half is draft PR #144.
 
 **Workflow:**
 - **Intake:** signed authorisation (ToS §4), asset list, domain/IP verification, and a contact for alerts.
@@ -283,11 +525,15 @@ Always cap analyst hours per tier and write the cap down.
 - CLAUDE.md rule 15: any tool in a profile needs a real-binary `*.integration.test.ts` in CI. nmap, zap and arjun have one; real-binary integration tests exist today for nmap, networkExposure (naabu+nmap), httpx (`httpProbe`), nuclei and zap. **deepTls (testssl.sh) and subdomains (subfinder) have none**, so either add tests or leave them out of the first release of the profile.
 
 ### 6. Write the business case (in the plan doc)
+
+**Done 2026-10-31:** see "Business Case" above.
 - **Why SMEs buy it:** compliance and insurance pressure, no in-house expertise, and they want a human answer rather than a dashboard. It is cheaper than a one-off pen test (£800 to £1,800) and it recurs.
 - **How it complements the scanner:** it's an upsell path from Pro/Agency and reuses the same pipeline and reports. Scanner customers who outgrow self-serve move to Lookout.
 - **Overhead, stated honestly:** automation does the detection, but analyst time is real. Cap the hours per tier, template the reports, and limit how many customers are onboarded per month. Don't claim "zero overhead".
 
 ### 7. Draft website copy
+
+**Done 2026-10-31:** rewritten in `marketing/17-lookout-managed-exposure-review.md`; see "Website Copy" above.
 - Write the copy to `marketing/17-lookout-managed-exposure-review.md`:
   - landing section (headline, subhead, CTA)
   - a pitch paragraph of 60 to 90 words
@@ -304,6 +550,8 @@ Always cap analyst hours per tier and write the cap down.
 - Stripe: add `PRICE_IDS` entries and env vars for each tier and period in `create-checkout-session.ts`, add `lookout_essentials` and `lookout_assured` to the plan type and `planAccess.ts`, handle them in `webhook.ts`, and extend `pricing-checkout.spec.ts`. The owner creates the Stripe prices first (OT item).
 
 ### 9. Owner to-dos
+
+**Done:** OT-33 to OT-36 (2026-10-30) and OT-42 to OT-45 (2026-10-31); see "Owner To-Dos" above.
 Add OT items to `hebridescyber-app/docs/OWNER-TODO.md`:
 - approve name and prices
 - decide Q1 (gating for OpenVAS and Nikto)
