@@ -13,6 +13,10 @@
 // - White label: with branding set, "Hebrides Cyber" does not appear anywhere
 //   (the compliance disclaimer is rewritten, and the footer carries the
 //   agency's name). Without branding the default identity is shown.
+// - Defensive context: each finding names the CWE weakness and the MITRE
+//   ATT&CK technique an adversary could use against it (attackMap.ts), as
+//   IDs and links only, with MITRE's attribution. Scans stored before that
+//   field existed are mapped here from their checkId.
 // - Escaping: every value is HTML-escaped including quotes, and a logo is only
 //   used if it is an https URL (the report is rendered by a headless browser).
 import type { Finding } from "./scanners";
@@ -21,6 +25,7 @@ import { COMPLIANCE_REPORT_DISCLAIMER, generateComplianceReport, withComplianceR
 import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
 import { confirmedProof } from "./proofEvidence";
+import { ATTACK_ATTRIBUTION, getAttackRefs, getCweIds } from "./scanners/attackMap";
 import { evidenceSummary, readEvidence } from "./findingEvidence";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
@@ -97,6 +102,11 @@ export function ratingFor(score: number | null): { label: string; colour: string
 
 const severityRank = (s: Finding["severity"]) => SEVERITY_ORDER.indexOf(s);
 
+/** CWE ids and ATT&CK techniques for a finding, falling back to the checkId for scans stored before the fields existed. */
+export function findingRefs(f: Finding): { cwe: string[]; attack: NonNullable<Finding["attackRefs"]> } {
+  return { cwe: f.cwe ?? getCweIds(f.checkId), attack: f.attackRefs ?? getAttackRefs(f.checkId) };
+}
+
 /** Most urgent first: severity, then confirmed-exploitable, then known-exploited, then likelihood of exploitation, then easiest fix. */
 export function prioritise(findings: Finding[]): Finding[] {
   const effort = ["trivial", "easy", "moderate", "hard"];
@@ -154,6 +164,17 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   const e = escapeHtml;
   const badge = (s: Finding["severity"]) => `<span class="sev" style="background:${SEVERITY_COLOUR[s]}">${e(s)}</span>`;
   const effort = (f: Finding) => (f.fixDifficulty ? e(EFFORT_LABEL[f.fixDifficulty]) : "—");
+  const refIds = (f: Finding) => {
+    const { cwe, attack } = findingRefs(f);
+    return [...cwe, ...attack.map((a) => a.id)].map(e).join(", ") || "—";
+  };
+  const techniqueLine = (f: Finding) => {
+    const { cwe, attack } = findingRefs(f);
+    if (!attack.length && !cwe.length) return "";
+    const parts = [...attack.map((a) => `<a href="${e(a.url)}">${e(a.id)}</a> ${e(a.name)}`), ...cwe.map(e)];
+    return `<p class="muted refs"><b>Why it matters:</b> ${parts.join(" · ")}</p>`;
+  };
+  const usesAttack = open.some((f) => findingRefs(f).attack.length > 0);
 
   const countChips = SEVERITY_ORDER.map((s) => `<div class="chip"><b style="color:${SEVERITY_COLOUR[s]}">${counts[s]}</b><span>${e(s)}</span></div>`).join("");
 
@@ -165,6 +186,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
             <div class="pb">
               <div>${badge(f.severity)} <b>${e(f.title)}</b>${confirmedProof(f) ? ' <span class="kev">confirmed exploitable</span>' : ""}${f.threatIntel?.knownExploited ? ' <span class="kev">actively exploited</span>' : ""}</div>
               <p>${e(plainText(f.detail, DETAIL_CHARS))}</p>
+              ${techniqueLine(f)}
               ${readEvidence(f.evidence) ? `<p class="ev"><b>Evidence:</b> <code>${e(evidenceSummary(readEvidence(f.evidence)))}</code></p>` : ""}
               ${f.remediation ? `<p class="fix"><b>How to fix:</b> ${e(plainText(f.remediation, FIX_CHARS))} <i>(effort: ${effort(f)})</i></p>` : ""}
             </div>
@@ -174,7 +196,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
     : `<p>No open findings above informational level were recorded.</p>`;
 
   const rows = ordered
-    .map((f) => `<tr><td>${badge(f.severity)}</td><td>${e(f.title)}</td><td>${e(plainText(f.detail, DETAIL_CHARS))}${readEvidence(f.evidence) ? `<br><code class="ev">${e(evidenceSummary(readEvidence(f.evidence)))}</code>` : ""}</td><td>${effort(f)}</td></tr>`)
+    .map((f) => `<tr><td>${badge(f.severity)}</td><td>${e(f.title)}</td><td>${e(plainText(f.detail, DETAIL_CHARS))}${readEvidence(f.evidence) ? `<br><code class="ev">${e(evidenceSummary(readEvidence(f.evidence)))}</code>` : ""}</td><td>${refIds(f)}</td><td>${effort(f)}</td></tr>`)
     .join("");
 
   const frameworkRows = compliance.frameworks
@@ -234,7 +256,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   .sev { display: inline-block; color: #fff; text-transform: uppercase; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
   .kev { color: #7f1d1d; font-weight: bold; font-size: 10px; }
   .priority { display: flex; gap: 10px; margin: 10px 0; page-break-inside: avoid; } .pn { font-size: 18px; font-weight: bold; color: #0b3d5b; width: 20px; }
-  .pb p { margin: 3px 0; } .fix { background: #f1f5f8; padding: 6px 8px; border-radius: 4px; }
+  .pb p { margin: 3px 0; } .refs { font-size: 10px; } .refs a { color: #0b3d5b; } .fix { background: #f1f5f8; padding: 6px 8px; border-radius: 4px; }
   .ev, .ev code, code.ev { font-size: 10px; color: ${REPORT_MUTED}; word-break: break-all; }
   table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e9ee; vertical-align: top; font-size: 11px; }
   th { background: #f1f5f8; } tr { page-break-inside: avoid; }
@@ -266,8 +288,9 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   <p class="muted">${e(disclaimer)}</p>
 
   <h2>All open findings (${ordered.length})</h2>
-  <table><thead><tr><th>Severity</th><th>Issue</th><th>Detail</th><th>Effort to fix</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="4">No open findings.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Severity</th><th>Issue</th><th>Detail</th><th>CWE / ATT&amp;CK</th><th>Effort to fix</th></tr></thead>
+  <tbody>${rows || '<tr><td colspan="5">No open findings.</td></tr>'}</tbody></table>
+  ${usesAttack ? `<p class="muted">ATT&amp;CK techniques show how an adversary could use an exposure, to help decide what to fix first. ${e(ATTACK_ATTRIBUTION)}</p>` : ""}
 
   ${acceptedHtml}
   ${incompleteHtml}
