@@ -10,4 +10,4 @@ it came from a real AWS account.
 
 Replace it with a capture from a real run (`prowler aws --role <arn>
 --external-id <id> -s iam -M json-ocsf --ignore-exit-code-3`, then redact
-account ids) as soon as one exists; see OT-38 in `docs/OWNER-TODO.md`.
+account ids) as soon as one exists; see OT-42 in `docs/OWNER-TODO.md`.
