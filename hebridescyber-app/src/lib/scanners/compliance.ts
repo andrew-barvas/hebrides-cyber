@@ -385,6 +385,7 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "metadataLeak.internal-ip": [OWASP_A05, CIS_3, ISO_A9, NIS2_ART21],
   "metadataLeak.path": [OWASP_A05, CIS_3, ISO_A9],
   "metadataLeak.author": [OWASP_A05, CIS_3],
+  "metadataLeak.gps": [OWASP_A05, CIS_3],
 
   // --- ZAP AJAX Spider ---
   "zapAjaxSpider.hidden-endpoint": [OWASP_A05, CIS_3],
