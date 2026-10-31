@@ -47,7 +47,7 @@ import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
 import { runBadsecrets } from "../worker/tools/badsecrets";
 import { runKatana } from "../worker/tools/katana";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, METADATA_LEAK_GPS, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
 import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
@@ -742,12 +742,13 @@ async function runExtendedTools(
           path: METADATA_LEAK_PATH,
           author: METADATA_LEAK_AUTHOR,
           software: METADATA_LEAK_SOFTWARE,
+          gps: METADATA_LEAK_GPS,
         };
         for (const f of metadataResult.findings) {
           findings.push({
             checkId: `metadataLeak.${f.type}:${f.url}`,
-            severity: f.type === "internal-ip" ? "medium" : f.type === "email" ? "low" : "info",
-            title: `[Metadata] ${f.type === "email" ? "Email address" : f.type === "internal-ip" ? "Internal IP address" : f.type === "path" ? "Filesystem path" : f.type === "author" ? "Author name" : "Software version"} leaked in document`,
+            severity: f.type === "internal-ip" ? "medium" : f.type === "email" || f.type === "gps" ? "low" : "info",
+            title: `[Metadata] ${f.type === "email" ? "Email address" : f.type === "internal-ip" ? "Internal IP address" : f.type === "path" ? "Filesystem path" : f.type === "author" ? "Author name" : f.type === "gps" ? "GPS location" : "Software version"} leaked in document`,
             detail: `Found "${f.value}" in metadata of ${f.url}`,
             remediation: remediationMap[f.type],
           });
