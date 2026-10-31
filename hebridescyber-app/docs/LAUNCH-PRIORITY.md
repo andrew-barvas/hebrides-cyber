@@ -129,7 +129,7 @@ exists, and what changed.
 | Evidence on more probe findings | **Extended:** header findings now carry the response they judged (redacted security headers, no body, never Set-Cookie). Backend/Firebase, GraphQL and replay are still open (`NEXT-STEPS.md` Sprint 4) |
 | Evidence in finding card, PDF and CSV | Already there since Sprint 4 (2026-10-30) |
 | De-duplication across tools | Already there: `findingConsolidation.ts` (`EQUIVALENCES`, corroborating tools on the card). A numeric confidence score was not added: nothing defines what it would measure |
-| SAML SSO, organisations, RBAC | Teams and roles exist (`/api/team`). SAML is still a real build with no customer asking, so it is now an owner decision (OT-38), not scheduled work |
+| SAML SSO, organisations, RBAC | Teams and roles exist (`/api/team`). SAML is still a real build with no customer asking, so it is now an owner decision (OT-42), not scheduled work |
 | Signed-in crawl status and "credential not accepted" in the report | **Fixed:** a rejected saved login was recorded under `extended.authCheck.crawl` but authCheck reported "checked", so the report and PDF showed nothing. `signedInCrawlStatus.ts` now drives a "signed-in crawl" card on the report and an entry in the PDF's "Checks that did not finish" |
 | CI gate that fails only on new findings | Already there: the Action's `fail-on` applies to findings new since the previous scan (`action/action.yml`). Publishing it is OT-20 |
 | Remediation PRs, preview mode | Fix PRs (`generate-fix-pr.ts`, repo-ownership check) and the remediation pack exist. Further automation was not started |
