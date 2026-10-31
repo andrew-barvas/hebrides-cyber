@@ -27,6 +27,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Alert } from "@/components/ui/alert";
 import { aiTriageView, aiVerifiedTitle, confirmedProof } from "@/lib/proofEvidence";
 import { readEvidence, type FindingEvidence } from "@/lib/findingEvidence";
+import type { SignedInCrawlStatus } from "@/lib/signedInCrawlStatus";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -1135,6 +1136,35 @@ const INTEGRITY_META: Record<ScriptIntegrity, { label: string; text: string }> =
  * inventory lives in the raw results, which the public share page never
  * receives. Authorising an origin happens on its finding, not here.
  */
+/**
+ * Whether the signed-in crawl ran (signedInCrawlStatus.ts). Rendered only when
+ * the scan attempted one, so a rejected saved login is said out loud rather
+ * than reading as "no signed-in findings".
+ */
+export function SignedInCrawlSection({ status }: { status: SignedInCrawlStatus | null }) {
+  if (!status) return null;
+  return (
+    <Card className="print:border-slate-300 print:bg-white">
+      <CardHeader className="mb-2">
+        <CardTitle>signed-in crawl</CardTitle>
+      </CardHeader>
+      {status.state === "failed" ? (
+        <Alert variant="warning" title="Signed-in pages were not checked this scan">
+          <p className="text-xs">{status.note}</p>
+        </Alert>
+      ) : status.state === "partial" ? (
+        <Alert variant="warning" title={`Signed-in crawl covered ${status.pages} page${status.pages === 1 ? "" : "s"}, not the whole site`}>
+          <p className="text-xs">{status.note}</p>
+        </Alert>
+      ) : (
+        <p className="text-sm text-cybertext/70">
+          Signed in with your saved credential and checked {status.pages} page{status.pages === 1 ? "" : "s"}.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 export function ScriptInventorySection({ inventory }: { inventory: ScriptInventoryResult | undefined }) {
   if (!inventory) return null; // scan stored before the inventory existed
 
