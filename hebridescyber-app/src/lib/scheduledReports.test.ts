@@ -112,7 +112,7 @@ describe("renderScheduledReportHtml", () => {
     expect(risky).toBeGreaterThan(-1);
     expect(risky).toBeLessThan(good);
     expect(good).toBeLessThan(fresh);
-    expect(html).toContain("Not scanned yet: no results to report.");
+    expect(html).toContain("No scan results yet: nothing to report.");
   });
 
   it("flags a scan older than the staleness window, and only that one", () => {
@@ -121,13 +121,15 @@ describe("renderScheduledReportHtml", () => {
     expect(html.indexOf("may be out of date")).toBeLessThan(html.indexOf("https://good.example"));
   });
 
-  it("shows the headline figures and says the counts are untriaged", () => {
+  it("shows the headline figures and says the counts are open findings only", () => {
     expect(html).toContain("<b>66</b>");
     expect(html).toContain("average of 2 scanned sites");
     expect(html).toContain("Covers:</b> all monitored sites");
     expect(html).toContain("Frequency:</b> weekly");
     expect(html).toContain("Report date:</b> 2026-10-27");
-    expect(html).toContain("before triage");
+    expect(html).toContain("open findings in each site's latest completed scan");
+    expect(html).toContain("False positives and accepted or snoozed risks are left out");
+    expect(html).not.toContain("before triage");
   });
 
   it("escapes every stored value", () => {

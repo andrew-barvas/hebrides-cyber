@@ -2,6 +2,7 @@
 // parallel where possible. Exports the same public API surface as the old
 // single-file scanners.ts so run-scan/index.ts needs no import changes.
 import { checkTls, type TlsResult } from "./tls";
+import type { FindingEvidence } from "../findingEvidence";
 import { checkHeaders, type HeadersResult } from "./headers";
 import { checkDns, type DnsResult } from "./dns";
 import { checkExposure, type ExposureResult } from "./exposure";
@@ -174,6 +175,13 @@ export type Finding = {
     /** That CVE's EPSS percentile (0–1) among all scored CVEs. */
     epssPercentile?: number;
   };
+  /**
+   * The request/response that produced this finding, redacted and bounded at
+   * capture (src/lib/findingEvidence.ts). Set by the path-probing checks
+   * (exposure, directory listing) today. Absent means none was recorded,
+   * never that the finding lacks a basis.
+   */
+  evidence?: FindingEvidence;
   /** Arbitrary metadata for enrichment passes (proof-of-exploit, scanner-specific context). */
   metadata?: Record<string, unknown>;
 };
@@ -530,7 +538,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // --- Exposure -------------------------------------------------------------
   if (results.exposure.status === "checked") {
     for (const file of results.exposure.exposed) {
-      findings.push({ checkId: `exposure.exposed-file:${file.path}`, severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE, metadata: { path: file.path } });
+      findings.push({ checkId: `exposure.exposed-file:${file.path}`, severity: file.severity, title: `${file.name} accessible at ${file.path}`, detail: file.hint, remediation: FIX.EXPOSED_FILE, metadata: { path: file.path }, ...(file.evidence ? { evidence: file.evidence } : {}) });
     }
     if (!results.exposure.securityTxt) {
       findings.push({ checkId: "exposure.no-security-txt", severity: "info", title: "No security.txt found", detail: "Add /.well-known/security.txt with a contact address so researchers can report vulnerabilities.", remediation: FIX.SECURITY_TXT_MISSING });
@@ -549,6 +557,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
             ? `Autoindex is on — approximately ${dir.fileCount} entr${dir.fileCount === 1 ? "y" : "ies"} browsable without authentication.`
             : "Autoindex is on — the directory's contents are browsable without authentication.",
         remediation: FIX.DIRECTORY_LISTING,
+        ...(dir.evidence ? { evidence: dir.evidence } : {}),
       });
     }
   }

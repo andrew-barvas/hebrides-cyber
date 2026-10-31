@@ -175,6 +175,38 @@ clients today, and what they'd pay per client.
 **Kill criteria**: drop it if fewer than 2 of 5 say they'd switch their
 client reporting to it.
 
+## P-06 — Lookout: managed exposure review
+
+**Status: idea.** Detailed design in
+[`DEFENSIVE-ASSESSMENT-PLAN.md`](DEFENSIVE-ASSESSMENT-PLAN.md); copy draft in
+`../../marketing/17-lookout-managed-exposure-review.md`.
+**The product**: a managed, defensive review of a business's whole external
+estate (domains, subdomains, open services). Non-injecting scanning on verified
+domains, an analyst-written report in business language mapped to MITRE ATT&CK
+techniques, a review call, and a re-check of fixes on the higher plan.
+**Who pays**: UK SMEs with no security staff, triggered by Cyber Essentials, an
+insurance questionnaire or a customer questionnaire. Essentials £149/mo and
+Assured £299/mo (owner choice 2026-10-30), with quarterly and annual prices.
+**Problem**: the self-serve scanner gives a dashboard per site; these buyers
+want an organisation-wide picture and a person to explain it.
+**What we reuse**: the scheduler and workers, nmap/naabu, httpx, testssl.sh,
+nuclei, the report generators, compliance mapping, finding lifecycle and triage.
+**What's new**: an `exposure` scan profile (needs a migration widening the
+`scan_profile` CHECK constraints), a restricted nuclei tag list, a passive-only
+ZAP mode, OpenVAS and Nikto wrappers, an `attackRefs` map, report sections,
+quarterly and annual Stripe billing. Build items to be written as `E-nn` if
+greenlit.
+**Effort**: L. **Category**: code, plus money/time (Stripe prices, solicitor,
+possibly a host for OpenVAS) and solo-blocked (analyst hours).
+**Risks**: analyst time does not scale; OpenVAS hosting; Nikto is noisy;
+checkout before a pilot skips the cheap demand test.
+**First test**: sell 3 pilot reviews by hand using the existing scanner and a
+manually written report.
+**Kill criteria**: drop it if fewer than 2 of 5 prospects would pay £149/mo, or
+a quarterly report takes more than 4 analyst hours.
+**Overlaps**: P-04 (insurance pack) is also a Lookout add-on, so build it once
+as P-04; P-05 (agency workspaces) overlaps Agency.
+
 ---
 
 ## Emerging-threat intake

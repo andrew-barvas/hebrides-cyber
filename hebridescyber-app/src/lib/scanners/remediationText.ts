@@ -2061,6 +2061,11 @@ export const METADATA_LEAK_SOFTWARE = `Software version information was found in
 metadata. This reveals the tools and versions used internally. Strip
 document metadata before publishing.`;
 
+export const METADATA_LEAK_GPS = `GPS coordinates were found in the EXIF metadata of a publicly accessible image.
+They show where the photo was taken, which can be a home address or a
+non-public site. Strip location data before publishing, for example with
+\`exiftool -gps:all= <file>\` or your camera's "remove location" option.`;
+
 export const HIDDEN_ENDPOINT_DISCOVERED = `A hidden endpoint was discovered via JavaScript-aware crawling (ZAP AJAX
 Spider) that was not found by the traditional HTML spider. Review whether
 this endpoint should be publicly accessible and ensure it enforces

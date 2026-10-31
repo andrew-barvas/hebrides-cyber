@@ -8,6 +8,7 @@ import { canDetectFromResults, hostOf } from "./findingLifecycle";
 import type { TriageIndex, TriageState } from "./findingTriage";
 import type { Finding } from "./scanners";
 import { confirmedProof } from "./proofEvidence";
+import { readEvidence, type FindingEvidence } from "./findingEvidence";
 
 /** A finding's active triage (findingTriage.ts) as the API reports it. */
 export type ApiFindingTriage = { state: TriageState; reason: string; expires_at: string | null; triaged_at: string };
@@ -43,6 +44,8 @@ export type ScanReport = {
     corroborated_by?: Array<{ tool: string; check_id: string; title: string }>;
     /** Present only when a follow-up check reproduced the issue (proofOfExploit.ts). */
     proof_of_exploit?: { confirmed: true; evidence: string; validated_at: string | null };
+    /** The redacted request/response behind the finding (findingEvidence.ts). Omitted when none was recorded. */
+    evidence?: FindingEvidence;
     fix_difficulty?: string;
     estimated_fix_minutes?: number;
     // CISA KEV + FIRST EPSS for CVE-backed findings (scanners/threatIntel.ts).
@@ -176,6 +179,7 @@ export function buildScanReport(
       corroborated_by: f.corroboratedBy?.length
         ? f.corroboratedBy.map((c) => ({ tool: c.tool, check_id: c.checkId, title: c.title }))
         : undefined,
+      evidence: readEvidence(f.evidence),
       fix_difficulty: f.fixDifficulty,
       estimated_fix_minutes: f.estimatedFixMinutes,
       threat_intel: f.threatIntel
