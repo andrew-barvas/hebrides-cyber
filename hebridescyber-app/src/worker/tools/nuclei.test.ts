@@ -95,7 +95,7 @@ describe("buildNucleiArgs", () => {
 });
 
 describe("non-intrusive mode (exposure profile)", () => {
-  const PAYLOAD_TAGS = ["default-login", "ssrf", "oast", "sqli", "xss", "rce", "lfi", "fuzz", "dos", "intrusive", "bruteforce"];
+  const PAYLOAD_TAGS = ["default-login", "ssrf", "oast", "sqli", "xss", "rce", "lfi", "fuzz", "dos", "intrusive", "bruteforce", "redirect", "crlf", "smuggling", "cmdi", "oob"];
 
   it("drops every payload-sending tag from the baseline, keeping technology tags", () => {
     const tags = buildTagArgument(["WordPress"], { nonIntrusive: true }).split(",");
