@@ -1,0 +1,388 @@
+[
+  {
+    "message": "Inline Policy ci-deploy attached to user deploy-bot allows privilege escalation using the following actions: {'iam:PassRole', 'lambda:CreateFunction', 'lambda:InvokeFunction'}",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_inline_policy_allows_privilege_escalation-123456789012-us-east-1-ci-deploy",
+      "title": "Ensure no IAM inline policies allow privilege escalation",
+      "desc": "Ensure no IAM inline policies allow privilege escalation",
+      "name": "ci-deploy",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status_code": "FAIL",
+    "status_detail": "Inline Policy ci-deploy attached to user deploy-bot allows privilege escalation using the following actions: {'iam:PassRole', 'lambda:CreateFunction', 'lambda:InvokeFunction'}",
+    "risk_details": "An attacker with these permissions can escalate to administrator.",
+    "remediation": {
+      "desc": "Grant least privilege and avoid wildcard permissions on iam:PassRole.",
+      "references": [
+        "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#grant-least-privilege"
+      ]
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:user/deploy-bot/policy/ci-deploy",
+        "name": "ci-deploy",
+        "type": "AwsIamPolicy",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_inline_policy_allows_privilege_escalation",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  },
+  {
+    "message": "Customer Managed IAM Policy DevPolicy allows for privilege escalation using the following actions: {'iam:CreatePolicyVersion'}",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_policy_allows_privilege_escalation-123456789012-us-east-1-DevPolicy",
+      "title": "Ensure no Customer Managed IAM policies allow actions that may lead into Privilege Escalation",
+      "desc": "Ensure no Customer Managed IAM policies allow actions that may lead into Privilege Escalation",
+      "name": "DevPolicy",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status_code": "FAIL",
+    "status_detail": "Customer Managed IAM Policy DevPolicy allows for privilege escalation using the following actions: {'iam:CreatePolicyVersion'}",
+    "risk_details": "",
+    "remediation": {
+      "desc": "Grant least privilege.",
+      "references": []
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:policy/DevPolicy",
+        "name": "DevPolicy",
+        "type": "AwsIamPolicy",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_policy_allows_privilege_escalation",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  },
+  {
+    "message": "Customer Managed IAM Policy ReadOnlyAudit does not allow privilege escalation",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_policy_allows_privilege_escalation-123456789012-us-east-1-ReadOnlyAudit",
+      "title": "Ensure no Customer Managed IAM policies allow actions that may lead into Privilege Escalation",
+      "desc": "Ensure no Customer Managed IAM policies allow actions that may lead into Privilege Escalation",
+      "name": "ReadOnlyAudit",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status_code": "PASS",
+    "status_detail": "Customer Managed IAM Policy ReadOnlyAudit does not allow privilege escalation",
+    "risk_details": "",
+    "remediation": {
+      "desc": "",
+      "references": []
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:policy/ReadOnlyAudit",
+        "name": "ReadOnlyAudit",
+        "type": "AwsIamPolicy",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_policy_allows_privilege_escalation",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  },
+  {
+    "message": "MFA is enabled for root account.",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_root_mfa_enabled-123456789012-us-east-1-<root_account>",
+      "title": "Ensure MFA is enabled for the root account",
+      "desc": "Ensure MFA is enabled for the root account",
+      "name": "<root_account>",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 5,
+    "severity": "Critical",
+    "status_code": "PASS",
+    "status_detail": "MFA is enabled for root account.",
+    "risk_details": "",
+    "remediation": {
+      "desc": "",
+      "references": []
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:root",
+        "name": "<root_account>",
+        "type": "AwsIamUser",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_root_mfa_enabled",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  },
+  {
+    "message": "User alice has Console Password enabled but MFA disabled.",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_user_mfa_enabled_console_access-123456789012-us-east-1-alice",
+      "title": "Ensure multi-Factor Authentication (MFA) is enabled for all IAM users that have a console password.",
+      "desc": "Ensure multi-Factor Authentication (MFA) is enabled for all IAM users that have a console password.",
+      "name": "alice",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 3,
+    "severity": "Medium",
+    "status_code": "FAIL",
+    "status_detail": "User alice has Console Password enabled but MFA disabled.",
+    "risk_details": "",
+    "remediation": {
+      "desc": "Enable MFA for the user.",
+      "references": []
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:user/alice",
+        "name": "alice",
+        "type": "AwsIamUser",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_user_mfa_enabled_console_access",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  },
+  {
+    "message": "Manual check",
+    "activity_id": 1,
+    "activity_name": "Create",
+    "category_uid": 2,
+    "category_name": "Findings",
+    "class_uid": 2004,
+    "class_name": "Detection Finding",
+    "finding_info": {
+      "uid": "prowler-aws-iam_password_policy_reuse_24-123456789012-us-east-1-password_policy",
+      "title": "Ensure IAM password policy prevents password reuse",
+      "desc": "Ensure IAM password policy prevents password reuse",
+      "name": "password_policy",
+      "types": [
+        "IAM"
+      ]
+    },
+    "severity_id": 3,
+    "severity": "Medium",
+    "status_code": "MANUAL",
+    "status_detail": "Manual check",
+    "risk_details": "",
+    "remediation": {
+      "desc": "",
+      "references": []
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:iam::123456789012:password-policy",
+        "name": "password_policy",
+        "type": "AwsIamPasswordPolicy",
+        "region": "us-east-1",
+        "cloud_partition": "aws",
+        "group": {
+          "name": "iam"
+        },
+        "labels": []
+      }
+    ],
+    "metadata": {
+      "event_code": "iam_password_policy_reuse_24",
+      "product": {
+        "uid": "prowler",
+        "name": "Prowler",
+        "vendor_name": "Prowler",
+        "version": "5.47.0"
+      },
+      "profiles": [
+        "cloud",
+        "datetime"
+      ]
+    },
+    "cloud": {
+      "provider": "aws",
+      "region": "us-east-1",
+      "account": {
+        "uid": "123456789012",
+        "name": "prod"
+      }
+    },
+    "unmapped": {
+      "related_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_manage.html"
+    }
+  }
+]
