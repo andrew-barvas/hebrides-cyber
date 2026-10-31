@@ -189,8 +189,17 @@ resource "azurerm_container_registry" "main" {
   # would remove this, but is disproportionate infra for one deploy
   # pipeline at this scale. Revisit if a second consumer of this registry
   # ever appears.
-  # checkov:skip=CKV_AZURE_163: retention policy requires Premium SKU — Basic is appropriate for this single-app deploy pipeline
+  # checkov:skip=CKV_AZURE_163: image vulnerability scanning is Microsoft Defender for Containers, a paid per-image plan, not a registry setting — cost decision OT-37
   # checkov:skip=CKV_AZURE_233: zone redundancy requires Premium SKU — overkill for a single-region hobby-scale registry
+  # The checks below all need the Premium SKU (roughly 10x Basic's monthly
+  # price). Basic stays until the owner decides otherwise: OT-37 in
+  # docs/OWNER-TODO.md. Each lists what Premium would buy.
+  # checkov:skip=CKV_AZURE_139: Basic SKU: disabling public network access needs Premium plus a private endpoint, and the Container App pulls over the public endpoint (no VNet) — owner decision OT-37
+  # checkov:skip=CKV_AZURE_167: Basic SKU: untagged-manifest retention policy needs Premium; deploy-containerapp.yml pushes tagged images only — owner decision OT-37
+  # checkov:skip=CKV_AZURE_165: Basic SKU: geo-replication needs Premium, and the Container App runs in one region — owner decision OT-37
+  # checkov:skip=CKV_AZURE_166: Basic SKU: image quarantine needs Premium plus a scanner to release images — owner decision OT-37
+  # checkov:skip=CKV_AZURE_237: Basic SKU: dedicated data endpoints need Premium and only matter behind a firewall, which this registry doesn't have — owner decision OT-37
+  # checkov:skip=CKV_AZURE_164: Basic SKU: content trust (signed images) needs Premium, and Microsoft is retiring Docker Content Trust in favour of Notation — owner decision OT-37
 }
 
 resource "azurerm_log_analytics_workspace" "container_apps" {
