@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, checkRateLimitMock, logAuditEventMock, recordLoginMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, checkRateLimitMock, logAuditEventMock, recordLoginMock, isDomainVerifiedMock } = vi.hoisted(() => ({
+  isDomainVerifiedMock: vi.fn(),
   authenticateApiRequestMock: vi.fn(),
   checkRateLimitMock: vi.fn(),
   logAuditEventMock: vi.fn(),
@@ -36,10 +37,11 @@ vi.mock("@/lib/apiAuth", () => ({
 }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
 vi.mock("@/lib/audit", () => ({ logAuditEvent: logAuditEventMock }));
+vi.mock("@/lib/ownership", () => ({ isDomainVerified: isDomainVerifiedMock }));
 vi.mock("@/lib/scanners/loginRecorder", () => ({ recordLogin: recordLoginMock, playwrightLoginRun: vi.fn() }));
 
 import handler from "@/pages/api/account/record-login";
-import { decryptSecret, isEncryptedSecret } from "@/lib/credentialEncryption";
+import { decryptSecret, isEncryptedSecret, sealSecrets } from "@/lib/credentialEncryption";
 
 const TARGET_ID = "11111111-1111-1111-1111-111111111111";
 const OWNER_ID = "22222222-2222-2222-2222-222222222222";
@@ -68,6 +70,7 @@ describe("POST /api/account/record-login", () => {
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true });
     logAuditEventMock.mockReset().mockResolvedValue(undefined);
     recordLoginMock.mockReset();
+    isDomainVerifiedMock.mockReset().mockResolvedValue(true);
   });
 
   it("rejects non-POST methods with 405", async () => {
@@ -185,5 +188,80 @@ describe("POST /api/account/record-login", () => {
     expect(res._getStatusCode()).toBe(503);
     expect(recordLoginMock).not.toHaveBeenCalled();
     expect(upserts).toHaveLength(0);
+  });
+
+  describe("TOTP secret", () => {
+    const SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    function agencyTarget() {
+      queues.monitored_targets = [{ data: { id: TARGET_ID, owner: OWNER_ID, target_url: "https://app.example.com" }, error: null }];
+      queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
+    }
+
+    it("400s an invalid secret before running the browser, without echoing it", async () => {
+      agencyTarget();
+      const { req, res } = mockReqRes("POST", validBody({ totpSecret: "bad secret!" }));
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(400);
+      expect(res._getData()).not.toContain("bad secret!");
+      expect(recordLoginMock).not.toHaveBeenCalled();
+    });
+
+    it("403s when the domain is not verified, before running the browser", async () => {
+      agencyTarget();
+      isDomainVerifiedMock.mockResolvedValue(false);
+      const { req, res } = mockReqRes("POST", validBody({ totpSecret: SECRET }));
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(403);
+      expect(recordLoginMock).not.toHaveBeenCalled();
+      expect(upserts).toHaveLength(0);
+    });
+
+    it("passes the secret to the recorder, stores it encrypted, and never returns or audits it", async () => {
+      agencyTarget();
+      queues.target_auth_credentials = [{ data: null, error: null }];
+      recordLoginMock.mockResolvedValue({ status: "recorded", cookieValue: "session=abc123" });
+      const { req, res } = mockReqRes("POST", validBody({ totpSecret: SECRET }));
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(200);
+      expect(recordLoginMock.mock.calls[0][0]).toMatchObject({ totpSecret: SECRET });
+      expect(isEncryptedSecret(upserts[0].totp_secret)).toBe(true);
+      expect(JSON.stringify(upserts[0].totp_secret)).not.toContain(SECRET);
+      expect(decryptSecret(upserts[0].totp_secret as string)).toBe(SECRET);
+      expect(res._getData()).not.toContain(SECRET);
+      expect(JSON.stringify(logAuditEventMock.mock.calls)).not.toContain(SECRET);
+    });
+
+    it("422s a failed MFA login without saving or leaking the secret", async () => {
+      agencyTarget();
+      recordLoginMock.mockResolvedValue({ status: "error", note: "The MFA step did not complete." });
+      const { req, res } = mockReqRes("POST", validBody({ totpSecret: SECRET }));
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(422);
+      expect(res._getData()).not.toContain(SECRET);
+      expect(upserts).toHaveLength(0);
+      expect(JSON.stringify(logAuditEventMock.mock.calls)).not.toContain(SECRET);
+    });
+
+    it("reuses a stored secret when none is supplied", async () => {
+      agencyTarget();
+      const sealed = sealSecrets({ totp_secret: SECRET }, ["totp_secret"]);
+      queues.target_auth_credentials = [{ data: { totp_secret: sealed.totp_secret }, error: null }];
+      recordLoginMock.mockResolvedValue({ status: "recorded", cookieValue: "session=abc123" });
+      const { req, res } = mockReqRes("POST", validBody());
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(200);
+      expect(recordLoginMock.mock.calls[0][0]).toMatchObject({ totpSecret: SECRET });
+    });
+
+    it("500s, not a silent no-MFA attempt, when the stored secret cannot be decrypted", async () => {
+      agencyTarget();
+      const sealed = sealSecrets({ totp_secret: SECRET }, ["totp_secret"]);
+      queues.target_auth_credentials = [{ data: { totp_secret: sealed.totp_secret }, error: null }];
+      process.env.CREDENTIALS_ENC_KEY = Buffer.alloc(32, 9).toString("base64");
+      const { req, res } = mockReqRes("POST", validBody());
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(500);
+      expect(recordLoginMock).not.toHaveBeenCalled();
+    });
   });
 });

@@ -25,14 +25,17 @@ function fakeSupabase(existingHostnames: string[] = []) {
 }
 
 function fetchMockFor(opts: {
-  crtShEntries?: Array<{ name_value: string }>;
+  crtShEntries?: Array<{ name_value: string; not_before?: string }>;
   crtShOk?: boolean;
+  /** crt.sh answers 200 but with something that is not a certificate list (it sometimes serves an HTML error page). */
+  crtShBody?: string;
   resolvingHosts?: string[]; // hosts that answer an A record on the DNS-over-HTTPS brute-force lookup
   httpOkHosts?: string[]; // hosts that answer the HEAD probe with 200
 }) {
   return vi.fn(async (url: string) => {
     if (url.startsWith("https://crt.sh/")) {
       if (opts.crtShOk === false) return new Response(null, { status: 500 });
+      if (opts.crtShBody !== undefined) return new Response(opts.crtShBody, { status: 200 });
       return new Response(JSON.stringify(opts.crtShEntries ?? []), { status: 200 });
     }
     if (url.startsWith("https://cloudflare-dns.com/")) {
@@ -130,7 +133,98 @@ describe("runEasmDiscovery", () => {
     } as never;
 
     const result = await runEasmDiscovery(brokenClient, "owner-1", "example.com");
-    expect(result).toEqual({ domain: "example.com", assetsDiscovered: 0, newAssets: 0, assets: [] });
+    // `ctRead: false` is the point: the empty result is "could not look", not "nothing there".
+    expect(result).toEqual({ domain: "example.com", assetsDiscovered: 0, newAssets: 0, assets: [], firstCertificates: new Map(), ctRead: false });
+  });
+
+  describe("certificate evidence", () => {
+    beforeEach(() => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    it("returns each hostname's earliest certificate date and says crt.sh was read", async () => {
+      vi.stubGlobal(
+        "fetch",
+        fetchMockFor({
+          crtShEntries: [
+            // api has two certificates; the earliest date is the evidence it is new, not the renewal.
+            { name_value: "api.example.com", not_before: "2026-10-01T09:00:00" },
+            { name_value: "api.example.com\n*.dev.example.com", not_before: "2026-08-01T09:00:00" },
+            { name_value: "elsewhere.other.net", not_before: "2026-10-02T09:00:00" },
+          ],
+        })
+      );
+      const { client } = fakeSupabase([]);
+
+      const result = await runEasmDiscovery(client, "owner-1", "example.com");
+
+      expect(result.ctRead).toBe(true);
+      expect(result.firstCertificates.get("api.example.com")).toBe("2026-08-01T09:00:00");
+      expect(result.firstCertificates.get("dev.example.com")).toBe("2026-08-01T09:00:00"); // wildcard base, lowercased
+      expect(result.firstCertificates.has("elsewhere.other.net")).toBe(false); // outside the domain
+    });
+
+    it("reports a failed lookup as ctRead false, not as an empty success", async () => {
+      vi.stubGlobal("fetch", fetchMockFor({ crtShOk: false }));
+      const { client, upserts } = fakeSupabase([]);
+
+      const result = await runEasmDiscovery(client, "owner-1", "example.com");
+
+      expect(result.ctRead).toBe(false);
+      expect(result.firstCertificates.size).toBe(0);
+      expect(upserts).toHaveLength(0);
+    }, 10_000);
+
+    it("treats a 200 reply that is not a certificate list as a failure (crt.sh serves HTML error pages)", async () => {
+      vi.stubGlobal("fetch", fetchMockFor({ crtShBody: "<html><body>Bad gateway</body></html>" }));
+      const { client } = fakeSupabase([]);
+
+      const result = await runEasmDiscovery(client, "owner-1", "example.com");
+
+      expect(result.ctRead).toBe(false);
+    });
+
+    it("treats a JSON reply that is not an array as a failure too", async () => {
+      vi.stubGlobal("fetch", fetchMockFor({ crtShBody: JSON.stringify({ error: "rate limited" }) }));
+      const { client } = fakeSupabase([]);
+
+      expect((await runEasmDiscovery(client, "owner-1", "example.com")).ctRead).toBe(false);
+    });
+
+    it("keeps the most recently certified hostnames when there are more than the cap, so a new one is never the one cut", async () => {
+      // 250 old hostnames and one brand-new one listed LAST, where a plain slice(0, 200) would drop it.
+      const old = Array.from({ length: 250 }, (_, i) => ({ name_value: `old${String(i).padStart(3, "0")}.example.com`, not_before: "2020-01-01T00:00:00" }));
+      const fresh = { name_value: "brand-new.example.com", not_before: "2026-10-05T00:00:00" };
+      vi.stubGlobal("fetch", fetchMockFor({ crtShEntries: [...old, fresh], httpOkHosts: ["brand-new.example.com"] }));
+      const { client, upserts } = fakeSupabase([]);
+
+      const result = await runEasmDiscovery(client, "owner-1", "example.com");
+
+      expect(result.assetsDiscovered).toBe(200);
+      expect(result.assets.some((a) => a.hostname === "brand-new.example.com")).toBe(true);
+      expect(upserts.some((u) => u.hostname === "brand-new.example.com")).toBe(true);
+    });
+  });
+
+  describe("which URL new rows are stored under", () => {
+    it("stores the monitored site's URL, so a scan of that site's alert can find the rows", async () => {
+      vi.stubGlobal("fetch", fetchMockFor({ crtShEntries: [{ name_value: "api.example.com" }], httpOkHosts: ["api.example.com"] }));
+      const { client, upserts } = fakeSupabase([]);
+
+      await runEasmDiscovery(client, "owner-1", "example.com", { targetUrl: "https://www.example.com" });
+
+      expect(upserts).toHaveLength(1);
+      expect(upserts[0].target_url).toBe("https://www.example.com");
+    });
+
+    it("falls back to https://<domain> for a caller that only knows the domain", async () => {
+      vi.stubGlobal("fetch", fetchMockFor({ crtShEntries: [{ name_value: "api.example.com" }], httpOkHosts: ["api.example.com"] }));
+      const { client, upserts } = fakeSupabase([]);
+
+      await runEasmDiscovery(client, "owner-1", "example.com");
+
+      expect(upserts[0].target_url).toBe("https://example.com");
+    });
   });
 
   it("caps how many newly-discovered hosts get probed and saved in one run", async () => {

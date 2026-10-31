@@ -225,7 +225,13 @@ export function classifyHostnames(
 
 // ---- Message ------------------------------------------------------------------
 
-export type ChangeSet = { site: string; newHostnames: NewHostname[]; dnsChanges: DnsChange[] };
+export type ChangeSet = {
+  site: string;
+  newHostnames: NewHostname[];
+  dnsChanges: DnsChange[];
+  /** What found the change; decides the wording of the email. A scan is assumed when absent. */
+  source?: "scan" | "sweep";
+};
 
 export function noticeTitle(c: ChangeSet): string {
   const hosts = c.newHostnames.length;
@@ -284,7 +290,7 @@ export function buildAttackSurfaceEmail(c: ChangeSet, siteUrl: string): { subjec
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;">
       <h2 style="margin:0 0 8px;font-size:20px;">${escapeHtml(noticeTitle(c))}</h2>
       <p style="margin:0 0 8px;color:#4b5563;font-size:14px;line-height:1.5;">
-        Your latest scan of ${escapeHtml(c.site)} found these changes.
+        ${c.source === "sweep" ? `Our regular check of public certificate logs for ${escapeHtml(c.site)} found these changes.` : `Your latest scan of ${escapeHtml(c.site)} found these changes.`}
       </p>
       ${body}
       <p style="margin:16px 0 0;font-size:13px;"><a href="${siteUrl}/dashboard/assets">Open Assets</a></p>
@@ -410,6 +416,57 @@ async function deliver(owner: OwnerContext, email: string | null, changes: Chang
 const chunks = <T,>(items: T[]) => Array.from({ length: Math.ceil(items.length / STAMP_CHUNK) }, (_, i) => items.slice(i * STAMP_CHUNK, (i + 1) * STAMP_CHUNK));
 const snapshotColumns = (s: DnsSnapshot) => ({ ...s.values, known_fields: s.known });
 
+// ---- Shared by the scan alert and the standalone sweep alert ------------------------
+// A hostname's row is the unit of "has the owner been told": notified_at null
+// means pending, a timestamp means reported or deliberately recorded as known.
+// Both paths read, claim and release rows the same way, so a scan and a sweep
+// that finish together cannot both send the same alert.
+
+/** Marks hostnames as known without an alert. Returns the first error message, or null. */
+async function stampKnown(supabase: SupabaseClient, ownerId: string, names: string[], now: string): Promise<string | null> {
+  for (const chunk of chunks(names)) {
+    const { error } = await supabase.from("asset_inventory").update({ notified_at: now }).eq("owner", ownerId).is("notified_at", null).in("hostname", chunk);
+    if (error) return error.message;
+  }
+  return null;
+}
+
+/**
+ * Claims the hostnames this run will send: the update only succeeds for a row
+ * still pending, so what comes back is exactly what this run won.
+ */
+async function claimHostnames(supabase: SupabaseClient, ownerId: string, report: NewHostname[], now: string): Promise<{ claimed: NewHostname[]; error: string | null }> {
+  const claimed: NewHostname[] = [];
+  for (const chunk of chunks(report)) {
+    const { data, error } = await supabase
+      .from("asset_inventory")
+      .update({ notified_at: now })
+      .eq("owner", ownerId)
+      .is("notified_at", null)
+      .in("hostname", chunk.map((h) => h.name))
+      .select("hostname");
+    if (error) return { claimed, error: error.message };
+    const won = new Set(((data ?? []) as Array<{ hostname: string }>).map((r) => r.hostname));
+    claimed.push(...chunk.filter((h) => won.has(h.name)));
+  }
+  return { claimed, error: null };
+}
+
+/** Gives claimed hostnames back (notified_at null) after a failed delivery, so the next run retries. Returns the error messages. */
+async function releaseHostnames(supabase: SupabaseClient, ownerId: string, claimed: NewHostname[], now: string): Promise<string[]> {
+  const errors: string[] = [];
+  for (const chunk of chunks(claimed)) {
+    const { error } = await supabase
+      .from("asset_inventory")
+      .update({ notified_at: null })
+      .eq("owner", ownerId)
+      .eq("notified_at", now)
+      .in("hostname", chunk.map((h) => h.name));
+    if (error) errors.push(error.message);
+  }
+  return errors;
+}
+
 export async function sendAttackSurfaceAlerts(
   supabase: SupabaseClient,
   ownerId: string,
@@ -498,16 +555,9 @@ export async function sendAttackSurfaceAlerts(
     }
 
     // Hostnames without evidence they are new: known from now on, no alert.
-    let stampedSilently = true;
-    for (const chunk of chunks(hosts.known)) {
-      const { error } = await supabase.from("asset_inventory").update({ notified_at: now }).eq("owner", ownerId).is("notified_at", null).in("hostname", chunk);
-      if (error) {
-        fail(`could not mark hostnames as known: ${error.message}`);
-        stampedSilently = false;
-        break;
-      }
-    }
-    if (stampedSilently) result.silentlyRecorded = hosts.known;
+    const stampError = await stampKnown(supabase, ownerId, hosts.known, now);
+    if (stampError) fail(`could not mark hostnames as known: ${stampError}`);
+    else result.silentlyRecorded = hosts.known;
 
     const dnsChanges = alerting ? (dns?.changes ?? []) : [];
     const writeSnapshot = async () => {
@@ -522,22 +572,9 @@ export async function sendAttackSurfaceAlerts(
     if (hosts.report.length === 0 && dnsChanges.length === 0) return result;
 
     // Claim what this run will send, so a concurrent scan of the same domain can't send it too.
-    const claimedHosts: NewHostname[] = [];
-    for (const chunk of chunks(hosts.report)) {
-      const { data, error } = await supabase
-        .from("asset_inventory")
-        .update({ notified_at: now })
-        .eq("owner", ownerId)
-        .is("notified_at", null)
-        .in("hostname", chunk.map((h) => h.name))
-        .select("hostname");
-      if (error) {
-        fail(`could not claim new hostnames: ${error.message}`);
-        break;
-      }
-      const won = new Set(((data ?? []) as Array<{ hostname: string }>).map((r) => r.hostname));
-      claimedHosts.push(...chunk.filter((h) => won.has(h.name)));
-    }
+    const claim = await claimHostnames(supabase, ownerId, hosts.report, now);
+    if (claim.error) fail(`could not claim new hostnames: ${claim.error}`);
+    const claimedHosts = claim.claimed;
     let claimedDns: DnsChange[] = [];
     if (dnsChanges.length > 0 && previous && dns?.next) {
       const { data, error } = await supabase
@@ -562,15 +599,7 @@ export async function sendAttackSurfaceAlerts(
     }
 
     // Nothing delivered: release the claims so the next scan retries.
-    for (const chunk of chunks(claimedHosts)) {
-      const { error } = await supabase
-        .from("asset_inventory")
-        .update({ notified_at: null })
-        .eq("owner", ownerId)
-        .eq("notified_at", now)
-        .in("hostname", chunk.map((h) => h.name));
-      if (error) fail(`could not release new hostnames for a retry: ${error.message}`);
-    }
+    for (const message of await releaseHostnames(supabase, ownerId, claimedHosts, now)) fail(`could not release new hostnames for a retry: ${message}`);
     if (claimedDns.length > 0 && previous) {
       const { error } = await supabase
         .from("dns_snapshots")
@@ -580,6 +609,140 @@ export async function sendAttackSurfaceAlerts(
         .eq("captured_at", now);
       if (error) fail(`could not release the DNS change for a retry: ${error.message}`);
     }
+    return result;
+  } catch (err) {
+    fail((err as Error).message);
+    return result;
+  }
+}
+
+// ---- Standalone EASM sweep ------------------------------------------------------------
+// easmPipeline.ts finds new certificates every few hours, independent of the scan
+// cadence. Before this, it only recorded them as pending rows and left the alert to
+// the owner's next scan: up to a week away for a weekly plan. This sends the same
+// new-hostname alert from the sweep, with the same rules as sendAttackSurfaceAlerts:
+//   - Evidence first. A hostname is reported only when crt.sh shows its earliest
+//     certificate is recent. When crt.sh could not be read (`ctRead` false) nothing is
+//     decided and the rows stay pending: no evidence either way is not "not new".
+//   - Claim, then send. The same atomic claim as the scan path, so a scan and a sweep
+//     that finish together cannot both send it, and a failed delivery is released.
+//   - Pending rows are found by owner and domain, NOT by target_url. Rows the EASM step
+//     stored before it recorded the monitored URL carry https://<domain>, which no scan
+//     of a www site ever matched; this picks them up instead of leaving them stuck.
+// DNS changes are not checked here: they need the stored snapshot's claim logic and
+// are left to the scan path.
+
+export type SweepEvidence = {
+  /** Each hostname's earliest certificate date, from this sweep's crt.sh read. */
+  firstCertificates: Map<string, string>;
+  /** crt.sh was read. False means the lookup failed and nothing may be concluded. */
+  ctRead: boolean;
+};
+
+export type SweepAlertResult = {
+  /** Hostnames the owner was told about in this run. */
+  reported: ChangeSet | null;
+  /** Pending hostnames marked as known without an alert (no evidence they are new, or no alerting plan). */
+  silentlyRecorded: string[];
+  /** crt.sh could not be read, so pending hostnames were left for a later run to decide. */
+  hostnamesDeferred: boolean;
+  delivered: boolean;
+  migrationPending: boolean;
+  errors: string[];
+};
+
+/** Not a real scan id: the sweep has no current scan to exclude when looking for the previous one. */
+const NO_SCAN = "00000000-0000-0000-0000-000000000000";
+/** Domains reach a PostgREST filter string, so anything but plain DNS characters is refused. */
+const FILTER_SAFE_DOMAIN = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+
+export async function sendSweepHostnameAlerts(
+  supabase: SupabaseClient,
+  ownerId: string,
+  targetUrl: string,
+  evidence: SweepEvidence,
+  opts: AttackSurfaceOptions = {}
+): Promise<SweepAlertResult> {
+  const result: SweepAlertResult = { reported: null, silentlyRecorded: [], hostnamesDeferred: false, delivered: false, migrationPending: false, errors: [] };
+  const fail = (message: string) => {
+    result.errors.push(message);
+    console.error(`[attackSurfaceMonitor] sweep ${targetUrl}: ${message}`);
+  };
+
+  try {
+    const nowDate = opts.now ?? new Date();
+    const now = nowDate.toISOString();
+    const siteUrl = opts.siteUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
+    const host = new URL(targetUrl).hostname.toLowerCase();
+    const domain = monitoredDomain(host);
+    if (!domain || !FILTER_SAFE_DOMAIN.test(domain)) return result;
+
+    // Every unreported hostname in the domain, whichever URL its row was stored under.
+    const pending: PendingHostname[] = [];
+    for (let from = 0; from < MAX_PENDING_HOSTNAMES; from += PENDING_PAGE) {
+      const page = await supabase
+        .from("asset_inventory")
+        .select("hostname, first_seen_at")
+        .eq("owner", ownerId)
+        .is("notified_at", null)
+        .or(`hostname.ilike.${domain},hostname.ilike.*.${domain}`)
+        .order("hostname", { ascending: true })
+        .range(from, from + PENDING_PAGE - 1);
+      if (page.error) {
+        if (isMissingSchemaError(page.error)) {
+          result.migrationPending = true;
+          return result;
+        }
+        throw new Error(`could not load unreported hostnames: ${page.error.message}`);
+      }
+      const rows = (page.data ?? []) as Array<{ hostname: string; first_seen_at: string }>;
+      pending.push(...rows.map((r) => ({ name: r.hostname, firstSeenAt: r.first_seen_at })));
+      if (rows.length < PENDING_PAGE) break;
+    }
+    if (pending.length === 0) return result;
+
+    const { owner, email, alerting } = await loadOwner(supabase, ownerId);
+
+    // No alerting plan: record them as known so an upgrade doesn't replay old hostnames.
+    if (!alerting) {
+      const names = pending.map((p) => p.name);
+      const stampError = await stampKnown(supabase, ownerId, names, now);
+      if (stampError) fail(`could not mark hostnames as known: ${stampError}`);
+      else result.silentlyRecorded = names;
+      return result;
+    }
+
+    // No certificate evidence either way: decide nothing, leave them pending.
+    if (!evidence.ctRead) {
+      result.hostnamesDeferred = true;
+      return result;
+    }
+
+    const prior = await previousScanAt(supabase, ownerId, NO_SCAN, host);
+    const windowStart = new Date(nowDate.getTime() - NEW_HOSTNAME_WINDOW_DAYS * DAY_MS);
+    const since = prior && prior < windowStart ? prior : windowStart;
+    const hosts = classifyHostnames(pending, evidence.firstCertificates, domain, host, since);
+
+    const stampError = await stampKnown(supabase, ownerId, hosts.known, now);
+    if (stampError) fail(`could not mark hostnames as known: ${stampError}`);
+    else result.silentlyRecorded = hosts.known;
+    if (hosts.report.length === 0) return result;
+
+    const claim = await claimHostnames(supabase, ownerId, hosts.report, now);
+    if (claim.error) fail(`could not claim new hostnames: ${claim.error}`);
+    if (claim.claimed.length === 0) return result; // a scan got there first
+
+    const changes: ChangeSet = { site: domain, newHostnames: claim.claimed, dnsChanges: [], source: "sweep" };
+    const sent = await deliver(owner, email, changes, siteUrl);
+    sent.errors.forEach(fail);
+    if (sent.delivered) {
+      result.delivered = true;
+      result.reported = changes;
+      return result;
+    }
+
+    // Nothing delivered: release the claims so the next run retries.
+    for (const message of await releaseHostnames(supabase, ownerId, claim.claimed, now)) fail(`could not release new hostnames for a retry: ${message}`);
     return result;
   } catch (err) {
     fail((err as Error).message);

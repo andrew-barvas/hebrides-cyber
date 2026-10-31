@@ -230,6 +230,7 @@ function AuthenticatedScanConfig({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginUrl, setLoginUrl] = useState("");
+  const [totpSecret, setTotpSecret] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,7 +253,7 @@ function AuthenticatedScanConfig({
       const url = authType === "login" ? "/api/account/record-login" : "/api/account/target-auth";
       const body =
         authType === "login"
-          ? { monitoredTargetId, loginUrl: loginUrl.trim(), username: username.trim(), password, acknowledged }
+          ? { monitoredTargetId, loginUrl: loginUrl.trim(), username: username.trim(), password, acknowledged, ...(totpSecret.trim() ? { totpSecret: totpSecret.trim() } : {}) }
           : authType === "cookie"
             ? { monitoredTargetId, authType, cookieValue: cookieValue.trim() }
             : { monitoredTargetId, authType, username: username.trim(), password };
@@ -266,6 +267,7 @@ function AuthenticatedScanConfig({
       setCookieValue("");
       setPassword("");
       setLoginUrl("");
+      setTotpSecret("");
       setAcknowledged(false);
       setOpen(false);
       await onChange();
@@ -370,7 +372,7 @@ function AuthenticatedScanConfig({
         <div className="space-y-2">
           <p className="text-[11px] text-cybertext/50">
             Logs in through the site&apos;s own login form and saves the resulting session — no need to find a
-            cookie yourself. Works for a plain username/password form only, not one with an MFA step. Use a
+            cookie yourself. Works for a username/password form, optionally followed by an authenticator-app (TOTP) code. Use a
             dedicated test account for this, never your own personal or admin login.
           </p>
           <input
@@ -399,6 +401,18 @@ function AuthenticatedScanConfig({
               className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
             />
           </div>
+          <input
+            type="password"
+            autoComplete="off"
+            placeholder="TOTP secret (optional) — the base32 key from your authenticator setup, if the account uses MFA"
+            value={totpSecret}
+            onChange={(e) => setTotpSecret(e.target.value)}
+            className="w-full rounded-md border border-cyberborder bg-cyberbg px-3 py-2 text-xs text-cybertext placeholder-cybertext/30 focus:border-neon focus:outline-hidden transition-colors"
+          />
+          <p className="text-[11px] text-cybertext/50">
+            Stored encrypted and only used to type the one-time code during login. Needs a verified domain. SMS,
+            push and hardware-key MFA aren&apos;t supported.
+          </p>
           <label className="flex items-start gap-2 text-[11px] text-cybertext/60">
             <input
               type="checkbox"

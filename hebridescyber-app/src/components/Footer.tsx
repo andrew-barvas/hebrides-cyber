@@ -24,6 +24,7 @@ const industryLinks = [
 // privacy policy unreachable from the public site is a straightforward
 // compliance defect. /terms is new alongside it (E-09/BETA-B1).
 const legalLinks = [
+  { href: "/trust", label: "Trust" },
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/terms", label: "Terms of Service" },
 ];

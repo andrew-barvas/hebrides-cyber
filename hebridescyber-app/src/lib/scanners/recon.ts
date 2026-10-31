@@ -89,7 +89,8 @@ async function queryShodan(ip: string): Promise<ShodanData | null> {
 /** crt.sh often answers 502/503 for a moment; one quick retry fixes most. */
 const CRTSH_RETRY_DELAY_MS = 1_500;
 
-async function fetchCrtSh(url: string): Promise<Response> {
+/** Exported so the standalone EASM sweep (easmDiscovery.ts) shares this retry rather than copying it. */
+export async function fetchCrtSh(url: string): Promise<Response> {
   const attempt = () => fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: "application/json" } });
   const res = await attempt();
   if (res.status < 500) return res;

@@ -66,6 +66,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-34 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
 | OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
 | OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
+| OT-37 | Decide whether the container registry stays on the Basic SKU | 🟢 Low | Decision | 2026-10-30 | |
+| OT-38 | Choose an auditor and SOC 2 / ISO 27001 scope | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-39 | Write the core security policies | 🟢 Strategic | Open | 2026-10-31 | |
+| OT-40 | Choose a compliance automation platform | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-41 | Commission an independent penetration test | 🟢 Strategic | Open | 2026-10-31 | |
+| OT-42 | Lookout: approve tier limits (analyst hours, assets, onboarding cap, dashboard access) | 🟡 Medium | Decision | 2026-10-31 | |
+| OT-43 | Lookout: approve the traffic disclosure; keep or drop the login rate-limit check; PI cover | 🟡 Medium | Decision | 2026-10-31 | |
+| OT-44 | Lookout: review the restricted nuclei tag lists in PR #144 | 🟡 Medium | Open | 2026-10-31 | |
+| OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
 
 ## Items
 
@@ -82,12 +91,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 
 ### OT-02: Add `RESEND_API_KEY` 🔴
 - **What and why:** every worker email goes through Resend (`src/lib/email.ts`),
-  and the secret isn't set. Seven workflows use it: `scheduled-scans.yml`,
+  and the secret isn't set. Eight workflows use it: `scheduled-scans.yml`,
   `on-demand-scan.yml`, `scheduled-reports.yml`, `monthly-digest.yml`,
-  `emerging-threats.yml`, `uptime-sync.yml` and `deletion-requests.yml`.
-  Without it there are no critical-finding or scan-complete emails, no
-  scheduled reports, no digest, no uptime-down emails, and no erasure-deadline
-  reminders. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
+  `emerging-threats.yml`, `uptime-sync.yml`, `deletion-requests.yml` and
+  `easm-discovery.yml`. Without it there are no critical-finding or scan-complete
+  emails, no scheduled reports, no digest, no uptime-down emails, no new-hostname
+  alerts from the 6-hourly EASM sweep, and no erasure-deadline reminders. The EASM
+  sweep run fails (red in Actions) whenever a new-hostname alert is due and cannot
+  be delivered, then retries on the next sweep, so it will show the problem rather
+  than stay green. Owners with Slack or Teams set up are still told through those. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
   empty and "sent 0".
 - **How:**
   1. Create a Resend account.
@@ -439,6 +451,107 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   Actions, a small VM, or a Container Apps job.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
+
+### OT-37: Container registry SKU 🟢
+- **What and why:** the Checkov scan flags six settings on the Container Apps
+  registry (`hebridescyberacr` in `azure/terraform/main.tf`) that need the
+  Premium SKU: no public network access, untagged-image cleanup,
+  geo-replication, image quarantine, dedicated data endpoints and signed
+  images. Premium costs roughly ten times Basic each month. They're skipped
+  with reasons in `main.tf` so the scan passes. Image vulnerability scanning
+  (CKV_AZURE_163) is a separate paid Defender for Containers plan. None of
+  this matters unless you use the Container Apps path (OT-16).
+- **How:** keep Basic (no action), or move to Premium and replace the skips
+  with the real settings. Turn on Defender for Containers separately if you
+  want image scanning.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-30.
+
+### OT-38: Choose an auditor and certification scope 🟢
+- **What and why:** the repo-side evidence map is `CONTROLS-EVIDENCE.md` and
+  the public `/trust` page says we are not certified. Getting attested needs
+  an external auditor and a decision on SOC 2 Type I/II versus ISO 27001, and
+  on whether it is worth the cost yet.
+- **How:** get two or three quotes; share `docs/CONTROLS-EVIDENCE.md` with them.
+- **Verify:** a decision recorded here. Only after an auditor's report may
+  `/trust` change its certification wording.
+- **Raised:** 2026-10-31.
+
+### OT-39: Write the core security policies 🟢
+- **What and why:** auditors need written policies (information security,
+  access control, incident response, change management, supplier management,
+  data classification and retention, ISMS scope and roles). The repo has
+  engineering controls but not these documents.
+- **How:** draft them yourself or via the platform chosen in OT-40, then
+  record the approval date and owner for each.
+- **Verify:** policies exist and are linked from the evidence map.
+- **Raised:** 2026-10-31.
+
+### OT-40: Choose a compliance automation platform 🟢
+- **What and why:** tools such as Vanta, Drata or Secureframe collect
+  evidence continuously and supply policy templates. Optional; an auditor can
+  work without one. It costs money each year.
+- **How:** decide after OT-38, since some auditors partner with a platform.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-31.
+
+### OT-41: Commission an independent penetration test 🟢
+- **What and why:** an external test of the platform itself is expected
+  evidence for both standards. Needs a budget and a written scope and
+  agreement with the tester.
+- **How:** pick a CREST-accredited provider, agree scope, and run it against a
+  staging copy where possible. Keep the report private.
+- **Verify:** a report received and findings triaged.
+- **Raised:** 2026-10-31.
+
+### OT-42: Lookout tier limits 🟡
+- **What and why:** checkout makes it easy to sell more analyst time than one
+  person has. The plan (`DEFENSIVE-ASSESSMENT-PLAN.md`, "Pricing & Tiers")
+  proposes caps that need your sign-off before they go into the copy and terms:
+  Essentials 4 analyst hours per quarter, up to 3 domains and 5 IP addresses;
+  Assured 9 hours per quarter, up to 10 domains and 16 IP addresses; two new
+  Lookout customers a month during the pilot; Essentials gets Pro dashboard
+  features and Assured gets Agency ones.
+- **How:** approve or change each number in the plan's table.
+- **Verify:** the agreed numbers recorded in the plan and in
+  `marketing/17-lookout-managed-exposure-review.md`, with the [VERIFY] marks
+  removed.
+- **Raised:** 2026-10-31.
+
+### OT-43: Lookout traffic disclosure 🟡
+- **What and why:** the copy says Lookout never exploits anything, and it also
+  says plainly what the checks send: page and file requests, connections to
+  common ports, and five login submissions with made-up details (the base
+  suite's rate-limit check). That last check can trip a customer's lockout
+  alerts. The disclosure is what keeps "never exploitative" accurate.
+- **How:** read "What Lookout sends to your systems" in the copy file. Decide
+  whether the login check stays on for Lookout customers (switching it off is
+  a code change). Send the section to the solicitor with OT-35. Check that your
+  professional indemnity cover extends to an advisory review service.
+- **Verify:** approved wording and the login-check decision recorded in the
+  plan; insurer's confirmation on file.
+- **Raised:** 2026-10-31.
+
+### OT-44: Review the `exposure` profile's nuclei tags 🟡
+- **What and why:** draft PR #144 restricts nuclei for Lookout: a smaller
+  baseline tag list, every input-injecting category excluded and out-of-band
+  interaction off. The PR asks for your check of the tag lists before launch,
+  because they decide what traffic Lookout sends.
+- **How:** read the nuclei section of the PR #144 description and comment on
+  the PR.
+- **Verify:** your approval on PR #144.
+- **Raised:** 2026-10-31.
+
+### OT-45: Lookout pilot 🟢
+- **What and why:** plan question Q5. Checkout from day one (Q3) removes the
+  cheap demand test, so the plan proposes a pilot: three to five customers,
+  reports written by hand, analyst hours logged. Stop if fewer than 2 of 5
+  prospects would pay £149 a month, or if a quarterly report takes more than
+  4 analyst hours.
+- **How:** decide pilot-first or not, then name five prospects to approach.
+- **Verify:** the decision and the pilot result recorded in the plan and in
+  `PRODUCT-IDEAS.md` P-06.
+- **Raised:** 2026-10-31.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
