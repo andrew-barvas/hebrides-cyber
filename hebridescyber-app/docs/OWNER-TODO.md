@@ -56,8 +56,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
 | OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
 | OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
-| OT-38 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
-| OT-39 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
+| OT-46 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
+| OT-47 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
@@ -461,7 +461,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 
-### OT-38: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
+### OT-46: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
 - **What and why:** the Prowler IAM / privilege-escalation check
   (`src/worker/tools/prowlerIam.ts`) assumes each customer's read-only role
   from an AWS identity of ours. That identity doesn't exist yet, so for any
@@ -488,7 +488,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** `completed` result with the account listed; real fixture merged.
 - **Raised:** 2026-10-31.
 
-### OT-39: Optional: hash-pin Prowler's Python dependencies 🟢
+### OT-47: Optional: hash-pin Prowler's Python dependencies 🟢
 - **What and why:** the workflow verifies Prowler's own wheel by SHA-256, but
   pip resolves its dependencies at install time without hashes.
 - **How:** generate a hashed lockfile (`pip-compile --generate-hashes`) in a
