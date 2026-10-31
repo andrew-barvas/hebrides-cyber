@@ -160,3 +160,72 @@ describe("runProwlerIam", () => {
     expect((await runProwlerIam(supabaseWith([roleRow]), "owner")).status).toBe("error");
   });
 });
+
+describe("runProwlerIam: partial and gating failures", () => {
+  type Row = { label: string; credentials_encrypted: unknown };
+  const supabaseWith = (rows: Row[]) =>
+    ({ from: () => ({ select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: rows, error: null }) }) }) }) }) as never;
+  const role = (label: string, arn: string): Row => ({ label, credentials_encrypted: encryptCredentials({ authMode: "role", externalId: EXTERNAL_ID, roleArn: arn }) });
+  const saved = { ...process.env };
+
+  beforeEach(() => {
+    execToolMock.mockReset();
+    planGateMock.mockReset();
+    planGateMock.mockResolvedValue("ok");
+    process.env.PROWLER_AWS_ACCESS_KEY_ID = "AKIAEXAMPLE";
+    process.env.PROWLER_AWS_SECRET_ACCESS_KEY = "secret";
+  });
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  it("is an error when the plan lookup fails", async () => {
+    planGateMock.mockResolvedValue("error");
+    expect((await runProwlerIam(supabaseWith([role("a", ROLE_ARN)]), "o")).status).toBe("error");
+  });
+
+  it("is an error, not not_configured, when stored credentials cannot be decrypted", async () => {
+    const res = await runProwlerIam(supabaseWith([{ label: "x", credentials_encrypted: { v: 1, iv: "x", tag: "x", data: "x" } }]), "o");
+    expect(res.status).toBe("error");
+  });
+
+  it("is an error for an invalid stored role ARN and never runs prowler", async () => {
+    const res = await runProwlerIam(supabaseWith([role("bad", "arn:aws:iam::1:user/x")]), "o");
+    expect(res.status).toBe("error");
+    expect(execToolMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the findings from the account that worked but reports error when another account fails", async () => {
+    const otherArn = "arn:aws:iam::210987654321:role/Other";
+    execToolMock.mockImplementation(async (_f: string, args: string[]) => {
+      if (args[args.indexOf("--role") + 1] === otherArn) throw new Error("AccessDenied");
+      writeFileSync(join(args[args.indexOf("--output-directory") + 1], "prowler-iam.ocsf.json"), FIXTURE);
+      return { stdout: "", stderr: "" };
+    });
+    const res = await runProwlerIam(supabaseWith([role("good", ROLE_ARN), role("bad", otherArn)]), "o");
+    expect(res.status).toBe("error");
+    expect(res.findings).toHaveLength(3);
+    expect(res.status === "error" && res.accounts).toEqual([{ accountId: "123456789012", label: "good", checksEvaluated: 5, failed: 3 }]);
+  });
+
+  it("reports each account on a completed run", async () => {
+    execToolMock.mockImplementation(async (_f: string, args: string[]) => {
+      writeFileSync(join(args[args.indexOf("--output-directory") + 1], "prowler-iam.ocsf.json"), FIXTURE);
+      return { stdout: "", stderr: "" };
+    });
+    const res = await runProwlerIam(supabaseWith([role("good", ROLE_ARN)]), "o");
+    expect(res.status === "completed" && res.accounts[0]).toMatchObject({ accountId: "123456789012", failed: 3 });
+  });
+});
+
+describe("prowlerRecordsToFindings edge cases", () => {
+  const base = parseProwlerOcsf(FIXTURE)[0];
+  it("dedupes identical resources and maps an unknown severity to info", () => {
+    const f = prowlerRecordsToFindings([{ ...base, severity: "info" }, { ...base }]);
+    expect(f).toHaveLength(1);
+    expect(parseProwlerOcsf(JSON.stringify([{ ...JSON.parse(FIXTURE)[0], severity: "Weird" }]))[0].severity).toBe("info");
+  });
+  it("ignores MANUAL and MUTED records", () => {
+    expect(prowlerRecordsToFindings([{ ...base, status: "MANUAL" }, { ...base, status: "MUTED" }])).toEqual([]);
+  });
+});
