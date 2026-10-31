@@ -390,11 +390,7 @@ jobs:
         # Prowler is Apache-2.0. The wheel is downloaded from PyPI's file host
         # and verified against its SHA-256 before install, into its own venv;
         # its dependencies are resolved by pip at install time (not hash-pinned
-<<<<<<< HEAD
-        # - see OT-43). Unlike the best-effort installs above this one FAILS
-=======
         # - see OT-47). Unlike the best-effort installs above this one FAILS
->>>>>>> origin/feat/prowler-iam-posture
         # the job: prowlerIam.ts reports an error (never a clean result) for
         # an owner with a role connected, so a silent non-install would just
         # be a permanently red check.
