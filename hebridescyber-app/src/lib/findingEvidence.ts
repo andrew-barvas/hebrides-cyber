@@ -4,7 +4,9 @@
 // Bounded and redacted at capture time, because it is stored with the scan
 // result and shown in the dashboard, share links and exports:
 // - Response headers are an allowlist: no Set-Cookie, auth, or anything we
-//   don't name. Request headers aren't recorded at all (ours carry nothing).
+//   don't name. Header findings add the security headers they judge
+//   (SECURITY_HEADERS), with URL query strings and tokens masked. Request
+//   headers aren't recorded at all (ours carry nothing).
 // - The body excerpt is capped (EXCERPT_MAX) *after* redaction, and every
 //   `key=value` / `key: value` value, token-shaped string, password hash,
 //   private-key block, credential-in-URL and email address is masked. The
@@ -18,7 +20,7 @@ export type FindingEvidence = {
   request: { method: "GET"; url: string };
   response: {
     status: number;
-    /** Allowlisted headers only (see SAFE_HEADERS). */
+    /** Allowlisted headers only (SAFE_HEADERS, plus SECURITY_HEADERS for header findings). */
     headers: Record<string, string>;
     /** Redacted, capped body text. Absent when the check never read the body. */
     bodyExcerpt?: string;
@@ -34,6 +36,44 @@ export const EXCERPT_MAX = 400;
 const MATCHED_MAX = 160;
 const SAFE_HEADERS = ["content-type", "content-length", "server", "last-modified", "x-powered-by"] as const;
 export const REDACTED = "[redacted]";
+
+// The headers a header finding is *about* (headers.ts): the policy headers the
+// OWASP list checks, CORS, and the framing/disclosure headers. Opt-in per call
+// via `extraHeaders`, so file-exposure evidence stays as narrow as it was.
+export const SECURITY_HEADERS = [
+  "strict-transport-security",
+  "content-security-policy",
+  "x-frame-options",
+  "x-content-type-options",
+  "referrer-policy",
+  "permissions-policy",
+  "cross-origin-embedder-policy",
+  "cross-origin-opener-policy",
+  "cross-origin-resource-policy",
+  "cache-control",
+  "access-control-allow-origin",
+  "access-control-allow-credentials",
+  "transfer-encoding",
+  "x-generator",
+] as const;
+// Never recorded, whatever a caller passes: these carry session or credential values.
+const NEVER_RECORD = new Set(["set-cookie", "cookie", "authorization", "proxy-authorization", "x-api-key"]);
+const HEADER_VALUE_MAX = 200;
+// A CSP is the one header whose full value is the evidence (the finding names
+// its directives), and real policies run past 200 characters.
+const POLICY_VALUE_MAX = 1000;
+
+// Header values are policy text, not files, so the line-based key=value rule
+// would mangle them ("max-age=[redacted]"). Only what could carry a secret is
+// masked: credentials and query strings in URLs (CSP report-uri endpoints
+// often embed a key), JWTs and bearer tokens.
+function redactHeaderValue(value: string): string {
+  return value
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s:/@]+:[^\s@/]+@/gi, `$1${REDACTED}@`)
+    .replace(/(\bhttps?:\/\/[^\s?;,'"]+)\?[^\s;,'"]*/gi, `$1?${REDACTED}`)
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\b/g, REDACTED)
+    .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/-]+=*/gi, `$1 ${REDACTED}`);
+}
 
 const REDACTIONS: Array<[RegExp, string | ((m: string, ...g: string[]) => string)]> = [
   // PEM private keys, whole block.
@@ -80,6 +120,8 @@ export function buildHttpEvidence(input: {
   headers: Headers | Record<string, string>;
   body?: string;
   matched?: string;
+  /** Further headers to record (normally SECURITY_HEADERS), redacted. Session/credential headers are always dropped. */
+  extraHeaders?: readonly string[];
   now?: Date;
 }): FindingEvidence {
   const headers: Record<string, string> = {};
@@ -87,7 +129,13 @@ export function buildHttpEvidence(input: {
     input.headers instanceof Headers ? input.headers.get(name) : (input.headers[name] ?? input.headers[name.toLowerCase()] ?? null);
   for (const name of SAFE_HEADERS) {
     const value = get(name);
-    if (value) headers[name] = value.slice(0, 200);
+    if (value) headers[name] = value.slice(0, HEADER_VALUE_MAX);
+  }
+  for (const raw of input.extraHeaders ?? []) {
+    const name = raw.toLowerCase();
+    if (NEVER_RECORD.has(name) || name in headers) continue;
+    const value = get(name);
+    if (value) headers[name] = redactHeaderValue(value).slice(0, name === "content-security-policy" ? POLICY_VALUE_MAX : HEADER_VALUE_MAX);
   }
 
   const response: FindingEvidence["response"] = { status: input.status, headers };

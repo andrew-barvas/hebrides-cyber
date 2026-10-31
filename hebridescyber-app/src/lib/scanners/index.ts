@@ -435,22 +435,24 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   // --- Headers --------------------------------------------------------------
   if (results.headers.status === "checked") {
+    // The page response the analysis judged. Cookie findings don't get it: the evidence never records Set-Cookie.
+    const headerEvidence = results.headers.evidence ? { evidence: results.headers.evidence } : {};
     const missingCritical = results.headers.owasp.headers
       .filter((h) => !h.present && ["strict-transport-security", "content-security-policy", "x-content-type-options"].includes(h.name))
       .map((h) => h.name);
     if (missingCritical.length > 0) {
-      findings.push({ checkId: "headers.missing-critical", severity: "high", title: `Missing critical security headers`, detail: missingCritical.join(", "), remediation: FIX.headerRemediation(missingCritical) });
+      findings.push({ checkId: "headers.missing-critical", severity: "high", title: `Missing critical security headers`, detail: missingCritical.join(", "), remediation: FIX.headerRemediation(missingCritical), ...headerEvidence });
     }
     const missingOthers = results.headers.owasp.headers
       .filter((h) => !h.present && !missingCritical.includes(h.name))
       .map((h) => h.name);
     if (missingOthers.length > 0) {
-      findings.push({ checkId: "headers.missing-recommended", severity: "medium", title: `Missing recommended headers (${missingOthers.length})`, detail: missingOthers.join(", "), remediation: FIX.headerRemediation(missingOthers) });
+      findings.push({ checkId: "headers.missing-recommended", severity: "medium", title: `Missing recommended headers (${missingOthers.length})`, detail: missingOthers.join(", "), remediation: FIX.headerRemediation(missingOthers), ...headerEvidence });
     }
     if (results.headers.csp.grade === "F") {
-      findings.push({ checkId: "headers.csp-absent", severity: "high", title: "Content Security Policy absent or ineffective", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_MISSING });
+      findings.push({ checkId: "headers.csp-absent", severity: "high", title: "Content Security Policy absent or ineffective", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_MISSING, ...headerEvidence });
     } else if (results.headers.csp.grade === "C") {
-      findings.push({ checkId: "headers.csp-weak", severity: "medium", title: "Weak Content Security Policy", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_WEAK });
+      findings.push({ checkId: "headers.csp-weak", severity: "medium", title: "Weak Content Security Policy", detail: results.headers.csp.issues.join("; "), remediation: FIX.CSP_WEAK, ...headerEvidence });
     }
     for (const cookie of results.headers.cookies) {
       if (cookie.issues.length > 0) {
@@ -458,15 +460,15 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       }
     }
     if (results.headers.cors.wildcardOrigin) {
-      findings.push({ checkId: "headers.cors-wildcard", severity: "high", title: "CORS wildcard origin", detail: "Access-Control-Allow-Origin: * allows any site to read cross-origin responses.", remediation: FIX.CORS_WILDCARD });
+      findings.push({ checkId: "headers.cors-wildcard", severity: "high", title: "CORS wildcard origin", detail: "Access-Control-Allow-Origin: * allows any site to read cross-origin responses.", remediation: FIX.CORS_WILDCARD, ...headerEvidence });
     }
     const infoIssues = results.headers.infoDisclosure.issues;
     if (infoIssues.length > 0) {
-      findings.push({ checkId: "headers.info-disclosure", severity: "low", title: "Headers reveal server technology details", detail: infoIssues.join("; "), remediation: FIX.INFO_DISCLOSURE });
+      findings.push({ checkId: "headers.info-disclosure", severity: "low", title: "Headers reveal server technology details", detail: infoIssues.join("; "), remediation: FIX.INFO_DISCLOSURE, ...headerEvidence });
     }
     const smugglingIssues = results.headers.smugglingSurface.issues;
     if (smugglingIssues.length > 0) {
-      findings.push({ checkId: "headers.smuggling-surface", severity: "medium", title: "Possible HTTP request smuggling surface", detail: smugglingIssues.join("; "), remediation: FIX.SMUGGLING_SURFACE });
+      findings.push({ checkId: "headers.smuggling-surface", severity: "medium", title: "Possible HTTP request smuggling surface", detail: smugglingIssues.join("; "), remediation: FIX.SMUGGLING_SURFACE, ...headerEvidence });
     }
   }
 

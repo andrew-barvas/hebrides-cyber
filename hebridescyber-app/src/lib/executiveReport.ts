@@ -22,6 +22,7 @@ import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./find
 import { hostOf } from "./findingLifecycle";
 import { confirmedProof } from "./proofEvidence";
 import { evidenceSummary, readEvidence } from "./findingEvidence";
+import { signedInCrawlStatus } from "./signedInCrawlStatus";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
 
@@ -118,6 +119,10 @@ export function incompleteChecks(results: Record<string, unknown> | null): { nam
     const status = (value as { status?: unknown }).status;
     if (typeof status === "string" && NOT_RUN.has(status)) out.push({ name, status: status as keyof typeof STATUS_WORDS });
   }
+  // Nested under extended.authCheck, so the loop above never sees it.
+  const signedIn = signedInCrawlStatus(results);
+  if (signedIn?.state === "failed") out.push({ name: "signed-in crawl", status: "error" });
+  else if (signedIn?.state === "partial") out.push({ name: "signed-in crawl", status: "partial" });
   return out;
 }
 

@@ -67,6 +67,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
 | OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
 | OT-37 | Decide whether the container registry stays on the Basic SKU | 🟢 Low | Decision | 2026-10-30 | |
+| OT-38 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
 
 ## Items
 
@@ -176,7 +177,10 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 - **How:** follow `OWNER-SETUP.md` §3. Add the GitHub secret
   `NEXT_PUBLIC_SENTRY_DSN`, which can be the same DSN, and the Azure app
   setting `SENTRY_DSN`.
-- **Verify:** throw a test error from the site and see it in Sentry.
+- **Verify:** sign in as admin, open Admin → Overview and press "Send test
+  error" (`POST /api/admin/sentry-test`). It answers "No Sentry DSN is
+  configured" until the Azure setting is live; afterwards it shows an event id,
+  which should appear in Sentry within a minute (LAUNCH-PRIORITY item 2, AC1).
 - **Raised:** 2026-09-04 (E-03 / BETA-1).
 
 ### OT-09: Verify uptime monitoring with a real UptimeRobot key 🟡
@@ -458,6 +462,18 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   want image scanning.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
+
+### OT-38: SAML single sign-on 🟢
+- **What and why:** the 2026-10-31 Copilot sprint plan put SAML SSO in
+  Sprint 3. The earlier SSO modules were deleted on 2026-10-13 (only
+  migrations 034-036 remain), so it is a new build: an identity-provider
+  integration, role mapping and audit events, plus a larger attack surface
+  on the sign-in path. `LAUNCH-PRIORITY.md` item 4 already says to build it
+  only once a customer asks.
+- **Your call:** build it now for one identity provider (which one), or wait
+  for a customer request.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-31 (Copilot plan reconciliation in `LAUNCH-PRIORITY.md`).
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08

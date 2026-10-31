@@ -56,8 +56,20 @@ post-deploy checks, COEP `require-corp` against live GA/Stripe and the SSG
      the finding card, in `/api/v1/scans/{id}`, in the JSON export, the CSV
      `evidence` column and the executive PDF.
    - The scheduled-report PDF half shipped 2026-10-27 (#123), hardened 2026-10-30 (#142): plan gate, failed sends no longer marked sent, triaged counts (`SPRINT-PLAN.md` H4).
-   - Follow-up: give the other request-making checks evidence too (headers,
-     backend/Firebase exposure, GraphQL, and proof-of-exploit's replay). Each
+   - Headers: done 2026-10-31. `checkHeaders` records the page response it
+     judged (`HeadersResult.evidence`, after redirects, no body), with the
+     security headers opted in through `SECURITY_HEADERS`. Their values are
+     redacted with a header-specific rule (URL credentials and query strings,
+     JWTs, bearer tokens) because the line-based `key=value` rule would mangle
+     `max-age=…`. Set-Cookie/Authorization are never recorded, so
+     `headers.cookie-flags:*` findings carry no evidence.
+   - Signed-in crawl status: done 2026-10-31. A rejected saved login left
+     `extended.authCheck` at "checked" with the failure only in `.crawl`, so
+     the report and PDF were silent. `signedInCrawlStatus.ts` now feeds a
+     "signed-in crawl" card on the report page and the PDF's "Checks that did
+     not finish".
+   - Follow-up: backend/Firebase exposure, GraphQL (a POST, which
+     `FindingEvidence` doesn't model yet), and proof-of-exploit's replay. Each
      needs its own redaction review.
 5. **Sprint 5:**
    - Waiting on the owner: the gating decision for the open routes

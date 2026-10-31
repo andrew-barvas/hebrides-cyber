@@ -110,3 +110,28 @@ cross-site findings view (E-74) and the accuracy benchmark's first slice
 | Create `ops/RUNBOOKS.md` | No `ops/` folder; `docs/BACKUP-RESTORE.md` exists; new runbooks go under `docs/` |
 | Stripe needs a sandbox build | The code exists; it needs the price IDs and a test run |
 | "Beta in production", hires, customer targets | Not established anywhere in the repo; left out |
+
+## Second external plan (Copilot sprint plan, 2026-10-31)
+
+An externally written 0 + 4 sprint plan was checked against the code on
+2026-10-31. Most of it was already built; this is what it asked for, what
+exists, and what changed.
+
+| Plan asked for | State on 2026-10-31 |
+|---|---|
+| Single current-state README; dev and queue-worker runbook | Exists: `NEXT-STEPS.md` (state), `OWNER-TODO.md` (owner items), `RUNBOOK.md` (incidents, recovery), `CLAUDE.md` commands (`npm run queue:run-worker`). No new file added |
+| PR template with a safety checklist | **Added:** `.github/pull_request_template.md`. Not enforced by CI; branch protection (OT-07) is the enforcement point |
+| Sentry: forced test error | **Added:** `POST /api/admin/sentry-test`, "Send test error" on Admin → Overview. The DSN itself is OT-08 |
+| `/api/health` with Stripe and queue depth | Already there (`src/pages/api/health.ts`): Supabase, Stripe (`balance.retrieve`) and pending queue depth. `ok:true` waits on the Stripe keys, not code |
+| Webhook test asserting the `subscriptions` row | Already there: `src/__tests__/api/stripe/webhook.test.ts` (signature, the three events, no silent downgrade). A live test-mode checkout is owner-side |
+| Status page link in the footer | Already wired to `NEXT_PUBLIC_STATUS_PAGE_URL` (`statusPage.ts`, `Footer.test.tsx`); the page itself is OT-27 |
+| `finding_evidence` table, retention job | Not needed: evidence lives in `Finding.evidence` inside `scan_results`, bounded and redacted at capture, deleted with the scan (`data-retention-cleanup.yml` handles scan retention) |
+| Evidence on more probe findings | **Extended:** header findings now carry the response they judged (redacted security headers, no body, never Set-Cookie). Backend/Firebase, GraphQL and replay are still open (`NEXT-STEPS.md` Sprint 4) |
+| Evidence in finding card, PDF and CSV | Already there since Sprint 4 (2026-10-30) |
+| De-duplication across tools | Already there: `findingConsolidation.ts` (`EQUIVALENCES`, corroborating tools on the card). A numeric confidence score was not added: nothing defines what it would measure |
+| SAML SSO, organisations, RBAC | Teams and roles exist (`/api/team`). SAML is still a real build with no customer asking, so it is now an owner decision (OT-38), not scheduled work |
+| Signed-in crawl status and "credential not accepted" in the report | **Fixed:** a rejected saved login was recorded under `extended.authCheck.crawl` but authCheck reported "checked", so the report and PDF showed nothing. `signedInCrawlStatus.ts` now drives a "signed-in crawl" card on the report and an entry in the PDF's "Checks that did not finish" |
+| CI gate that fails only on new findings | Already there: the Action's `fail-on` applies to findings new since the previous scan (`action/action.yml`). Publishing it is OT-20 |
+| Remediation PRs, preview mode | Fix PRs (`generate-fix-pr.ts`, repo-ownership check) and the remediation pack exist. Further automation was not started |
+| AI triage annotates, never auto-suppresses | Already the design (`AI-TRIAGE-DESIGN.md`): it writes `metadata.aiTriage` only, never severity or lifecycle; triage is a human action |
+| Stripe price IDs, Sentry DSN, staging target | Owner items: OT-24 (done), OT-08, OT-11 |

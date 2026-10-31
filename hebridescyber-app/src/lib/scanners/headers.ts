@@ -2,9 +2,13 @@
 // Checks the full OWASP Secure Headers Project list, parses CSP for
 // dangerous directives, analyses cookie flags, and flags CORS wildcards
 // and information-disclosure headers.
+import { buildHttpEvidence, SECURITY_HEADERS, type FindingEvidence } from "../findingEvidence";
+
 export type HeadersResult =
   | {
       status: "checked";
+      /** The response the analysis judged (redacted security headers, no body, no cookies). Absent on scans before 2026-10-31. */
+      evidence?: FindingEvidence;
       httpStatus: number;
       owasp: OwaspHeaderAnalysis;
       csp: CspAnalysis;
@@ -343,7 +347,9 @@ export function buildHeaderAnalysis(res: Response): HeaderAnalysisBundle {
 export async function checkHeaders(targetUrl: string): Promise<HeadersResult> {
   try {
     const res = await fetch(targetUrl, { redirect: "follow", signal: AbortSignal.timeout(10_000) });
-    return { status: "checked", ...buildHeaderAnalysis(res) };
+    // res.url is the page after redirects, which is the one whose headers were judged.
+    const evidence = buildHttpEvidence({ url: res.url || targetUrl, status: res.status, headers: res.headers, extraHeaders: SECURITY_HEADERS });
+    return { status: "checked", evidence, ...buildHeaderAnalysis(res) };
   } catch (err) {
     return { status: "error", note: `Header check failed: ${(err as Error).message}` };
   }

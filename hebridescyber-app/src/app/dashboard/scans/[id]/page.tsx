@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { diffFindings, type FindingsDiff } from "@/lib/findingsDiff";
 import { canDetectFromResults } from "@/lib/findingLifecycle";
-import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, TriagedFindings, ScriptInventorySection, buildFindingsView, type ViewFinding, type ViewTriage } from "@/components/ScanReportView";
+import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, CriticalPaths, ExecutiveSummary, TriagedFindings, ScriptInventorySection, SignedInCrawlSection, buildFindingsView, type ViewFinding, type ViewTriage } from "@/components/ScanReportView";
 import { viewTriageFrom } from "@/components/FindingTriage";
 import type { TriageRecord } from "@/lib/findingTriage";
 import ShareLinks from "@/components/ShareLinks";
@@ -19,6 +19,7 @@ import { findPreviousFindingsClient, findScoreHistoryClient } from "@/lib/client
 import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 import { checkBreakdown } from "@/lib/checkBreakdown";
 import { fetchExecutiveReport } from "@/lib/executiveReportClient";
+import { signedInCrawlStatus } from "@/lib/signedInCrawlStatus";
 import type { DnsResult, ExposureResult, HeadersResult, ScriptInventoryResult, TlsResult } from "@/lib/scanners";
 
 type Finding = ViewFinding;
@@ -768,6 +769,9 @@ export default function ScanDetailPage() {
 
           {/* Third-party script inventory (PCI DSS 6.4.3) */}
           <ScriptInventorySection inventory={result.results?.scriptInventory} />
+
+          {/* Signed-in crawl: said out loud when the saved login was rejected */}
+          <SignedInCrawlSection status={signedInCrawlStatus(result.results)} />
 
           {/* Fix Wizard — one finding at a time, easiest-first */}
           {wizardMode && (
