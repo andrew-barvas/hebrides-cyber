@@ -384,7 +384,7 @@ Rules it follows:
 
 ### Owner To-Dos
 
-Already raised (2026-10-30): OT-33 name and prices, OT-34 six Stripe prices, OT-35 ToS wording, OT-36 where OpenVAS is hosted. Added 2026-10-31 (OT-38 to OT-41 are claimed by open PRs #157 and #158):
+Already raised (2026-10-30): OT-33 name and prices, OT-34 six Stripe prices, OT-35 ToS wording, OT-36 where OpenVAS is hosted. Added 2026-10-31 (OT-38 to OT-41 are claimed by open PR #157, and OT-46 and OT-47 by #158):
 
 - **OT-42:** approve the tier limits: analyst-hour caps, asset limits, the monthly onboarding cap and which dashboard features each Lookout plan grants.
 - **OT-43:** approve the traffic disclosure in the copy and decide whether the base suite's five login submissions stay on for Lookout customers; confirm professional indemnity cover extends to an advisory review service.
