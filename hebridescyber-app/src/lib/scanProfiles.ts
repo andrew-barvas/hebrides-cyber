@@ -46,7 +46,8 @@ export type ExtendedToolName =
   | "apiSpecInjection"
   | "badsecrets"
   | "katana"
-  | "networkExposure";
+  | "networkExposure"
+  | "prowler";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -92,6 +93,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "badsecrets",
   "katana",
   "networkExposure",
+  "prowler",
 ];
 
 // The opt-in offensive suite: tools that generate brute-force or real attack
@@ -165,6 +167,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     gospider: true,
     metadataLeak: true,
     cloudPosture: true,
+    prowler: true,
     httpx: true,
     katana: true,
   },

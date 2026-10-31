@@ -56,6 +56,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
 | OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
 | OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
+| OT-46 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
+| OT-47 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
@@ -502,6 +504,41 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **How:** pick a CREST-accredited provider, agree scope, and run it against a
   staging copy where possible. Keep the report private.
 - **Verify:** a report received and findings triaged.
+
+### OT-46: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
+- **What and why:** the Prowler IAM / privilege-escalation check
+  (`src/worker/tools/prowlerIam.ts`) assumes each customer's read-only role
+  from an AWS identity of ours. That identity doesn't exist yet, so for any
+  owner who connects a role the check reports an error (never a clean result).
+  It was also never run against a real AWS account: its tests use a
+  hand-built report in Prowler's documented format.
+- **How:**
+  1. In an AWS account you control, create an IAM user (or role) allowed only
+     `sts:AssumeRole` on `*`. Note its account id.
+  2. Add GitHub secrets `PROWLER_AWS_ACCESS_KEY_ID` and
+     `PROWLER_AWS_SECRET_ACCESS_KEY` for it, and set `PROWLER_PLATFORM_AWS_ACCOUNT_ID`
+     (the account id, not secret) as an app setting in Azure; the dashboard
+     shows it to customers for their trust policy.
+  3. In a test AWS account, create role `HebridesCyberAudit` with managed
+     policies `SecurityAudit` and `ViewOnlyAccess`, trusting that identity
+     with condition `sts:ExternalId` = the id the dashboard shows after
+     "Generate external ID" (Account, Cloud Posture Scanning).
+  4. Save the role ARN, run a scheduled scan, check the scan's `prowler`
+     result is `completed` with the account listed.
+  5. Run `prowler aws --role <arn> --external-id <id> -s iam -M json-ocsf
+     --ignore-exit-code-3`, redact account ids, and replace
+     `src/worker/tools/fixtures/prowler/iam-ocsf-5.47.0.json` with the real
+     capture (tests will show any shape difference).
+- **Walkthrough for customers and for step 3:** `docs/AWS-IAM-POSTURE.md`.
+- **Verify:** `completed` result with the account listed; real fixture merged.
+- **Raised:** 2026-10-31.
+
+### OT-47: Optional: hash-pin Prowler's Python dependencies 🟢
+- **What and why:** the workflow verifies Prowler's own wheel by SHA-256, but
+  pip resolves its dependencies at install time without hashes.
+- **How:** generate a hashed lockfile (`pip-compile --generate-hashes`) in a
+  clean Python 3.12 venv and install with `--require-hashes`.
+- **Verify:** the install step uses the lockfile.
 - **Raised:** 2026-10-31.
 
 ### OT-42: Lookout tier limits 🟡
