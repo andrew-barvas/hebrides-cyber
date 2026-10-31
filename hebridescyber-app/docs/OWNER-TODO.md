@@ -485,6 +485,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
      --ignore-exit-code-3`, redact account ids, and replace
      `src/worker/tools/fixtures/prowler/iam-ocsf-5.47.0.json` with the real
      capture (tests will show any shape difference).
+- **Walkthrough for customers and for step 3:** `docs/AWS-IAM-POSTURE.md`.
 - **Verify:** `completed` result with the account listed; real fixture merged.
 - **Raised:** 2026-10-31.
 
