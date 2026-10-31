@@ -66,6 +66,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-34 | Lookout: create six Stripe prices and add the env vars | 🟡 Medium | Open | 2026-10-30 | |
 | OT-35 | Lookout: solicitor wording for a "managed exposure review" in the ToS | 🟡 Medium | Open | 2026-10-30 | |
 | OT-36 | Decide where OpenVAS runs if the Actions prototype doesn't fit | 🟢 Low | Decision | 2026-10-30 | |
+| OT-37 | Decide whether the container registry stays on the Basic SKU | 🟢 Low | Decision | 2026-10-30 | |
 
 ## Items
 
@@ -82,12 +83,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 
 ### OT-02: Add `RESEND_API_KEY` 🔴
 - **What and why:** every worker email goes through Resend (`src/lib/email.ts`),
-  and the secret isn't set. Seven workflows use it: `scheduled-scans.yml`,
+  and the secret isn't set. Eight workflows use it: `scheduled-scans.yml`,
   `on-demand-scan.yml`, `scheduled-reports.yml`, `monthly-digest.yml`,
-  `emerging-threats.yml`, `uptime-sync.yml` and `deletion-requests.yml`.
-  Without it there are no critical-finding or scan-complete emails, no
-  scheduled reports, no digest, no uptime-down emails, and no erasure-deadline
-  reminders. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
+  `emerging-threats.yml`, `uptime-sync.yml`, `deletion-requests.yml` and
+  `easm-discovery.yml`. Without it there are no critical-finding or scan-complete
+  emails, no scheduled reports, no digest, no uptime-down emails, no new-hostname
+  alerts from the 6-hourly EASM sweep, and no erasure-deadline reminders. The EASM
+  sweep run fails (red in Actions) whenever a new-hostname alert is due and cannot
+  be delivered, then retries on the next sweep, so it will show the problem rather
+  than stay green. Owners with Slack or Teams set up are still told through those. The 2026-10-27 scheduled-reports run logged `RESEND_API_KEY:`
   empty and "sent 0".
 - **How:**
   1. Create a Resend account.
@@ -437,6 +441,21 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   runners. Decide after the prototype in the plan.
 - **How:** once the prototype reports feed size and time-to-first-scan, choose
   Actions, a small VM, or a Container Apps job.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-30.
+
+### OT-37: Container registry SKU 🟢
+- **What and why:** the Checkov scan flags six settings on the Container Apps
+  registry (`hebridescyberacr` in `azure/terraform/main.tf`) that need the
+  Premium SKU: no public network access, untagged-image cleanup,
+  geo-replication, image quarantine, dedicated data endpoints and signed
+  images. Premium costs roughly ten times Basic each month. They're skipped
+  with reasons in `main.tf` so the scan passes. Image vulnerability scanning
+  (CKV_AZURE_163) is a separate paid Defender for Containers plan. None of
+  this matters unless you use the Container Apps path (OT-16).
+- **How:** keep Basic (no action), or move to Premium and replace the skips
+  with the real settings. Turn on Defender for Containers separately if you
+  want image scanning.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 

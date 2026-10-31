@@ -223,6 +223,7 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "metadataLeak.path": "easy",
   "metadataLeak.author": "trivial",
   "metadataLeak.software": "trivial",
+  "metadataLeak.gps": "trivial",
 
   // --- ZAP AJAX Spider ---
   "zapAjaxSpider.hidden-endpoint": "moderate",

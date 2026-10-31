@@ -11,6 +11,11 @@ For what Hebrides Cyber actually does today (as opposed to what's claimed
 below), see `docs/FUNCTIONALITY-MATRIX.md` — every advantage claimed in §5
 is checked against that file, not against marketing copy.
 
+For a dimension-by-dimension side-by-side (what each side ships, checked
+against the code, plus the gaps a small team could close with its own version),
+see `docs/COMPETITOR-MATRIX.md`. It follows the same rule as this file: no
+competitor claim without a source and a date.
+
 ---
 
 ## 1. Method, as-of date, refresh procedure
