@@ -117,7 +117,11 @@ const NON_INTRUSIVE_EXCLUDED_TAGS = [
   "intrusive", "dos", "fuzz", "bruteforce", "default-login", "auth-bypass",
   "sqli", "xss", "rce", "lfi", "rfi", "traversal", "ssti", "xxe", "injection",
   "deserialization", "fileupload", "ssrf", "oast",
+  "redirect", "crlf", "smuggling", "cmdi", "oob",
 ];
+// "kev" is deliberately NOT excluded: known-exploited CVEs are the findings a
+// customer most needs to hear about. A KEV template that sends a payload also
+// carries one of the tags above (rce, cmdi, ...), so it is skipped anyway.
 
 export type NucleiOptions = { nonIntrusive?: boolean };
 
