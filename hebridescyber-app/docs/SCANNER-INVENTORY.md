@@ -281,7 +281,7 @@ From `docs/USER-GUIDE.md` section 6 and `docs/COMPETITIVE-ANALYSIS.md` section 9
   paths that answer without authorisation — it does not test whether one logged-in user can reach
   another user's specific data, and it never attempts an OAuth/MFA flow itself.
 - No full code review: SAST is pattern-based, about 35 rules, JS/TS, Python, PHP.
-- No cloud account-level IAM auditing (ScoutSuite/Prowler style).
+- Cloud account-level IAM auditing is AWS only (`prowler`, `iam` service only), and is unverified against a real account until OWNER-TODO OT-46 closes. No Azure or GCP IAM auditing.
 
 Code-level safety rules that are consistent across modules: GET-only crawling, forms never submitted, logout/delete/cart links never followed, subdomain tooling passive only, buckets tested only if referenced by the target's own page, Supabase tables read as counts only, storage and Firebase stores read as one name at most (never a value or file), secrets redacted and never stored.
 
