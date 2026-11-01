@@ -207,8 +207,8 @@ jobs:
         # release-zip pattern as nuclei above; a failed install degrades only
         # this check.
         env:
-          SUBFINDER_VERSION: v2.16.0
-          SUBFINDER_SHA256: 1b7f9c608e9a5bd59e609a5e09710d63c5485e92d3d49dc2c16eb4fdbe10cb60
+          SUBFINDER_VERSION: v2.17.0
+          SUBFINDER_SHA256: a39c3e5c7a26ef3c430915c4d6cbf7716a00f26769a75e9405aba796142eba37
         run: |
           curl -fsSL \
             "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" \
