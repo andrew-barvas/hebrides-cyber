@@ -1,0 +1,247 @@
+name: OpenVAS prototype
+
+# Measurement-only prototype for owner decision OT-36: can OpenVAS/GVM run on
+# the same ephemeral GitHub-hosted runners as scheduled-scans.yml? Brings up
+# the Greenbone community containers (pinned by digest in
+# .github/openvas-prototype/compose.yaml), loads the feed, runs one scan with a
+# safe config (no DoS, no brute force, safe_checks=yes, read back and asserted)
+# against the hermetic fixture app, and writes feed size, timings, peak disk and
+# memory and the result count to the job summary.
+#
+# Manual only: no schedule, no secrets, nothing in the product uses it. See
+# docs/DEFENSIVE-ASSESSMENT-PLAN.md (item 9) for the measured numbers.
+on:
+  workflow_dispatch:
+  # TEMPORARY: workflow_dispatch only works once the file is on master, so
+  # this push trigger takes the measurement run from the PR branch. Removed
+  # before the PR leaves draft.
+  push:
+    branches: [claude/nostalgic-almeida-95ede5]
+    paths: [".github/workflows/openvas-prototype.yml", ".github/openvas-prototype/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openvas-prototype
+  cancel-in-progress: false
+
+jobs:
+  prototype:
+    name: GVM feed, safe config and one fixture scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      COMPOSE_FILE: .github/openvas-prototype/compose.yaml
+      PROTOTYPE_OUT: /tmp/openvas-out
+    steps:
+      - name: Record start
+        run: |
+          echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p /tmp/openvas-out && chmod 777 /tmp/openvas-out
+          nproc; free -h; df -h / /mnt || true
+          {
+            echo "cpus=$(nproc)"
+            echo "mem_total_bytes=$(free -b | awk '/^Mem:/{print $2}')"
+            echo "disk_free_before_cleanup_bytes=$(df -B1 --output=avail / | tail -1)"
+          } > /tmp/openvas-out/runner.env
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The default image leaves roughly 20 GB free on /. Removing toolchains
+      # this job never uses is what a production job would do too, so it is
+      # part of the measurement rather than hidden from it.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af >/dev/null
+          echo "disk_free_after_cleanup_bytes=$(df -B1 --output=avail / | tail -1)" >> /tmp/openvas-out/runner.env
+          df -h /
+
+      - name: Start resource sampler
+        run: |
+          cat > /tmp/sampler.sh <<'EOF'
+          #!/usr/bin/env bash
+          # Every 5 s: epoch, host memory in use (total - available), disk used on /.
+          # Every 30 s: per-container memory from docker stats.
+          i=0
+          while :; do
+            mem=$(awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{print (t-a)*1024}' /proc/meminfo)
+            disk=$(df -B1 --output=used / | tail -1 | tr -d ' ')
+            echo "$(date +%s) $mem $disk" >> /tmp/openvas-out/samples.txt
+            if [ $((i % 6)) -eq 0 ]; then
+              docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null \
+                | sed "s/^/$(date +%s) /" >> /tmp/openvas-out/container-mem.txt
+            fi
+            i=$((i + 1))
+            sleep 5
+          done
+          EOF
+          chmod +x /tmp/sampler.sh
+          nohup /tmp/sampler.sh > /dev/null 2>&1 &
+
+      - name: Start the local test app
+        working-directory: hebridescyber-app
+        run: |
+          nohup python3 tests/fixtures/test-app/app.py > /tmp/test-app.log 2>&1 &
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8099/ >/dev/null && break; sleep 1; done
+          curl -fs "http://127.0.0.1:8099/api/health"
+
+      - name: Pull Greenbone images
+        run: |
+          t0=$(date +%s)
+          docker compose pull --quiet
+          t1=$(date +%s)
+          echo "pull_seconds=$((t1 - t0))" >> /tmp/openvas-out/runner.env
+          docker compose config --images | sort -u | xargs docker image inspect --format '{{.Size}}' \
+            | awk '{s+=$1} END{print "images_bytes=" s}' >> /tmp/openvas-out/runner.env
+          docker compose config --images | sort -u | xargs docker image inspect --format '{{index .RepoDigests 0}} {{.Size}}'
+
+      - name: Start GVM and copy the feed into volumes
+        run: |
+          t0=$(date +%s)
+          echo "up_at=$t0" >> /tmp/openvas-out/runner.env
+          docker compose up -d
+          # The feed images copy their data into volumes, then report healthy.
+          for svc in vulnerability-tests notus-data scap-data cert-bund-data dfn-cert-data data-objects report-formats; do
+            for i in $(seq 1 180); do
+              id=$(docker compose ps -q "$svc")
+              state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)
+              [ "$state" = "healthy" ] && break
+              sleep 5
+            done
+            echo "$svc: $state after $(( $(date +%s) - t0 ))s"
+            [ "$state" = "healthy" ] || { echo "::error::$svc never became healthy"; docker compose logs "$svc" | tail -50; exit 1; }
+          done
+          echo "feed_copy_seconds=$(( $(date +%s) - t0 ))" >> /tmp/openvas-out/runner.env
+
+      - name: Set a random gvmd admin password
+        run: |
+          # gvmd creates the admin user on first start (default password
+          # "admin"). Nothing is published on a port, but replace it anyway.
+          for i in $(seq 1 60); do
+            docker compose exec -T -u gvmd gvmd gvmd --get-users 2>/dev/null | grep -qx admin && break
+            sleep 10
+          done
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$pw"
+          docker compose exec -T -u gvmd gvmd gvmd --user=admin --new-password="$pw"
+          echo "GVM_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      - name: Load feed, check safe config, scan the fixture app
+        run: |
+          docker compose --profile tools run --rm -T gvm-tools \
+            gvm-script --gmp-username admin --gmp-password "$GVM_PASSWORD" \
+            --timeout 600 socket /prototype/scan.py
+
+      - name: Measure feed volume sizes
+        if: always()
+        run: |
+          sudo du -sb /var/lib/docker/volumes/openvas-prototype_* 2>/dev/null \
+            | sed 's#/var/lib/docker/volumes/openvas-prototype_##; s#/_data$##' \
+            | tee /tmp/openvas-out/volumes.txt
+          docker system df
+
+      - name: Write job summary
+        if: always()
+        run: |
+          pkill -f /tmp/sampler.sh || true
+          echo "job_end=$(date +%s)" >> /tmp/openvas-out/runner.env
+          python3 - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os
+          out = "/tmp/openvas-out"
+          env = dict(l.strip().split("=", 1) for l in open(f"{out}/runner.env") if "=" in l)
+          res = {}
+          if os.path.exists(f"{out}/result.json"):
+              res = json.load(open(f"{out}/result.json"))
+          samples = [l.split() for l in open(f"{out}/samples.txt")] if os.path.exists(f"{out}/samples.txt") else []
+          vols = {}
+          if os.path.exists(f"{out}/volumes.txt"):
+              for l in open(f"{out}/volumes.txt"):
+                  size, name = l.split()
+                  vols[name] = int(size)
+          peaks = {}
+          if os.path.exists(f"{out}/container-mem.txt"):
+              units = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
+              for l in open(f"{out}/container-mem.txt"):
+                  parts = l.split()
+                  if len(parts) < 3:
+                      continue
+                  used = parts[2]
+                  for u in sorted(units, key=len, reverse=True):
+                      if used.endswith(u):
+                          val = float(used[: -len(u)]) * units[u]
+                          peaks[parts[1]] = max(peaks.get(parts[1], 0), val)
+                          break
+          gb = lambda b: f"{int(b) / 1024**3:.2f} GB"
+          mins = lambda s: f"{float(s) / 60:.1f} min"
+          start = int(os.environ["JOB_START"])
+          end, up = int(env["job_end"]), int(env.get("up_at", start))
+          feed_vols = ["vt_data_vol", "notus_data_vol", "scap_data_vol", "cert_data_vol", "data_objects_vol", "gpg_data_vol"]
+          rows = [
+              ("Runner", f"{env.get('cpus')} vCPU, {gb(env.get('mem_total_bytes', 0))} RAM"),
+              ("Disk free before / after cleanup", f"{gb(env.get('disk_free_before_cleanup_bytes', 0))} / {gb(env.get('disk_free_after_cleanup_bytes', 0))}"),
+              ("Image pull", mins(env.get("pull_seconds", 0))),
+              ("Images on disk", gb(env.get("images_bytes", 0))),
+              ("Feed copy into volumes", mins(env.get("feed_copy_seconds", 0))),
+              ("Feed size on disk (VT, Notus, SCAP, CERT, data objects)", gb(sum(vols.get(v, 0) for v in feed_vols))),
+              ("Postgres size at end", gb(vols.get("psql_data_vol", 0))),
+          ]
+          if "feed_ready_at" in res:
+              rows.append(("Feed sync: compose up to VTs loaded in gvmd", mins(res["feed_ready_at"] - up)))
+              rows.append(("NVTs loaded", f"{res.get('nvt_count'):,}"))
+          if "scan_done_at" in res:
+              rows.append(("Time to first finished scan (job start)", mins(res["scan_done_at"] - start)))
+              rows.append(("Time to first finished scan (compose up)", mins(res["scan_done_at"] - up)))
+              rows.append(("Scan duration", mins(res.get("scan_seconds", 0))))
+          if "scap_ready_at" in res:
+              rows.append(("SCAP/CERT import finished (compose up)", mins(res["scap_ready_at"] - up)))
+          elif res.get("scap_counts"):
+              rows.append(("SCAP/CERT import", f"not finished; last counts {res['scap_counts']}"))
+          if samples:
+              rows.append(("Peak host memory in use", gb(max(int(s[1]) for s in samples))))
+              rows.append(("Peak disk used on /", gb(max(int(s[2]) for s in samples))))
+          rows.append(("Total job wall time (runner minutes)", mins(end - start)))
+          if "config" in res:
+              c = res["config"]
+              rows.append(("Scan config", f"Full and fast clone, {c['families_enabled']} families, {c['nvts_selected']:,} NVTs, excluded {', '.join(c['families_excluded'])}, safe_checks={c['safe_checks']}"))
+          rows.append(("Scan status", res.get("scan_status", "not reached")))
+          if "result_count" in res:
+              rows.append(("Result count", f"{res['result_count']} ({res['by_severity']})"))
+          if "error" in res:
+              rows.append(("Error", res["error"]))
+          print("## OpenVAS prototype measurements\n")
+          print("| Measure | Value |\n|---|---|")
+          for k, v in rows:
+              print(f"| {k} | {v} |")
+          if peaks:
+              print("\n### Peak memory per container\n")
+              print("| Container | Peak |\n|---|---|")
+              for name, val in sorted(peaks.items(), key=lambda kv: -kv[1]):
+                  print(f"| {name} | {val / 1024**2:.0f} MiB |")
+          if res.get("result_titles"):
+              print("\n### Results (severity, NVT)\n")
+              for t in res["result_titles"]:
+                  print(f"- {t}")
+          print("\n```json\n" + json.dumps(res, indent=2) + "\n```")
+          EOF
+
+      - name: Collect service logs
+        if: always()
+        run: |
+          for svc in gvmd ospd-openvas openvasd pg-gvm; do
+            docker compose logs --no-color "$svc" > "/tmp/openvas-out/$svc.log" 2>&1 || true
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: openvas-prototype
+          path: /tmp/openvas-out/
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v || true
