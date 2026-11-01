@@ -33,7 +33,11 @@ dependencies listed in `package.json` (whose licences ship with each package).
 
 The scheduled scan workers install third-party tools (nuclei, subfinder,
 httpx, katana, gitleaks, trivy, opengrep, zizmor, ffuf, gospider, kiterunner, nmap,
-sqlmap, commix, testssl.sh, OWASP ZAP). Each is pinned by version and checksum
-in `.github/workflows/scheduled-scans.yml` and runs as a separate program under
-its own licence; see `docs/SCANNER-INVENTORY.md`. No rules are copied from
+sqlmap, commix, testssl.sh, OWASP ZAP), each run as a separate program under its
+own licence; see `docs/SCANNER-INVENTORY.md`. How each is pinned in
+`.github/workflows/scheduled-scans.yml`: release binaries by version and SHA-256;
+PyPI packages (sqlmap, zizmor, arjun, badsecrets) by exact version; git-cloned
+tools (commix, testssl.sh, WhatWaf, CMSmap) by release tag or commit; ZAP by
+image digest; nmap and hydra come unpinned from the runner's signed apt
+repository. `scanner-tool-updates.yml` keeps the automated pins current. No rules are copied from
 semgrep-rules or opengrep-rules (see CLAUDE.md, SAST).
