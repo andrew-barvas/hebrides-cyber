@@ -3487,3 +3487,14 @@ remediation for the integration steps) — this informational finding simply
 flags that none was detected while trackers are present. If you do use a CMP
 that this scan didn't recognise, confirm it actually blocks the trackers
 before they fire, not just displays a banner alongside them.`;
+
+
+// Used when Prowler's own record carries no recommendation text. Normally the
+// per-check recommendation from Prowler's metadata is attached instead.
+export const PROWLER_IAM_FALLBACK_REMEDIATION = `Review the IAM entity named in this finding and remove the permission or
+configuration it flags. For privilege-escalation findings, the policy lets a
+principal grant itself (or pass to a service) more access than it was given:
+scope the actions (iam:PassRole, iam:CreatePolicyVersion, iam:AttachUserPolicy
+and similar) to named resources, add conditions, or remove them. Confirm in the
+IAM console's access analyzer that the change doesn't break a legitimate
+workflow, then re-scan.`;
