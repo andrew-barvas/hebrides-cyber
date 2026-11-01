@@ -107,6 +107,13 @@ nothing else can: a real session cookie with insecure flags, invisible
 until you're actually authenticated. Not a full crawl behind login, not
 access-control (IDOR) testing.
 
+**Third-party tools.** This service uses the Nmap Security Scanner
+(https://nmap.org/) to perform its network service detection. Scheduled
+scans also run other open-source tools (nuclei, OWASP ZAP, testssl.sh,
+Trivy, Gitleaks, Opengrep and others), each unmodified, as a separate
+program under its own licence. The full list, with each licence, is in
+`SCANNER-INVENTORY.md`. The same notice is on `/what-we-check`.
+
 ### 3.2 Compliance mapping
 
 Every finding that genuinely maps to one is tagged against Cyber Essentials
