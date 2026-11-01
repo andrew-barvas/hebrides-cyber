@@ -44,7 +44,9 @@ Rules this document follows:
 
 ### Work in open PRs, counted as existing
 
-Both PRs were open drafts on 2026-10-31 and are not on `master`. Their
+Both PRs were open drafts on 2026-10-31. **Update 2026-11-01:** PR #144 has
+since merged, with its migration renumbered to `065_exposure_profile.sql`, so
+the `exposure` profile is now on `master`. PR #152 is still open. Their
 changes were read with `gh pr diff`:
 
 - **PR #144** (`claude/lookout-managed-assessment-dd2ec8`):
@@ -69,10 +71,10 @@ What this changes below: the non-intrusive scanning boundary that every
 coverage under `exposure` (ZAP passive) and weakness classification by CWE
 and ATT&CK (§2.5, §2.6) are not counted as gaps.
 
-**Migration number collision.** PR #144 adds
-`sql/migrations/064_exposure_profile.sql`, but `master` already has
-`064_target_auth_totp.sql` from PR #156. PR #144 needs renumbering to the
-next free number before it merges (CLAUDE.md rule 26).
+**Migration number collision (resolved).** PR #144 first added
+`064_exposure_profile.sql`, which collided with `master`'s
+`064_target_auth_totp.sql` from PR #156. It merged as
+`065_exposure_profile.sql`.
 
 Effort is for one developer working with Claude Code, including tests to
 `docs/SCANNER-CONVENTIONS.md`'s rules and a real-binary integration test for
@@ -814,6 +816,64 @@ a gap. Total for P1 is roughly 12 to 17 weeks. Total for P2 is roughly 17 to
 
 ---
 
+## 4a. The next five after P1 (added 2026-11-01)
+
+These follow the five P1 items. Four P1 sessions were already building those
+on 2026-11-01. This list covers the site, the toolset and the two spin-off
+products, Lookout (P-06) and Exploit (P-07).
+
+It leaves out work already in review: SARIF export (#151), the free
+no-signup check (#154), customer-defined nuclei checks (#155) and ZAP passive
+mode (#152).
+
+"Competitors" means the category, from general product knowledge. No vendor
+sites were re-checked for this section, so treat every "they do" as needing
+confirmation before it goes into copy (brand rule OT-14).
+
+| # | Item | Area | What competitors do | How we match it, then do better | Effort | Blocked on |
+|---|---|---|---|---|---|---|
+| N1 | **Lookout launch surface.** Step 8 of `DEFENSIVE-ASSESSMENT-PLAN.md`, currently unclaimed: services entry, terms §2, Stripe Essentials and Assured with monthly, quarterly and annual prices. | Site, Lookout | Managed vulnerability-assessment and exposure services sell a subscription with an analyst-written report. | **Match:** a subscription with self-serve checkout. **Better:** the report leads with P1-2's ranked "fix this first" list, maps each finding to Cyber Essentials and NCSC CAF, and says in plain words that no test payloads were sent. Code can land before the prices exist, because checkout already answers 503 `checkout_unavailable` until the price IDs are set (CLAUDE.md "Payments"). | 3–5 days | Owner Stripe prices (OT-33 to OT-35) to go live |
+| N2 | **OpenVAS and Nikto wrappers.** Owner decision Q1 in `DEFENSIVE-ASSESSMENT-PLAN.md`, currently unclaimed. | Toolset, Lookout | Nessus-class network vulnerability tests on exposed hosts. | **Match:** OpenVAS (Greenbone Community Edition) is the open-source engine for this class. It runs with safe checks only under `exposure`, and Nikto covers web-server misconfiguration. **Better:** its results go through `findingConsolidation.ts` alongside P1-3's version matching, so a CVE reported by both shows once with corroboration, not twice. | Nikto 2–3 days. OpenVAS 2–3 weeks: it needs its feed, a daemon and P1-1's always-on workers. | P1-1 for OpenVAS. A real-binary integration test for each (CLAUDE.md rule 15). |
+| N3 | **Asset scope confirmation and a customer audit log.** P2-1 (scope status first) and P2-4 together. | Platform, Lookout | ASM tools ask the customer to confirm each discovered asset. Enterprise questionnaires ask for an audit log. | **Match:** in-scope, out-of-scope and not-ours on every discovered host, and the account's own audit trail with export. **Better:** each Lookout report records the scope the customer confirmed and when, which suits an SME's insurer or auditor. | 2–3 weeks | None |
+| N4 | **Emerging-threat checks triggered by events.** P2-3's KEV trigger. | Toolset, Lookout | Same-day checks when a high-profile vulnerability is published. | **Match:** when a new KEV entry matches a customer's detected stack, queue a check that runs only that CVE's non-intrusive nuclei templates. **Better:** we already know each host's technologies (`emergingThreatAlerts.ts`), so we can say "you are affected", "not affected" or "couldn't tell" per host, not just "this exists". "Couldn't tell" is never reported as clean (CLAUDE.md rule 7). | 1–1.5 weeks | P1-1 for capacity |
+| N5 | **Exploit: the governance gate, then the authorisation workflow.** | Exploit | Penetration-testing-as-a-service platforms take signed scope, run an authorised test, and track retests. | **Match and better:** `EXPLOIT-PRODUCT-PLAN.md` makes signed, enumerated scope and fail-closed enforcement in code the core of the product, not a form. **Nothing customer-facing is built or marketed until OT-13** (professional indemnity insurance and a solicitor-reviewed engagement contract) **is signed off and the owner makes a go decision.** The next step is the owner's, not code. | Owner decisions first. Then the plan's implementation steps. | OT-13, and the plan's owner decisions |
+
+Next after these: the Cyber Essentials Plus evidence pack (P2-9), which needs
+P1-5's device data.
+
+### Separate web addresses for Lookout and Exploit
+
+The question was whether the products could live at
+`www.lookout.hebridescyber.com` and `www.exploit.hebridescyber.com`.
+Findings from 2026-11-01:
+
+- **`hebridescyber.com` doesn't resolve.** DNS returns "non-existent
+  domain". The live site is `www.hebridescyber.co.uk` (CLAUDE.md rule 27).
+  Either the owner registers the `.com` first, or the products use
+  `.co.uk` subdomains.
+- **Drop the `www.`** A `www` under a subdomain (`www.lookout.…`) needs its
+  own DNS record and certificate and adds nothing. Use `lookout.…` alone.
+- **Recommendation for Lookout: a path, not a subdomain, for now.** Step 8
+  puts Lookout on the main site's services page, with the same login,
+  Stripe account and dashboard. A path such as
+  `www.hebridescyber.co.uk/lookout` keeps one sign-in and builds the main
+  domain's search ranking. A subdomain can point at the same app later
+  with a host-based rewrite in `src/proxy.ts`. That is about 1 to 2 days
+  of code, plus these owner steps:
+  - DNS records at GoDaddy.
+  - The custom domain added in Static Web Apps.
+  - Each host added to Supabase Auth's allowed redirect URLs.
+  - A check of cookie scope.
+- **Exploit should have no public address yet.** Its plan forbids a
+  customer-facing surface before OT-13, and brand rule OT-14 forbids copy
+  for unbuilt features.
+- **Check both names before buying domains.** `DEFENSIVE-ASSESSMENT-PLAN.md`
+  records that "Lookout" still needs a trademark check. Lookout, Inc. is an
+  established mobile-security company, so a security product with that name
+  is a real conflict risk. "Exploit" is only a working name.
+
+---
+
 ## 5. Not building
 
 These match `docs/COMPETITIVE-ANALYSIS.md` §9 and `docs/COMPETITOR-MATRIX.md`
@@ -837,21 +897,26 @@ endorsing them:
 
 ## 6. Code issues found during this review
 
-These were found while reading the code for this analysis and are **not fixed
-here**, because this was a documentation pass. Each is small enough for its own
-change:
+These were found while reading the code for this analysis. This document
+doesn't fix them. **Status 2026-11-01:** items 1 and 2 are fixed in PR #165,
+item 3 was resolved when PR #144 merged, and item 4 is waiting on an owner
+decision.
 
-1. **The CEF vendor string has a Cyrillic letter.**
-   `src/lib/siemIntegration.ts:45` writes `HebridesСyber` where the `С` is
-   U+0421 (Cyrillic capital Es), not a Latin `C`. A SIEM rule or parser
-   matching vendor `HebridesCyber` won't match our events.
-2. **Syslog is offered by the type but not implemented**
-   (`siemIntegration.ts:29` and `:130`). A row saved with `type: "syslog"`
-   delivers nothing. Check whether the UI can create one.
-3. **Migration 064 is taken twice.** Open PR #144's `064_exposure_profile.sql`
-   collides with `master`'s `064_target_auth_totp.sql` (see "Work in open
-   PRs").
-4. **Orphaned tables.** `organizations`, `org_members`, `rbac_permissions`
+1. **The CEF and LEEF vendor strings had a Cyrillic letter.**
+   `src/lib/siemIntegration.ts` wrote `HebridesСyber` on lines 45 (CEF) and
+   56 (LEEF), where the `С` is U+0421 (Cyrillic capital Es), not a Latin
+   `C`. A SIEM rule or parser matching vendor `HebridesCyber` never matched
+   our events. Fixed in PR #165.
+2. **Syslog was accepted but never delivered.** `forwardToSiem()` has no
+   syslog transport (`siemIntegration.ts:130`). Even so,
+   `POST /api/account/siem-integration` stored `type: "syslog"` rows, which
+   then delivered nothing. No UI offers it, so only API callers hit this.
+   PR #165 makes the route refuse syslog with a 400. Building the transport
+   is P2-5.
+3. **Migration 064 was taken twice.** PR #144's `064_exposure_profile.sql`
+   collided with `master`'s `064_target_auth_totp.sql`. Resolved: it merged
+   as `065`.
+4. **Orphaned tables (owner decision).** `organizations`, `org_members`, `rbac_permissions`
    and `sso_providers` (migrations 034 to 036) have no code reading or
    writing them. `sso_providers.client_secret` is plaintext. Either adopt
    them in P2-6 and P2-7 or drop them in a migration.
@@ -873,4 +938,8 @@ not edit that file.
 | P2-6 | Decide MSP pricing and whether workspaces are per seat or per client. |
 | P2-7 | Confirm whether the Supabase plan includes SAML SSO. |
 | P2-10 | Apply for HaloPSA, ConnectWise and Autotask partner or sandbox access. |
+| §4a domains | Decide between registering `hebridescyber.com` and using `.co.uk` subdomains, and between a path and a subdomain for Lookout. |
+| §4a naming | Run trademark checks on "Lookout" (already recorded in the Lookout plan, not yet done) and on Exploit's final name, before buying any domain. |
+| N5 | OT-13 sign-off and the go or no-go decision on Exploit, per `EXPLOIT-PRODUCT-PLAN.md`. |
+| §6 item 4 | Decide whether to adopt or drop the orphaned tables from migrations 034 to 036. |
 | All | Approve this ordering, or re-rank it. |
