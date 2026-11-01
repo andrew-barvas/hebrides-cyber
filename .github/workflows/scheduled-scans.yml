@@ -348,8 +348,8 @@ jobs:
         # not_configured. 0.75.0's JSON output is checked against the parser
         # by src/worker/tools/fixtures/trivy/config-0.75.0.json.
         env:
-          TRIVY_VERSION: 0.75.0
-          TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+          TRIVY_VERSION: 0.76.0
+          TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
         run: |
           curl -fsSL \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
