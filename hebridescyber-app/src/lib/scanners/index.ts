@@ -32,6 +32,7 @@ import { buildCrawlFindings, buildMalwareFindings } from "./crawlFindings";
 import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInventoryResult } from "./scriptInventory";
 import { runCookieConsent, type CookieConsentResult } from "./cookieConsent";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
+import { applyAttackRefs, type AttackRef } from "./attackMap";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
 export { enrichFindingsWithThreatIntel } from "./threatIntel";
@@ -137,6 +138,14 @@ export type Finding = {
    * header explains why those are deliberately not distinguished.
    */
   complianceRefs?: ComplianceRef[];
+  /**
+   * MITRE ATT&CK techniques an adversary could use against this exposure, and
+   * the CWE weakness ids it is an instance of — see src/lib/scanners/attackMap.ts.
+   * Applied as a final pass alongside complianceRefs, same optionality: absent
+   * means "not yet categorised" or genuinely no fit, never "no risk".
+   */
+  attackRefs?: AttackRef[];
+  cwe?: string[];
   /**
    * How much effort fixing this finding takes — a different axis from
    * severity (how much risk it poses). See src/lib/scanners/fixDifficulty.ts.
@@ -1387,6 +1396,7 @@ export function summariseResults(results: ScanResults): { summary: string; findi
       finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
     }
   }
+  applyAttackRefs(findings);
 
   const topTitles = findings.slice(0, 3).map((f) => f.title).join("; ");
   const summary = `Security scan of ${results.target_url}: ${topTitles}.`;

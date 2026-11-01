@@ -93,3 +93,26 @@ describe("buildNucleiArgs", () => {
     expect(buildNucleiArgs("https://t.example", "cve", "/tmp/o.json", { INTERACTSH_SERVER: "oast.example.co.uk" }).slice(-2)).toEqual(["-iserver", "oast.example.co.uk"]);
   });
 });
+
+describe("non-intrusive mode (exposure profile)", () => {
+  const PAYLOAD_TAGS = ["default-login", "ssrf", "oast", "sqli", "xss", "rce", "lfi", "fuzz", "dos", "intrusive", "bruteforce", "redirect", "crlf", "smuggling", "cmdi", "oob"];
+
+  it("drops every payload-sending tag from the baseline, keeping technology tags", () => {
+    const tags = buildTagArgument(["WordPress"], { nonIntrusive: true }).split(",");
+    expect(tags).toEqual(expect.arrayContaining(["exposure", "misconfig", "takeover", "cve", "wordpress"]));
+    for (const t of PAYLOAD_TAGS) expect(tags, t).not.toContain(t);
+  });
+
+  it("excludes payload-sending templates and turns out-of-band interaction off, whatever the env says", () => {
+    const args = buildNucleiArgs("https://t.example", "exposure", "/tmp/o.json", { INTERACTSH_SERVER: "oast.example.co.uk" }, { nonIntrusive: true });
+    const etags = args[args.indexOf("-etags") + 1].split(",");
+    for (const t of PAYLOAD_TAGS) expect(etags, t).toContain(t);
+    expect(args).toContain("-ni");
+    expect(args).not.toContain("-iserver");
+  });
+
+  it("leaves the default mode unchanged", () => {
+    expect(buildTagArgument([])).toContain("default-login");
+    expect(buildNucleiArgs("https://t.example", "cve", "/tmp/o.json", {})).not.toContain("-etags");
+  });
+});
