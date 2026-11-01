@@ -56,6 +56,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
 | OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
 | OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
+| OT-46 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
+| OT-47 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
@@ -502,7 +504,132 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **How:** pick a CREST-accredited provider, agree scope, and run it against a
   staging copy where possible. Keep the report private.
 - **Verify:** a report received and findings triaged.
-- **Raised:** 2026-10-31.
+
+### OT-46: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
+- **What and why:** the Prowler IAM / privilege-escalation check
+  (`src/worker/tools/prowlerIam.ts`, PR #158) assumes each customer's read-only
+  role from an AWS identity of ours. That identity doesn't exist yet, so for
+  any owner who connects a role the check reports `error` (never a clean
+  result) and nothing is marked fixed. The check has also never run against a
+  real AWS account: its tests use a hand-built report in Prowler's documented
+  format, and the flags and report filename come from Prowler's source, not an
+  observed run. Until this item is done the feature is unproven.
+- **Before you start:** you need an AWS account you control for our scan
+  identity (the "platform account") and a second AWS account, or a throwaway
+  one, to play the customer (the "test account"). They can't be the same
+  account for a meaningful test of the cross-account trust. Use the AWS
+  console or the AWS CLI. An Agency-plan dashboard login is needed for step 6
+  (the seeded agency demo account works: `npm run seed:users`).
+- **How:**
+  1. **Create our scan identity (platform account).** IAM → Users → Create
+     user, name `hebrides-prowler-scan`, no console access. Attach no managed
+     policies. Open the user → Permissions → Add permissions → Create inline
+     policy → JSON, and paste:
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         { "Effect": "Allow", "Action": "sts:AssumeRole", "Resource": "arn:aws:iam::*:role/*" }
+       ]
+     }
+     ```
+     Name it `AssumeCustomerAuditRoles`. It must hold no other permission, so
+     a leaked key can do nothing beyond what a customer's own role allows.
+  2. **Create its access key.** The user → Security credentials → Create
+     access key → "Application running outside AWS". Copy the key id and
+     secret now (the secret is shown once). Note the platform account's
+     12-digit id (top-right account menu).
+  3. **Add the GitHub secrets** (from `hebridescyber-app/`, logged in with
+     `gh auth login`; the prompts keep the secret out of shell history):
+     ```bash
+     gh secret set PROWLER_AWS_ACCESS_KEY_ID
+     gh secret set PROWLER_AWS_SECRET_ACCESS_KEY
+     gh secret list
+     ```
+     `gh secret list` should show both names. Never paste the secret into chat.
+  4. **Add the Azure app setting** `PROWLER_PLATFORM_AWS_ACCOUNT_ID` = the
+     12-digit platform account id (not a secret). Azure portal → the Static
+     Web App → Settings → Environment variables (also called Configuration)
+     → Add → name and value → Save. The dashboard reads it to show customers
+     the trust-policy principal; without it the panel says "not available
+     yet". Also confirm `CREDENTIALS_ENC_KEY` is set there (OT-05), or saving
+     a role returns 503.
+  5. **Create the audit role (test account).** IAM → Roles → Create role →
+     Trusted entity type "AWS account" → "Another AWS account" → paste the
+     platform account id → tick "Require external ID" and, for now, enter a
+     placeholder (you replace it in step 7). Attach the AWS managed policies
+     `SecurityAudit` and `ViewOnlyAccess`. Name it `HebridesCyberAudit`.
+     Copy the role ARN. To make the test meaningful, also create one
+     customer-managed policy allowing `iam:CreatePolicyVersion` and attach it
+     to a user: Prowler should then report a privilege-escalation finding.
+  6. **Generate the real external id.** Sign in to the dashboard as an Agency
+     user → Account → Cloud Posture Scanning → "AWS IAM &
+     privilege-escalation check" → label `test account` → Generate external
+     ID. Copy the `hc-…` value.
+  7. **Put it in the trust policy.** IAM → Roles → `HebridesCyberAudit` →
+     Trust relationships → Edit, so it matches the template in
+     `docs/AWS-IAM-POSTURE.md`: principal `arn:aws:iam::<platform id>:root`,
+     action `sts:AssumeRole`, condition `StringEquals` on `sts:ExternalId`
+     with the `hc-…` value. Save.
+  8. **Save the role ARN** in the same dashboard panel (Role ARN → Save role
+     ARN).
+  9. **Smoke-test the trust by hand** (optional, quick), with the scan
+     identity's key in a scratch shell:
+     `aws sts assume-role --role-arn <arn> --role-session-name t --external-id <hc-…>`
+     should return credentials; with a wrong external id it must fail with
+     AccessDenied. That proves the guard works.
+  10. **Run the check for real.** Actions → "Scheduled Scans" → Run workflow
+      (or locally, with the secrets exported: `npm run
+      queue:enqueue-scheduled-scans` then `npm run queue:run-worker`). The
+      "Install prowler" step's log must end with a line containing `5.47.0`.
+      In the scan result, the `prowler` entry must be `completed` and list the
+      test account; the planted policy should appear as a finding with check
+      id `prowler.iam_policy_allows_privilege_escalation:<acct>:<policy arn>`.
+  11. **Capture a real fixture.** Locally (Python 3.10 to 3.13), in a venv:
+      `pip install prowler==5.47.0`, export the scan identity's key as
+      `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, then run
+      `prowler aws --role <arn> --external-id <hc-…> --service iam --output-formats json-ocsf --output-directory out --output-filename prowler-iam --ignore-exit-code-3 --no-banner`.
+      Open `out/prowler-iam.ocsf.json`, replace real account ids, ARNs and
+      names with placeholders, and replace
+      `hebridescyber-app/src/worker/tools/fixtures/prowler/iam-ocsf-5.47.0.json`
+      and the README beside it. Run `npm run test:unit`; any shape difference
+      from the hand-built version shows up as a failing test. Fix the parser,
+      not the fixture.
+  12. **Clean up the test account:** delete the role, the test user and the
+      policy, and Remove the connection in the dashboard, unless you want to
+      keep it running.
+- **If it fails:** the scan result's `prowler.note` says why. "prowler is not
+  installed" means the install step failed or the job ran elsewhere. "could
+  not be assumed" or AccessDenied means the trust policy principal, external
+  id or role ARN is wrong. "Platform AWS identity … not configured" means
+  step 3 isn't done. "reported on an account other than" means the role ARN's
+  account differs from the account Prowler assessed.
+- **Walkthrough for customers:** `docs/AWS-IAM-POSTURE.md`.
+- **Verify:** a scan result with `prowler` `completed` and the test account
+  listed, the planted escalation policy reported, and the real fixture merged
+  with tests passing.
+- **Raised:** 2026-10-31 (PR #158).
+
+### OT-47: Optional: hash-pin Prowler's Python dependencies 🟢
+- **What and why:** the workflow verifies Prowler's own wheel by SHA-256, but
+  pip resolves its dependencies (boto3, pydantic and many others) at install
+  time without hashes. A compromised dependency release would run inside the
+  scan job, which holds the service-role key and customer credentials in its
+  environment. Pinning with hashes closes that.
+- **How:**
+  1. In a clean directory with Python 3.12: `python -m venv v`, activate it
+     (`. v/bin/activate`, or `v\Scripts\activate` on Windows), then
+     `pip install pip-tools`.
+  2. Put the single line `prowler==5.47.0` in a file `prowler.in`.
+  3. Run `pip-compile --generate-hashes --output-file requirements-prowler.txt prowler.in`.
+  4. Commit `requirements-prowler.txt` under `hebridescyber-app/` and change
+     the workflow's "Install prowler" step to
+     `sudo /opt/prowler/bin/pip install --require-hashes -r requirements-prowler.txt`
+     (keep the SHA-256 check of the prowler wheel itself).
+  5. When bumping Prowler, regenerate the file in the same PR.
+- **Verify:** the "Install prowler" step in a scheduled-scan run succeeds with
+  `--require-hashes` and prints the pinned version.
+- **Raised:** 2026-10-31 (PR #158).
 
 ### OT-42: Lookout tier limits 🟡
 - **What and why:** checkout makes it easy to sell more analyst time than one
