@@ -63,7 +63,7 @@ describe("POST /api/admin/sentry-test", () => {
     getClientMock.mockReturnValue(undefined);
     const { req, res } = mockReqRes();
     await handler(req, res);
-    expect(res._getJSONData().configured).toBe(false);
+    expect(res._getJSONData()).toMatchObject({ configured: false });
   });
 
   it("captures a tagged test error, flushes, audits and returns the event id", async () => {

@@ -75,7 +75,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-43 | Lookout: approve the traffic disclosure; keep or drop the login rate-limit check; PI cover | 🟡 Medium | Decision | 2026-10-31 | |
 | OT-44 | Lookout: review the restricted nuclei tag lists in PR #144 | 🟡 Medium | Open | 2026-10-31 | |
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
-| OT-46 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
 
 ## Items
 
@@ -557,7 +557,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   `PRODUCT-IDEAS.md` P-06.
 - **Raised:** 2026-10-31.
 
-### OT-46: SAML single sign-on 🟢
+### OT-48: SAML single sign-on 🟢
 - **What and why:** the 2026-10-31 Copilot sprint plan put SAML SSO in
   Sprint 3. The earlier SSO modules were deleted on 2026-10-13 (only
   migrations 034-036 remain), so it is a new build: an identity-provider
