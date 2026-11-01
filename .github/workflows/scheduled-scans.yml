@@ -384,6 +384,29 @@ jobs:
             || echo "opengrep install failed — sast.ts will report status: not_configured"
           rm -f /tmp/opengrep
 
+      - name: Install prowler
+        # Read-only AWS IAM / privilege-escalation posture of customers who
+        # connected a cross-account role (src/worker/tools/prowlerIam.ts).
+        # Prowler is Apache-2.0. The wheel is downloaded from PyPI's file host
+        # and verified against its SHA-256 before install, into its own venv;
+        # its dependencies are resolved by pip at install time (not hash-pinned
+        # - see OT-47). Unlike the best-effort installs above this one FAILS
+        # the job: prowlerIam.ts reports an error (never a clean result) for
+        # an owner with a role connected, so a silent non-install would just
+        # be a permanently red check.
+        env:
+          PROWLER_VERSION: 5.47.0
+          PROWLER_SHA256: 8921b03330bc17182d7ed7260afe285bb6096829cacb14a74baa9d6914aef5b6
+        run: |
+          set -euo pipefail
+          curl -fsSL             "https://files.pythonhosted.org/packages/23/fa/bf388f40a49322653af49a07d515354758f1915767448e56b1af4824ed38/prowler-${PROWLER_VERSION}-py3-none-any.whl"             -o "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+          echo "${PROWLER_SHA256}  /tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl" | sha256sum -c -
+          sudo python3 -m venv /opt/prowler
+          sudo /opt/prowler/bin/pip install --quiet "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+          sudo ln -sf /opt/prowler/bin/prowler /usr/local/bin/prowler
+          prowler --version | grep -F "${PROWLER_VERSION}"
+          rm -f "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+
       - name: Install zizmor
         # GitHub Actions workflow security scanning of the connected repo
         # (src/worker/tools/workflowSecurity.ts). zizmor (MIT) ships on PyPI
@@ -573,6 +596,12 @@ jobs:
           # one of them is skipped as undecryptable. Must be the same value as
           # the app's CREDENTIALS_ENC_KEY.
           CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
+          # Our own AWS identity, used only to sts:AssumeRole into customers'
+          # read-only audit roles for the Prowler IAM check (prowlerIam.ts).
+          # Needs sts:AssumeRole and nothing else; blank means the check
+          # reports an error for owners who connected a role.
+          PROWLER_AWS_ACCESS_KEY_ID: ${{ secrets.PROWLER_AWS_ACCESS_KEY_ID }}
+          PROWLER_AWS_SECRET_ACCESS_KEY: ${{ secrets.PROWLER_AWS_SECRET_ACCESS_KEY }}
           WORKER_ID: gha-${{ github.run_id }}-${{ matrix.shard }}
           ZAP_API_URL: http://localhost:8090
           # Random per-run key exported to $GITHUB_ENV by the "Start ZAP daemon"
