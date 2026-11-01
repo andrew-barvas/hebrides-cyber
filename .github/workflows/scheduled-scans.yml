@@ -167,8 +167,8 @@ jobs:
         # asset): this job holds the Supabase service-role key, so a swapped
         # release asset must fail the check, not run.
         env:
-          NUCLEI_VERSION: v3.3.9
-          NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
+          NUCLEI_VERSION: v3.11.1
+          NUCLEI_SHA256: ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
           # Templates pinned to a release tag instead of `-update-templates`'
           # floating "latest", so a scheduled scan is reproducible and a
           # compromised templates push can't change what this secret-holding job
