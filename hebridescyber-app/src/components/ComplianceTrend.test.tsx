@@ -62,6 +62,7 @@ describe("ComplianceTrend — coverage trend", () => {
               "cyber-essentials": 1,
               "owasp-top-10": 1,
               "cis-controls-v8": 1,
+              "cis-m365": 1,
               "iso-27001": 1,
               "pci-dss": 1,
               nis2: 1,
@@ -80,11 +81,11 @@ describe("ComplianceTrend — coverage trend", () => {
     const history: CompliancePoint[] = [
       {
         date: "2026-01-01",
-        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.6, "cis-controls-v8": 0.7, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.6, "cis-controls-v8": 0.7, "cis-m365": 0.7, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
       {
         date: "2026-02-01",
-        coverage: { "cyber-essentials": 0.8, "owasp-top-10": 0.6, "cis-controls-v8": 0.9, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.8, "owasp-top-10": 0.6, "cis-controls-v8": 0.9, "cis-m365": 0.9, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
     ];
     render(<ComplianceTrend findings={[]} history={history} />);
@@ -104,11 +105,11 @@ describe("ComplianceTrend — coverage trend", () => {
     const history: CompliancePoint[] = [
       {
         date: "2026-01-01",
-        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "cis-m365": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
       {
         date: "2026-02-01",
-        coverage: { "cyber-essentials": 0.75, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.75, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "cis-m365": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
     ];
     render(<ComplianceTrend findings={[]} history={history} />);
@@ -121,11 +122,11 @@ describe("ComplianceTrend — coverage trend", () => {
     const history: CompliancePoint[] = [
       {
         date: "2026-01-01",
-        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "cis-m365": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
       {
         date: "2026-02-01",
-        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
+        coverage: { "cyber-essentials": 0.5, "owasp-top-10": 0.5, "cis-controls-v8": 0.5, "cis-m365": 0.5, "iso-27001": 0.5, "pci-dss": 0.5, nis2: 0.5, dora: 0.5, soc2: 0.5, hipaa: 0.5 },
       },
     ];
     render(<ComplianceTrend findings={[]} history={history} />);

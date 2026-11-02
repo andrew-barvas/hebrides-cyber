@@ -75,6 +75,7 @@ import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runProwlerIam } from "../worker/tools/prowlerIam";
+import { runM365PostureChecks } from "./scanners/m365Posture";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -1109,6 +1110,30 @@ export async function executeScan(
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
+      // P1-4: Microsoft 365 / Entra ID posture. Like cloud posture, it is keyed on
+      // the owner's connected tenant rather than the target. On "error" the
+      // findings that were evidenced still land, but the status keeps
+      // findingLifecycle.ts from closing anything the failed reads missed.
+      if (toolConfig.m365) {
+        try {
+          const m365Result = await runM365PostureChecks(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).m365 = m365Result;
+          if (m365Result.status === "checked" || m365Result.status === "error") {
+            for (const finding of m365Result.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+              const difficulty = getFixDifficulty(finding.checkId);
+              if (difficulty) {
+                finding.fixDifficulty = difficulty;
+                finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+              }
+            }
+            applyAttackRefs(m365Result.findings);
+            findings.push(...m365Result.findings);
+            for (const f of m365Result.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).m365 = { status: "error", note: "Microsoft 365 posture check failed" };
         }
       }
     }

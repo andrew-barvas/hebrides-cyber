@@ -44,6 +44,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "sessionCheck",
   "jwt-analysis",
   "cloudPosture",
+  "m365",
   "http-probe",
   "content-discovery",
   "credential-spray",
