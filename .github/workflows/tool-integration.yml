@@ -340,8 +340,8 @@ jobs:
         # scannerToolUpdates.test.ts fails if the copies ever disagree.
         if: always()
         env:
-          SUBFINDER_VERSION: v2.16.0
-          SUBFINDER_SHA256: 1b7f9c608e9a5bd59e609a5e09710d63c5485e92d3d49dc2c16eb4fdbe10cb60
+          SUBFINDER_VERSION: v2.17.0
+          SUBFINDER_SHA256: a39c3e5c7a26ef3c430915c4d6cbf7716a00f26769a75e9405aba796142eba37
           GITLEAKS_VERSION: 8.21.2
           GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
           TRIVY_VERSION: 0.75.0
