@@ -385,7 +385,7 @@ export function supabaseCveIndexWriter(client: SupabaseClient): CveIndexWriter {
       return (data as CveSyncState | null) ?? null;
     },
     async writeEntries(entries) {
-      const payload = entries.map((e) => (e.rejected ? e : { cve_id: e.cve_id, rejected: false, ...e.record, matches: e.matches }));
+      const payload = entries.map((e) => (e.rejected ? e : { rejected: false, ...e.record, matches: e.matches }));
       const { error } = await client.rpc("replace_cve_batch", { p_entries: payload });
       if (error) throw new Error(`replace_cve_batch failed: ${error.message}`);
     },

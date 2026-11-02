@@ -416,7 +416,7 @@ async function runExtendedTools(
     commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
     dalfox: dalfoxResult.status === "fulfilled" ? dalfoxResult.value : { status: "error", findings: [], note: String(dalfoxResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
-    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error", host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
+    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error" as const, host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
