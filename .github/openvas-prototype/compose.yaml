@@ -5,9 +5,17 @@
 # Based on Greenbone's community-containers compose file
 # (https://greenbone.github.io/docs/latest/_static/compose.yaml, fetched
 # 2026-11-01), with three changes:
-#   1. Every image is pinned by digest (resolved 2026-11-01 from
-#      registry.community.greenbone.net), so the feed snapshot and the service
-#      versions are the same on every run.
+#   1. Every image is pinned by digest, resolved from
+#      registry.community.greenbone.net. The service images (gvmd, ospd,
+#      openvas-scanner, pg-gvm, redis, gpg-data, gvm-tools) were resolved
+#      2026-11-01 and stay valid. The seven feed images (vulnerability-tests,
+#      notus, scap, cert-bund, dfn-cert, data-objects, report-formats) are
+#      rebuilt daily, and Greenbone garbage-collects old digests within about
+#      a day: the 2026-11-01 pins returned "not found" on 2026-11-02. They
+#      were re-resolved 2026-11-02 and must be re-resolved before each manual
+#      run. That is a finding for OT-36: a production deployment cannot pin
+#      the feed this way and needs its own feed cache (see
+#      docs/DEFENSIVE-ASSESSMENT-PLAN.md, item 9).
 #   2. The web UI (gsa, gsad, gvm-config, nginx) is dropped. The prototype
 #      drives gvmd over its unix socket with gvm-tools, so no port is opened.
 #   3. ospd-openvas runs on the host network so the scanner reaches the
@@ -18,7 +26,7 @@ name: openvas-prototype
 
 services:
   vulnerability-tests:
-    image: registry.community.greenbone.net/community/vulnerability-tests@sha256:78bcf3ca9edb05bfbac8cd0d59554da1b2ba593e86c0844e2071c2f8992e9a81
+    image: registry.community.greenbone.net/community/vulnerability-tests@sha256:69a43e31148e57dab49659d1bee9b24a2e6f988f12d7d90952ad747b22c7123a
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
@@ -26,28 +34,28 @@ services:
       - vt_data_vol:/mnt
 
   notus-data:
-    image: registry.community.greenbone.net/community/notus-data@sha256:f83ea000c69a599f5b170c1b0cb32a804798585585c190815791238117a9c33b
+    image: registry.community.greenbone.net/community/notus-data@sha256:89b0751e4256aaa1cd7fc320c8a49e535c9286973bd2914c899693955ef6cae6
     environment:
       KEEP_ALIVE: 1
     volumes:
       - notus_data_vol:/mnt
 
   scap-data:
-    image: registry.community.greenbone.net/community/scap-data@sha256:301da9ad54755b1deb9dbc976bd6efdcad4605ec9ecc7fb8549adf535b03235e
+    image: registry.community.greenbone.net/community/scap-data@sha256:227f37bdc534e2cacce0b3e4f2987f7faee1c3e3574a96b8bca8dcfaf6f39ae2
     environment:
       KEEP_ALIVE: 1
     volumes:
       - scap_data_vol:/mnt
 
   cert-bund-data:
-    image: registry.community.greenbone.net/community/cert-bund-data@sha256:0870dff415087815037f31a8e0dbac11e80834121e007b7a07c99af45eaec72e
+    image: registry.community.greenbone.net/community/cert-bund-data@sha256:36f01e23857170c302c426d5291038953be82483714d8ea77107dc24ada520de
     environment:
       KEEP_ALIVE: 1
     volumes:
       - cert_data_vol:/mnt
 
   dfn-cert-data:
-    image: registry.community.greenbone.net/community/dfn-cert-data@sha256:fe283c901fddb8a0b34047cd57ab68e5c85581533e942005b268546241e61102
+    image: registry.community.greenbone.net/community/dfn-cert-data@sha256:45ab1bf5540f31a4ad89665cd669ba72b3ba6ef9ccb3aad6b7bdf1077b85094b
     environment:
       KEEP_ALIVE: 1
     volumes:
@@ -57,7 +65,7 @@ services:
         condition: service_healthy
 
   data-objects:
-    image: registry.community.greenbone.net/community/data-objects@sha256:791937db7b7708e55347b1bb5aeca9ef41a98d57f346e7de2ae41c1c32baf110
+    image: registry.community.greenbone.net/community/data-objects@sha256:c3dd4192abacef50084cd294b41dc7026b4dfc078ef2925b968b017be5e36b37
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
@@ -65,7 +73,7 @@ services:
       - data_objects_vol:/mnt
 
   report-formats:
-    image: registry.community.greenbone.net/community/report-formats@sha256:8364e583024043e568775ea9ccc8d77033eb09035b70cf6e20949c484cb0c950
+    image: registry.community.greenbone.net/community/report-formats@sha256:0936b63fa990f3aab2e53f8944b9ca605b099b313f62b91aba12092c763be0b3
     environment:
       FEED_RELEASE: "24.10"
       KEEP_ALIVE: 1
