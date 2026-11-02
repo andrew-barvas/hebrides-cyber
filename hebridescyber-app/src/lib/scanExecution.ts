@@ -47,10 +47,11 @@ import { runSessionCheck } from "../worker/tools/sessionCheck";
 import { runJwtAnalysis } from "../worker/tools/jwtAnalysis";
 import { runBadsecrets } from "../worker/tools/badsecrets";
 import { runKatana } from "../worker/tools/katana";
-import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
+import { nucleiRemediation, sqlmapRemediation, commixRemediation, dalfoxRemediation, nmapDangerousPortRemediation, WAF_NOT_DETECTED, WPSCAN_CONFIG_BACKUP, WPSCAN_DB_EXPORT, WPSCAN_TIMTHUMB, wpScanThemeVulnerabilityRemediation, cmsmapVulnerabilityRemediation, cmsmapMisconfigRemediation, METADATA_LEAK_EMAIL, METADATA_LEAK_INTERNAL_IP, METADATA_LEAK_PATH, METADATA_LEAK_AUTHOR, METADATA_LEAK_SOFTWARE, METADATA_LEAK_GPS, HIDDEN_ENDPOINT_DISCOVERED, KITERUNNER_HIDDEN_ENDPOINT, ARJUN_HIDDEN_PARAMETER, NO_RATE_LIMIT, SESSION_FIXATION, IDOR_INDICATOR, WEAK_SESSION_TOKEN, JWT_NONE_ALGORITHM, JWT_NO_EXPIRATION, JWT_WEAK_SECRET, JWT_SENT_OVER_HTTP, JWT_EXPOSED_IN_URL, strixRemediation, cairnRemediation } from "./scanners/remediationText";
 import { getComplianceRefs } from "./scanners/compliance";
+import { applyAttackRefs } from "./scanners/attackMap";
 import { getFixDifficulty, estimateFixMinutes } from "./scanners/fixDifficulty";
-import { resolveToolConfig, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
+import { resolveToolConfig, isNonIntrusiveProfile, EXTENDED_TOOL_NAMES, type ScanProfile, type ExtendedToolName } from "./scanProfiles";
 import { parseDisabledTools, applyKillSwitch, type KillSwitchRow } from "./toolKillSwitch";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
@@ -72,6 +73,7 @@ import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
+import { runProwlerIam } from "../worker/tools/prowlerIam";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -122,7 +124,8 @@ export type ExecuteScanOptions = {
    * Re-check exploitable-looking findings (open redirect, CORS, exposed file,
    * reflected XSS) with a few harmless requests and mark the ones that
    * reproduce as confirmed (`metadata.proofOfExploit`). Defaults on for every
-   * profile except "safe", so on-demand and public-API scans never send them;
+   * profile except "safe" and "exposure" (isNonIntrusiveProfile), so on-demand
+   * and public-API scans and managed exposure reviews never send them;
    * `DISABLE_PROOF_OF_EXPLOIT=1` turns it off everywhere. See proofOfExploit.ts.
    */
   confirmExploits?: boolean;
@@ -161,7 +164,9 @@ async function runExtendedTools(
   supabaseAdmin: SupabaseClient,
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
-  crawledUrls: string[] = []
+  crawledUrls: string[] = [],
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted. */
+  nonIntrusive = false
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -209,7 +214,7 @@ async function runExtendedTools(
     katanaResult,
   ] = await Promise.allSettled([
     toolConfig.nuclei
-      ? runNuclei(targetUrl, detectedTechnologies)
+      ? runNuclei(targetUrl, detectedTechnologies, { nonIntrusive })
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[] }),
     toolConfig.zap ? runZap(targetUrl) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
     toolConfig.sqlmap
@@ -742,12 +747,13 @@ async function runExtendedTools(
           path: METADATA_LEAK_PATH,
           author: METADATA_LEAK_AUTHOR,
           software: METADATA_LEAK_SOFTWARE,
+          gps: METADATA_LEAK_GPS,
         };
         for (const f of metadataResult.findings) {
           findings.push({
             checkId: `metadataLeak.${f.type}:${f.url}`,
-            severity: f.type === "internal-ip" ? "medium" : f.type === "email" ? "low" : "info",
-            title: `[Metadata] ${f.type === "email" ? "Email address" : f.type === "internal-ip" ? "Internal IP address" : f.type === "path" ? "Filesystem path" : f.type === "author" ? "Author name" : "Software version"} leaked in document`,
+            severity: f.type === "internal-ip" ? "medium" : f.type === "email" || f.type === "gps" ? "low" : "info",
+            title: `[Metadata] ${f.type === "email" ? "Email address" : f.type === "internal-ip" ? "Internal IP address" : f.type === "path" ? "Filesystem path" : f.type === "author" ? "Author name" : f.type === "gps" ? "GPS location" : "Software version"} leaked in document`,
             detail: `Found "${f.value}" in metadata of ${f.url}`,
             remediation: remediationMap[f.type],
           });
@@ -1029,7 +1035,7 @@ export async function executeScan(
         console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
       }
       const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : []);
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : [], isNonIntrusiveProfile(profile));
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
@@ -1052,6 +1058,7 @@ export async function executeScan(
           finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
         }
       }
+      applyAttackRefs(toolOutcome.findings);
 
       // E-32: Cloud posture scanning — runs separately from runExtendedTools
       // because it needs supabaseAdmin + ownerId (not targetUrl).
@@ -1069,11 +1076,33 @@ export async function executeScan(
                 finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
               }
             }
+            applyAttackRefs(cpResult.findings);
             findings.push(...cpResult.findings);
             for (const f of cpResult.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).cloudPosture = { status: "error", note: "Cloud posture check failed" };
+        }
+      }
+
+      // Prowler IAM / privilege-escalation posture (src/worker/tools/prowlerIam.ts).
+      // Same reason to live here: it needs supabaseAdmin + ownerId. Findings
+      // from a partly failed run are still real evidence, so they are kept;
+      // the "error" status stops them (and last scan's) being read as fixed.
+      if (toolConfig.prowler) {
+        try {
+          const pr = await runProwlerIam(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).prowler = pr;
+          if ("findings" in pr && pr.findings.length > 0) {
+            for (const finding of pr.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+            }
+            findings.push(...pr.findings);
+            for (const f of pr.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
         }
       }
     }
@@ -1107,7 +1136,8 @@ export async function executeScan(
     try { await enrichFindingsWithThreatIntel(findings); } catch { /* never block scan completion */ }
     // Proof of exploit: a handful of harmless re-checks mark which findings
     // reproduce. Never changes severity or the score; it only adds evidence.
-    if (options.confirmExploits ?? profile !== "safe") {
+    // Off for non-intrusive profiles: re-checking reflected XSS sends a payload.
+    if (options.confirmExploits ?? !isNonIntrusiveProfile(profile)) {
       findings = await confirmExploitable(targetUrl, findings);
       // Runs after the deterministic proofs so it only sees what they couldn't prove.
       findings = await triageIfEnabled(targetUrl, findings);

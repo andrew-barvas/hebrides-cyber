@@ -209,6 +209,48 @@ as P-04; P-05 (agency workspaces) overlaps Agency.
 
 ---
 
+## P-07 — Exploit: authorised offensive-testing engagement
+
+**Status: idea.** Detailed design in
+[`EXPLOIT-PRODUCT-PLAN.md`](EXPLOIT-PRODUCT-PLAN.md).
+**The product**: a fixed-scope, time-boxed, contracted penetration test of
+assets the customer owns and has signed into scope, delivered as an engagement
+with an analyst-reviewed report. For each exposure it confirms, non-destructively
+and under written authorisation, whether a real attacker could use it, with
+impact, remediation and retest. Sells validated assurance, not access.
+**Who pays**: SMEs or their IT/MSP providers who need a real pentest for a
+compliance framework, a customer security questionnaire, procurement or an
+insurer, where a scan or managed review is not enough. Also Lookout customers
+wanting validation before spending on fixes. Engagement/quote-based, four-figure,
+not a subscription (price hypothesis; owner decision after the pilot).
+**Problem**: Scanner and Lookout identify and explain exposure but do not prove
+exploitability; these buyers are turned away or referred out today.
+**What we reuse**: the whole scan pipeline and the offensive engine, which is
+already built and gated: `OFFENSIVE_ONLY_TOOLS`, the per-target
+`offensive_scan_authorizations` gate in `run-queued-scan-jobs.ts`, bounded
+validation (`proofOfExploit`, `xssConfirm`, `replayProbe`), report generators,
+compliance mapping, `planAccess.ts`.
+**What's new**: an engagement + signed-scope record, a fail-closed scope-
+membership check at the gate, an engagement state machine and audit trail,
+an engagement report template, engagement/one-off Stripe billing, and ToS/copy.
+No new attack capability; the build is the governance wrapper.
+**Effort**: L. **Category**: code, plus **solo-blocked** (analyst hours) and
+**money/time** (PI insurance, solicitor-reviewed engagement contract).
+**Hard precondition**: OT-13 (insurance + solicitor ToS) must be signed off
+before the customer-facing surface is built. This is the gating cost, not the
+code.
+**Overlaps / build-once with Lookout (P-06)**: the `attackRefs` ATT&CK map,
+bounded-evidence capture (H4/#140), OpenVAS hosting (OT-36), and a Stripe price
+model that carries both recurring and engagement billing.
+**First test**: quote and deliver one fully manual, fully authorised engagement
+for an existing customer asking for a pentest, using the gated engine and a
+hand-written report, before building any product surface.
+**Kill criteria**: drop it if the manual pilot can't be delivered profitably
+within the analyst-hour budget, if OT-13 can't be met at acceptable cost, or if
+too few qualified prospects will sign a scoped engagement at the quoted price.
+
+---
+
 ## Emerging-threat intake
 
 New threats are the best source of product ideas, as long as each one

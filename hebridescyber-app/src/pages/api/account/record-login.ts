@@ -12,8 +12,12 @@
 // review is still owed here (see docs/AUTHENTICATED-CRAWL.md); this route
 // only enforces that -some- explicit acknowledgement was sent.
 //
-// The password never reaches a response, a log line, or the audit row below
-// — only whether the attempt succeeded.
+// Optional `totpSecret` (base32, RFC 6238) answers an authenticator-app MFA
+// step; it needs the target's domain to be verified, is stored encrypted
+// beside the cookie, and is reused when a later recording omits it.
+//
+// The password, TOTP secret and codes never reach a response, a log line, or
+// the audit row below — only whether the attempt succeeded.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
@@ -22,7 +26,9 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
 import { logAuditEvent } from "@/lib/audit";
 import { recordLogin, playwrightLoginRun } from "@/lib/scanners/loginRecorder";
-import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
+import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, revealSecrets, sealSecrets } from "@/lib/credentialEncryption";
+import { isDomainVerified } from "@/lib/ownership";
+import { isValidTotpSecret, normaliseTotpSecret } from "@/lib/totp";
 
 const bodySchema = z.object({
   monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
@@ -31,6 +37,8 @@ const bodySchema = z.object({
   password: z.string().min(1, "password is required"),
   usernameSelector: z.string().optional(),
   passwordSelector: z.string().optional(),
+  totpSecret: z.string().max(256).optional(),
+  mfaSelector: z.string().optional(),
   acknowledged: z.literal(true, { message: "You must acknowledge the consent statement before recording a login." }),
 });
 
@@ -45,7 +53,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const parsed = parseBody(bodySchema, req.body, res);
   if (!parsed) return;
-  const { monitoredTargetId, loginUrl, username, password, usernameSelector, passwordSelector } = parsed;
+  const { monitoredTargetId, loginUrl, username, password, usernameSelector, passwordSelector, mfaSelector } = parsed;
+  const suppliedTotp = parsed.totpSecret?.trim() ? normaliseTotpSecret(parsed.totpSecret) : undefined;
+  if (suppliedTotp !== undefined && !isValidTotpSecret(suppliedTotp)) {
+    return res.status(400).json({ error: "totpSecret must be the base32 key shown when the authenticator was set up." });
+  }
 
   const { data: target } = await supabaseAdmin.from("monitored_targets").select("id, owner, target_url").eq("id", monitoredTargetId).maybeSingle();
   if (!target) return res.status(404).json({ error: "Monitored target not found" });
@@ -85,7 +97,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "loginUrl must be on the same host as this monitored target." });
   }
 
-  const result = await recordLogin({ loginUrl, username, password, usernameSelector, passwordSelector }, playwrightLoginRun);
+  // The MFA step is only ever answered on a domain the owner has proven they
+  // control — the same bar as every other active scan path.
+  if (suppliedTotp !== undefined && !(await isDomainVerified(supabaseAdmin, caller.ownerId, target.target_url as string))) {
+    return res.status(403).json({ error: "Verify ownership of this domain before adding a TOTP secret." });
+  }
+
+  // A secret stored by an earlier recording is reused; one that can't be
+  // decrypted is an error, never a silent login attempt without MFA.
+  let totpSecret = suppliedTotp;
+  if (totpSecret === undefined) {
+    const { data: stored } = await supabaseAdmin.from("target_auth_credentials").select("totp_secret").eq("monitored_target_id", monitoredTargetId).maybeSingle();
+    if (stored?.totp_secret) {
+      const revealed = revealSecrets({ totp_secret: stored.totp_secret as string }, ["totp_secret"]);
+      if (!revealed) return res.status(500).json({ error: "The stored TOTP secret can't be decrypted — enter it again." });
+      if (await isDomainVerified(supabaseAdmin, caller.ownerId, target.target_url as string)) totpSecret = revealed.totp_secret;
+    }
+  }
+
+  const result = await recordLogin({ loginUrl, username, password, usernameSelector, passwordSelector, totpSecret, mfaSelector }, playwrightLoginRun);
 
   await logAuditEvent(supabaseAdmin, {
     actorId: caller.ownerId,
@@ -99,8 +129,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
     sealSecrets(
-      { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: result.cookieValue, basic_username: null, basic_password: null },
-      ["cookie_value"]
+      { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: result.cookieValue, basic_username: null, basic_password: null, totp_secret: totpSecret ?? null },
+      ["cookie_value", "totp_secret"]
     ),
     { onConflict: "monitored_target_id" }
   );
