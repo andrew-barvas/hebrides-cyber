@@ -224,6 +224,16 @@ applicable. Deliberately not exhaustive: a finding with no compliance refs
 either hasn't been categorised yet or doesn't map cleanly to any of the
 three frameworks — never force-fitted.
 
+### `POST /api/findings/validation-request`
+
+Asks for a human-run, authorised test of one finding (the step from Scanner or Lookout up to
+Exploit). Body `{ scanId, checkId, note? }`. The finding is read from the stored scan, never from
+the body. It records the request with a snapshot of the finding, emails the operator and returns
+`201`. **It sends no traffic to your systems**: testing happens only after scope and written
+authorisation are agreed. `409` if a request for that finding is already open, `404` if the finding
+is not in that scan, `429` after 10 requests an hour. `GET` (optionally `?scanId=`) lists your
+requests. Session or API key.
+
 ### `GET /api/v1/scans/{id}/compliance`
 
 The same scan's findings grouped by framework control — ISO 27001, PCI DSS,

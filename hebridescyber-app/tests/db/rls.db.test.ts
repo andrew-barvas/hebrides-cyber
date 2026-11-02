@@ -52,6 +52,7 @@ const KEY_TABLES: TableSpec[] = [
   { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
   { table: "uptime_monitors", ownerCol: "owner", insert: "insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, 'https://new.test', 'uptimerobot', '999')" },
   { table: "custom_nuclei_templates", ownerCol: "owner", insert: "insert into custom_nuclei_templates (owner, template_id, name, severity, yaml) values ($1, 'new-check', 'n', 'low', 'y')" },
+  { table: "validation_requests", ownerCol: "owner", insert: "insert into validation_requests (owner, target_host, check_id, severity, title) values ($1, 'new.test', 'c.new', 'high', 't')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -61,7 +62,7 @@ const SERVICE_WRITE_ONLY = [
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
-  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors", "custom_nuclei_templates",
+  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors", "custom_nuclei_templates", "validation_requests",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -117,6 +118,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
       await q("insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, $2, 'uptimerobot', $3)", [o, `https://${h}`, `ext-${h}`]);
       await q("insert into custom_nuclei_templates (owner, template_id, name, severity, yaml) values ($1, $2, 'n', 'low', 'y')", [o, `chk-${h.replace(/[^a-z0-9]/g, "-")}`]);
+      await q("insert into validation_requests (owner, target_host, check_id, severity, title) values ($1, $2, 'c.seed', 'high', 't')", [o, h]);
       await q("insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'enc:k')", [o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);

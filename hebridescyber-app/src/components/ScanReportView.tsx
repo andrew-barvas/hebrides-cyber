@@ -20,6 +20,8 @@ import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
 import { corroboratingTools } from "@/lib/findingConsolidation";
 import { TriageMenu, UndoTriageButton, describeTriage, type ViewTriage } from "./FindingTriage";
+import ValidationRequestButton from "./ValidationRequestButton";
+import { worthValidating } from "@/lib/validationEligibility";
 
 export type { ViewTriage } from "./FindingTriage";
 import type { ScriptFoundBy, ScriptIntegrity, ScriptInventoryResult } from "@/lib/scanners/scriptInventory";
@@ -722,6 +724,10 @@ export function FindingCard({
             <RetestFindingButton scanId={scanId} token={token} checkId={finding.checkId} />
           )}
         </details>
+      )}
+
+      {scanId && token && finding.checkId && !finding.triage && worthValidating(finding) && (
+        <ValidationRequestButton scanId={scanId} token={token} checkId={finding.checkId} />
       )}
 
       {scanId && token && finding.checkId && onTriaged && !finding.triage && (
