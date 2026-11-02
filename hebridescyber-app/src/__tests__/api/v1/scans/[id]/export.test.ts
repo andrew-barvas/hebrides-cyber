@@ -201,8 +201,9 @@ describe("GET /api/v1/scans/[id]/export", () => {
     const lines = (csv.res._getData() as string).split("\r\n");
     // The reason is the customer's own text — formula-neutralised like titles.
     expect(lines[1]).toContain(`,snoozed,'=cmd|' /C calc'!A0 fix in sprint,${future}`);
-    expect(lines[2].endsWith(",,,")).toBe(true);
-    expect(lines[3].endsWith(",,,")).toBe(true);
+    // triage_state, triage_reason, triage_expires_at are columns 10-12; blank when expired or untriaged.
+    expect(lines[2].split(",").slice(10, 13)).toEqual(["", "", ""]);
+    expect(lines[3].split(",").slice(10, 13)).toEqual(["", "", ""]);
 
     const json = mockReqRes({ id: "scan-1", format: "json" });
     await handler(json.req, json.res);
@@ -290,8 +291,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
 
     await handler(req, res);
 
-    const lines = (res._getData() as string).split("
-");
+    const lines = (res._getData() as string).split("\r\n");
     expect(lines[1]).toMatch(/,T1557 [^,]+,CWE-298$/);
     expect(lines[2].endsWith(",T1190 Exploit Public-Facing Application,CWE-1")).toBe(true);
   });
