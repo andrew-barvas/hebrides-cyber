@@ -53,6 +53,50 @@ const TECHNIQUES: Record<string, string> = {
   "T1608.006": "Stage Capabilities: SEO Poisoning",
 };
 
+// "What to log": for each technique, the logs a small business's IT supplier
+// can switch on so that, if the technique is used against the exposure, there
+// is a record of it. Plain-language log sources, not ATT&CK data-source ids
+// (ATT&CK has been restructuring those), and no detection rules: the technique
+// page linked beside it has MITRE's own detection notes. Reconnaissance
+// techniques map to [] on purpose: they happen outside the customer's systems,
+// so there is nothing for them to log, and the report says so instead.
+// Every technique in TECHNIQUES needs an entry here (a test holds this).
+const WHAT_TO_LOG: Record<string, string[]> = {
+  T1110: ["Sign-in logs for the affected service, including failed attempts and the source address", "Alerts on repeated failed sign-ins (lockouts or rate-limit events)"],
+  T1133: ["Sign-in logs from the remote-access service (remote desktop, VPN, SSH): who connected, from where and when", "Firewall logs of connections to that port"],
+  T1189: ["Change history for the website's pages and scripts", "Content-Security-Policy violation reports from visitors' browsers"],
+  T1190: ["Web server or application access logs, kept for at least 90 days", "Web application firewall logs, if you have one"],
+  T1195: ["Change history for third-party scripts the site loads", "Build and deployment logs showing what was released and when"],
+  "T1195.001": ["Dependency changes recorded in version control (lock files)", "Build and deployment logs showing what was released and when"],
+  T1496: ["CPU and resource-usage monitoring on the web host", "Change history for the website's files"],
+  "T1491.002": ["File-change monitoring or integrity checks on the website", "Hosting control-panel and file-transfer (SFTP/FTP) access logs"],
+  T1530: ["Access logging on the cloud storage (per-object reads)", "Alerts when a bucket's or container's access policy changes"],
+  T1539: ["Application session logs: new sessions per account, with the source address"],
+  "T1552.001": ["Web server access logs showing who requested the exposed file", "Usage logs for the exposed key or password at the service that issued it"],
+  T1557: ["Alerts on certificate changes for your domains", "TLS reports (TLS-RPT) from mail servers sending to you"],
+  T1566: ["DMARC aggregate reports for your domain", "Email gateway logs of messages that claim to come from your domain"],
+  "T1566.002": ["Web server access logs for the redirect page, including where it sent visitors"],
+  "T1583.001": ["Domain registrar account notifications", "Certificate transparency monitoring for your domain"],
+  "T1584.001": ["DNS change history for your domain", "Certificate transparency monitoring for your domain"],
+  "T1588.004": ["Certificate transparency monitoring for certificates issued for your domain"],
+  T1589: [],
+  "T1589.002": [],
+  T1590: [],
+  T1592: [],
+  "T1592.002": [],
+  T1606: ["Application logs of rejected or invalid session tokens", "Sign-in logs, to spot sessions with no matching sign-in"],
+  "T1608.006": ["Security alerts from search-engine webmaster tools", "Change history for the website's files"],
+};
+
+/** Log sources worth enabling for a technique; [] for reconnaissance, which nothing on the customer's side records. */
+export function getWhatToLog(id: string): string[] {
+  return WHAT_TO_LOG[id] ?? [];
+}
+
+/** Technique ids with "what to log" guidance written, for the test that keeps it in step with TECHNIQUES. */
+export const WHAT_TO_LOG_TECHNIQUE_IDS: readonly string[] = Object.keys(WHAT_TO_LOG);
+export const NAMED_TECHNIQUE_IDS: readonly string[] = Object.keys(TECHNIQUES);
+
 /** attack.mitre.org path: sub-technique T1552.001 lives at /techniques/T1552/001/. */
 export function attackUrl(id: string): string {
   return `https://attack.mitre.org/techniques/${id.replace(".", "/")}/`;
