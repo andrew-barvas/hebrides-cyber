@@ -3,13 +3,15 @@
 // that nothing after completion can turn a completed scan into a failure.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, record } = vi.hoisted(() => {
+const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, customChecksMock, nucleiMock, record } = vi.hoisted(() => {
   const calls: string[] = [];
   return {
     calls,
     attackSurfaceMock: vi.fn(),
     lookalikeMock: vi.fn(),
     whatwafMock: vi.fn(),
+    customChecksMock: vi.fn(async () => []),
+    nucleiMock: vi.fn(async () => ({ status: "completed", findings: [] })),
     record: (name: string, value: unknown = undefined) => vi.fn(async () => (calls.push(name), value)),
   };
 });
@@ -36,6 +38,8 @@ vi.mock("./oncallAlerts", () => ({ triggerOncallAlerts: record("triggerOncallAle
 vi.mock("./siemIntegration", () => ({ forwardToSiem: record("forwardToSiem") }));
 vi.mock("./audit", () => ({ logAuditEvent: vi.fn(async (_db: unknown, e: { action: string }) => calls.push(`audit:${e.action}`)) }));
 vi.mock("../worker/tools/whatwaf", () => ({ runWhatWaf: whatwafMock }));
+vi.mock("./customChecks", () => ({ runCustomChecksForOwner: customChecksMock }));
+vi.mock("../worker/tools/nuclei", () => ({ runNuclei: nucleiMock }));
 
 import { executeScan } from "./scanExecution";
 import { canDetectFromResults } from "./findingLifecycle";
@@ -170,5 +174,29 @@ describe("executeScan extended findings: whatwaf", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ checkId: "whatwaf.waf-detected", severity: "info" });
     expect(findings[0].detail).not.toMatch(/confidence/i);
+  });
+});
+
+describe("executeScan: customer-defined checks", () => {
+  /** A scheduled-style scan with nuclei the only extended tool the profile keeps. */
+  async function scanWithNucleiOnly(profile: "full" | "exposure") {
+    customChecksMock.mockClear();
+    nucleiMock.mockClear();
+    const { client } = fakeSupabase();
+    const toolOverrides = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, n === "nuclei"]));
+    const scan = await executeScan(client, `scan-${profile}`, "owner-1", "https://shop.example", { profile, toolOverrides, confirmExploits: false });
+    expect(scan.ok).toBe(true);
+    expect(nucleiMock).toHaveBeenCalled();
+  }
+
+  it("runs the account's own checks alongside nuclei on an active profile", async () => {
+    await scanWithNucleiOnly("full");
+    expect(customChecksMock).toHaveBeenCalledWith(expect.anything(), "owner-1", "https://shop.example");
+  });
+
+  it("never runs them under the exposure profile, which promises no test payloads", async () => {
+    await scanWithNucleiOnly("exposure");
+    expect(customChecksMock).not.toHaveBeenCalled();
+    expect(nucleiMock).toHaveBeenCalledWith("https://shop.example", expect.any(Array), { nonIntrusive: true });
   });
 });
