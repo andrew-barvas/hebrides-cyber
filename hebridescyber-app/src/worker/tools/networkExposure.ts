@@ -15,9 +15,16 @@
 //
 // Port risk reuses ports.ts's PORT_TARGETS classification where a discovered
 // port is one of the 30 it knows; anything else is "info" with a generic note.
+//
+// Each identified service is then matched against known CVEs and end-of-life
+// dates by serviceCve.ts, from the banner nmap already read (no extra traffic
+// to the target). `incompleteChecks` lists the checkId prefixes that matching
+// could not evaluate, so findingLifecycle.ts leaves those findings as they were.
 import { execTool } from "../../lib/execTool";
 import { parseNmapXml, type NmapPort } from "./nmap";
 import { PORT_RISK, type PortRisk } from "../../lib/scanners/portRisk";
+import type { CveIndex } from "../../lib/cveIndex";
+import { matchServiceCves, incompleteServiceChecks, SERVICE_EOL_CHECK, SERVICE_VERSION_UNKNOWN_CHECK, type ServiceCveOptions, type ServiceCveResult } from "./serviceCve";
 
 const NAABU_TIMEOUT_MS = 180_000;
 const NMAP_TIMEOUT_MS = 120_000;
@@ -29,10 +36,20 @@ export type NetworkExposurePort = {
   version: string | null;
   risk: PortRisk["risk"];
   reason: string;
+  /** nmap's <cpe> elements for the service (CPE 2.2 URIs); empty when none. */
+  cpes: string[];
 };
 
 export type NetworkExposureResult =
-  | { status: "completed"; host: string; ports: NetworkExposurePort[] }
+  | {
+      status: "completed";
+      host: string;
+      ports: NetworkExposurePort[];
+      /** Known-CVE and end-of-life matching for the identified services. */
+      serviceCves: ServiceCveResult;
+      /** checkId prefixes this run could not evaluate (see findingLifecycle.ts). */
+      incompleteChecks: string[];
+    }
   | { status: "not_configured"; host: string; ports: [] }
   | { status: "error"; host: string; ports: []; note: string };
 
@@ -66,6 +83,7 @@ export function classifyPort(port: NmapPort): NetworkExposurePort {
     protocol: port.protocol,
     service: port.service !== "unknown" ? port.service : known?.service ?? "unknown",
     version: port.version,
+    cpes: port.cpes ?? [],
     risk: known?.risk ?? "info",
     reason:
       known?.reason ??
@@ -73,7 +91,12 @@ export function classifyPort(port: NmapPort): NetworkExposurePort {
   };
 }
 
-export async function runNetworkExposure(targetUrl: string): Promise<NetworkExposureResult> {
+export type NetworkExposureOptions = ServiceCveOptions & {
+  /** The CPE -> CVE index to match services against; absent → matching is not_configured. */
+  cveIndex?: CveIndex | null;
+};
+
+export async function runNetworkExposure(targetUrl: string, options: NetworkExposureOptions = {}): Promise<NetworkExposureResult> {
   let hostname: string;
   try {
     hostname = new URL(targetUrl).hostname;
@@ -97,12 +120,15 @@ export async function runNetworkExposure(targetUrl: string): Promise<NetworkExpo
   }
 
   // Nothing open is a genuine, evidenced result — not an error.
-  if (openPorts.length === 0) return { status: "completed", host: hostname, ports: [] };
+  if (openPorts.length === 0) {
+    return { status: "completed", host: hostname, ports: [], serviceCves: { status: "checked", services: [], indexedThrough: null }, incompleteChecks: [] };
+  }
 
   // 2. nmap -sV service/version detection on exactly the discovered ports.
   // nmap being absent while naabu succeeded is still a partial answer: report
   // the open ports without version detail rather than discarding real evidence.
   let nmapPorts: NmapPort[] = [];
+  let nmapFailed = false;
   try {
     const { stdout } = await execTool(
       "nmap",
@@ -112,6 +138,7 @@ export async function runNetworkExposure(targetUrl: string): Promise<NetworkExpo
     nmapPorts = parseNmapXml(stdout);
   } catch {
     // nmap missing or failed — fall back to the discovered ports with no service.
+    nmapFailed = true;
     nmapPorts = openPorts.map((port) => ({ port, protocol: "tcp", state: "open", service: "unknown", version: null }));
   }
 
@@ -122,6 +149,16 @@ export async function runNetworkExposure(targetUrl: string): Promise<NetworkExpo
     if (!byPort.has(port)) byPort.set(port, { port, protocol: "tcp", state: "open", service: "unknown", version: null });
   }
 
-  const ports = [...byPort.values()].sort((a, b) => a.port - b.port).map(classifyPort);
-  return { status: "completed", host: hostname, ports };
+  const identified = [...byPort.values()].sort((a, b) => a.port - b.port);
+  const ports = identified.map(classifyPort);
+
+  // Without service detection there is nothing to match: say so rather than
+  // reporting every service clean.
+  const serviceCves: ServiceCveResult = nmapFailed
+    ? { status: "error", note: "nmap service detection failed; no service could be matched against known CVEs.", services: [] }
+    : await matchServiceCves(identified, options.cveIndex ?? null, options);
+  const incompleteChecks = incompleteServiceChecks(serviceCves);
+  // No banners at all: every service check is unevaluated, not just the CVE one.
+  if (nmapFailed) incompleteChecks.push(SERVICE_EOL_CHECK, SERVICE_VERSION_UNKNOWN_CHECK);
+  return { status: "completed", host: hostname, ports, serviceCves, incompleteChecks };
 }

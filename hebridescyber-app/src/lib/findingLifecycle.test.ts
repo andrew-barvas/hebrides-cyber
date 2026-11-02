@@ -312,3 +312,28 @@ describe("canDetectFromResults", () => {
     expect(canDetectFromResults(undefined)(hsts)).toBe(true);
   });
 });
+
+describe("incompleteChecks (a completed tool's unevaluated sub-checks)", () => {
+  const results = (incompleteChecks: string[]) => ({ extended: { networkExposure: { status: "completed", incompleteChecks } } });
+
+  it("keeps a service-cve finding open when the CVE index couldn't be read", () => {
+    const can = canDetectFromResults(results(["network-exposure.service-cve"]));
+    expect(can({ checkId: "network-exposure.service-cve:22:CVE-2024-6387" })).toBe(false);
+    // The rest of the tool's findings are still evidenced.
+    expect(can({ checkId: "network-exposure.open-port:22" })).toBe(true);
+  });
+
+  it("narrows to one port or one CVE, matching on whole checkId segments", () => {
+    const can = canDetectFromResults(results(["network-exposure.service-cve:22", "network-exposure.service-cve:443:CVE-2021-41773"]));
+    expect(can({ checkId: "network-exposure.service-cve:22:CVE-2024-6387" })).toBe(false);
+    expect(can({ checkId: "network-exposure.service-cve:2222:CVE-2024-6387" })).toBe(true);
+    expect(can({ checkId: "network-exposure.service-cve:443:CVE-2021-41773" })).toBe(false);
+    expect(can({ checkId: "network-exposure.service-cve:443:CVE-2021-42013" })).toBe(true);
+  });
+
+  it("ignores a malformed incompleteChecks value", () => {
+    const coverage = scanCoverage({ networkExposure: { status: "completed", incompleteChecks: "network-exposure.service-cve" }, nmap: { status: "completed", incompleteChecks: [1, ""] } });
+    expect(coverage.incompleteChecks?.size).toBe(0);
+    expect(isCovered("networkexposure", { ...coverage, incompleteChecks: undefined }, "network-exposure.service-cve:22:CVE-1")).toBe(true);
+  });
+});
