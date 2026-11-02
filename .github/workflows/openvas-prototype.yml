@@ -139,9 +139,12 @@ jobs:
       - name: Measure feed volume sizes
         if: always()
         run: |
-          sudo du -sb /var/lib/docker/volumes/openvas-prototype_* 2>/dev/null \
+          # sh -c so the glob expands as root: /var/lib/docker is not readable
+          # by the runner user, so an unprivileged glob matches nothing.
+          sudo sh -c 'du -sb /var/lib/docker/volumes/openvas-prototype_*' \
             | sed 's#/var/lib/docker/volumes/openvas-prototype_##; s#/_data$##' \
             | tee /tmp/openvas-out/volumes.txt
+          sudo du -sb /var/lib/docker | sed 's#/var/lib/docker#docker_total#' | tee -a /tmp/openvas-out/volumes.txt
           docker system df
 
       - name: Write job summary
@@ -188,6 +191,7 @@ jobs:
               ("Feed copy into volumes", mins(env.get("feed_copy_seconds", 0))),
               ("Feed size on disk (VT, Notus, SCAP, CERT, data objects)", gb(sum(vols.get(v, 0) for v in feed_vols))),
               ("Postgres size at end", gb(vols.get("psql_data_vol", 0))),
+              ("All Docker data (images, volumes, logs) at end", gb(vols.get("docker_total", 0))),
           ]
           if "feed_ready_at" in res:
               rows.append(("Feed sync: compose up to VTs loaded in gvmd", mins(res["feed_ready_at"] - up)))
