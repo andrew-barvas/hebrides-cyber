@@ -113,8 +113,8 @@ jobs:
 
       - name: Install nuclei, gospider, kiterunner, httpx, ffuf, katana and naabu (pinned)
         env:
-          NUCLEI_VERSION: v3.3.9
-          NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
+          NUCLEI_VERSION: v3.11.1
+          NUCLEI_SHA256: ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
           # Same pinned templates release as scheduled-scans.yml.
           NUCLEI_TEMPLATES_VERSION: v10.5.1
           GOSPIDER_VERSION: 1.1.6
