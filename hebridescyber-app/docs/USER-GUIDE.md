@@ -505,8 +505,10 @@ Worth stating plainly, since it shapes several design decisions above:
   business logic or access control, or tell whether a route is reachable,
   and a clean result is not proof the code is secure. Test folders,
   dependencies and build output are skipped.
-- **No full cloud IAM auditing** (ScoutSuite/Prowler-style role/policy graph) —
-  a real, acknowledged gap. Cloud posture now covers public storage, storage
-  TLS/HTTPS/encryption config, and the AWS IAM account password policy
-  (§3.6a), but not a comprehensive role/permission audit; that stays out of
-  scope until a broader credential-onboarding flow justifies it.
+- **Cloud IAM auditing is AWS only.** Cloud posture covers public storage,
+  storage TLS/HTTPS/encryption config and the AWS IAM account password policy
+  (§3.6a). On AWS, a Prowler-based check also reviews IAM policies for
+  privilege escalation, administrator-equivalent grants and missing MFA,
+  through a read-only role you create (`docs/AWS-IAM-POSTURE.md`). It has not
+  yet been verified against a real account. Azure and GCP IAM are not
+  audited.
