@@ -42,7 +42,7 @@ function formatCef(payload: SiemPayload): string {
     payload.resourceId ? `cs1=${payload.resourceId}` : "",
     `msg=${payload.eventType}`,
   ].filter(Boolean).join(" ");
-  return `CEF:0|HebridesСyber|Scanner|1.0|${payload.eventType}|${payload.eventType}|${severity}|${ext}`;
+  return `CEF:0|HebridesCyber|Scanner|1.0|${payload.eventType}|${payload.eventType}|${severity}|${ext}`;
 }
 
 function formatLeef(payload: SiemPayload): string {
@@ -53,7 +53,7 @@ function formatLeef(payload: SiemPayload): string {
     payload.resourceId ? `objectName=${payload.resourceId}` : "",
     payload.severity ? `sev=${payload.severity}` : "",
   ].filter(Boolean).join("\t");
-  return `LEEF:2.0|HebridesСyber|Scanner|1.0|${payload.eventType}|${fields}`;
+  return `LEEF:2.0|HebridesCyber|Scanner|1.0|${payload.eventType}|${fields}`;
 }
 
 async function sendWebhook(config: SiemConfig, payload: SiemPayload): Promise<{ ok: boolean; error?: string }> {
