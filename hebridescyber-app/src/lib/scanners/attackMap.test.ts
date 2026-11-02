@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyAttackRefs, attackUrl, getAttackRefs, getCweIds, ATTACK_MAPPED_CHECK_IDS, ATTACK_TECHNIQUE_IDS } from "./attackMap";
+import { applyAttackRefs, attackUrl, getAttackRefs, getCweIds, getWhatToLog, ATTACK_MAPPED_CHECK_IDS, ATTACK_TECHNIQUE_IDS, NAMED_TECHNIQUE_IDS, WHAT_TO_LOG_TECHNIQUE_IDS } from "./attackMap";
 import { getComplianceRefs } from "./compliance";
 
 describe("getAttackRefs", () => {
@@ -62,5 +62,25 @@ describe("applyAttackRefs", () => {
     expect(findings[0].cwe).toEqual(["CWE-319"]);
     expect(findings[1]).toEqual({ checkId: "meta.no-issues" });
     expect(findings[2]).toEqual({});
+  });
+});
+
+describe("getWhatToLog", () => {
+  it("has guidance written for every named technique, so a new one can't ship without it", () => {
+    expect([...WHAT_TO_LOG_TECHNIQUE_IDS].sort()).toEqual([...NAMED_TECHNIQUE_IDS].sort());
+  });
+
+  it("names concrete logs for techniques used against the customer's systems", () => {
+    expect(getWhatToLog("T1133").join(" ")).toMatch(/remote-access service/);
+    expect(getWhatToLog("T1566").join(" ")).toMatch(/DMARC aggregate reports/);
+    for (const id of ATTACK_TECHNIQUE_IDS.filter((t) => !/^T15(89|90|92)/.test(t))) expect(getWhatToLog(id).length, id).toBeGreaterThan(0);
+  });
+
+  it("gives nothing for reconnaissance, which happens outside the customer's systems, or an unknown id", () => {
+    for (const id of ["T1589", "T1589.002", "T1590", "T1592", "T1592.002", "T9999"]) expect(getWhatToLog(id)).toEqual([]);
+  });
+
+  it("contains guidance only: no commands, queries or detection rules", () => {
+    for (const id of WHAT_TO_LOG_TECHNIQUE_IDS) for (const line of getWhatToLog(id)) expect(line).not.toMatch(/[|`$]|index=|SELECT |EventID|sigma/i);
   });
 });
