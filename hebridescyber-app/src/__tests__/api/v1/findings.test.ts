@@ -25,7 +25,7 @@ describe("GET /api/v1/findings", () => {
     authenticateApiRequestMock.mockResolvedValue(null);
     const { res } = await call();
     expect(res._getStatusCode()).toBe(401);
-    expect(res._getJSONData().error).toContain("Authorization: Bearer");
+    expect((res._getJSONData() as { error: string }).error).toContain("Authorization: Bearer");
     expect(respondMock).not.toHaveBeenCalled();
   });
 
