@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Metrics, statusBadge, reltime, apiFetch, StatCard } from "../_shared";
+import SentryTestCard from "./SentryTestCard";
 
 export default function OverviewTab({ token }: { token: string }) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -119,6 +120,8 @@ export default function OverviewTab({ token }: { token: string }) {
         </table>
         </div>
       </div>
+
+      <SentryTestCard token={token} />
     </div>
   );
 }

@@ -82,7 +82,8 @@ a rough development estimate, not a quote.
 | 6 | Local command line and pre-commit hook | Snyk, ZAP | A `hebrides` command for secrets, lockfile changes and code checks before a push, built on the dependency-diff API and CI script that exist. | 2–3 days for the command line; weeks for an IDE plugin | Not started |
 | 7 | Customer-run scanner agent for internal applications | Burp Suite Enterprise, Invicti, Qualys | A worker container customers run inside their network, outbound HTTPS only. Needs an agent-facing claim and submit API with per-agent tokens (today's workers hold database credentials), and results treated as untrusted. Also answers the fixed-scanner-IP request enterprise buyers make. | 2–3 weeks | Plan once a buyer asks |
 
-Also planned: a cloud-posture wrapper (Prowler) for AWS, Azure and GCP; a
+Built since: a Prowler wrapper for AWS IAM (PR #158; awaiting a first real-account
+run, OT-46). Still planned: Prowler for Azure and GCP; a
 two-session access-control test with TOTP support for authenticated scans; and
 queue-wait monitoring.
 

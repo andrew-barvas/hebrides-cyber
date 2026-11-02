@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildHttpEvidence, redactEvidenceText, evidenceSummary, readEvidence, EXCERPT_MAX, REDACTED } from "./findingEvidence";
+import { buildHttpEvidence, redactEvidenceText, evidenceSummary, readEvidence, EXCERPT_MAX, REDACTED, SECURITY_HEADERS } from "./findingEvidence";
 
 const now = new Date("2026-10-30T12:00:00Z");
 
@@ -86,5 +86,62 @@ describe("evidenceSummary and readEvidence", () => {
     expect(readEvidence(undefined)).toBeUndefined();
     expect(readEvidence({ request: {} })).toBeUndefined();
     expect(readEvidence({ request: { url: "u" }, response: { status: "200" } })).toBeUndefined();
+  });
+});
+
+describe("buildHttpEvidence extraHeaders", () => {
+  it("records only the named headers, and never a session or credential header", () => {
+    const headers = new Headers({
+      "x-frame-options": "DENY",
+      "set-cookie": "sid=secret",
+      authorization: "Basic abc",
+      "x-unlisted": "nope",
+    });
+    const e = buildHttpEvidence({ url: "u", status: 200, headers, extraHeaders: [...SECURITY_HEADERS, "set-cookie", "Authorization"], now });
+    expect(e.response.headers).toEqual({ "x-frame-options": "DENY" });
+  });
+
+  it("keeps policy values intact instead of applying the key=value rule", () => {
+    const e = buildHttpEvidence({
+      url: "u",
+      status: 200,
+      headers: { "strict-transport-security": "max-age=31536000; includeSubDomains", "cache-control": "no-store" },
+      extraHeaders: SECURITY_HEADERS,
+      now,
+    });
+    expect(e.response.headers["strict-transport-security"]).toBe("max-age=31536000; includeSubDomains");
+    expect(e.response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("masks URL credentials, query strings, JWTs and bearer tokens in header values", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    const e = buildHttpEvidence({
+      url: "u",
+      status: 200,
+      headers: {
+        "content-security-policy": `report-uri https://user:pass@r.example.com/csp?key=k1; script-src 'nonce-${jwt}'`,
+        "access-control-allow-origin": "Bearer abc.def",
+      },
+      extraHeaders: SECURITY_HEADERS,
+      now,
+    });
+    const csp = e.response.headers["content-security-policy"];
+    expect(csp).not.toContain("pass");
+    expect(csp).not.toContain("k1");
+    expect(csp).not.toContain(jwt);
+    expect(e.response.headers["access-control-allow-origin"]).toBe(`Bearer ${REDACTED}`);
+  });
+
+  it("allows a longer CSP than other headers", () => {
+    const long = "a".repeat(1500);
+    const e = buildHttpEvidence({
+      url: "u",
+      status: 200,
+      headers: { "content-security-policy": long, "permissions-policy": long },
+      extraHeaders: SECURITY_HEADERS,
+      now,
+    });
+    expect(e.response.headers["content-security-policy"]).toHaveLength(1000);
+    expect(e.response.headers["permissions-policy"]).toHaveLength(200);
   });
 });
