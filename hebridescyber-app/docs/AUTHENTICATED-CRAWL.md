@@ -53,5 +53,8 @@ hand.
 ## Not done yet (later slices)
 - **Per-target opt-in toggle** and an owner-supplied exclusion list for paths.
 - **SPA route discovery** so client-routed apps expose more than their shell.
-- Surfacing the signed-in crawl's own status (`extended.authCheck.crawl`) in the report UI, including the
-  "credential not accepted" error, so an expired cookie is visible instead of silent.
+
+Done 2026-10-31: the signed-in crawl's own status (`extended.authCheck.crawl`) is surfaced by
+`signedInCrawlStatus.ts`, as a "signed-in crawl" card on the report page and as "signed-in crawl" under
+the executive PDF's "Checks that did not finish", so a "credential not accepted" error is visible
+instead of silent.

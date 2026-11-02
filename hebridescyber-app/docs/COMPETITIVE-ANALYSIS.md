@@ -346,10 +346,12 @@ not do"). Some competitors' features are deliberately not worth matching:
   because it risks actually breaking a customer's production site, which
   is a worse outcome than a missed finding for anyone who hasn't
   explicitly asked for it.
-- **Cloud IAM auditing (ScoutSuite/Prowler-style)** — acknowledged gap, but
-  building it before a real credential-onboarding-with-consent flow exists
-  would mean asking for cloud account access before the product has earned
-  that level of trust.
+- **Cloud IAM auditing beyond AWS** — AWS IAM is now covered by a Prowler
+  wrapper (`prowlerIam.ts`, PR #158) that assumes a customer-created,
+  read-only cross-account role with an external ID we generate, so we never
+  hold customer keys (`docs/AWS-IAM-POSTURE.md`). It has not yet run against
+  a real account (OT-46). Azure and GCP IAM, and Prowler's non-IAM services,
+  are still not audited.
 
 ---
 
