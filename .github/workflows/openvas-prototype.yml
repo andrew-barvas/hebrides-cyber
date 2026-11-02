@@ -117,17 +117,33 @@ jobs:
           done
           echo "feed_copy_seconds=$(( $(date +%s) - t0 ))" >> /tmp/openvas-out/runner.env
 
-      - name: Set a random gvmd admin password
+      - name: Create the gvmd admin and make it the feed import owner
         run: |
-          # gvmd creates the admin user on first start (default password
-          # "admin"). Nothing is published on a port, but replace it anyway.
+          # The gvmd image's start script creates "admin" (password "admin")
+          # while the database migration is still running, and that can lose
+          # a race: run 3 logged "tuple concurrently updated" and no admin
+          # existed. So create the user here if it is missing, give it a random
+          # password either way, and make it the feed import owner, without
+          # which gvmd never creates the scan configs. Nothing is published on
+          # a port; the random password is hygiene.
+          gvmd() { docker compose exec -T -u gvmd gvmd gvmd "$@"; }
           for i in $(seq 1 60); do
-            docker compose exec -T -u gvmd gvmd gvmd --get-users 2>/dev/null | grep -qx admin && break
-            sleep 10
+            gvmd --get-users >/dev/null 2>&1 && break
+            sleep 5
           done
+          sleep 15  # let the start script's own attempt finish first
           pw="$(openssl rand -hex 24)"
           echo "::add-mask::$pw"
-          docker compose exec -T -u gvmd gvmd gvmd --user=admin --new-password="$pw"
+          if gvmd --get-users | grep -qx admin; then
+            gvmd --user=admin --new-password="$pw"
+          else
+            echo "admin missing (start script lost the race); creating it"
+            gvmd --create-user=admin --password="$pw"
+          fi
+          uuid="$(gvmd --get-users --verbose | awk '$1 == "admin" {print $2}')"
+          test -n "$uuid"
+          # 78eceaec-...: the "Feed Import Owner" setting.
+          gvmd --modify-setting 78eceaec-3385-11ea-b237-28d24461215b --value "$uuid"
           echo "GVM_PASSWORD=$pw" >> "$GITHUB_ENV"
 
       - name: Load feed, check safe config, scan the fixture app
