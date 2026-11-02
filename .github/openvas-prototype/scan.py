@@ -13,12 +13,16 @@
 # 4. Writes timings and result counts to /out/result.json for the job summary.
 #
 # Uses raw GMP XML through send_command so it does not depend on which
-# python-gvm request helpers the pinned gvm-tools image ships.
+# python-gvm request helpers the pinned gvm-tools image ships. send_command
+# returns the raw response string in that image (the first run treated it as
+# an element, so every str.find "succeeded"), hence cmd() below.
 
 import base64
 import json
 import sys
 import time
+
+from lxml import etree
 
 FULL_AND_FAST = "daba56c8-73ec-11df-a475-002264764cea"
 OPENVAS_SCANNER = "08b69003-5fc2-4037-a479-93b440211c73"
@@ -43,14 +47,23 @@ def save():
         json.dump(result, fh, indent=2)
 
 
+def cmd(gmp, xml):
+    """Send raw GMP, parse the reply and raise unless its status is 2xx."""
+    resp = gmp.send_command(xml)
+    el = resp if hasattr(resp, "tag") else etree.fromstring(resp.encode())
+    if not str(el.get("status", "")).startswith("2"):
+        raise RuntimeError(f"{el.tag} {el.get('status')}: {el.get('status_text')}")
+    return el
+
+
 def text(el, path, default=""):
     found = el.find(path)
     return found.text if found is not None and found.text is not None else default
 
 
 def nvt_count(gmp):
-    resp = gmp.send_command('<get_info type="nvt" filter="rows=1"/>')
-    return int(text(resp, "info_count/filtered", "0") or 0)
+    families = cmd(gmp, "<get_nvt_families/>")
+    return sum(int(text(f, "max_nvt_count", "0") or 0) for f in families.iter("family"))
 
 
 def wait_for_feed(gmp):
@@ -61,10 +74,13 @@ def wait_for_feed(gmp):
         try:
             count = nvt_count(gmp)
         except Exception as exc:  # gvmd still starting or busy
-            log(f"get_info failed: {exc}")
+            log(f"get_nvt_families failed: {exc}")
             count = 0
-        configs = gmp.send_command(f'<get_configs config_id="{FULL_AND_FAST}"/>')
-        has_config = configs.find("config") is not None
+        try:
+            cmd(gmp, f'<get_configs config_id="{FULL_AND_FAST}"/>')
+            has_config = True
+        except Exception:
+            has_config = False
         log(f"NVTs loaded: {count}; Full and fast present: {has_config}")
         stable = stable + 1 if count > 0 and count == last else 0
         last = count
@@ -79,7 +95,7 @@ def wait_for_scanner(gmp):
     deadline = time.time() + 15 * 60
     while time.time() < deadline:
         try:
-            resp = gmp.send_command(f'<verify_scanner scanner_id="{OPENVAS_SCANNER}"/>')
+            resp = cmd(gmp, f'<verify_scanner scanner_id="{OPENVAS_SCANNER}"/>')
             result["scanner_version"] = text(resp, "version")
             log(f"scanner verified: {result['scanner_version']}")
             return
@@ -90,14 +106,15 @@ def wait_for_scanner(gmp):
 
 
 def safe_config(gmp):
-    families = gmp.send_command("<get_nvt_families/>")
+    families = cmd(gmp, "<get_nvt_families/>")
     names = [text(f, "name") for f in families.iter("family")]
     names = [n for n in names if n]
     missing = EXCLUDED_FAMILIES - set(names)
     if missing:
         log(f"warning: excluded families not in feed: {sorted(missing)}")
 
-    created = gmp.send_command(
+    created = cmd(
+        gmp,
         f"<create_config><copy>{FULL_AND_FAST}</copy>"
         "<name>Prototype safe (no DoS, no brute force)</name></create_config>"
     )
@@ -108,19 +125,22 @@ def safe_config(gmp):
         for n in names
         if n not in EXCLUDED_FAMILIES
     )
-    gmp.send_command(
+    cmd(
+        gmp,
         f'<modify_config config_id="{config_id}"><family_selection>'
         f"<growing>0</growing>{selection}</family_selection></modify_config>"
     )
     yes = base64.b64encode(b"yes").decode()
-    gmp.send_command(
+    cmd(
+        gmp,
         f'<modify_config config_id="{config_id}"><preference>'
         f"<name>scanner:scanner:scanner:safe_checks</name><value>{yes}</value>"
         "</preference></modify_config>"
     )
 
     # Read back: the excluded families must be absent and safe_checks must be yes.
-    got = gmp.send_command(
+    got = cmd(
+        gmp,
         f'<get_configs config_id="{config_id}" details="1" preferences="1" families="1"/>'
     )
     cfg = got.find("config")
@@ -147,28 +167,31 @@ def safe_config(gmp):
 
 
 def run_scan(gmp, config_id):
-    ports = gmp.send_command(
+    ports = cmd(
+        gmp,
         f"<create_port_list><name>fixture</name><port_range>{TARGET_PORTS}</port_range>"
         "</create_port_list>"
     ).get("id")
-    target = gmp.send_command(
+    target = cmd(
+        gmp,
         f"<create_target><name>fixture</name><hosts>{TARGET_HOST}</hosts>"
         f'<port_list id="{ports}"/><alive_tests>Consider Alive</alive_tests>'
         "</create_target>"
     ).get("id")
-    task = gmp.send_command(
+    task = cmd(
+        gmp,
         "<create_task><name>fixture scan</name>"
         f'<config id="{config_id}"/><target id="{target}"/>'
         f'<scanner id="{OPENVAS_SCANNER}"/></create_task>'
     ).get("id")
     started = time.time()
-    report_id = text(gmp.send_command(f'<start_task task_id="{task}"/>'), "report_id")
+    report_id = text(cmd(gmp, f'<start_task task_id="{task}"/>'), "report_id")
     result["scan_started_at"] = started
 
     deadline = started + SCAN_TIMEOUT_S
     status = ""
     while time.time() < deadline:
-        t = gmp.send_command(f'<get_tasks task_id="{task}"/>').find("task")
+        t = cmd(gmp, f'<get_tasks task_id="{task}"/>').find("task")
         status, progress = text(t, "status"), text(t, "progress")
         log(f"scan status: {status} ({progress}%)")
         if status in ("Done", "Stopped", "Interrupted"):
@@ -177,7 +200,8 @@ def run_scan(gmp, config_id):
     result["scan_status"] = status
     result["scan_seconds"] = round(time.time() - started)
 
-    results = gmp.send_command(
+    results = cmd(
+        gmp,
         f'<get_results filter="report_id={report_id} rows=-1 min_qod=0 apply_overrides=0"/>'
     )
     rows = [r for r in results.findall("result")]
@@ -214,7 +238,7 @@ def wait_for_scap(gmp):
         counts = {}
         for kind in ("cve", "cpe", "cert_bund_adv", "dfn_cert_adv"):
             try:
-                resp = gmp.send_command(f'<get_info type="{kind}" filter="rows=1"/>')
+                resp = cmd(gmp, f'<get_info type="{kind}" filter="rows=1"/>')
                 counts[kind] = int(text(resp, "info_count/filtered", "0") or 0)
             except Exception:
                 counts[kind] = 0
