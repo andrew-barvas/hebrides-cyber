@@ -79,6 +79,11 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-49 | Let automated update PRs run CI (`GH_PAT` scope) and turn on Dependabot security alerts | 🟡 Medium | Open | 2026-11-01 | |
+| OT-51 | Exploit: go or no-go on the product (P-07), given OT-13 is the gating cost | 🟢 Strategic | Decision | 2026-11-02 | |
+| OT-52 | Exploit: confirm engagements are booked by hand only, never self-serve checkout | 🟢 Low | Decision | 2026-11-02 | |
+| OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
+| OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
+| OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
 
 ## Items
 
@@ -717,6 +722,56 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   the run. `gh api repos/andrew-barvas/hebrides-cyber/automated-security-fixes`
   reports `"enabled": true`.
 - **Raised:** 2026-11-01.
+
+### OT-51: Exploit go or no-go 🟢
+- **What and why:** Exploit (`PRODUCT-IDEAS.md` P-07,
+  `EXPLOIT-PRODUCT-PLAN.md`) sells authorised, contracted penetration tests on
+  top of the offensive engine that already exists. The cost is legal and
+  insurance work (OT-13, OT-55), not code. Your 2026-11-01 decision (PR #169)
+  builds an Exploit page that stays noindex, unlinked and marked "not yet
+  available" until OT-13 is signed off; this item is the launch decision itself.
+- **How:** after OT-13 and OT-55 have answers, decide whether to run the manual
+  pilot (one hand-scoped engagement for an existing customer, using the gated
+  engine and a hand-written report). The plan's kill criteria apply.
+- **Verify:** the decision recorded here and P-07's status updated.
+- **Raised:** 2026-11-02.
+
+### OT-52: Exploit is booked by hand only 🟢
+- **What and why:** the plan recommends that live offensive work is always
+  scoped, contracted and scheduled by a person, never bought through checkout.
+  PR #169's page copy already assumes this ("no self-serve checkout for live
+  testing"), so this only needs confirming.
+- **How:** confirm, or say what should change.
+- **Verify:** "owner confirmed" recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-53: Autonomous agents in Exploit's first version 🟢
+- **What and why:** `strix` and `cairn` are autonomous agents in the offensive
+  profile, currently `not_configured` by your 2026-10-23 decision. They need the
+  strictest controls. The plan recommends leaving them out of the first
+  version and starting with the bounded, non-destructive confirmation checks.
+- **How:** decide in or out for the first version.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-54: Exploit pricing 🟢
+- **What and why:** the plan's hypothesis is a four-figure, quoted engagement,
+  not a subscription. Set it from the manual pilot's real analyst hours.
+- **How:** decide after the pilot (OT-51).
+- **Verify:** the price recorded here and in the plan.
+- **Raised:** 2026-11-02.
+
+### OT-55: Insurance for contracted offensive testing 🟡
+- **What and why:** OT-13 covers PI insurance before any offensive traffic.
+  Exploit goes further: it sells authorised attack traffic against customer
+  systems under contract, so the cover must explicitly include contracted
+  penetration testing, and the engagement contract needs a liability position
+  and a stop clause.
+- **How:** ask the insurer and the solicitor (alongside OT-13) to confirm the
+  cover and contract wording for this service.
+- **Verify:** the insurer's written confirmation and the approved contract on
+  file.
+- **Raised:** 2026-11-02.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
