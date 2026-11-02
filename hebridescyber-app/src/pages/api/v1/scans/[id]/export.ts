@@ -15,11 +15,12 @@ import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
 import { evidenceSummary, readEvidence } from "@/lib/findingEvidence";
 import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
+import { getAttackRefs, getCweIds } from "@/lib/scanners/attackMap";
 
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
     "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
-    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence",
+    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence", "attack_techniques", "cwe_ids",
   ];
   const rows = findings.map((f) => [
     f.severity,
@@ -40,6 +41,9 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
     (f.corroboratedBy ?? []).map((c) => `${c.tool}: ${c.title}`).join("; "),
     // One line, "GET <url> → 200 (type); matched: …", redacted at capture.
     evidenceSummary(readEvidence(f.evidence)),
+    // Scans stored before attackMap.ts carry no refs; map them at export time, as the executive report does.
+    (f.attackRefs ?? getAttackRefs(f.checkId)).map((r) => `${r.id} ${r.name}`).join("; "),
+    (f.cwe ?? getCweIds(f.checkId)).join("; "),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }

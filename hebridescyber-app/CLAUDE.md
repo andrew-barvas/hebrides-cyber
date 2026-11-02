@@ -4,8 +4,9 @@ Guidance for Claude Code working in this repository. Everything here applies to
 *every* change. Module-level detail lives in `docs/` — see "Where to read what"
 at the bottom and read only the entry you need.
 
-> **Moved sections.** This file was cut from 110 KB to ~20 KB on 2026-10-20. The
-> module-level narrative that used to live here moved verbatim to
+> **Moved sections.** This file was cut from 110 KB to ~20 KB on 2026-10-20,
+> and the theme, UI, app shell, rate-limit and payment detail moved on
+> 2026-11-01. The module-level narrative that used to live here moved verbatim to
 > `docs/ARCHITECTURE-NOTES.md`. Code comments and docs elsewhere still say
 > things like *see CLAUDE.md's "Content generation" / "Scanner pipeline" /
 > "Database schema" / "Mobile & PWA" / "EASM discovery" section* — every one of
@@ -222,119 +223,22 @@ runs the base passive suite; active tools run per the resolved profile, which
 in practice means scheduled jobs only. Full detail, including the queue and
 cadence: `docs/ARCHITECTURE-NOTES.md`.
 
-### Theme system
+### UI, rate limiting, payments
 
-Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark`
-to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`.
-Default is dark (cyber theme).
+Detail (theme tokens, Tailwind 4 layers, UI primitives, app shell routes, rate
+limiter, Stripe) is in `docs/ARCHITECTURE-NOTES.md` under "UI, rate limiting and
+payments". The rules that break things silently:
 
-**The cyber tokens are CSS variables, not fixed hex.** The `@theme` block in
-`src/app/globals.css` maps them to `rgb(var(--c-*))` (Tailwind 4 has no
-`tailwind.config`; it builds `/50` opacity modifiers with `color-mix()`, so no
-`<alpha-value>` placeholder is needed), and the `:root` / `.dark` blocks in the
-same file hold the two palettes. This is what makes light mode work: any
-surface built from these tokens re-themes automatically, with no `dark:`
-variant on any of the ~700 usages.
-
-**Tailwind 4 cascade-layer rule (easy to break, silent when you do).** In v4
-utilities live in a CSS layer, and *unlayered* CSS beats every layered rule
-whatever its specificity. So any element-level rule in `globals.css` (`html`,
-`body`, `a, button`, `input`, `:focus-visible`…) must sit inside `@layer base`,
-or it will override a component's own `h-6` / `min-h-0` / `text-sm` /
-`focus-visible:outline-none`. Custom classes meant to *beat* utilities (the
-light/dark opacity-parity overrides, `.bg-grid`, `.text-glow`) are deliberately
-unlayered. Also: the `next/font` variable is `--font-jetbrains-mono`, not
-`--font-mono` — Tailwind's own `--font-mono` theme variable points at it, and
-naming them the same makes the variable reference itself.
-
-| Token | Role | Light | Dark |
-|-------|------|-------|------|
-| `cyberbg` | page background | `#F6F7F9` | `#070B14` |
-| `cyberpanel` | card/panel background | `#FFFFFF` | `#0D1524` |
-| `cyberborder` | borders on panels | `#D6DCE4` | `#1C2940` |
-| `cybertext` | primary body text | `#2F3A44` | `#FFFFFF` |
-| `neon` | accent, links, glow | `#067A5B` | `#39FFC0` |
-
-Rules when adding UI:
-
-- **Never use `text-white` on a themed surface** — it cannot follow the theme
-  and turns invisible in light mode. Use `text-cybertext`. `text-white` is
-  correct only on a permanently dark background such as `bg-atlantic`.
-- Same for `bg-white/N` and `border-white/N` overlays — use `bg-cybertext/N`.
-- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`,
-  `slatelight`) do not change between themes. Pair them with an explicit text
-  colour rather than letting text inherit.
-- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode
-  (the parity block in `globals.css`). Alpha tuned for white-on-black reads far
-  too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
-- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled
-  right down in light mode.
-
-Three more per-theme tokens meet WCAG AA without the parity overrides above —
-prefer them over alpha steps in new code: `cybermuted` (secondary text),
-`danger`, `warning`. The shadcn/ui names (`bg-primary`,
-`text-muted-foreground`, `border-input`, …) are aliases onto the same variables
-so CLI-generated components render on-brand; don't use them in hand-written
-code.
-
-### UI primitives
-
-New UI is composed from `src/components/ui/` — the shadcn/ui pattern,
-hand-written against the cyber tokens (lowercase filenames there, matching
-shadcn). Current set: `button` (primary/secondary/ghost/danger; `asChild` to
-style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the
-`// section` overline with the `//` hidden from screen readers), `input`/`label`
-(every input gets a label, `sr-only` if visually redundant), `alert` (danger →
-`role="alert"`, else `role="status"`), `stat-card`, `segmented-control`
-(`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()`
-(`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another
-panel/button/input — the older feature components still do, and migrate
-incrementally.
-
-### App shell
-
-`src/components/app-shell/AppShell.tsx`, mounted by
-`src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+)
-or scrolling section tabs, plus one session + subscription load exposed through
-`useAppSession()`. Use its `plan` for feature gating (the stored plan only while
-`status === "active"`, else `"none"`) and `billingPlan` for billing display. It
-also runs the MFA (AAL2) step-up redirect for every route it wraps —
-`proxy.ts` only checks authentication. Pages inside it render content only:
-no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
-
-| Route | Holds |
-|---|---|
-| `/dashboard` | Overview — KPIs, trends, latest findings, onboarding checklist |
-| `/dashboard/scans` | `RunScanForm` + paginated scan list |
-| `/dashboard/scans/history` | Trends (per-site score/category history) |
-| `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
-| `/dashboard/findings` | every open finding across all sites (E-74) |
-| `/dashboard/sla` | remediation SLAs — deadlines, time-to-fix, targets (Agency) |
-| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` |
-| `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
-
-Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`,
-`activeNavHref` — longest segment-prefix wins).
-
-### Rate limiting
-
-`src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` +
-`UPSTASH_REDIS_REST_TOKEN`) for shared state across Function instances. Falls
-back to an in-memory `Map` in dev — not safe across instances; don't rely on it
-in production. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2)
-from the right of `X-Forwarded-For` and strips the port; `GET /api/client-ip`
-returns what it resolves — probe it with a forged header after any hosting
-change. See rule 18.
-
-### Payments
-
-Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on
-`checkout.session.completed`, `invoice.payment_failed` and
-`customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the
-`STRIPE_PRICE_*` vars. Until the price IDs are set, checkout answers 503
-`checkout_unavailable` (customer wording plus a contact link on /pricing; the
-missing variable is logged server-side, never sent to the browser). `plan` is
-free-text, so adding a tier is a code change, not a schema one. Gating: rule 17.
+- **Never `text-white` / `bg-white/N` / `border-white/N` on a themed surface** —
+  use `text-cybertext` / `bg-cybertext/N`; prefer `cybermuted`, `danger`,
+  `warning` over alpha steps. Don't use shadcn alias names in hand-written code.
+- **Element-level rules in `globals.css` go inside `@layer base`**, or they beat
+  every Tailwind utility.
+- Compose new UI from `src/components/ui/` with `cn()`; never hand-roll another
+  panel/button/input.
+- Pages inside `AppShell` render content only (no `min-h-screen`/`bg-grid`, no
+  "← Dashboard"); gate on `useAppSession().plan`, display `billingPlan`.
+- Rate limits need Upstash in production; the in-memory fallback is dev-only.
 
 ### Tier A offensive scanning
 
@@ -352,32 +256,36 @@ attack traffic.**
 
 ## Testing strategy
 
-Four independent gates, run by `deploy.yml` in this exact order before every
-deploy. Reproduce locally with the matching command above (or `/verify`) rather
-than inventing a different check.
+`deploy.yml` runs the four gates of rule 1 in order: lint, tsc, unit, e2e
+(`/verify` reproduces it). What the rules don't already say:
 
-1. **Lint** (`npm run lint`) — ESLint, zero tolerance for errors. Pre-existing
-   `react-hooks/set-state-in-effect` warnings on a handful of components are
-   known and not a regression signal.
-2. **Type check** (`npx tsc --noEmit`) — `next build` does **not** run this, so
-   a type error can pass a build and still be wrong.
-3. **Unit/integration** (`npm run test:unit`) — Vitest, colocated as
-   `*.test.ts(x)` next to the module, except API-route tests under
-   `src/__tests__/api/` (the Pages Router would otherwise treat a colocated test
-   under `src/pages/api/` as a route and break `npm run build`). Favour pure,
-   dependency-free functions — `scanCadence.ts`'s `isScanDue()` and
-   `ticketLinks.ts`'s `decideTicketAction()` are the model, unit-testable
-   without a mocked Supabase/Jira. See rules 1, 2, 4.
-4. **E2E** (`npm test`) — Playwright, builds the app and starts its own server
-   (slow, hermetic). See rule 30.
+- Pre-existing `react-hooks/set-state-in-effect` lint warnings are known, not a
+  regression signal.
+- Vitest tests sit next to the module as `*.test.ts(x)`, except API-route tests,
+  which go under `src/__tests__/api/` (a test under `src/pages/api/` becomes a
+  route and breaks `npm run build`).
+- Favour pure, dependency-free functions (`isScanDue()` in `scanCadence.ts`,
+  `decideTicketAction()` in `ticketLinks.ts`), testable without mocked services.
+- A new scanner check or API route needs a unit test; server-only logic needs
+  no e2e test.
+- `tests/db/` (`npm run test:db`) applies every migration to throwaway Postgres
+  and tests RLS per role, on its own vitest config. See rules 24, 25.
 
-**Database tests** (`tests/db/`, `npm run test:db`) apply every
-`sql/migrations/*.sql` in order to a throwaway database on real Postgres and
-test RLS as the `anon`/`authenticated`/`service_role` roles. Separate vitest
-config, so `test:unit` never needs a database. See rules 24, 25.
+## Working efficiently (token budget)
 
-A new scanner check or API route needs a unit test alongside it; there's no
-requirement to add e2e coverage for server-only logic.
+- **Large docs: grep the headings, then read only that range.** Never read
+  `ENHANCEMENTS.md` (~108 KB), `NEXT-STEPS.md`, `OWNER-TODO.md` or
+  `ARCHITECTURE-NOTES.md` whole: `grep -n "^#" <file>`, then `sed -n a,bp`.
+- Search with Grep/Glob first; read a file only once you know it is the one, and
+  with an offset/limit when it is long. Don't re-read a file you just edited.
+- For a sweep across many files, use an Explore subagent (Haiku) and take back
+  only its conclusion. Rule 5 still applies: one build at a time.
+- Model: Sonnet for single-module changes, docs, tests and OT items; Opus for
+  cross-module design, auth/plan gating, offensive-profile and security review.
+- Review with `git diff master...HEAD`, not whole files. Check CI with
+  `gh pr checks` and fetch only a failed job's log tail.
+- Before planning, check open PRs (`gh pr list`) so work isn't duplicated; one
+  task per session, and start a fresh session rather than extending a long one.
 
 ## Where to read what
 
