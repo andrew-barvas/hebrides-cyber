@@ -22,8 +22,11 @@ hand.
 
 - Scope matches the "form/CSRF/MFA-free apps" framing above: a plain username/password form submitted by
   pressing Enter (so the page's own CSRF token, if any, travels with it exactly as a real visitor's would).
-  **No MFA support** — a password field still visible after submitting (an MFA challenge page included)
-  reads as a failed login, not a false success.
+  **TOTP MFA only** (migration 064): an optional base32 `totpSecret` (RFC 6238, SHA-1, 6 digits, 30 s;
+  `src/lib/totp.ts`) makes the recorder wait for the MFA field after the password step, type the current
+  code, and submit. The secret needs a verified domain, is stored sealed in `target_auth_credentials.totp_secret`
+  (reused on re-record), and the browser runner only ever gets a code supplier. Any other challenge (SMS, push,
+  WebAuthn, OAuth) still reads as a failed login, not a false success. Not verified against a real MFA site.
 - Same gates as the manual cookie/Basic-auth path: Agency plan, session auth only (no API key), and the
   caller must own the `monitored_targets` row. The `loginUrl` is additionally required to be on the same
   host as the monitored target (or a subdomain of it) and `https://` — a plaintext login page would send
@@ -50,5 +53,8 @@ hand.
 ## Not done yet (later slices)
 - **Per-target opt-in toggle** and an owner-supplied exclusion list for paths.
 - **SPA route discovery** so client-routed apps expose more than their shell.
-- Surfacing the signed-in crawl's own status (`extended.authCheck.crawl`) in the report UI, including the
-  "credential not accepted" error, so an expired cookie is visible instead of silent.
+
+Done 2026-10-31: the signed-in crawl's own status (`extended.authCheck.crawl`) is surfaced by
+`signedInCrawlStatus.ts`, as a "signed-in crawl" card on the report page and as "signed-in crawl" under
+the executive PDF's "Checks that did not finish", so a "credential not accepted" error is visible
+instead of silent.
