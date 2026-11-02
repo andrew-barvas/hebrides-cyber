@@ -202,7 +202,7 @@ report shape with New/Fixed diffing.
 
 | Query param | Default | Notes |
 |-------------|---------|-------|
-| `format` | `csv` | `csv` or `json` |
+| `format` | `csv` | `csv`, `json` or `sarif` |
 
 CSV columns: `severity, title, detail, check_id, cve_ids, cvss_score,
 cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
@@ -215,6 +215,8 @@ finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
 `{ scan_id, target_url, findings }` with each finding's full stored shape
 (`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
 as stored).
+
+`format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
 
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
