@@ -108,7 +108,7 @@ async function handleTargetAuth(
   if (body.authType === "cookie") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
       sealSecrets(
-        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: body.cookieValue, basic_username: null, basic_password: null },
+        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "cookie", cookie_value: body.cookieValue, basic_username: null, basic_password: null, totp_secret: null },
         ["cookie_value"]
       ),
       { onConflict: "monitored_target_id" }
@@ -120,7 +120,7 @@ async function handleTargetAuth(
   if (body.authType === "basic") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").upsert(
       sealSecrets(
-        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "basic", basic_username: body.username, basic_password: body.password, cookie_value: null },
+        { owner: caller.ownerId, monitored_target_id: monitoredTargetId, auth_type: "basic", basic_username: body.username, basic_password: body.password, cookie_value: null, totp_secret: null },
         ["basic_password"]
       ),
       { onConflict: "monitored_target_id" }

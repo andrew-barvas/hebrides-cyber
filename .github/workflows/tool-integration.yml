@@ -31,6 +31,8 @@ on:
       - "hebridescyber-app/src/lib/execTool.ts"
       - "hebridescyber-app/tests/fixtures/test-app/**"
       - ".github/workflows/tool-integration.yml"
+      # A pin bump (scanner-tool-updates.yml) lands here; the checks below are its gate.
+      - ".github/workflows/scheduled-scans.yml"
 
 permissions:
   contents: read
@@ -43,7 +45,7 @@ jobs:
       run:
         working-directory: hebridescyber-app
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -52,7 +54,7 @@ jobs:
       - run: npm ci
 
       - name: Install sqlmap
-        run: pip3 install --break-system-packages sqlmap
+        run: pip3 install --break-system-packages sqlmap==1.10.10
 
       - name: Install whatwaf (pinned to v1.9; not on PyPI)
         # WhatWaf has no PyPI package; install from the pinned v1.9 tag, whose
@@ -329,6 +331,54 @@ jobs:
           test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
           /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
           head -5 /tmp/capture/testssl.version.txt
+
+      - name: Check the pinned subfinder, gitleaks, trivy, zizmor and prowler installs
+        # These are pinned only in scheduled-scans.yml, whose installs fail soft
+        # (a broken install there just reports not_configured). This hard check,
+        # on the same pins, is what a version bump from scanner-tool-updates.yml
+        # has to pass. update-scanner-tools.ts rewrites every copy of a pin, and
+        # scannerToolUpdates.test.ts fails if the copies ever disagree.
+        if: always()
+        env:
+          SUBFINDER_VERSION: v2.16.0
+          SUBFINDER_SHA256: 1b7f9c608e9a5bd59e609a5e09710d63c5485e92d3d49dc2c16eb4fdbe10cb60
+          GITLEAKS_VERSION: 8.21.2
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          TRIVY_VERSION: 0.75.0
+          TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+          PROWLER_VERSION: 5.47.0
+          PROWLER_SHA256: 8921b03330bc17182d7ed7260afe285bb6096829cacb14a74baa9d6914aef5b6
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/capture /tmp/pins
+          curl -fsSL -o /tmp/pins/subfinder.zip \
+            "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip"
+          echo "${SUBFINDER_SHA256}  /tmp/pins/subfinder.zip" | sha256sum -c -
+          unzip -o -q /tmp/pins/subfinder.zip subfinder -d /tmp/pins
+          /tmp/pins/subfinder -version 2>&1 | tee /tmp/capture/subfinder.version.txt | grep -F "${SUBFINDER_VERSION#v}"
+
+          curl -fsSL -o /tmp/pins/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/pins/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/pins/gitleaks.tar.gz -C /tmp/pins gitleaks
+          /tmp/pins/gitleaks version 2>&1 | tee /tmp/capture/gitleaks.version.txt | grep -F "${GITLEAKS_VERSION}"
+
+          curl -fsSL -o /tmp/pins/trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  /tmp/pins/trivy.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/pins/trivy.tar.gz -C /tmp/pins trivy
+          /tmp/pins/trivy --version 2>&1 | tee /tmp/capture/trivy.version.txt | grep -F "${TRIVY_VERSION}"
+
+          python3 -m venv /tmp/pins/zizmor
+          /tmp/pins/zizmor/bin/pip install --quiet zizmor==1.30.1
+          /tmp/pins/zizmor/bin/zizmor --version 2>&1 | tee /tmp/capture/zizmor.version.txt
+
+          curl -fsSL -o "/tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl" \
+            "https://files.pythonhosted.org/packages/23/fa/bf388f40a49322653af49a07d515354758f1915767448e56b1af4824ed38/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+          echo "${PROWLER_SHA256}  /tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl" | sha256sum -c -
+          python3 -m venv /tmp/pins/prowler
+          /tmp/pins/prowler/bin/pip install --quiet "/tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+          /tmp/pins/prowler/bin/prowler --version 2>&1 | tee /tmp/capture/prowler.version.txt | grep -F "${PROWLER_VERSION}"
 
       - name: Print captured output
         if: always()

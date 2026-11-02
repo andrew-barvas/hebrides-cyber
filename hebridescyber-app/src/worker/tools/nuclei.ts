@@ -104,9 +104,31 @@ const TECH_TAG_MAP: Record<string, string[]> = {
 // scan's HTTP template run.
 const BASELINE_TAGS = ["cve", "exposure", "misconfig", "default-login", "takeover", "ssrf", "oast"];
 
-export function buildTagArgument(detectedTechnologies: string[]): string {
+// NON-INTRUSIVE MODE (the `exposure` profile, scanProfiles.ts). That profile
+// is sold as "no test payloads", which BASELINE_TAGS does not meet:
+// default-login tries credentials, and ssrf/oast inject a callback URL. So it
+// gets its own baseline, every payload-sending tag category is excluded with
+// -etags (nuclei applies exclusions after -tags, so a technology tag can't
+// pull an excluded template back in), and out-of-band interaction is off (-ni).
+// The exclude list is broad on purpose: a template carrying any of these tags
+// is skipped even when it would only have detected something.
+const NON_INTRUSIVE_TAGS = ["exposure", "misconfig", "takeover", "cve", "panel", "tech"];
+const NON_INTRUSIVE_EXCLUDED_TAGS = [
+  "intrusive", "dos", "fuzz", "bruteforce", "default-login", "auth-bypass",
+  "sqli", "xss", "rce", "lfi", "rfi", "traversal", "ssti", "xxe", "injection",
+  "deserialization", "fileupload", "ssrf", "oast",
+  "redirect", "crlf", "smuggling", "cmdi", "oob",
+];
+// "kev" is deliberately NOT excluded: known-exploited CVEs are the findings a
+// customer most needs to hear about. A KEV template that sends a payload also
+// carries one of the tags above (rce, cmdi, ...), so it is skipped anyway.
+
+export type NucleiOptions = { nonIntrusive?: boolean };
+
+export function buildTagArgument(detectedTechnologies: string[], options: NucleiOptions = {}): string {
   const mapped = detectedTechnologies.flatMap((name) => TECH_TAG_MAP[name] ?? []);
-  return [...new Set([...BASELINE_TAGS, ...mapped])].join(",");
+  const baseline = options.nonIntrusive ? NON_INTRUSIVE_TAGS : BASELINE_TAGS;
+  return [...new Set([...baseline, ...mapped])].join(",");
 }
 
 export type NucleiFinding = {
@@ -209,7 +231,13 @@ export function buildInteractshArgs(env: Record<string, string | undefined> = pr
   return ["-iserver", server, ...(token ? ["-itoken", token] : [])];
 }
 
-export function buildNucleiArgs(targetUrl: string, tags: string, outFile: string, env: Record<string, string | undefined> = process.env): string[] {
+export function buildNucleiArgs(
+  targetUrl: string,
+  tags: string,
+  outFile: string,
+  env: Record<string, string | undefined> = process.env,
+  options: NucleiOptions = {}
+): string[] {
   return [
     "-target", targetUrl,
     "-tags", tags,
@@ -219,18 +247,18 @@ export function buildNucleiArgs(targetUrl: string, tags: string, outFile: string
     // so one unresponsive request could outlast the process timeout
     // below, which kills nuclei before it has written any results.
     "-timeout", "10",
-    ...buildInteractshArgs(env),
+    ...(options.nonIntrusive ? ["-etags", NON_INTRUSIVE_EXCLUDED_TAGS.join(","), "-ni"] : buildInteractshArgs(env)),
   ];
 }
 
-export async function runNuclei(targetUrl: string, detectedTechnologies: string[] = []): Promise<NucleiResult> {
+export async function runNuclei(targetUrl: string, detectedTechnologies: string[] = [], options: NucleiOptions = {}): Promise<NucleiResult> {
   const tmpFile = `/tmp/nuclei-${randomUUID()}.json`;
-  const tags = buildTagArgument(detectedTechnologies);
+  const tags = buildTagArgument(detectedTechnologies, options);
 
   try {
     await execFileAsync(
       "nuclei",
-      buildNucleiArgs(targetUrl, tags, tmpFile),
+      buildNucleiArgs(targetUrl, tags, tmpFile, process.env, options),
       { timeout: NUCLEI_TIMEOUT_MS }
     );
 

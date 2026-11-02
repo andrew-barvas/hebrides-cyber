@@ -13,6 +13,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmailAttachment } from "./email";
 import { escapeHtml, ratingFor, REPORT_MUTED, REPORT_TEXT } from "./executiveReport";
 import { STALE_AFTER_DAYS } from "./portfolioReport";
+import { hostOf } from "./findingLifecycle";
+import { buildTriageIndex, loadTriageForOwner, partitionByTriage } from "./findingTriage";
 
 export type ReportFrequency = "daily" | "weekly" | "monthly";
 export type ReportFormat = "pdf" | "csv" | "json";
@@ -81,13 +83,26 @@ export type FindingSummary = {
   lastScanDate: string | null;
 };
 
+const NO_RESULTS = { totalFindings: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0, score: null, lastScanDate: null };
+
 /**
  * Gather findings summary for a report — either for one target or all targets.
+ *
+ * Counts are the OPEN findings in each site's latest completed scan: false
+ * positives and accepted or snoozed risks are left out, as on the dashboard
+ * and in the executive and portfolio reports.
+ *
+ * Throws when any read fails. A failed lookup is not "nothing found": it used
+ * to become a "not scanned" row or a zero-finding site, which a customer would
+ * read as clean. The caller leaves the report due, so the next run retries.
+ * A site with no scan, or a completed scan with no stored results, is reported
+ * as having no results rather than as having none of anything.
  */
 export async function gatherReportData(
   supabaseAdmin: SupabaseClient,
   ownerId: string,
   targetUrl: string | null,
+  now: Date = new Date(),
 ): Promise<FindingSummary[]> {
   const summaries: FindingSummary[] = [];
 
@@ -100,11 +115,16 @@ export async function gatherReportData(
     targetsQuery = targetsQuery.eq("target_url", targetUrl);
   }
 
-  const { data: targets } = await targetsQuery;
+  const { data: targets, error: targetsError } = await targetsQuery;
+  if (targetsError) throw new Error(`Could not read monitored sites: ${targetsError.message}`);
   if (!targets || targets.length === 0) return summaries;
 
+  const triage = await loadTriageForOwner(supabaseAdmin, ownerId);
+  if (triage.error) throw new Error(`Could not read triage decisions: ${triage.error}`);
+  const triageIndex = buildTriageIndex(triage.rows, now);
+
   for (const target of targets) {
-    const { data: latestScan } = await supabaseAdmin
+    const { data: latestScan, error: scanError } = await supabaseAdmin
       .from("scans")
       .select("id, score, created_at")
       .eq("owner", ownerId)
@@ -113,36 +133,38 @@ export async function gatherReportData(
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (scanError) throw new Error(`Could not read the latest scan for ${target.target_url}: ${scanError.message}`);
 
     if (!latestScan) {
-      summaries.push({
-        targetUrl: target.target_url,
-        totalFindings: 0,
-        critical: 0, high: 0, medium: 0, low: 0, info: 0,
-        score: null,
-        lastScanDate: null,
-      });
+      summaries.push({ targetUrl: target.target_url, ...NO_RESULTS });
       continue;
     }
 
-    const { data: results } = await supabaseAdmin
+    const { data: results, error: resultsError } = await supabaseAdmin
       .from("scan_results")
       .select("results")
       .eq("scan_id", latestScan.id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (resultsError) throw new Error(`Could not read scan results for ${target.target_url}: ${resultsError.message}`);
 
-    const findings = (results?.results as { findings?: Array<{ severity: string }> })?.findings ?? [];
+    if (!results) {
+      summaries.push({ targetUrl: target.target_url, ...NO_RESULTS });
+      continue;
+    }
+
+    const findings = (results.results as { findings?: Array<{ severity: string; checkId?: string }> } | null)?.findings ?? [];
+    const { open } = partitionByTriage(findings, hostOf(target.target_url) ?? target.target_url, triageIndex);
     const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
-    for (const f of findings) {
+    for (const f of open) {
       const sev = f.severity as keyof typeof counts;
       if (sev in counts) counts[sev]++;
     }
 
     summaries.push({
       targetUrl: target.target_url,
-      totalFindings: findings.length,
+      totalFindings: open.length,
       ...counts,
       score: latestScan.score ?? null,
       lastScanDate: latestScan.created_at,
@@ -195,8 +217,7 @@ export function summariseReport(summaries: FindingSummary[]): {
  * rows as the CSV/JSON, styled like the executive report. Pure.
  *
  * Honest about gaps, like the portfolio report: a site with no completed scan
- * says so rather than reading as clean, an old scan is flagged, and the counts
- * are labelled as untriaged because gatherReportData() doesn't apply triage.
+ * says so rather than reading as clean, and an old scan is flagged.
  */
 export function renderScheduledReportHtml(
   summaries: FindingSummary[],
@@ -217,7 +238,7 @@ export function renderScheduledReportHtml(
   const rows = ordered
     .map((s) => {
       if (s.lastScanDate === null) {
-        return `<tr><td>${e(s.targetUrl)}</td><td colspan="7" class="muted">Not scanned yet: no results to report.</td></tr>`;
+        return `<tr><td>${e(s.targetUrl)}</td><td colspan="7" class="muted">No scan results yet: nothing to report.</td></tr>`;
       }
       const r = ratingFor(s.score);
       const stale = new Date(s.lastScanDate).getTime() < staleBefore;
@@ -258,7 +279,7 @@ export function renderScheduledReportHtml(
   <table><thead><tr><th>Site</th><th>Score</th><th class="n">Critical</th><th class="n">High</th><th class="n">Medium</th><th class="n">Low</th><th class="n">Info</th><th>Last scanned</th></tr></thead>
   <tbody>${rows || '<tr><td colspan="8">No monitored sites.</td></tr>'}</tbody></table>
 
-  <p class="foot">Counts are every finding in each site's latest completed scan, before triage: false positives and accepted risks are included. The dashboard shows the triaged view.</p>
+  <p class="foot">Counts are the open findings in each site's latest completed scan. False positives and accepted or snoozed risks are left out, as on the dashboard.</p>
 </body></html>`;
 }
 
@@ -339,9 +360,9 @@ export async function markReportSent(
   supabaseAdmin: SupabaseClient,
   reportId: string,
   frequency: ReportFrequency,
+  now: Date = new Date(),
 ): Promise<void> {
-  const now = new Date();
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("scheduled_reports")
     .update({
       last_sent: now.toISOString(),
@@ -349,4 +370,81 @@ export async function markReportSent(
       updated_at: now.toISOString(),
     })
     .eq("id", reportId);
+  // A swallowed failure here leaves the report due, so the next hourly run
+  // emails it again: say so rather than count it as sent and move on.
+  if (error) throw new Error(`Sent, but could not record it (it will be sent again next run): ${error.message}`);
+}
+
+export type SendReportEmail = (input: { to: string; subject: string; html: string; attachments: EmailAttachment[] }) => Promise<{ ok: boolean; error?: string }>;
+
+export type ReportDelivery = {
+  delivered: string[];
+  failed: { recipient: string; error: string }[];
+};
+
+/**
+ * Sends one report email to each recipient and records who got it. sendEmail
+ * reports a failure as { ok: false } rather than throwing, and the caller used
+ * to ignore that, so a report nobody received was marked sent.
+ */
+export async function deliverReportEmail(
+  recipients: string[],
+  email: Pick<ReportEmail, "subject" | "html" | "attachments">,
+  send: SendReportEmail,
+): Promise<ReportDelivery> {
+  const delivery: ReportDelivery = { delivered: [], failed: [] };
+  for (const recipient of recipients) {
+    try {
+      const result = await send({ to: recipient, subject: email.subject, html: email.html, attachments: email.attachments });
+      if (result.ok) delivery.delivered.push(recipient);
+      else delivery.failed.push({ recipient, error: result.error ?? "unknown error" });
+    } catch (err) {
+      delivery.failed.push({ recipient, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return delivery;
+}
+
+export type PlanCheck = "ok" | "denied" | "error";
+
+export type ReportRunOutcome =
+  /** The owner has no active paid plan: nothing was gathered or sent, and the report stays due. */
+  | { kind: "not_entitled" }
+  /** The account has no monitored sites to report on: skipped, still due. */
+  | { kind: "no_sites" }
+  /** Nobody received it: not marked sent, so the next run retries. */
+  | { kind: "undelivered"; failed: ReportDelivery["failed"] }
+  /** At least one recipient got it and the report is marked sent; `failed` lists those who didn't. */
+  | { kind: "sent"; delivered: string[]; failed: ReportDelivery["failed"]; sentFormat: ReportFormat; pdfError?: string };
+
+export type ReportRunDeps = {
+  siteUrl: string;
+  renderPdf: (html: string) => Promise<Buffer>;
+  send: SendReportEmail;
+  /** Does this owner have an active paid plan? (planGate with the "basic" tier in production.) */
+  planCheck: (ownerId: string) => Promise<PlanCheck>;
+  now?: Date;
+};
+
+/**
+ * One due report, start to finish: plan check, gather, build, deliver, record.
+ * Throws when a lookup fails or the plan can't be read, leaving the report
+ * due; the caller counts that as an error.
+ */
+export async function runDueReport(supabaseAdmin: SupabaseClient, report: ScheduledReport, deps: ReportRunDeps): Promise<ReportRunOutcome> {
+  const now = deps.now ?? new Date();
+
+  const plan = await deps.planCheck(report.owner);
+  if (plan === "error") throw new Error("Could not check the owner's plan");
+  if (plan === "denied") return { kind: "not_entitled" };
+
+  const summaries = await gatherReportData(supabaseAdmin, report.owner, report.target_url, now);
+  if (summaries.length === 0) return { kind: "no_sites" };
+
+  const email = await buildReportEmail(report, summaries, { siteUrl: deps.siteUrl, renderPdf: deps.renderPdf, now });
+  const delivery = await deliverReportEmail(report.recipients, email, deps.send);
+  if (delivery.delivered.length === 0) return { kind: "undelivered", failed: delivery.failed };
+
+  await markReportSent(supabaseAdmin, report.id, report.frequency, now);
+  return { kind: "sent", delivered: delivery.delivered, failed: delivery.failed, sentFormat: email.sentFormat, pdfError: email.pdfError };
 }

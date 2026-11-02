@@ -11,6 +11,11 @@ For what Hebrides Cyber actually does today (as opposed to what's claimed
 below), see `docs/FUNCTIONALITY-MATRIX.md` — every advantage claimed in §5
 is checked against that file, not against marketing copy.
 
+For a dimension-by-dimension side-by-side (what each side ships, checked
+against the code, plus the gaps a small team could close with its own version),
+see `docs/COMPETITOR-MATRIX.md`. It follows the same rule as this file: no
+competitor claim without a source and a date.
+
 ---
 
 ## 1. Method, as-of date, refresh procedure
@@ -341,10 +346,12 @@ not do"). Some competitors' features are deliberately not worth matching:
   because it risks actually breaking a customer's production site, which
   is a worse outcome than a missed finding for anyone who hasn't
   explicitly asked for it.
-- **Cloud IAM auditing (ScoutSuite/Prowler-style)** — acknowledged gap, but
-  building it before a real credential-onboarding-with-consent flow exists
-  would mean asking for cloud account access before the product has earned
-  that level of trust.
+- **Cloud IAM auditing beyond AWS** — AWS IAM is now covered by a Prowler
+  wrapper (`prowlerIam.ts`, PR #158) that assumes a customer-created,
+  read-only cross-account role with an external ID we generate, so we never
+  hold customer keys (`docs/AWS-IAM-POSTURE.md`). It has not yet run against
+  a real account (OT-46). Azure and GCP IAM, and Prowler's non-IAM services,
+  are still not audited.
 
 ---
 
