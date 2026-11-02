@@ -113,6 +113,7 @@ Database migrations: files exist through **059**; the next free number is **060*
 
 | Shipped | Where |
 |---|---|
+| Automated tool and dependency updates (2026-11-01) | `scanner-tool-updates.yml` (weekly, Tuesdays) runs `update-scanner-tools.ts` over the `SCANNER_TOOLS` manifest (`scannerToolUpdates.ts`): one PR per tool with a newer stable release at least 14 days old, the asset hashed and cross-checked against the published digest, held if the upstream licence changed. `npm-audit-fix.yml` (weekly, Mondays) opens a rolling semver-compatible `npm audit fix` PR. `tool-integration.yml` now also runs on `scheduled-scans.yml` changes and hard-checks the subfinder/gitleaks/trivy/zizmor/prowler pins. sqlmap pinned (`1.10.10`). Follow-on code fixes: the weekly Claude maintenance routine. Needs OT-49 for the PRs' CI to start on its own |
 | Emerging-threat alerts (E-68) | PR #1 — `emergingThreats.ts`, `emergingThreatAlerts.ts`, `emerging-threats.yml` (every 6 h), migration 045 |
 | Lockfile + transitive dependency scanning, inventory SBOM (E-67) | PR #2 — `dependencyLockfiles.ts`, `lockfileSyntax.ts`, `ecosystemVersion.ts`, `osv.ts` querybatch |
 | SAST with Opengrep + our own 34-rule pack (E-69) | PR #3 — `src/worker/tools/sast.ts`, `sast-rules/`, `repoClone.ts`, `sast-rules.yml` |
