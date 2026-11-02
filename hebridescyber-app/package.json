@@ -37,6 +37,7 @@
     "uptime:sync": "tsx src/scripts/sync-uptime-monitors.ts",
     "threats:check": "tsx src/scripts/check-emerging-threats.ts",
     "easm:discover": "tsx src/scripts/run-easm-discovery.ts",
+    "cve:sync": "tsx src/scripts/sync-cve-index.ts",
     "docs:diagrams": "tsx src/scripts/render-diagrams.ts"
   },
   "dependencies": {

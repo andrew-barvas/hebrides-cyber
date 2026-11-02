@@ -177,6 +177,8 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "commix.command-injection": "hard",
   "nmap.dangerous-port": "easy",
   "network-exposure.open-port": "easy", // firewall rule / bind-to-localhost change
+  "network-exposure.service-cve": "moderate", // a service upgrade and restart, sometimes across a major version
+  "network-exposure.service-eol": "moderate", // a major-version upgrade, as eol.unsupported
   "secretScan.exposed-secret": "moderate", // rotate the credential + purge from git history
   "dependency-manifest.npm": "easy",
   "dependency-manifest.pip": "easy",

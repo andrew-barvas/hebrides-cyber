@@ -3498,3 +3498,33 @@ scope the actions (iam:PassRole, iam:CreatePolicyVersion, iam:AttachUserPolicy
 and similar) to named resources, add conditions, or remove them. Confirm in the
 IAM console's access analyzer that the change doesn't break a legitimate
 workflow, then re-scan.`;
+
+/**
+ * A network service whose detected version is inside a known CVE's affected
+ * range (networkExposure's service CVE matching, serviceCve.ts). Built from
+ * the product, version and port actually seen; the fixed version is never
+ * guessed, because NVD's ranges say where a flaw stops, not which release a
+ * given operating system ships the fix in.
+ */
+export function serviceCveRemediation(label: string, version: string, port: number, cveId: string, packagedBy: string | null): string {
+  const distro = packagedBy
+    ? `
+
+**This ${label} looks like ${packagedBy}'s own package.** Distributions backport
+security fixes without changing the upstream version number, so it may already
+be fixed. Check ${cveId} in ${packagedBy}'s security tracker for your release and
+package version. If it is fixed there and your updates are applied, record that
+as your evidence; this finding is reported at low confidence for that reason.`
+    : "";
+  return `Upgrade ${label} ${version} on port ${port} to a release that fixes ${cveId}, or stop exposing it.
+
+1. Read ${cveId} (https://nvd.nist.gov/vuln/detail/${cveId}) and the vendor's
+   advisory for the first fixed release on the line you run.
+2. Apply the update from the same source you installed ${label} from (your
+   operating system's package manager, the vendor's repository or image),
+   test it, then restart the service.
+3. If the service doesn't need to be reachable from the internet, restrict
+   port ${port} to the addresses that use it at your firewall, which also
+   removes this exposure while you schedule the upgrade.
+4. Re-scan to confirm the finding clears.${distro}`;
+}
