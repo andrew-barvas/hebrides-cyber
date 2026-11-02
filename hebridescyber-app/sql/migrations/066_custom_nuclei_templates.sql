@@ -1,4 +1,4 @@
--- Migration 064: customer-defined nuclei checks (Agency and Tier A).
+-- Migration 066: customer-defined nuclei checks (Agency and Tier A).
 --
 -- A customer writes their own HTTP-only nuclei template ("is /internal-admin
 -- reachable on our site?"). Each is validated by src/lib/customNucleiTemplates.ts
