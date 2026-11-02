@@ -24,6 +24,7 @@ on:
       - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
+      - "hebridescyber-app/src/lib/scanners/deepTls*.ts"
       - "hebridescyber-app/src/worker/tools/networkExposure*.ts"
       - "hebridescyber-app/src/worker/tools/nmap*.ts"
       - "hebridescyber-app/src/worker/tools/zap*.ts"
@@ -183,6 +184,18 @@ jobs:
         # exactly what production installs.
         run: pip3 install --break-system-packages arjun==2.2.7
 
+      - name: Install testssl.sh (pinned)
+        # Same tag as scheduled-scans.yml. deepTls.integration.test.ts runs it,
+        # which is what lets deepTls run under the `exposure` profile (rule 15).
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
+          test -x /opt/testssl.sh/testssl.sh
+          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
+          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
+          head -5 /tmp/capture/testssl.version.txt
+          echo "TESTSSL_PATH=/opt/testssl.sh/testssl.sh" >> "$GITHUB_ENV"
+
       - name: Start the local test app
         run: |
           nohup python3 tests/fixtures/test-app/app.py > /tmp/test-app.log 2>&1 &
@@ -214,7 +227,7 @@ jobs:
           done
           echo "::error::ZAP did not become ready in time"; exit 1
 
-      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner, nmap, arjun, zap)
+      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner, nmap, arjun, zap, testssl.sh)
         env:
           RUN_TOOL_INTEGRATION: "1"
           KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
@@ -234,6 +247,7 @@ jobs:
           src/worker/tools/nmap.integration.test.ts
           src/worker/tools/arjun.integration.test.ts
           src/worker/tools/zap.integration.test.ts
+          src/lib/scanners/deepTls.integration.test.ts
 
       - name: Stop ZAP daemon
         if: always()
@@ -321,16 +335,6 @@ jobs:
           gem list -i wpscan -v 3.8.28
           wpscan --version > /tmp/capture/wpscan.version.txt 2>&1 || true
           head -5 /tmp/capture/wpscan.version.txt
-
-      - name: Check the pinned testssl.sh install
-        if: always()
-        run: |
-          mkdir -p /tmp/capture
-          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
-          test -x /opt/testssl.sh/testssl.sh
-          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
-          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
-          head -5 /tmp/capture/testssl.version.txt
 
       - name: Check the pinned subfinder, gitleaks, trivy, zizmor and prowler installs
         # These are pinned only in scheduled-scans.yml, whose installs fail soft
