@@ -18,6 +18,7 @@ had been right, and the module that settled it.
 
 - [Scan flow, queue and cadence](#scan-flow-two-step-proof-of-ownership-queue-backed)
 - [Scanner pipeline](#scanner-pipeline)
+- [Microsoft 365 / Entra ID posture](#microsoft-365--entra-id-posture-p1-4)
 - [Dependency checks, CI templates, accuracy benchmark](#pull-request-dependency-checks-e-71)
 - [Remediation, tickets, finding lifecycle, alerts, admin panel](#real-remediation-prs-vs-ai-tailored-fixes-vs-static-remediation-text-vs-the-remediation-pack)
 - [Portfolio, findings view, GitHub access, content generation](#portfolio-report-agency)
@@ -115,6 +116,10 @@ survives only with a quote found in the response and a non-catch-all page. The r
 It never changes severity, score or `findingLifecycle`. Full design: `AI-TRIAGE-DESIGN.md`.
 `sessionCheck.ts` also samples session tokens and `tokenEntropy.ts` (pure) judges them. Burp
 comparison: `BURP-PARITY.md`.
+
+## Microsoft 365 / Entra ID posture (P1-4)
+
+Read-only checks of a customer's Microsoft 365 tenant, the `m365` extended tool (`full`, `osint` and the Lookout `exposure` profile). A Global Administrator consents our multi-tenant Entra app once: `POST /api/account/m365-connect` (Pro and above, session only) returns Microsoft's v2 admin-consent URL with an HMAC-signed `state` and sets an HttpOnly nonce cookie scoped to the callback; `GET /api/account/m365-callback` (no session, IP rate-limited) needs both to match (`m365Consent.ts`), then asks for an app-only token for the returned tenant and checks its `roles` claim against `M365_REQUIRED_APP_ROLES` before saving anything, so neither a forged `tenant` parameter nor a partial consent is stored. `DELETE /api/account/m365-connect` forgets the tenant and tells the admin how to delete our enterprise app, which our read-only permissions can't do. Table `m365_tenants` (migration 068): owner, tenant ID, consent and last-checked times, owner-readable, service-role writes, no secret of the customer's. Our credential is `M365_CLIENT_ID`/`M365_CLIENT_SECRET`, environment only; the token lives for one scan. `scanners/m365Posture.ts` holds one pure function per check over the Graph JSON, so the tests replay hand-built responses; `runM365PostureChecks` runs in `executeScan()` next to `cloudPosture`. Any failed Graph read makes that check, and so the whole `extended.m365` result, `error` (rule 7); evidenced findings from the other checks are still kept. Limits (Graph has no read for them): mailbox-level forwarding, the outbound spam policy and the Purview unified audit switch. Design, permissions, the developer-tenant test plan and the privacy text: `docs/M365-POSTURE.md`.
 
 ## Uptime monitoring (bring your own UptimeRobot)
 
@@ -312,6 +317,7 @@ Key tables (all in `sql/migrations/`):
 - `repo_connections` — GitHub repos per user (unique on owner + repo; the most recently connected one is scanned until targets map to repos), gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)
 - `monitored_targets` — agency-tier sites for nightly scheduled scans
 - `contact_enquiries` — contact form submissions; service-role only (no browser RLS policy)
+- `m365_tenants` — the Microsoft 365 tenant an owner consented (`068_m365_tenants.sql`, unique on owner); tenant ID and timestamps only, owner-readable, service-role-write-only — see "Microsoft 365 / Entra ID posture (P1-4)"
 - `verifications` — domain ownership tokens
 - `blog_posts` — both the daily blog and weekly newsletter live here, differentiated only by slug prefix (`cyber-brief-` vs `week-of-`); a row needs both `status = 'published'` and `published_at` non-null to be publicly visible
 - `audit_logs` — see "Audit log" below

@@ -271,6 +271,21 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "cloudPosture.awsIamPasswordPolicy": "easy", // one update-account-password-policy call
   "cloudPosture.azureInfraEncryption": "hard", // only settable at account creation — needs a recreate/migrate
 
+  // --- Microsoft 365 / Entra ID posture (P1-4): each is one admin-center
+  // setting, but switching on MFA or blocking legacy sign-in needs a
+  // report-only trial and a word with users first, so those are moderate.
+  "m365.noSecurityBaseline": "moderate",
+  "m365.mfaNotEnforcedAllUsers": "moderate", // users must register a method; run report-only first
+  "m365.mfaNotEnforcedAdmins": "easy", // a handful of accounts
+  "m365.legacyAuthAllowed": "moderate", // move printers/apps still on SMTP AUTH first
+  "m365.tooManyGlobalAdmins": "easy",
+  "m365.singleGlobalAdmin": "easy",
+  "m365.externalForwarding": "moderate", // remove the rule, then establish whether the mailbox was compromised
+  "m365.guestAccessUnrestricted": "trivial",
+  "m365.guestInvitesUnrestricted": "trivial",
+  "m365.userConsentUnrestricted": "easy", // plus the admin-consent workflow and a review of granted apps
+  "m365.signInLogsUnavailable": "moderate", // a licence change (Entra ID P1)
+
   // --- Business logic (passive) ---
   "business-logic.csrf-missing": "moderate", // needs per-form token integration
   "business-logic.external-form-action": "easy", // verify and fix the action attribute
