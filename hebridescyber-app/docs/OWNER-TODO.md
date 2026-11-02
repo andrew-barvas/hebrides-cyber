@@ -246,6 +246,11 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   `not_configured` and don't market them.
 - **Raised:** 2026-08-26 (BETA-B1); 2026-10-12 (Tier A, `NEXT-STEPS.md` item
   11).
+- **Prep ready (not the step itself):** `docs/legal/OT-13-insurer-brief.md` and
+  `docs/legal/OT-13-solicitor-brief.md` are drafts to take to a broker and a
+  solicitor. They are not cover and not legal advice. Sequence: insurance
+  quoted → **bound** → solicitor reviews ToS and aligns the liability cap to the
+  policy limit → only then does the engineering gate open.
 
 ### OT-14: Marketing and grant copy integrity pass 🟡
 - **What and why:** some marketing and grant copy claims things the product
