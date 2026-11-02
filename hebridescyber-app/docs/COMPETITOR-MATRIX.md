@@ -8,6 +8,8 @@ dimension, and which gaps could we close ourselves?**
 
 **As of: 2026-10-30.**
 
+A November 2026 follow-up covering Lookout and Exploit, with dated sources and the plan to get ahead, is in `COMPETITIVE-REVIEW-2026-11.md`.
+
 ## The rule this file follows
 
 `COMPETITIVE-ANALYSIS.md` §1 says a competitor price or limitation must never
