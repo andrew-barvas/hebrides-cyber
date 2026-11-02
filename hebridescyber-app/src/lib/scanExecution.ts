@@ -166,7 +166,7 @@ async function runExtendedTools(
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
   crawledUrls: string[] = [],
-  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted. */
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted, ZAP passive-only. */
   nonIntrusive = false
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
@@ -217,7 +217,7 @@ async function runExtendedTools(
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies, { nonIntrusive })
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[] }),
-    toolConfig.zap ? runZap(targetUrl) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
+    toolConfig.zap ? runZap(targetUrl, { passiveOnly: nonIntrusive }) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
     toolConfig.sqlmap
       ? runSqlmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
