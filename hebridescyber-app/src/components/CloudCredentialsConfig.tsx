@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import AwsRoleConnect from "./AwsRoleConnect";
 
 type CloudCredential = {
   id: string;
@@ -303,6 +304,8 @@ export default function CloudCredentialsConfig() {
           ))}
         </ul>
       )}
+
+      <AwsRoleConnect />
     </div>
   );
 }

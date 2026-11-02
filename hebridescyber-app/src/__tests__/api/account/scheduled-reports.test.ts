@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, planGateMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
+  planGateMock: vi.fn(),
 }));
 
 type QueueMap = Record<string, unknown[]>;
@@ -36,6 +37,8 @@ vi.mock("@/lib/apiAuth", () => ({
   supabaseAdmin: { from: (table: string) => makeBuilder(table) },
 }));
 
+vi.mock("@/lib/planAccess", () => ({ planGate: planGateMock }));
+
 import handler from "@/pages/api/account/scheduled-reports";
 
 const OWNER_ID = "55555555-5555-5555-5555-555555555555";
@@ -49,6 +52,7 @@ describe("GET/POST/PATCH/DELETE /api/account/scheduled-reports", () => {
     queues = {};
     writes = [];
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: OWNER_ID, via: "session" });
+    planGateMock.mockReset().mockResolvedValue("ok");
   });
 
   it("GET returns stored reports", async () => {
@@ -162,6 +166,87 @@ describe("GET/POST/PATCH/DELETE /api/account/scheduled-reports", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
+  });
+
+  describe("plan gate", () => {
+    const REPORT_ID = "11111111-1111-4111-8111-111111111111";
+
+    it("checks the paid-plan tier for the caller's account", async () => {
+      queues.scheduled_reports = [{ data: { id: "1" }, error: null }];
+
+      const { req, res } = mockReqRes("POST", { frequency: "weekly", recipients: ["a@example.com"] });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(201);
+      expect(planGateMock).toHaveBeenCalledWith(expect.anything(), OWNER_ID, "basic");
+    });
+
+    it("POST answers 403 plan_required below a paid plan, and writes nothing", async () => {
+      planGateMock.mockResolvedValue("denied");
+
+      const { req, res } = mockReqRes("POST", { frequency: "weekly", recipients: ["a@example.com"] });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(403);
+      expect(JSON.parse(res._getData())).toEqual({ error: "Scheduled reports are part of the paid plans.", code: "plan_required" });
+      expect(writes).toEqual([]);
+    });
+
+    it("POST answers 500, not 403, when the plan can't be read, and writes nothing", async () => {
+      planGateMock.mockResolvedValue("error");
+
+      const { req, res } = mockReqRes("POST", { frequency: "weekly", recipients: ["a@example.com"] });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(500);
+      expect(JSON.parse(res._getData()).error).toMatch(/Could not check your plan/);
+      expect(writes).toEqual([]);
+    });
+
+    it("PATCH answers 403 for edits and for re-enabling below a paid plan, and writes nothing", async () => {
+      planGateMock.mockResolvedValue("denied");
+
+      for (const change of [{ enabled: true }, { frequency: "daily" }, { format: "csv" }, { recipients: ["a@example.com"] }, { enabled: false, format: "pdf" }]) {
+        const { req, res } = mockReqRes("PATCH", { id: REPORT_ID, ...change });
+        await handler(req, res);
+        expect(res._getStatusCode()).toBe(403);
+      }
+      expect(writes).toEqual([]);
+    });
+
+    it("PATCH still lets a lapsed account pause a report, without even checking the plan", async () => {
+      planGateMock.mockResolvedValue("denied");
+      queues.scheduled_reports = [{ error: null }];
+
+      const { req, res } = mockReqRes("PATCH", { id: REPORT_ID, enabled: false });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(planGateMock).not.toHaveBeenCalled();
+      expect(writes).toEqual([{ op: "update", row: expect.objectContaining({ enabled: false }) }]);
+    });
+
+    it("GET and DELETE never need a paid plan, so a lapsed account can see and clear what it set up", async () => {
+      planGateMock.mockResolvedValue("denied");
+      queues.scheduled_reports = [{ data: [{ id: "1" }], error: null }, { error: null }];
+
+      const get = mockReqRes("GET");
+      await handler(get.req, get.res);
+      const del = mockReqRes("DELETE", { id: REPORT_ID });
+      await handler(del.req, del.res);
+
+      expect(get.res._getStatusCode()).toBe(200);
+      expect(del.res._getStatusCode()).toBe(200);
+      expect(planGateMock).not.toHaveBeenCalled();
+    });
+
+    it("an invalid body is a 400 before any plan lookup", async () => {
+      const { req, res } = mockReqRes("POST", { frequency: "hourly", recipients: [] });
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(400);
+      expect(planGateMock).not.toHaveBeenCalled();
+    });
   });
 
   it("rejects an unsupported method with 405", async () => {

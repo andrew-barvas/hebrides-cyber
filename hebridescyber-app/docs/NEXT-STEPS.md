@@ -55,9 +55,21 @@ post-deploy checks, COEP `require-corp` against live GA/Stripe and the SSG
    - Set by `exposure.ts` and `directoryListing.ts`. Shown as "Evidence" on
      the finding card, in `/api/v1/scans/{id}`, in the JSON export, the CSV
      `evidence` column and the executive PDF.
-   - The scheduled-report PDF half shipped 2026-10-27 (#123).
-   - Follow-up: give the other request-making checks evidence too (headers,
-     backend/Firebase exposure, GraphQL, and proof-of-exploit's replay). Each
+   - The scheduled-report PDF half shipped 2026-10-27 (#123), hardened 2026-10-30 (#142): plan gate, failed sends no longer marked sent, triaged counts (`SPRINT-PLAN.md` H4).
+   - Headers: done 2026-10-31. `checkHeaders` records the page response it
+     judged (`HeadersResult.evidence`, after redirects, no body), with the
+     security headers opted in through `SECURITY_HEADERS`. Their values are
+     redacted with a header-specific rule (URL credentials and query strings,
+     JWTs, bearer tokens) because the line-based `key=value` rule would mangle
+     `max-age=…`. Set-Cookie/Authorization are never recorded, so
+     `headers.cookie-flags:*` findings carry no evidence.
+   - Signed-in crawl status: done 2026-10-31. A rejected saved login left
+     `extended.authCheck` at "checked" with the failure only in `.crawl`, so
+     the report and PDF were silent. `signedInCrawlStatus.ts` now feeds a
+     "signed-in crawl" card on the report page and the PDF's "Checks that did
+     not finish".
+   - Follow-up: backend/Firebase exposure, GraphQL (a POST, which
+     `FindingEvidence` doesn't model yet), and proof-of-exploit's replay. Each
      needs its own redaction review.
 5. **Sprint 5:**
    - Waiting on the owner: the gating decision for the open routes
@@ -101,6 +113,7 @@ Database migrations: files exist through **059**; the next free number is **060*
 
 | Shipped | Where |
 |---|---|
+| Automated tool and dependency updates (2026-11-01) | `scanner-tool-updates.yml` (weekly, Tuesdays) runs `update-scanner-tools.ts` over the `SCANNER_TOOLS` manifest (`scannerToolUpdates.ts`): one PR per tool with a newer stable release at least 14 days old, the asset hashed and cross-checked against the published digest, held if the upstream licence changed. `npm-audit-fix.yml` (weekly, Mondays) opens a rolling semver-compatible `npm audit fix` PR. `tool-integration.yml` now also runs on `scheduled-scans.yml` changes and hard-checks the subfinder/gitleaks/trivy/zizmor/prowler pins. sqlmap pinned (`1.10.10`). Follow-on code fixes: the weekly Claude maintenance routine. Needs OT-49 for the PRs' CI to start on its own |
 | Emerging-threat alerts (E-68) | PR #1 — `emergingThreats.ts`, `emergingThreatAlerts.ts`, `emerging-threats.yml` (every 6 h), migration 045 |
 | Lockfile + transitive dependency scanning, inventory SBOM (E-67) | PR #2 — `dependencyLockfiles.ts`, `lockfileSyntax.ts`, `ecosystemVersion.ts`, `osv.ts` querybatch |
 | SAST with Opengrep + our own 34-rule pack (E-69) | PR #3 — `src/worker/tools/sast.ts`, `sast-rules/`, `repoClone.ts`, `sast-rules.yml` |
@@ -284,3 +297,26 @@ In order of impact:
 - **Recreate a monitor deleted in UptimeRobot** without disconnecting: the card marks it "Not found", but `createMonitorsForTargets` still treats the stored row as existing.
 - **Real-account verification** of the UptimeRobot v3 client (see above).
 
+
+## Product-line plans: Lookout (P-06) and Exploit (P-07) — shared dev tasks
+
+Two product plans build on the existing engine: `docs/DEFENSIVE-ASSESSMENT-PLAN.md`
+(Lookout, defensive) and `docs/EXPLOIT-PRODUCT-PLAN.md` (Exploit, authorised
+offensive — gated behind OT-13). The following items should be **built once and
+shared** rather than duplicated per product. Several touch files a concurrent
+Lookout session owns (`DEFENSIVE-ASSESSMENT-PLAN.md`, `marketing/`,
+`PRODUCT-IDEAS.md`); coordinate before editing those.
+
+- **L-S1**: generalise the `attackRefs` MITRE ATT&CK map and report-reference
+  rendering (Lookout PR #144) so a second report template can consume it.
+- **L-S2**: factor the bounded/redacted evidence capture (H4 / PR #140) into a
+  shared helper both Lookout findings and Exploit validation evidence call.
+- **L-S3**: when the OpenVAS hosting prototype runs (OWNER-TODO OT-36), size the
+  decision for both Lookout and a future Exploit engagement, and record it once.
+- **L-S4**: design the Stripe price model to carry both recurring (Lookout
+  quarterly/annual) and engagement/one-off (Exploit) billing without a second
+  checkout path.
+
+Exploit is **idea-stage and owner-gated**: no offensive product surface is built
+or marketed before OT-13 (PI insurance + solicitor-reviewed engagement contract)
+is signed off. See `EXPLOIT-PRODUCT-PLAN.md` for the full governance design.

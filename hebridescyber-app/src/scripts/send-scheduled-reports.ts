@@ -15,12 +15,12 @@ import ws from "ws";
 import {
   isReportDue,
   pdfReportDue,
-  gatherReportData,
-  buildReportEmail,
-  markReportSent,
+  runDueReport,
+  type PlanCheck,
   type ScheduledReport,
 } from "../lib/scheduledReports";
 import { sendEmail } from "../lib/email";
+import { planGate } from "../lib/planAccess";
 import { htmlToPdf } from "../lib/reportPdf";
 
 function writeStepOutput(name: string, value: string) {
@@ -66,34 +66,47 @@ async function main() {
 
   let sent = 0;
   let skipped = 0;
+  let lapsed = 0;
   const errors: string[] = [];
   const pdfFallbacks: string[] = [];
 
+  // One plan lookup per owner per run, however many reports they have.
+  const plans = new Map<string, Promise<PlanCheck>>();
+  const planCheck = (ownerId: string) => {
+    if (!plans.has(ownerId)) plans.set(ownerId, planGate(supabaseAdmin, ownerId, "basic"));
+    return plans.get(ownerId)!;
+  };
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
+
   for (const report of due) {
     try {
-      const summaries = await gatherReportData(supabaseAdmin, report.owner, report.target_url);
-
-      if (summaries.length === 0) {
-        skipped++;
-        continue;
+      const outcome = await runDueReport(supabaseAdmin, report, { siteUrl, renderPdf: htmlToPdf, send: sendEmail, planCheck });
+      switch (outcome.kind) {
+        case "not_entitled":
+          lapsed++;
+          break;
+        case "no_sites":
+          skipped++;
+          break;
+        case "undelivered":
+          // Not marked sent: the next run retries. Without this a missing
+          // RESEND_API_KEY would mark every report sent while mailing none.
+          errors.push(`Report ${report.id}: not delivered to anyone, will retry (${outcome.failed.map((f) => `${f.recipient}: ${f.error}`).join("; ")})`);
+          break;
+        case "sent":
+          sent++;
+          for (const f of outcome.failed) errors.push(`Report ${report.id}: not delivered to ${f.recipient} (${f.error})`);
+          if (outcome.pdfError) pdfFallbacks.push(`Report ${report.id}: PDF could not be generated, sent as CSV instead (${outcome.pdfError})`);
+          break;
       }
-
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
-      const email = await buildReportEmail(report, summaries, { siteUrl, renderPdf: htmlToPdf });
-      if (email.pdfError) pdfFallbacks.push(`Report ${report.id}: PDF could not be generated, sent as CSV instead (${email.pdfError})`);
-
-      for (const recipient of report.recipients) {
-        await sendEmail({ to: recipient, subject: email.subject, html: email.html, attachments: email.attachments });
-      }
-
-      await markReportSent(supabaseAdmin, report.id, report.frequency);
-      sent++;
     } catch (err) {
       errors.push(`Report ${report.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  console.log(`Scheduled reports: sent ${sent}, skipped ${skipped}, ${errors.length} error(s), ${pdfFallbacks.length} PDF(s) sent as CSV.`);
+  console.log(
+    `Scheduled reports: sent ${sent}, skipped ${skipped} (no sites), ${lapsed} skipped (no active paid plan), ${errors.length} error(s), ${pdfFallbacks.length} PDF(s) sent as CSV.`,
+  );
   for (const err of errors) console.error(`  - ${err}`);
   for (const fallback of pdfFallbacks) console.error(`  - ${fallback}`);
 
