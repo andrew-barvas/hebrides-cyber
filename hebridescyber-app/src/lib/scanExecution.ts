@@ -165,8 +165,14 @@ async function runExtendedTools(
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
   crawledUrls: string[] = [],
-  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted. */
-  nonIntrusive = false
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei and deepTls run restricted. */
+  nonIntrusive = false,
+  /**
+   * Document and image links the base crawl recorded (robots.txt honoured),
+   * for the metadata check; null when the crawl failed, so "no documents"
+   * is never inferred from a crawl that read nothing.
+   */
+  crawlDocumentUrls: string[] | null = null
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -242,6 +248,7 @@ async function runExtendedTools(
     toolConfig.deepTls
       ? runDeepTls(targetUrl, {
           platformManagedTls: detectedTechnologies.some((t) => (PLATFORM_TLS_TECHNOLOGIES as readonly string[]).includes(t)),
+          nonIntrusive,
         })
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, findings: [] as Finding[] }),
     // All five of these are only attempted when the scan owner has a row in
@@ -731,12 +738,24 @@ async function runExtendedTools(
     }
   }
 
-  // Metadata leak — checks files discovered by Photon/Gospider for metadata leakage
+  // Metadata leak — checks files discovered by the base crawl, Photon and
+  // Gospider for metadata leakage. Under `exposure` only the base crawl's
+  // links feed it: gospider is not in that profile, since it ignores
+  // robots.txt and Lookout's copy promises to respect it.
   const allDiscoveredFileUrls = [
-    ...photonAssets.filter((a) => a.type === "url").map((a) => a.value),
-    ...gospiderEndpoints.filter((e) => e.type === "url").map((e) => e.value),
+    ...new Set([
+      ...(crawlDocumentUrls ?? []),
+      ...photonAssets.filter((a) => a.type === "url").map((a) => a.value),
+      ...gospiderEndpoints.filter((e) => e.type === "url").map((e) => e.value),
+    ]),
   ];
-  if (toolConfig.metadataLeak && allDiscoveredFileUrls.length > 0) {
+  if (toolConfig.metadataLeak && allDiscoveredFileUrls.length === 0 && crawlDocumentUrls !== null) {
+    // The crawl read the site and found nothing to check: an honest clean
+    // result, which lets last scan's metadata findings resolve.
+    (extended as Record<string, unknown>).metadataLeak = { status: "completed", findings: [] };
+  } else if (toolConfig.metadataLeak && allDiscoveredFileUrls.length === 0) {
+    (extended as Record<string, unknown>).metadataLeak = { status: "error", note: "The site crawl failed, so no documents could be found to check." };
+  } else if (toolConfig.metadataLeak) {
     try {
       const metadataResult = await runMetadataLeakCheck(allDiscoveredFileUrls);
       (extended as Record<string, unknown>).metadataLeak = metadataResult;
@@ -1035,7 +1054,13 @@ export async function executeScan(
         console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
       }
       const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : [], isNonIntrusiveProfile(profile));
+      // A partial crawl that found no documents can't say there are none.
+      const crawl = results.crawl;
+      const crawlDocumentUrls =
+        crawl && crawl.status !== "error" && (crawl.status === "checked" || (crawl.documentUrls?.length ?? 0) > 0)
+          ? (crawl.documentUrls ?? [])
+          : null;
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, crawl && crawl.status !== "error" ? crawl.pages.map((p) => p.url) : [], isNonIntrusiveProfile(profile), crawlDocumentUrls);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
