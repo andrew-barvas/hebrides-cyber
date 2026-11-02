@@ -78,6 +78,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-44 | Lookout: review the restricted nuclei tag lists in PR #144 | 🟡 Medium | Open | 2026-10-31 | |
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-49 | Let automated update PRs run CI (`GH_PAT` scope) and turn on Dependabot security alerts | 🟡 Medium | Open | 2026-11-01 | |
 
 ## Items
 
@@ -695,6 +696,27 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   for a customer request.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-31 (Copilot plan reconciliation in `LAUNCH-PRIORITY.md`).
+
+### OT-49: Automated update PRs and Dependabot alerts 🟡
+- **What and why:** two new weekly workflows open pull requests on their own:
+  `scanner-tool-updates.yml` (one PR per scanner tool with a newer release)
+  and `npm-audit-fix.yml` (a rolling `npm audit fix` PR). A PR opened with
+  GitHub's default token doesn't start CI, so the workflows use the existing
+  `GH_PAT` secret when it can push. Separately, the repository has Dependabot
+  alerts and Dependabot security updates switched off (checked 2026-11-01),
+  so the security-update PRs `dependabot.yml`'s comment expects never open.
+- **How:**
+  1. Make sure `GH_PAT` can push branches and open PRs on this repository
+     (fine-grained token: Contents and Pull requests, read and write), or
+     replace it with one that can. It is also used to dispatch
+     `on-demand-scan.yml`, so keep the Actions permission it has.
+  2. Settings → Code security: turn on Dependabot alerts and Dependabot
+     security updates.
+- **Verify:** Actions → "Scanner tool updates" → Run workflow. The PRs it
+  opens show their checks running, with no "GH_PAT is not set" warning in
+  the run. `gh api repos/andrew-barvas/hebrides-cyber/automated-security-fixes`
+  reports `"enabled": true`.
+- **Raised:** 2026-11-01.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
