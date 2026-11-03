@@ -16,6 +16,7 @@ import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
 import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
+import { runCustomChecksForOwner } from "./customChecks";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
@@ -165,7 +166,7 @@ async function runExtendedTools(
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
   crawledUrls: string[] = [],
-  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted. */
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted, ZAP passive-only. */
   nonIntrusive = false
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
@@ -216,7 +217,7 @@ async function runExtendedTools(
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies, { nonIntrusive })
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[] }),
-    toolConfig.zap ? runZap(targetUrl) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
+    toolConfig.zap ? runZap(targetUrl, { passiveOnly: nonIntrusive }) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
     toolConfig.sqlmap
       ? runSqlmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
@@ -455,6 +456,11 @@ async function runExtendedTools(
       });
     }
   }
+
+  // The account's own nuclei checks (Agency and Tier A), run only where nuclei
+  // is, and never under a non-intrusive profile: a customer template may send
+  // POST bodies and payload lists, which the exposure profile promises not to.
+  if (toolConfig.nuclei && !nonIntrusive) findings.push(...(await runCustomChecksForOwner(supabaseAdmin, ownerId, targetUrl)));
 
   // ZAP's own alert.solution is real, evidenced, per-finding remediation
   // from its own knowledge base — runZap() (src/worker/tools/zap.ts) attaches
