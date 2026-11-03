@@ -1,0 +1,155 @@
+name: Scanner tool updates
+
+# Keeps the scan workers' third-party tools (nuclei, httpx, trivy, gitleaks,
+# sqlmap, ...) on their latest stable releases. Dependabot covers npm and the
+# pinned Actions, but not binaries pinned inside `run:` steps.
+#
+# Weekly: hebridescyber-app/src/scripts/update-scanner-tools.ts checks every pin
+# in .github/workflows against upstream and opens ONE pull request per tool
+# that has a newer release. Rules (src/lib/scannerToolUpdates.ts):
+#   - stable releases only, at least 14 days old, never a downgrade;
+#   - the new asset is downloaded and hashed here, and cross-checked against
+#     GitHub's or PyPI's published digest;
+#   - an upstream licence change holds the update for a person to review.
+# Each PR runs tool-integration.yml, whose real-binary tests and hard install
+# checks are the gate. A broken bump (changed output, renamed flag) is fixed on
+# its branch by the weekly Claude maintenance routine or a session. Nothing is
+# merged automatically.
+#
+# Opening the PR with GH_PAT makes its CI run (a PR opened with the default
+# GITHUB_TOKEN does not trigger workflows). Without GH_PAT the PR still opens,
+# but its checks have to be started by closing and reopening it.
+
+on:
+  schedule:
+    # Tuesdays 05:41 UTC.
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: "One tool id to check (blank for all), e.g. nuclei"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scanner-tool-updates
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      updates: ${{ steps.check.outputs.updates }}
+      errors: ${{ steps.check.outputs.errors }}
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+
+      - id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TOOL: ${{ inputs.tool }}
+        run: |
+          set +e
+          npx tsx src/scripts/update-scanner-tools.ts ${TOOL:+--tool "$TOOL"} --json /tmp/report.json > /tmp/report.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/report.txt
+          { echo "### Scanner tool versions"; echo; echo '```'; cat /tmp/report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -f /tmp/report.json ]; then echo "The check did not produce a report." >&2; exit 1; fi
+          echo "updates=$(jq -c '[.[] | select(.status == "update") | .id]' /tmp/report.json)" >> "$GITHUB_OUTPUT"
+          echo "errors=$([ "$status" = 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  update:
+    needs: check
+    if: needs.check.outputs.updates != '[]' && needs.check.outputs.updates != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.check.outputs.updates) }}
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+
+      - name: Move the pins
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TOOL: ${{ matrix.tool }}
+        run: npx tsx src/scripts/update-scanner-tools.ts --write --tool "$TOOL" --json /tmp/update.json
+
+      - name: Open the pull request (closing any it supersedes)
+        env:
+          # Credentials only in this step: npm ci and the script above never see a write token.
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          USING_PAT: ${{ secrets.GH_PAT != '' }}
+          TOOL: ${{ matrix.tool }}
+        run: |
+          set -euo pipefail
+          branch=$(jq -r '.[0].branch' /tmp/update.json)
+          title=$(jq -r '.[0].title' /tmp/update.json)
+          jq -r '.[0].body' /tmp/update.json > /tmp/body.md
+          if [ "$(jq -r '.[0].status' /tmp/update.json)" != "update" ] || git diff --quiet -- ../.github/workflows; then
+            echo "Nothing to change for $TOOL (released or held since the check)."
+            exit 0
+          fi
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" "$branch" > /dev/null; then
+            echo "$branch already exists; leaving its PR alone."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add ../.github/workflows
+          git commit -m "$title"
+          git push "$remote" "HEAD:refs/heads/$branch"
+          gh label create tool-update --color 1d76db --description "Scanner tool version bump" --force > /dev/null
+          url=$(gh pr create --base "${GITHUB_REF_NAME}" --head "$branch" --title "$title" --body-file /tmp/body.md --label tool-update)
+          echo "Opened $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          # An older bump of the same tool that never merged is superseded.
+          gh pr list --label tool-update --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"tool-update/${TOOL}-\")) | select(.headRefName != \"$branch\") | .number" |
+            while read -r old; do gh pr close "$old" --comment "Superseded by $url" --delete-branch; done
+          if [ "$USING_PAT" != "true" ]; then
+            echo "::warning::GH_PAT is not set, so CI did not start on $url. Close and reopen the PR to run it."
+          fi
+
+  report-errors:
+    # Runs after the bumps that could be made, so one failed lookup never blocks the others.
+    needs: [check, update]
+    if: always() && needs.check.outputs.errors == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::At least one tool could not be checked (see the check job's summary). Its pin was left unchanged."
+          exit 1

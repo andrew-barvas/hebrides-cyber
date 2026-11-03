@@ -9,6 +9,7 @@ type Service = {
   includes: string[];
   meta?: string; // e.g. "Delivered within 5 business days"
   tag?: string;  // e.g. "Most popular"
+  href?: string; // a product page with more detail
 };
 
 const coreServices: Service[] = [
@@ -70,6 +71,21 @@ const coreServices: Service[] = [
 ];
 
 const managedServices: Service[] = [
+  {
+    name: "Lookout — Managed Exposure Review",
+    icon: "🔭",
+    tag: "New",
+    desc: "Daily checks of everything the internet can see of your business, and an engineer-written report on what to fix first, with a review call. Not a penetration test: it never tries to break in.",
+    includes: [
+      "Websites, subdomains and internet-facing services on your verified domains",
+      "Known weaknesses, risky settings and actively exploited software flagged first",
+      "Findings mapped to Cyber Essentials, ISO 27001 and MITRE ATT&CK",
+      "Quarterly (Essentials, £149/month) or monthly (Assured, £299/month) report and call",
+      "Fix confirmation from the next scheduled check",
+    ],
+    meta: "Starts with a scoping call",
+    href: "/lookout",
+  },
   {
     name: "Security Score — Automated Scanning",
     icon: "📊",
@@ -242,7 +258,7 @@ const verticals: Service[] = [
 
 type ServiceCardProps = Service & { expanded?: boolean };
 
-function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps) {
+function ServiceCard({ name, icon, desc, includes, meta, tag, href }: ServiceCardProps) {
   return (
     <div className="group relative rounded-lg border border-cyberborder bg-cyberpanel p-5 transition duration-200 hover:border-neon/50 hover:shadow-glowsm flex flex-col">
       <div className="mb-3 flex items-start gap-3">
@@ -273,6 +289,11 @@ function ServiceCard({ name, icon, desc, includes, meta, tag }: ServiceCardProps
         <p className="mt-4 pt-3 border-t border-cyberborder text-xs text-cybertext/60 font-mono">
           ⏱ {meta}
         </p>
+      )}
+      {href && (
+        <Link href={href} className="mt-3 text-sm font-semibold text-neon hover:underline">
+          Learn more <span aria-hidden="true">→</span>
+        </Link>
       )}
     </div>
   );
