@@ -82,7 +82,7 @@ jobs:
 
           Sub-checks: \`$(cat /tmp/checks.txt)\`
 
-          Next steps: check the Azure Static Web Apps deployment, Supabase and Stripe status, then \`/api/health\` directly."
+          Next steps: check the Azure Static Web Apps deployment, Supabase and Stripe status, then \`/api/health\` directly. If \`queue.waitExceeded\` is true, no scan worker is draining the queue: docs/RUNBOOK.md 6.18."
           title="Site $STATE: $BASE/api/health"
           if [ -n "$existing" ]; then
             # One email per change of state, not one every 10 minutes for the length of an outage.
