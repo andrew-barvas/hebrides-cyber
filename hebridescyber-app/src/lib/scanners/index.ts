@@ -1124,8 +1124,9 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // --- Software CVE DB (WordPress core / PHP / Apache CVE matches) ----------
   // Findings are already fully formed (with checkId and cveIds) by the
   // module itself — unlike wpVulnDb above, no per-vulnerability derivation
-  // is needed here, just attach remediation text and append.
-  if (results.softwareCveDb.status === "checked") {
+  // is needed here, just attach remediation text and append. "partial" keeps
+  // the lookups that answered; its status stops the lifecycle resolving any.
+  if (results.softwareCveDb.status === "checked" || results.softwareCveDb.status === "partial") {
     for (const finding of results.softwareCveDb.findings) {
       const remediation = finding.checkId?.startsWith("softwareCveDb.wordpressCore")
         ? FIX.SOFTWARE_CVE_WORDPRESS_CORE
