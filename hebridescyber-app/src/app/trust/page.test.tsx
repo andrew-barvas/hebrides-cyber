@@ -33,6 +33,11 @@ describe("/trust", () => {
     expect(screen.getByRole("link", { name: /hello@hebridescyber\.co\.uk/ })).toBeTruthy();
   });
 
+  it("says where scans come from", () => {
+    render(<TrustPage />);
+    expect(screen.getByRole("heading", { name: "Where our scans come from" })).toBeTruthy();
+  });
+
   it("has its own search title and a description that fits a result", () => {
     expect(String(metadata.title)).toMatch(/Trust/);
     expect(String(metadata.description).length).toBeLessThanOrEqual(160);

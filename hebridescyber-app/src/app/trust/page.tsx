@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ScanSourceIps from "@/components/ScanSourceIps";
 
 export const metadata: Metadata = {
   title: "Trust — Hebrides Cyber",
@@ -65,6 +66,8 @@ export default function TrustPage() {
               <li key={c}>{c}</li>
             ))}
           </ul>
+
+          <ScanSourceIps />
 
           <h2>Sub-processors</h2>
           <p>
