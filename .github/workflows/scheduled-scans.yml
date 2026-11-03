@@ -167,8 +167,8 @@ jobs:
         # asset): this job holds the Supabase service-role key, so a swapped
         # release asset must fail the check, not run.
         env:
-          NUCLEI_VERSION: v3.3.9
-          NUCLEI_SHA256: dfecedc31364d70b7291b347c74fd4d1d3185d30301c025b7490717d29daf28a
+          NUCLEI_VERSION: v3.11.1
+          NUCLEI_SHA256: ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
           # Templates pinned to a release tag instead of `-update-templates`'
           # floating "latest", so a scheduled scan is reproducible and a
           # compromised templates push can't change what this secret-holding job
@@ -207,8 +207,8 @@ jobs:
         # release-zip pattern as nuclei above; a failed install degrades only
         # this check.
         env:
-          SUBFINDER_VERSION: v2.16.0
-          SUBFINDER_SHA256: 1b7f9c608e9a5bd59e609a5e09710d63c5485e92d3d49dc2c16eb4fdbe10cb60
+          SUBFINDER_VERSION: v2.17.0
+          SUBFINDER_SHA256: a39c3e5c7a26ef3c430915c4d6cbf7716a00f26769a75e9405aba796142eba37
         run: |
           curl -fsSL \
             "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" \
@@ -227,8 +227,8 @@ jobs:
         # install degrades only this check (hostProbe.ts → not_configured).
         # SHA-256 is the publisher's own httpx_1.6.10_checksums.txt line.
         env:
-          HTTPX_VERSION: v1.6.10
-          HTTPX_SHA256: e7eb8473530c2d0eb4eb132c7253c0138745d622970f36413c1f349ddd60edb7
+          HTTPX_VERSION: v1.12.0
+          HTTPX_SHA256: 9d8439e8b6c9aa7d1e2314817a392e00d5178da3af5652f7475f88868f418f76
         run: |
           curl -fsSL \
             "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip" \
@@ -292,8 +292,8 @@ jobs:
         # a failed install degrades only that check (contentDiscovery.ts →
         # not_configured).
         env:
-          FFUF_VERSION: 2.1.0
-          FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
+          FFUF_VERSION: 2.3.0
+          FFUF_SHA256: b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
         run: |
           curl -fsSL \
             "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \
@@ -316,8 +316,8 @@ jobs:
         # to a bare "testssl.sh" on PATH otherwise) rather than symlinked
         # onto PATH under its own name.
         env:
-          GITLEAKS_VERSION: 8.21.2
-          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         run: |
           curl -fsSL \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
@@ -348,8 +348,8 @@ jobs:
         # not_configured. 0.75.0's JSON output is checked against the parser
         # by src/worker/tools/fixtures/trivy/config-0.75.0.json.
         env:
-          TRIVY_VERSION: 0.75.0
-          TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+          TRIVY_VERSION: 0.76.0
+          TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
         run: |
           curl -fsSL \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
@@ -372,8 +372,8 @@ jobs:
         # asset fails the check instead of running. A failed install only
         # degrades this check: sast.ts reports status not_configured.
         env:
-          OPENGREP_VERSION: 1.30.0
-          OPENGREP_SHA256: 35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c
+          OPENGREP_VERSION: 1.31.0
+          OPENGREP_SHA256: dbbe3c2058dbe600c449a8ba22ea79a1643a6660658400090d0323a8d0d31147
         run: |
           curl -fsSL \
             "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
@@ -417,7 +417,7 @@ jobs:
         # downloaded above. A failed install only degrades this check:
         # workflowSecurity.ts reports status not_configured.
         run: |
-          pip3 install --break-system-packages zizmor==1.30.1 \
+          pip3 install --break-system-packages zizmor==1.31.1 \
             && zizmor --version \
             || echo "zizmor install failed — workflowSecurity.ts will report status: not_configured"
 

@@ -8,6 +8,10 @@
 // email body; PDF is printed by the same htmlToPdf() as the executive report
 // and attached. A report never goes out in a format other than the one its
 // email names: if the PDF can't be rendered, the email says it fell back to CSV.
+//
+// The email, PDF and JSON also carry the estate "fix this first" list (P1-2,
+// estatePriority.ts): the top open findings across the sites the report
+// covers, each with the reason for its place. CSV stays one row per site.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmailAttachment } from "./email";
@@ -15,6 +19,7 @@ import { escapeHtml, ratingFor, REPORT_MUTED, REPORT_TEXT } from "./executiveRep
 import { STALE_AFTER_DAYS } from "./portfolioReport";
 import { hostOf } from "./findingLifecycle";
 import { buildTriageIndex, loadTriageForOwner, partitionByTriage } from "./findingTriage";
+import type { FixFirstList } from "./estatePriority";
 
 export type ReportFrequency = "daily" | "weekly" | "monthly";
 export type ReportFormat = "pdf" | "csv" | "json";
@@ -185,11 +190,63 @@ export function formatReportCsv(summaries: FindingSummary[]): string {
   return [header, ...rows].join("\r\n");
 }
 
+/** How many ranked findings a report carries. */
+export const FIX_FIRST_IN_REPORT = 10;
+
+/**
+ * The report's "fix this first" section: undefined = not part of this report
+ * (no loader supplied), null = it couldn't be read this time, which the report
+ * says rather than showing an empty list.
+ */
+export type ReportFixFirst = FixFirstList | null | undefined;
+
+/** Pure: the ranked list as plain data for the JSON report. */
+export function fixFirstJson(list: FixFirstList) {
+  return {
+    complete: list.complete,
+    total_open: list.total,
+    items: list.items.map((f) => ({
+      rank: f.priority.rank,
+      score: f.priority.score,
+      reason: f.priority.reason,
+      site: f.host,
+      severity: f.severity,
+      title: f.title,
+      check_id: f.checkId,
+      first_seen: f.firstSeenAt,
+    })),
+  };
+}
+
 /**
  * Format a report as JSON.
  */
-export function formatReportJson(summaries: FindingSummary[]): string {
-  return JSON.stringify({ generated_at: new Date().toISOString(), targets: summaries }, null, 2);
+export function formatReportJson(summaries: FindingSummary[], fixFirst?: ReportFixFirst): string {
+  const body: Record<string, unknown> = { generated_at: new Date().toISOString(), targets: summaries };
+  if (fixFirst !== undefined) body.fix_first = fixFirst ? fixFirstJson(fixFirst) : { error: "could not be read this time" };
+  return JSON.stringify(body, null, 2);
+}
+
+/**
+ * Pure: the "fix this first" section as HTML, for both the email body and the
+ * PDF. Every value that came from a scanned site goes through escapeHtml.
+ */
+export function renderFixFirstHtml(fixFirst: ReportFixFirst, style: { cell: string; muted: string }): string {
+  if (fixFirst === undefined) return "";
+  const e = escapeHtml;
+  if (fixFirst === null) {
+    return `<p style="${style.muted}">The "fix this first" list couldn't be read this time. It will be back in the next report.</p>`;
+  }
+  if (fixFirst.items.length === 0) return `<p style="${style.muted}">Nothing open to fix across these sites.</p>`;
+  const rows = fixFirst.items
+    .map(
+      (f) =>
+        `<tr><td style="${style.cell};text-align:right"><b>${f.priority.rank}</b></td><td style="${style.cell}"><b>${e(f.title)}</b><div style="${style.muted}">${e(f.host)} · ${e(f.severity)}</div><div>Why here: ${e(f.priority.reason)}</div></td></tr>`
+    )
+    .join("");
+  const more = fixFirst.total > fixFirst.items.length ? `Top ${fixFirst.items.length} of ${fixFirst.total} open findings. ` : "";
+  const partial = fixFirst.complete ? "" : "Some data couldn't be read, so this ranking may be incomplete. ";
+  return `<table style="width:100%;border-collapse:collapse">${rows}</table><p style="${style.muted}">${more}${partial}Ranked by severity and exploit data, weighted by each site's criticality, exposure and protection. Accepted, false-positive and snoozed findings are left out.</p>`;
 }
 
 type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -221,7 +278,7 @@ export function summariseReport(summaries: FindingSummary[]): {
  */
 export function renderScheduledReportHtml(
   summaries: FindingSummary[],
-  opts: { targetLabel: string; frequency: ReportFrequency; now?: Date },
+  opts: { targetLabel: string; frequency: ReportFrequency; now?: Date; fixFirst?: ReportFixFirst },
 ): string {
   const now = opts.now ?? new Date();
   const e = escapeHtml;
@@ -248,6 +305,10 @@ export function renderScheduledReportHtml(
 
   const chips = SEVERITIES.map((sev) => `<div class="chip"><b style="color:${SEVERITY_COLOUR[sev]}">${totals[sev]}</b><span>${sev}</span></div>`).join("");
   const generated = now.toISOString().slice(0, 10);
+  const fixFirstSection =
+    opts.fixFirst === undefined
+      ? ""
+      : `<h2>Fix this first</h2>${renderFixFirstHtml(opts.fixFirst, { cell: "padding:6px 8px;border-bottom:1px solid #e3e9ee;vertical-align:top;font-size:11px", muted: `color:${REPORT_MUTED};font-size:10px` })}`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" /><title>Hebrides Cyber — scheduled security report</title>
@@ -274,6 +335,7 @@ export function renderScheduledReportHtml(
     <div class="score"><b>${avgScore ?? "—"}</b><span>${e(rating.label)}</span><div class="muted">average of ${scanned} scanned site${scanned === 1 ? "" : "s"}</div></div>
     <div class="chips">${chips}</div>
   </div>
+  ${fixFirstSection}
 
   <h2>Sites (${summaries.length})</h2>
   <table><thead><tr><th>Site</th><th>Score</th><th class="n">Critical</th><th class="n">High</th><th class="n">Medium</th><th class="n">Low</th><th class="n">Info</th><th>Last scanned</th></tr></thead>
@@ -303,7 +365,7 @@ const PRE_STYLE = "background:#111;color:#ccc;padding:12px;border-radius:4px;ove
 export async function buildReportEmail(
   report: Pick<ScheduledReport, "target_url" | "frequency" | "format">,
   summaries: FindingSummary[],
-  opts: { siteUrl: string; renderPdf: (html: string) => Promise<Buffer>; now?: Date },
+  opts: { siteUrl: string; renderPdf: (html: string) => Promise<Buffer>; now?: Date; fixFirst?: ReportFixFirst },
 ): Promise<ReportEmail> {
   const now = opts.now ?? new Date();
   const targetLabel = report.target_url ?? "all monitored sites";
@@ -314,7 +376,7 @@ export async function buildReportEmail(
   const attachments: EmailAttachment[] = [];
   if (report.format === "pdf") {
     try {
-      const pdf = await opts.renderPdf(renderScheduledReportHtml(summaries, { targetLabel, frequency: report.frequency, now }));
+      const pdf = await opts.renderPdf(renderScheduledReportHtml(summaries, { targetLabel, frequency: report.frequency, now, fixFirst: opts.fixFirst }));
       attachments.push({ filename: `hebridescyber-report-${now.toISOString().slice(0, 10)}.pdf`, content: pdf });
     } catch (err) {
       sentFormat = "csv";
@@ -326,7 +388,7 @@ export async function buildReportEmail(
   const reportData =
     sentFormat === "pdf"
       ? `<p>The full report is attached as a PDF.</p>`
-      : `<pre style="${PRE_STYLE}">${escapeHtml(sentFormat === "csv" ? formatReportCsv(summaries) : formatReportJson(summaries))}</pre>`;
+      : `<pre style="${PRE_STYLE}">${escapeHtml(sentFormat === "csv" ? formatReportCsv(summaries) : formatReportJson(summaries, opts.fixFirst))}</pre>`;
   const fallbackNote = pdfError
     ? `<p style="background:#3a2a0a;color:#fde68a;padding:8px 12px;border-radius:4px">This report is set to arrive as a PDF, but the PDF could not be generated this time, so the same figures are below as CSV instead. Your schedule hasn't changed.</p>`
     : "";
@@ -343,6 +405,8 @@ export async function buildReportEmail(
     `<tr><td style="padding:8px">Total findings</td><td style="padding:8px;text-align:right">${totalFindings}</td></tr>`,
     avgScore !== null ? `<tr><td style="padding:8px">Average score</td><td style="padding:8px;text-align:right">${avgScore}/100</td></tr>` : "",
     `</table>`,
+    opts.fixFirst !== undefined ? `<h3 style="color:#39FFC0">Fix this first</h3>` : "",
+    renderFixFirstHtml(opts.fixFirst, { cell: "padding:6px 8px;border-bottom:1px solid #333;vertical-align:top", muted: "color:#888;font-size:12px" }),
     fallbackNote,
     reportData,
     `<p><a href="${opts.siteUrl}/dashboard" style="color:#39FFC0">View dashboard →</a></p>`,
@@ -423,6 +487,9 @@ export type ReportRunDeps = {
   send: SendReportEmail;
   /** Does this owner have an active paid plan? (planGate with the "basic" tier in production.) */
   planCheck: (ownerId: string) => Promise<PlanCheck>;
+  /** The "fix this first" list for the sites the report covers (estatePriority's
+   *  loadFixFirstList in production). Omitted = the report has no such section. */
+  loadFixFirst?: (ownerId: string, host: string | null) => Promise<FixFirstList | null>;
   now?: Date;
 };
 
@@ -441,7 +508,15 @@ export async function runDueReport(supabaseAdmin: SupabaseClient, report: Schedu
   const summaries = await gatherReportData(supabaseAdmin, report.owner, report.target_url, now);
   if (summaries.length === 0) return { kind: "no_sites" };
 
-  const email = await buildReportEmail(report, summaries, { siteUrl: deps.siteUrl, renderPdf: deps.renderPdf, now });
+  // Best-effort: a failed priority read is said in the report (null) and never
+  // blocks the per-site figures the report has always carried.
+  let fixFirst: ReportFixFirst;
+  if (deps.loadFixFirst) {
+    const host = report.target_url ? hostOf(report.target_url) : null;
+    fixFirst = await deps.loadFixFirst(report.owner, host).catch(() => null);
+  }
+
+  const email = await buildReportEmail(report, summaries, { siteUrl: deps.siteUrl, renderPdf: deps.renderPdf, now, fixFirst });
   const delivery = await deliverReportEmail(report.recipients, email, deps.send);
   if (delivery.delivered.length === 0) return { kind: "undelivered", failed: delivery.failed };
 
