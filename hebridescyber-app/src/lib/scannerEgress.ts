@@ -1,12 +1,13 @@
 // The source IP our scans come from, published so customers can allowlist it
 // in a WAF or tell their security team who is knocking.
 //
-// Empty until the owner applies azure/terraform/scan-workers.tf, which
-// allocates the static IP behind the scan workers' NAT gateway (the
-// `scan_egress_ip` output). Then put that address here, once, in a reviewed
-// change: an IP customers allowlist must never change by accident, so it is a
-// constant, not an environment setting. Until then /trust says the address is
-// not published yet, and never shows a made-up one.
+// Empty until the owner turns on scan_static_egress_ip in
+// azure/terraform/scan-workers.tf (off by default to avoid the NAT gateway's
+// ~$37/month) and applies it, which allocates the static IP behind the scan
+// workers' NAT gateway (the `scan_egress_ip` output). Then put that address
+// here, once, in a reviewed change: an IP customers allowlist must never
+// change by accident, so it is a constant, not an environment setting. Until
+// then /trust says we have no fixed address yet, and never shows a made-up one.
 //
 // Scans from the GitHub Actions fallback (scheduled-scans.yml,
 // on-demand-scan.yml) leave from GitHub's shared runner ranges instead; the

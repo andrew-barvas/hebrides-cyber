@@ -19,9 +19,9 @@ describe("publishedScannerIps", () => {
 });
 
 describe("ScanSourceIps", () => {
-  it("says the address is not published yet, and shows none, while there is no IP", () => {
+  it("says there is no fixed address yet, and shows none, while there is no IP", () => {
     const { container } = render(<ScanSourceIps ips={[]} />);
-    expect(container.textContent).toMatch(/not published yet/);
+    expect(container.textContent).toMatch(/do not scan from a fixed address yet/);
     expect(container.querySelector("code")).toBeNull();
   });
 

@@ -274,10 +274,11 @@ management — gated behind `is_admin`, server-side.
 3. Scan queues, completes in roughly a minute, dashboard shows the scored
    report with every finding's detail + remediation. If a WAF or firewall
    might block us, allowlist our scanner address first: `/trust` ("Where our
-   scans come from") lists it once it is live. **Not published yet**: the
-   fixed address arrives with the always-on scan workers
-   (`azure/terraform/scan-workers.tf`). Until then scans come from GitHub's
-   shared runner addresses, which can't usefully be allowlisted.
+   scans come from") lists it once there is one. **There is no fixed address
+   yet**: it is built (`scan_static_egress_ip` in
+   `azure/terraform/scan-workers.tf`) but off to save its ~$37/month, and the
+   owner switches it on when a customer needs it. Until then scans come from
+   shared cloud addresses that change, which can't usefully be allowlisted.
 4. Free tier is exhausted after that one scan — the dashboard's upsell
    prompts a plan upgrade for recurring scanning.
 

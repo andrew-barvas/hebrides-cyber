@@ -149,10 +149,27 @@ describe("azure/terraform/scan-workers.tf", () => {
     expect(terraform).toContain("SELECT COUNT(*) FROM public.scan_jobs WHERE status = 'pending'");
   });
 
-  it("routes egress through a NAT gateway on one static Standard IP", () => {
-    expect(terraform).toMatch(/resource "azurerm_public_ip" "scan_egress" \{[^}]*allocation_method\s*=\s*"Static"/);
-    expect(terraform).toContain(`resource "azurerm_subnet_nat_gateway_association" "scan_workers"`);
-    expect(terraform).toContain("infrastructure_subnet_id   = azurerm_subnet.scan_workers.id");
+  it("keeps the static IP behind a switch that is off by default (no NAT gateway bill until it is needed)", () => {
+    expect(terraform).toMatch(/variable "scan_static_egress_ip" \{[^}]*type\s*=\s*bool[^}]*default\s*=\s*false/);
+  });
+
+  it("gates every paid network resource on that switch", () => {
+    for (const resource of [
+      `"azurerm_public_ip" "scan_egress"`,
+      `"azurerm_nat_gateway" "scan_egress"`,
+      `"azurerm_nat_gateway_public_ip_association" "scan_egress"`,
+      `"azurerm_subnet_nat_gateway_association" "scan_workers"`,
+    ]) {
+      expect(terraform, `${resource} is not gated`).toMatch(
+        new RegExp(`resource ${resource.replace(/"/g, '\\"')} \\{\\s*count = var\\.scan_static_egress_ip \\? 1 : 0`)
+      );
+    }
+  });
+
+  it("with the switch on, routes egress through a NAT gateway on one static Standard IP that can't be destroyed by accident", () => {
+    const ip = terraform.slice(terraform.indexOf(`resource "azurerm_public_ip" "scan_egress"`));
+    expect(ip.slice(0, ip.indexOf("\n}\n"))).toMatch(/allocation_method\s*=\s*"Static"[\s\S]*prevent_destroy = true/);
+    expect(terraform).toMatch(/infrastructure_subnet_id\s*=\s*var\.scan_static_egress_ip \? azurerm_subnet\.scan_workers\[0\]\.id : null/);
   });
 
   it("times a replica out well before reset_stale_scan_jobs() would re-queue its job (390 minutes)", () => {

@@ -553,14 +553,17 @@ Container Apps Job, `hebridescyber-scan-worker`, from the Dockerfile's
 starts an execution while `scan_jobs` rows are `pending` (up to
 `scan_worker_max_executions`, default 5). Each runs the loop until the queue is
 empty or its 25-minute budget is spent, then exits. ZAP runs beside it in the
-same replica. All egress leaves through a NAT gateway on one static IP, the
-address customers allowlist. Infrastructure: `azure/terraform/scan-workers.tf`.
+same replica. With `scan_static_egress_ip = true` all egress leaves through a
+NAT gateway on one static IP, the address customers allowlist; it is off by
+default (Azure-managed egress, nothing published) to avoid the NAT gateway's
+cost until a customer needs it. Infrastructure: `azure/terraform/scan-workers.tf`.
 `scheduled-scans.yml` stays as the fallback and works the same queue (SKIP
 LOCKED, so a job never runs twice); its scans come from GitHub's addresses.
 
 **Standing it up (owner; not yet done).**
-1. Approve the spend: NAT gateway ~$33/month plus data processed, static IP
-   ~$3.65/month, executions per second of use.
+1. Nothing to approve for the default setup: executions run on the
+   Consumption profile's monthly free grant (about 12 hours of this job), then
+   per second of use. The fixed IP (step 8) is the only fixed cost.
 2. Create a read-only login for KEDA to count pending jobs (Supabase SQL
    editor). KEDA must never hold the service-role key or any write grant:
    ```sql
@@ -584,12 +587,18 @@ LOCKED, so a job never runs twice); its scans come from GitHub's addresses.
 5. With a test job queued, start one execution by hand (`az containerapp job
    start -n hebridescyber-scan-worker -g rg-hebrides-cyber`). Check its log
    shows the claim, the scan completes, and the target saw the new IP.
-6. Publish the IP: `terraform output scan_egress_ip` goes into
-   `SCANNER_EGRESS_IPS` in `src/lib/scannerEgress.ts` (shown on `/trust`), and
-   tell customers who allowlist.
-7. Switch the alert on: `SCAN_QUEUE_WAIT_ALERT=1` in the Static Web App's
+6. Switch the alert on: `SCAN_QUEUE_WAIT_ALERT=1` in the Static Web App's
    application settings. From then on `/api/health` degrades when a job has
    waited over two hours, which pages through UptimeRobot and `uptime.yml`.
+7. Cut the Actions cron back once the job has run cleanly for a while; keep
+   the workflow as the fallback.
+8. **Only when a customer needs to allowlist us by IP:** approve ~$37/month
+   (NAT gateway ~$33 plus $0.045/GB, static IP ~$3.65), set
+   `scan_static_egress_ip = true`, plan and apply. This replaces the
+   environment and the job (they hold no state). Then put `terraform output
+   scan_egress_ip` into `SCANNER_EGRESS_IPS` in `src/lib/scannerEgress.ts`
+   (shown on `/trust`) and tell the customers who allowlist. Once on, the IP
+   has `prevent_destroy`: switching it off again fails the plan on purpose.
 
 **Signs of trouble:** `/api/health` degraded with `checks.queue.waitExceeded:
 true`; scans queued for hours; job executions failing.
@@ -608,7 +617,7 @@ true`; scans queued for hours; job executions failing.
 4. **Fall back now:** run "Scheduled Scans" by hand (Actions → Run workflow).
    It drains the same queue from GitHub's runners. Customers who allowlist only
    our IP may see those scans blocked.
-5. **The IP changed:** it can't by accident (`prevent_destroy` on
+5. **The IP changed** (static IP on): it can't by accident (`prevent_destroy` on
    `azurerm_public_ip.scan_egress`). If it was deliberately replaced, update
    `scannerEgress.ts` and tell allowlisting customers before scans resume.
 
