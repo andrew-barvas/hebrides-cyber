@@ -90,6 +90,11 @@ const WHAT_TO_LOG: Record<string, string[]> = {
   T1592: [],
   "T1592.002": [],
   T1606: ["Application logs of rejected or invalid session tokens", "Sign-in logs, to spot sessions with no matching sign-in"],
+  "T1078.004": ["Microsoft Entra ID sign-in logs (kept with Entra ID P1 or P2), including location and whether MFA was used", "Alerts on risky sign-ins and new MFA methods registered to an account"],
+  T1087: ["Microsoft Entra ID audit logs of directory reads and changes by guest accounts", "Guest invitation and redemption records in the Entra audit log"],
+  "T1110.003": ["Microsoft Entra ID sign-in logs filtered to legacy client apps (IMAP, POP, SMTP AUTH, ActiveSync)", "Alerts on many failed sign-ins across different accounts from one source"],
+  "T1114.003": ["Microsoft Purview audit log entries for new or changed inbox rules", "Alerts on mail forwarded to external domains"],
+  T1528: ["Microsoft Entra ID audit logs of consent granted to applications", "A periodic review of enterprise applications and the permissions they hold"],
   "T1608.006": ["Security alerts from search-engine webmaster tools", "Change history for the website's files"],
 };
 
