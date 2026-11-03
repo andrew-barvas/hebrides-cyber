@@ -1110,6 +1110,9 @@ export async function executeScan(
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
+        }
+      }
+
       // P1-4: Microsoft 365 / Entra ID posture. Like cloud posture, it is keyed on
       // the owner's connected tenant rather than the target. On "error" the
       // findings that were evidenced still land, but the status keeps
