@@ -16,9 +16,11 @@ name: Scanner tool updates
 # its branch by the weekly Claude maintenance routine or a session. Nothing is
 # merged automatically.
 #
-# Opening the PR with GH_PAT makes its CI run (a PR opened with the default
-# GITHUB_TOKEN does not trigger workflows). Without GH_PAT the PR still opens,
-# but its checks have to be started by closing and reopening it.
+# Needs GH_PAT with Contents, Pull requests and Workflows write. Every bump
+# edits .github/workflows, which the built-in GITHUB_TOKEN can never push, and
+# a PR opened with that token would not start CI anyway. Without a working
+# GH_PAT each update job fails with a pointer to OWNER-TODO.md OT-49; the
+# same bumps can be made locally with `npm run tools:update -- --tool <id>`.
 
 on:
   schedule:
@@ -123,6 +125,10 @@ jobs:
             exit 0
           fi
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if ! git ls-remote "$remote" HEAD > /dev/null 2>&1; then
+            echo "::error::The push token cannot reach this repository. GH_PAT must be valid with Contents, Pull requests and Workflows write (every bump edits .github/workflows, which the built-in token can never push). See docs/OWNER-TODO.md OT-49."
+            exit 1
+          fi
           if git ls-remote --exit-code --heads "$remote" "$branch" > /dev/null; then
             echo "$branch already exists; leaving its PR alone."
             exit 0
