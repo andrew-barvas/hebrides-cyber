@@ -1,3 +1,5 @@
+import type { SubscriptionPlan } from "./planAccess";
+
 // Plan-tier scan cadence: how long to wait since a target's last *completed*
 // scan (see sql/migrations/001_init.sql's `scans.status`/`created_at`)
 // before it's due to be scanned again by the scheduled queue
@@ -20,13 +22,18 @@
 //     is multi-site monitoring and white-label reports, not scan speed, so
 //     there's no need to invent a faster-than-daily tier that the current
 //     once-a-day cron can't deliver anyway.
-export type Plan = "basic" | "pro" | "agency" | "tier_a";
+//   - Lookout Essentials / Assured = daily (1 day) — the managed exposure
+//     review's "Pricing & Tiers" table (docs/DEFENSIVE-ASSESSMENT-PLAN.md)
+//     promises daily automated checks on both.
+export type Plan = SubscriptionPlan;
 
 export const SCAN_INTERVAL_DAYS: Record<Plan, number> = {
   basic: 7,
   pro: 1,
   agency: 1,
   tier_a: 1,
+  lookout_essentials: 1,
+  lookout_assured: 1,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

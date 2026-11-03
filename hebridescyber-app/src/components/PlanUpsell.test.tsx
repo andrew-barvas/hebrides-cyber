@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import PlanUpsell, { type Plan } from "./PlanUpsell";
 
 describe("PlanUpsell", () => {
-  it.each(["none", "basic", "pro", "agency", "tier_a"] as Plan[])("renders a label and a link for %s", (plan) => {
+  it.each(["none", "basic", "pro", "agency", "tier_a", "lookout_essentials", "lookout_assured"] as Plan[])("renders a label and a link for %s", (plan) => {
     render(<PlanUpsell plan={plan} />);
     expect(screen.getByRole("link")).toHaveAttribute("href");
     expect(screen.getByText(/^(No active plan|[A-Za-z ]+ plan)$/)).toBeInTheDocument();

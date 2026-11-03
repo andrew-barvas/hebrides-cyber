@@ -131,3 +131,40 @@ test("create-checkout-session returns 503 when STRIPE_PRICE_* is not configured 
   // rejection would surface as a thrown error above, which would fail the test.
   expect([200, 400, 401, 503, 502]).toContain(result.status);
 });
+
+// Lookout, the managed exposure review, is sold from /services with monthly,
+// quarterly and annual prices. The test server never has the six
+// STRIPE_PRICE_LOOKOUT_* variables (the owner creates those prices, OT-34),
+// so the real route must answer 503 checkout_unavailable for every Lookout
+// plan and period, and never fall back to another plan's price.
+test("create-checkout-session answers checkout_unavailable for each Lookout plan and period until its price exists", async ({ page }) => {
+  await mockSupabase(page, { subscriptions: [] });
+  await page.goto("/pricing");
+
+  const results = await page.evaluate(async (token) => {
+    const call = async (body: Record<string, string>) => {
+      const r = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      return { status: r.status, code: ((await r.json().catch(() => ({}))) as { code?: string }).code };
+    };
+    const out: Record<string, { status: number; code?: string }> = {};
+    for (const plan of ["lookout_essentials", "lookout_assured"]) {
+      for (const period of ["monthly", "quarterly", "annual"]) out[`${plan}:${period}`] = await call({ plan, period });
+    }
+    out["pro:annual"] = await call({ plan: "pro", period: "annual" });
+    out["lookout_essentials:weekly"] = await call({ plan: "lookout_essentials", period: "weekly" });
+    return out;
+  }, ACCESS_TOKEN);
+
+  for (const plan of ["lookout_essentials", "lookout_assured"]) {
+    for (const period of ["monthly", "quarterly", "annual"]) {
+      expect(results[`${plan}:${period}`], `${plan} ${period}`).toEqual({ status: 503, code: "checkout_unavailable" });
+    }
+  }
+  // Scanner plans bill monthly only; an unknown period is a 400, not a 503.
+  expect(results["pro:annual"].status).toBe(400);
+  expect(results["lookout_essentials:weekly"].status).toBe(400);
+});

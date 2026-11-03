@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Plan } from "@/components/PlanUpsell";
+import { PLAN_LABELS } from "@/lib/planAccess";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -35,7 +36,7 @@ export function activeNavHref(pathname: string): string | null {
   return best;
 }
 
-const PLAN_NAMES: Record<Plan, string> = { none: "Free", basic: "Basic", pro: "Pro", agency: "Agency", tier_a: "Tier A" };
+const PLAN_NAMES: Record<Plan, string> = { none: "Free", ...PLAN_LABELS };
 
 type PlanSummary = { plan: Plan; billingPlan: Plan; planStatus: string | null } | null;
 

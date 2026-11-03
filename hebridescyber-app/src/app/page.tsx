@@ -99,6 +99,10 @@ export default function HomePage() {
             body="Automated monthly scans, dependency checks, header &amp; TLS checks, AI-summarised risk report."
           />
           <Card
+            title="Lookout Exposure Review"
+            body="Daily checks of what the internet can see of your business, read by an engineer and turned into a plain-English fix list. Not a penetration test, no exploitation, no test payloads. <a href='/services' class='text-atlantic dark:text-neon underline underline-offset-2'>See Lookout</a>"
+          />
+          <Card
             title="Local Business Package"
             body="Website security, email authentication (SPF/DKIM/DMARC), backups, staff training, GDPR basics."
           />

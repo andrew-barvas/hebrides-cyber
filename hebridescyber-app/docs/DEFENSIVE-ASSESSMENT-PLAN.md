@@ -6,7 +6,7 @@
 - Step 2: done. Scanner facts are verified against `SCANNER-INVENTORY.md` and the code. The branch was synced with master on 2026-10-28 (`c845963`) and 2026-10-30 (`88c14c5`). Two assumptions in the first draft were wrong and are corrected below (ZAP runs an *active* scan; nuclei's baseline tags include probing templates).
 - Step 3: the code half (the `exposure` profile, restricted nuclei tags) is in draft PR #144; ZAP passive-only mode is in draft PR #152. Neither is merged as of 2026-10-31.
 - Steps 4, 5, 6, 7 and 9: written 2026-10-31 in "Lookout service design" below, with the website copy in `marketing/17-lookout-managed-exposure-review.md` and owner items OT-42 to OT-45.
-- Step 8 (site and Stripe integration) has not started.
+- Step 8 (site and Stripe integration): claimed 2026-11-01 by the Lookout site-integration session; see "Work ownership".
 - Q1, Q1b, Q2 and Q3 were answered by the owner on 2026-10-30 (see "Owner decisions").
 
 ## Context
@@ -164,7 +164,7 @@ Several Claude sessions work in this repo. Claim a step here (edit this table in
 | `exposure` scan profile, migration 064, restricted nuclei tags, profile tests | Lookout managed-assessment plan session, draft PR #144 | Written; in review. Nuclei tag lists need the owner's check (see the PR body) |
 | ZAP passive-only mode | ZAP passive-only session, draft PR #152 | Written; in review (not merged 2026-10-31) |
 | Steps 4 to 7 and 9: concept, workflow, reporting, business case, copy, OT-42 to OT-45 | Lookout plan refinement session (this PR) | Written 2026-10-31; in review |
-| Step 8: services entry, terms §2, Stripe prices and checkout | unclaimed | Not started; blocked on OT-33 to OT-35 |
+| Step 8: services entry, terms §2, Stripe prices and checkout | Lookout site-integration session (claimed 2026-11-01) | In progress: code and copy written; checkout answers 503 `checkout_unavailable` until OT-34's price IDs are set |
 | `attackRefs` map (ATT&CK v17, re-check quarterly) and report rendering | Lookout managed-assessment plan session, draft PR #144 | Written; in review |
 | OpenVAS prototype, Nikto wrapper | unclaimed | Not started |
 | awesome-pentest ATT&CK Software join (catalogue step 3) | unclaimed | Not started |

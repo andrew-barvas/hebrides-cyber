@@ -10,7 +10,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useBillingPortal } from "@/lib/useBillingPortal";
 import { useAppSession } from "@/components/app-shell/AppShell";
-import { planIncludes } from "@/lib/planAccess";
+import { PLAN_LABELS, planIncludes } from "@/lib/planAccess";
 import RequestAudit from "@/components/RequestAudit";
 import TeamSection from "@/components/TeamSection";
 import TwoFactor from "@/components/TwoFactor";
@@ -21,13 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 
-const PLAN_LABELS: Record<string, string> = {
-  none: "No plan",
-  basic: "Basic",
-  pro: "Pro",
-  agency: "Agency",
-  tier_a: "Tier A",
-};
+const PLAN_NAMES: Record<string, string> = { none: "No plan", ...PLAN_LABELS };
 
 export default function AccountPage() {
   const { email, userId, accessToken, plan, billingPlan, planStatus } = useAppSession();
@@ -78,7 +72,7 @@ export default function AccountPage() {
         <CardTitle className="mb-4">plan &amp; billing</CardTitle>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-lg font-bold text-neon">{PLAN_LABELS[billingPlan] ?? billingPlan}</p>
+            <p className="text-lg font-bold text-neon">{PLAN_NAMES[billingPlan] ?? billingPlan}</p>
             {planStatus === "past_due" && (
               <p className="mt-1 text-xs text-warning">Payment past due — update your card to avoid losing access.</p>
             )}

@@ -22,9 +22,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { logAuditEvent } from "../lib/audit";
 import { findAuthUserByEmail } from "../lib/authUsers";
+import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from "../lib/planAccess";
 
-const VALID_PLANS = ["basic", "pro", "agency", "tier_a"] as const;
-type Plan = (typeof VALID_PLANS)[number];
+const VALID_PLANS = SUBSCRIPTION_PLANS;
+type Plan = SubscriptionPlan;
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

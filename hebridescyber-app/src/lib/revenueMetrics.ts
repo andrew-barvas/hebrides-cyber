@@ -18,6 +18,11 @@ export const PLAN_PRICE_GBP: Record<string, number | null> = {
   pro: 35,
   agency: 75,
   tier_a: null,
+  // Lookout bills monthly, quarterly or annually, and the period lives on the
+  // Stripe price, not the subscription row, so its monthly amount isn't
+  // knowable here. Counted as bespoke rather than guessed.
+  lookout_essentials: null,
+  lookout_assured: null,
 };
 
 export type RevenueSubRow = { plan: string; status: string; source?: string | null };
