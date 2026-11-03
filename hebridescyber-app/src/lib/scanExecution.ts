@@ -16,6 +16,7 @@ import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
 import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
+import { runCustomChecksForOwner } from "./customChecks";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
@@ -462,6 +463,11 @@ async function runExtendedTools(
       });
     }
   }
+
+  // The account's own nuclei checks (Agency and Tier A), run only where nuclei
+  // is, and never under a non-intrusive profile: a customer template may send
+  // POST bodies and payload lists, which the exposure profile promises not to.
+  if (toolConfig.nuclei && !nonIntrusive) findings.push(...(await runCustomChecksForOwner(supabaseAdmin, ownerId, targetUrl)));
 
   // ZAP's own alert.solution is real, evidenced, per-finding remediation
   // from its own knowledge base — runZap() (src/worker/tools/zap.ts) attaches
