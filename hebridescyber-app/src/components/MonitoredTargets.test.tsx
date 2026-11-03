@@ -256,3 +256,53 @@ describe("uptime badges", () => {
     expect(screen.queryByText(/^Uptime:/)).toBeNull();
   });
 });
+
+describe("MonitoredTargets criticality (067)", () => {
+  const updateMock = vi.fn();
+  const importance = { result: { data: [] as unknown[] | null, error: null as { code: string } | null } };
+
+  beforeEach(() => {
+    state.targets = [{ id: "t1", target_url: "https://shop.example", created_at: "2026-01-01T00:00:00Z" }];
+    importance.result = { data: [{ id: "t1", criticality: "high", environment: "staging" }], error: null };
+    updateMock.mockReset().mockImplementation(() => ({ eq: () => ({ select: () => Promise.resolve({ data: [{ id: "t1" }], error: null }) }) }));
+    fromMock.mockImplementation((table: string) => {
+      if (table === "monitored_targets") {
+        return {
+          select: (cols: string) =>
+            cols.includes("criticality")
+              ? Promise.resolve(importance.result)
+              : { order: () => Promise.resolve({ data: state.targets, error: null }) },
+          update: updateMock,
+          insert: insertMock,
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      if (table === "target_auth_credentials") return { select: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) };
+      throw new Error(`unexpected table in test: ${table}`);
+    });
+  });
+
+  it("shows the current setting and saves a new one", async () => {
+    render(<MonitoredTargets />);
+    fireEvent.click(await screen.findByRole("button", { name: /High · Staging\s*criticality/ }));
+    fireEvent.change(screen.getByLabelText(/Criticality/), { target: { value: "low" } });
+    fireEvent.change(screen.getByLabelText(/Environment/), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateMock).toHaveBeenCalledWith({ criticality: "low", environment: null }));
+  });
+
+  it("explains a save that matched no row (a team member, not the owner)", async () => {
+    updateMock.mockImplementation(() => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }));
+    render(<MonitoredTargets />);
+    fireEvent.click(await screen.findByRole("button", { name: /criticality/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only the account owner can change this.");
+  });
+
+  it("hides the control before the migration, but still lists the site", async () => {
+    importance.result = { data: null, error: { code: "42703" } };
+    render(<MonitoredTargets />);
+    expect(await screen.findByText("https://shop.example")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /criticality/ })).toBeNull();
+  });
+});

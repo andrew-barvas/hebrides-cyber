@@ -107,6 +107,13 @@ nothing else can: a real session cookie with insecure flags, invisible
 until you're actually authenticated. Not a full crawl behind login, not
 access-control (IDOR) testing.
 
+**Third-party tools.** This service uses the Nmap Security Scanner
+(https://nmap.org/) to perform its network service detection. Scheduled
+scans also run other open-source tools (nuclei, OWASP ZAP, testssl.sh,
+Trivy, Gitleaks, Opengrep and others), each unmodified, as a separate
+program under its own licence. The full list, with each licence, is in
+`SCANNER-INVENTORY.md`. The same notice is on `/what-we-check`.
+
 ### 3.2 Compliance mapping
 
 Every finding that genuinely maps to one is tagged against Cyber Essentials
@@ -134,7 +141,15 @@ three," never a forced mapping.
   so. Counts are open findings only: false positives and accepted or
   snoozed risks are left out, as on the dashboard. Reports stop while the
   subscription isn't active and resume when it is. The API (`docs/API.md`)
-  can also schedule a report for a single site.
+  can also schedule a report for a single site. The email, PDF and JSON
+  also list the top 10 findings to fix first, with the reason for each.
+- **"Fix this first"** — one ranked list of open findings across all your
+  sites, on the dashboard and under Findings → "Fix first", each with a
+  plain-English reason ("High severity, KEV listed, on a high-criticality
+  site"). Tell it which sites matter most under Assets → monitored sites →
+  criticality (and whether a site is production or staging). Accepted,
+  false-positive and snoozed findings drop out. Also
+  `GET /api/v1/findings?sort=priority`.
 - **Shareable, read-only report links** and a **score badge** for embedding.
 - **White-label branding** (Agency) — a customer's own logo/name on PDF
   reports.

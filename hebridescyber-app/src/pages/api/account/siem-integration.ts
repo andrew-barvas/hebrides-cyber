@@ -48,6 +48,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const body = parseBody(createSchema, req.body, res);
     if (!body) return;
 
+    // forwardToSiem() has no syslog transport yet (it needs a TCP/TLS socket,
+    // which the Static Web Apps functions can't open), so a syslog row would
+    // be saved and then silently deliver nothing. Refuse it until it exists.
+    if (body.type === "syslog") {
+      return res.status(400).json({ error: "Syslog delivery is not available yet. Use type \"webhook\"." });
+    }
+
     if (body.type === "webhook") {
       const validation = await validateSiemWebhook(body.endpoint, body.authHeader, body.format);
       if (!validation.ok) {
