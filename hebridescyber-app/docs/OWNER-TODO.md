@@ -455,6 +455,16 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   runners. Decide after the prototype in the plan.
 - **How:** once the prototype reports feed size and time-to-first-scan, choose
   Actions, a small VM, or a Container Apps job.
+- **Prototype result (2026-11-03, draft PR #174):** on a standard runner the
+  first scan finishes about 55 minutes after start-up, almost all of it gvmd
+  building its 28 GB database from a 12.8 GB feed. The scan itself took
+  about 5 minutes. Peak memory was 4.9 GB, and the database is too large for
+  the Actions cache.
+  **Recommendation: a small dedicated VM** (4 vCPU, 8 GB RAM, about 100 GB
+  disk) that builds the database once and applies the daily feed update.
+  Container Apps is a poor fit (no raw-socket capabilities, many services, a
+  large Postgres database). Full table and reasoning:
+  `DEFENSIVE-ASSESSMENT-PLAN.md`, "OpenVAS prototype results".
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 

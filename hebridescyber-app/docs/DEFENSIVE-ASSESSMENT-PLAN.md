@@ -166,7 +166,8 @@ Several Claude sessions work in this repo. Claim a step here (edit this table in
 | Steps 4 to 7 and 9: concept, workflow, reporting, business case, copy, OT-42 to OT-45 | Lookout plan refinement session (this PR) | Written 2026-10-31; in review |
 | Step 8: services entry, terms §2, Stripe prices and checkout | unclaimed | Not started; blocked on OT-33 to OT-35 |
 | `attackRefs` map (ATT&CK v17, re-check quarterly) and report rendering | Lookout managed-assessment plan session, draft PR #144 | Written; in review |
-| OpenVAS prototype, Nikto wrapper | unclaimed | Not started |
+| OpenVAS prototype (OT-36 measurements) | OpenVAS prototype session, draft PR #174 | Measured 2026-11-03; see "OpenVAS prototype results" |
+| OpenVAS wrapper, Nikto wrapper | unclaimed | Not started; OpenVAS waits on OT-36 |
 | awesome-pentest ATT&CK Software join (catalogue step 3) | unclaimed | Not started |
 
 Known overlapping sessions and PRs: "Lookout managed-assessment plan" (a second session on the same topic; message sent), #139 (stale-docs pass, edits `USER-GUIDE.md`, which #137 also touched), #135 (OT-28 to OT-32, so Lookout uses OT-33 to OT-36). Two idle sessions ("Pentest tools defensive catalogue", "Defensive threat intelligence catalogue builder") started the awesome-pentest catalogue earlier and have no commits; the catalogue under `research/awesome-pentest/` supersedes them.
@@ -384,7 +385,7 @@ Rules it follows:
 
 ### Owner To-Dos
 
-Already raised (2026-10-30): OT-33 name and prices, OT-34 six Stripe prices, OT-35 ToS wording, OT-36 where OpenVAS is hosted. Added 2026-10-31 (OT-38 to OT-41 are claimed by open PR #157, and OT-46 and OT-47 by #158):
+Already raised (2026-10-30): OT-33 name and prices, OT-34 six Stripe prices, OT-35 ToS wording, OT-36 where OpenVAS is hosted (prototype measured 2026-11-03; recommendation: a small dedicated VM, see "OpenVAS prototype results" under Implementation Steps). Added 2026-10-31 (OT-38 to OT-41 are claimed by open PR #157, and OT-46 and OT-47 by #158):
 
 - **OT-42:** approve the tier limits: analyst-hour caps, asset limits, the monthly onboarding cap and which dashboard features each Lookout plan grants.
 - **OT-43:** approve the traffic disclosure in the copy and decide whether the base suite's five login submissions stay on for Lookout customers; confirm professional indemnity cover extends to an advisory review service.
@@ -403,7 +404,44 @@ In order. Each step lands as its own PR unless noted.
 6. **Site:** `Service` entry in `src/app/services/page.tsx`, optional landing card, terms §2 (OT-35). Copy from `marketing/17`, after the claims checklist passes (OT-14).
 7. **Report builder** (only if the pilot passes): stored analyst notes per period, the cover and scope page, accepted-risk section and method appendix in the executive report.
 8. **"What to log" appendix** (Assured): add `detectionLinks` to the `attackRefs` map, link-only.
-9. **OpenVAS prototype and Nikto wrapper** (later phase, unclaimed): safe-check configuration fixed in the wrapper, real-binary integration tests in CI, inventory entries. Copy names them only after their tests pass.
+9. **OpenVAS prototype and Nikto wrapper** (later phase): safe-check configuration fixed in the wrapper, real-binary integration tests in CI, inventory entries. Copy names them only after their tests pass. The OpenVAS prototype is done (draft PR #174, results below); the OpenVAS wrapper waits on the hosting decision (OT-36). The Nikto wrapper is unclaimed.
+
+#### OpenVAS prototype results (OT-36, measured 2026-11-03)
+
+`.github/workflows/openvas-prototype.yml` (manual only, no secrets) brings up the Greenbone community containers from `.github/openvas-prototype/compose.yaml`, loads the feed from cold, and scans the hermetic fixture app with a safe config. That config is a clone of "Full and fast" without the Denial of Service and Brute force families, with `safe_checks=yes`. The script reads the config back and fails the job if either setting did not take, and it fails if any result comes from an excluded family. Run [41547025024](https://github.com/andrew-barvas/hebrides-cyber/actions/runs/41547025024) on a standard `ubuntu-latest` runner (4 vCPU, 16 GB RAM, public repo):
+
+| Measure | Value |
+|---|---|
+| Image pull (15 images, 7.5 GB) | 5.5 min (2.2 to 5.5 min across runs) |
+| Feed copy from the feed images into volumes | 1 min |
+| Feed size on disk | 12.8 GB: SCAP (CVE/CPE) 11.4 GB, Notus 0.75 GB, VTs 0.5 GB, CERT 0.19 GB |
+| SCAP import into gvmd's database | 44 min after `compose up` |
+| VTs (191,727) and scan configs loaded, ready to scan | 50 min after `compose up` |
+| Scan of the fixture app (one TCP port) | 4.7 min |
+| Time to first finished scan | 55 min after `compose up`, about 60 min after job start |
+| gvmd Postgres database at end | 27.7 GB |
+| All Docker data (images, volumes) at end | 54 GB; disk used on `/` grew by 46 GB |
+| Peak host memory | 4.9 GB (gvmd 2.75 GB, Postgres 0.6 GB, Redis 0.4 GB, ospd-openvas 0.35 GB) |
+| Total job wall time | 88 min, free on this public repo. A private repo would bill it per run |
+| Safe config read back | 58 families, 189,310 VTs, DoS and brute force excluded, `safe_checks=yes` |
+| Results | 23: 2 high, 4 medium, 2 low, 15 log. None from an excluded family. The high and medium results are version-matched CVEs for the runner's Python, which serves the fixture app |
+
+What the numbers show:
+
+- **The 50-minute cold start is gvmd building its database, not the scan.** The VTs and configs are on disk within 2 minutes and the scanner loads them into Redis in about 1 minute. gvmd then imports the whole SCAP and CERT data into Postgres from scratch (about 44 minutes) and loads the VTs only after that. A host that keeps its database pays this once. On an ephemeral runner it is paid on every run.
+- **The feed cannot be pinned by digest for long.** Greenbone rebuilds the seven feed images daily and garbage-collects old digests within about a day: the 2026-11-01 pins returned "not found" on 2026-11-02 (run 41542500972), so the prototype's feed pins must be re-resolved before each manual run. The service images (gvmd, ospd-openvas, openvas-scanner, pg-gvm, redis, gvm-tools) kept their digests. A production deployment needs its own copy of the feed (a daily sync into a disk or our registry) rather than pulling dated digests.
+- **gvmd's image has a start-up race.** On a fresh database its start script can fail to create the admin user ("tuple concurrently updated", run 41543872479). The prototype creates the user and sets the feed import owner itself. A wrapper must do the same.
+
+**The four options:**
+
+| Option | Verdict |
+|---|---|
+| Actions as-is (cold start each run) | Works, but adds about 55 minutes and 46 GB of disk to every run before the first result. It also needs fresh feed pins every day. Not suitable per scan. |
+| Actions with a cached feed or database | Ruled out for the Actions cache: the database (27.7 GB) and the SCAP feed alone (11.4 GB) both exceed the 10 GB repository cache limit. A snapshot in Azure Blob Storage restored per run is possible but unmeasured, and adds a nightly rebuild and a large download per scan. |
+| Small dedicated VM | **Recommended.** Build the database once and apply the daily feed update in place. Size: 4 vCPU, 8 GB RAM (peak was 4.9 GB) and about 100 GB of disk (54 GB used on a fresh build, plus growth and headroom). The scan worker drives it over GMP (TLS, with a client certificate or a GMP user restricted to Lookout targets). It also gives Lookout one stable scanner source IP for the traffic disclosure (OT-43). Not yet measured: how long the daily incremental feed update takes on a warm database. |
+| Container Apps job | Poor fit. GVM is about ten cooperating services that share unix sockets through volumes, plus a 28 GB Postgres database, which would need to live on Azure Files. ospd-openvas also asks for the `NET_RAW` and `NET_ADMIN` capabilities (raw sockets for alive detection and port scanning), which Container Apps does not grant. |
+
+Next step after OT-36: a provisioning and feed-update plan for the VM, then the wrapper in `src/worker/tools/` that calls it, with the safe config created and asserted the way the prototype does it, and a real-binary integration test. OpenVAS stays out of `EXTENDED_TOOL_NAMES`, the scan profiles and copy until then.
 
 ## Steps
 
@@ -562,7 +600,7 @@ Add OT items to `hebridescyber-app/docs/OWNER-TODO.md`:
 
 Q1 to Q3 are answered (see "Owner decisions"). Remaining:
 
-- **Q4:** where should OpenVAS run if the Actions prototype does not fit: a small dedicated VM, or a Container Apps job? (Decide after the prototype.)
+- **Q4:** where should OpenVAS run if the Actions prototype does not fit: a small dedicated VM, or a Container Apps job? The prototype ran (2026-11-03). Actions works but needs about 55 minutes of cold start per run, and the database is too large for the Actions cache. Recommendation: a small dedicated VM (4 vCPU, 8 GB RAM, about 100 GB disk). Owner decision: OT-36.
 - **Q5:** is a pilot-first launch acceptable in addition to checkout (first 5 customers get a manual onboarding call and the cap above)?
 - **Q6:** has the name "Lookout" been checked for an existing UK trademark and a free domain/subdomain?
 

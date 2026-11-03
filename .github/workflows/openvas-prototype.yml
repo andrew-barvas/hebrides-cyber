@@ -12,12 +12,6 @@ name: OpenVAS prototype
 # docs/DEFENSIVE-ASSESSMENT-PLAN.md (item 9) for the measured numbers.
 on:
   workflow_dispatch:
-  # TEMPORARY: workflow_dispatch only works once the file is on master, so
-  # this push trigger takes the measurement run from the PR branch. Removed
-  # before the PR leaves draft.
-  push:
-    branches: [claude/nostalgic-almeida-95ede5]
-    paths: [".github/workflows/openvas-prototype.yml", ".github/openvas-prototype/**"]
 
 permissions:
   contents: read
@@ -216,10 +210,16 @@ jobs:
               rows.append(("Time to first finished scan (job start)", mins(res["scan_done_at"] - start)))
               rows.append(("Time to first finished scan (compose up)", mins(res["scan_done_at"] - up)))
               rows.append(("Scan duration", mins(res.get("scan_seconds", 0))))
-          if "scap_ready_at" in res:
-              rows.append(("SCAP/CERT import finished (compose up)", mins(res["scap_ready_at"] - up)))
-          elif res.get("scap_counts"):
-              rows.append(("SCAP/CERT import", f"not finished; last counts {res['scap_counts']}"))
+          # gvmd logs "update_scap_end" with a UTC timestamp when the SCAP
+          # (CVE/CPE) import ends; read it from the log rather than polling GMP.
+          import re, subprocess, calendar, time as _t
+          log = subprocess.run(["docker", "compose", "logs", "--no-color", "gvmd"], capture_output=True, text=True).stdout
+          m = re.search(r"(\d{4}-\d\d-\d\d \d\dh\d\d\.\d\d) utc:\d+: update_scap_end", log)
+          if m:
+              scap_end = calendar.timegm(_t.strptime(m.group(1), "%Y-%m-%d %Hh%M.%S"))
+              rows.append(("SCAP (CVE/CPE) import finished (compose up)", mins(scap_end - up)))
+          else:
+              rows.append(("SCAP (CVE/CPE) import", "not finished by the end of the run"))
           if samples:
               rows.append(("Peak host memory in use", gb(max(int(s[1]) for s in samples))))
               rows.append(("Peak disk used on /", gb(max(int(s[2]) for s in samples))))
