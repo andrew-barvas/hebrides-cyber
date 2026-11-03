@@ -52,6 +52,7 @@ export const EXTENDED_TOOL_PREFIXES = [
   "badsecrets",
   "katana",
   "network-exposure",
+  "prowler",
 ] as const;
 
 export function isExtendedToolFinding(checkId: string | undefined): boolean {

@@ -46,7 +46,8 @@ export type ExtendedToolName =
   | "apiSpecInjection"
   | "badsecrets"
   | "katana"
-  | "networkExposure";
+  | "networkExposure"
+  | "prowler";
 
 // Single source of truth for "what are the extended tools". `full` is
 // DERIVED from this list (below), not hand-typed — a hand-typed literal is
@@ -92,6 +93,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "badsecrets",
   "katana",
   "networkExposure",
+  "prowler",
 ];
 
 // The opt-in offensive suite: tools that generate brute-force or real attack
@@ -140,24 +142,28 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure"
 // The `exposure` profile's whole tool list, and its ceiling: the managed
 // exposure review (Lookout, docs/DEFENSIVE-ASSESSMENT-PLAN.md) is sold as
 // "no exploitation, no test payloads", so nothing that sends one may run under
-// it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP (its
-// wrapper runs an active scan, not passive rules only), the offensive-only
-// suite, and proof-of-exploit re-checks (see isNonIntrusiveProfile). Only tools
+// it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP's AJAX
+// spider, the offensive-only suite, and proof-of-exploit re-checks (see
+// isNonIntrusiveProfile). Only tools
 // with a real-binary *.integration.test.ts are listed (CLAUDE.md rule 15):
 // deepTls and subdomains have none yet, and the base suite already covers TLS
 // and certificate-transparency subdomains. nuclei runs in its non-intrusive
-// mode here (nuclei.ts), never with the payload-sending baseline tags.
+// mode here (nuclei.ts), never with the payload-sending baseline tags, and ZAP
+// in its passive-only mode (zap.ts): spider and passive rules, never the active
+// scanner.
 export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
   "httpx",
   "networkExposure",
   "nmap",
   "nuclei",
+  "zap",
 ]);
 
 /**
  * Profiles that must never send a test payload: no injection testers, no
  * active scan, no proof-of-exploit re-check. `safe` runs no extended tools at
- * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei restricted.
+ * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei restricted and ZAP
+ * passive-only.
  */
 export function isNonIntrusiveProfile(profile: ScanProfile): boolean {
   return profile === "safe" || profile === "exposure";
@@ -191,6 +197,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     gospider: true,
     metadataLeak: true,
     cloudPosture: true,
+    prowler: true,
     httpx: true,
     katana: true,
   },

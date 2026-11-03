@@ -270,6 +270,25 @@ describe("GET /api/v1/scans/[id]/export", () => {
     expect(lines[2].endsWith(",")).toBe(true);
   });
 
+  it("returns a SARIF 2.1.0 log for format=sarif, with triage applied", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = {
+      data: { results: { findings: [{ checkId: "headers.csp", severity: "high", title: "Missing CSP", detail: "No policy", remediation: "Add one" }] } },
+    };
+    const { req, res } = mockReqRes({ id: "scan-1", format: "SARIF" });
+
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(res.getHeader("Content-Type")).toBe("application/sarif+json; charset=utf-8");
+    expect(res.getHeader("Content-Disposition")).toMatch(/-findings\.sarif"?$/);
+    const log = JSON.parse(res._getData() as string);
+    expect(log.version).toBe("2.1.0");
+    expect(log.runs[0].results).toHaveLength(1);
+    expect(log.runs[0].results[0].ruleId).toBe("headers.csp");
+  });
+
   it("sanitises the target URL into a filesystem-safe filename", async () => {
     authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
     supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://sub.example.com:8443/path?x=1" } };

@@ -56,6 +56,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-22 | Review the login-recording consent copy | 🟢 Low | Open | 2026-10-05 | |
 | OT-30 | Delete three unused GitHub secrets | 🟢 Low | Open | 2026-10-28 | |
 | OT-31 | Optional: `CONTACT_EMAIL` and a GitHub App | 🟢 Low | Open | 2026-10-28 | |
+| OT-46 | Prowler IAM check: create our AWS scan identity and secrets, then verify against a real account | 🟡 Medium | Open | 2026-10-31 | |
+| OT-47 | Optional: hash-pin Prowler's Python dependencies | 🟢 Low | Open | 2026-10-31 | |
 | OT-23 | Decide whether to build the supplier security rating | 🟢 Strategic | Decision | 2026-10-27 | |
 | OT-24 | Stripe keys and price IDs | — | Done | 2026-10-06 | by 2026-10-27 |
 | OT-25 | `SITE_URL` and `DATABASE_URL` deploy secrets | — | Done | 2026-09-25 | 2026-10-14 |
@@ -75,6 +77,13 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-43 | Lookout: approve the traffic disclosure; keep or drop the login rate-limit check; PI cover | 🟡 Medium | Decision | 2026-10-31 | |
 | OT-44 | Lookout: review the restricted nuclei tag lists in PR #144 | 🟡 Medium | Open | 2026-10-31 | |
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
+| OT-49 | Let automated update PRs run CI (`GH_PAT` scope) and turn on Dependabot security alerts | 🟡 Medium | Open | 2026-11-01 | |
+| OT-51 | Exploit: go or no-go on the product (P-07), given OT-13 is the gating cost | 🟢 Strategic | Decision | 2026-11-02 | |
+| OT-52 | Exploit: confirm engagements are booked by hand only, never self-serve checkout | 🟢 Low | Decision | 2026-11-02 | |
+| OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
+| OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
+| OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
 
 ## Common steps
 
@@ -210,6 +219,10 @@ you confirm.
   5. Redeploy or restart is not needed for API routes, but a push to `master`
      (or Actions → Deploy → Run workflow) makes sure the new settings are live.
 - **Verify:** repeated `POST` requests to `/api/run-scan` from one machine eventually return 429 (the limit is in `src/pages/api/run-scan.ts`).
+- **Also gates `/check`:** the no-signup website check (`POST /api/instant-check`) scans
+  sites its visitors do not own, so it answers 503 in production until these
+  two values are set, and it refuses traffic if Upstash errors. Once set,
+  `/check` works with no further change.
 - **Raised:** 2026-08-17.
 
 ### OT-07: Branch protection on `master` 🟠
@@ -245,7 +258,10 @@ you confirm.
   3. Add the Azure setting `SENTRY_DSN` with the same DSN for API routes
      (see "Common steps", Azure app setting).
   4. Push to `master` or re-run Deploy so the browser bundle is rebuilt.
-- **Verify:** throw a test error from the site and see it in Sentry.
+- **Verify:** sign in as admin, open Admin → Overview and press "Send test
+  error" (`POST /api/admin/sentry-test`). It answers "No Sentry DSN is
+  configured" until the Azure setting is live; afterwards it shows an event id,
+  which should appear in Sentry within a minute (LAUNCH-PRIORITY item 2, AC1).
 - **Raised:** 2026-09-04 (E-03 / BETA-1).
 
 ### OT-09: Verify uptime monitoring with a real UptimeRobot key 🟡
@@ -346,6 +362,11 @@ you confirm.
   5. Merge the approved wording into `src/app/terms/page.tsx`.
 - **Raised:** 2026-08-26 (BETA-B1); 2026-10-12 (Tier A, `NEXT-STEPS.md` item
   11).
+- **Prep ready (not the step itself):** `docs/legal/OT-13-insurer-brief.md` and
+  `docs/legal/OT-13-solicitor-brief.md` are drafts to take to a broker and a
+  solicitor. They are not cover and not legal advice. Sequence: insurance
+  quoted → **bound** → solicitor reviews ToS and aligns the liability cap to the
+  policy limit → only then does the engineering gate open.
 
 ### OT-14: Marketing and grant copy integrity pass 🟡
 - **What and why:** some marketing and grant copy claims things the product
@@ -724,7 +745,132 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   3. Sign the rules of engagement, run the test, and keep the report private.
   4. Triage each finding into issues and record the report date here.
 - **Verify:** a report received and findings triaged.
-- **Raised:** 2026-10-31.
+
+### OT-46: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
+- **What and why:** the Prowler IAM / privilege-escalation check
+  (`src/worker/tools/prowlerIam.ts`, PR #158) assumes each customer's read-only
+  role from an AWS identity of ours. That identity doesn't exist yet, so for
+  any owner who connects a role the check reports `error` (never a clean
+  result) and nothing is marked fixed. The check has also never run against a
+  real AWS account: its tests use a hand-built report in Prowler's documented
+  format, and the flags and report filename come from Prowler's source, not an
+  observed run. Until this item is done the feature is unproven.
+- **Before you start:** you need an AWS account you control for our scan
+  identity (the "platform account") and a second AWS account, or a throwaway
+  one, to play the customer (the "test account"). They can't be the same
+  account for a meaningful test of the cross-account trust. Use the AWS
+  console or the AWS CLI. An Agency-plan dashboard login is needed for step 6
+  (the seeded agency demo account works: `npm run seed:users`).
+- **How:**
+  1. **Create our scan identity (platform account).** IAM → Users → Create
+     user, name `hebrides-prowler-scan`, no console access. Attach no managed
+     policies. Open the user → Permissions → Add permissions → Create inline
+     policy → JSON, and paste:
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         { "Effect": "Allow", "Action": "sts:AssumeRole", "Resource": "arn:aws:iam::*:role/*" }
+       ]
+     }
+     ```
+     Name it `AssumeCustomerAuditRoles`. It must hold no other permission, so
+     a leaked key can do nothing beyond what a customer's own role allows.
+  2. **Create its access key.** The user → Security credentials → Create
+     access key → "Application running outside AWS". Copy the key id and
+     secret now (the secret is shown once). Note the platform account's
+     12-digit id (top-right account menu).
+  3. **Add the GitHub secrets** (from `hebridescyber-app/`, logged in with
+     `gh auth login`; the prompts keep the secret out of shell history):
+     ```bash
+     gh secret set PROWLER_AWS_ACCESS_KEY_ID
+     gh secret set PROWLER_AWS_SECRET_ACCESS_KEY
+     gh secret list
+     ```
+     `gh secret list` should show both names. Never paste the secret into chat.
+  4. **Add the Azure app setting** `PROWLER_PLATFORM_AWS_ACCOUNT_ID` = the
+     12-digit platform account id (not a secret). Azure portal → the Static
+     Web App → Settings → Environment variables (also called Configuration)
+     → Add → name and value → Save. The dashboard reads it to show customers
+     the trust-policy principal; without it the panel says "not available
+     yet". Also confirm `CREDENTIALS_ENC_KEY` is set there (OT-05), or saving
+     a role returns 503.
+  5. **Create the audit role (test account).** IAM → Roles → Create role →
+     Trusted entity type "AWS account" → "Another AWS account" → paste the
+     platform account id → tick "Require external ID" and, for now, enter a
+     placeholder (you replace it in step 7). Attach the AWS managed policies
+     `SecurityAudit` and `ViewOnlyAccess`. Name it `HebridesCyberAudit`.
+     Copy the role ARN. To make the test meaningful, also create one
+     customer-managed policy allowing `iam:CreatePolicyVersion` and attach it
+     to a user: Prowler should then report a privilege-escalation finding.
+  6. **Generate the real external id.** Sign in to the dashboard as an Agency
+     user → Account → Cloud Posture Scanning → "AWS IAM &
+     privilege-escalation check" → label `test account` → Generate external
+     ID. Copy the `hc-…` value.
+  7. **Put it in the trust policy.** IAM → Roles → `HebridesCyberAudit` →
+     Trust relationships → Edit, so it matches the template in
+     `docs/AWS-IAM-POSTURE.md`: principal `arn:aws:iam::<platform id>:root`,
+     action `sts:AssumeRole`, condition `StringEquals` on `sts:ExternalId`
+     with the `hc-…` value. Save.
+  8. **Save the role ARN** in the same dashboard panel (Role ARN → Save role
+     ARN).
+  9. **Smoke-test the trust by hand** (optional, quick), with the scan
+     identity's key in a scratch shell:
+     `aws sts assume-role --role-arn <arn> --role-session-name t --external-id <hc-…>`
+     should return credentials; with a wrong external id it must fail with
+     AccessDenied. That proves the guard works.
+  10. **Run the check for real.** Actions → "Scheduled Scans" → Run workflow
+      (or locally, with the secrets exported: `npm run
+      queue:enqueue-scheduled-scans` then `npm run queue:run-worker`). The
+      "Install prowler" step's log must end with a line containing `5.47.0`.
+      In the scan result, the `prowler` entry must be `completed` and list the
+      test account; the planted policy should appear as a finding with check
+      id `prowler.iam_policy_allows_privilege_escalation:<acct>:<policy arn>`.
+  11. **Capture a real fixture.** Locally (Python 3.10 to 3.13), in a venv:
+      `pip install prowler==5.47.0`, export the scan identity's key as
+      `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, then run
+      `prowler aws --role <arn> --external-id <hc-…> --service iam --output-formats json-ocsf --output-directory out --output-filename prowler-iam --ignore-exit-code-3 --no-banner`.
+      Open `out/prowler-iam.ocsf.json`, replace real account ids, ARNs and
+      names with placeholders, and replace
+      `hebridescyber-app/src/worker/tools/fixtures/prowler/iam-ocsf-5.47.0.json`
+      and the README beside it. Run `npm run test:unit`; any shape difference
+      from the hand-built version shows up as a failing test. Fix the parser,
+      not the fixture.
+  12. **Clean up the test account:** delete the role, the test user and the
+      policy, and Remove the connection in the dashboard, unless you want to
+      keep it running.
+- **If it fails:** the scan result's `prowler.note` says why. "prowler is not
+  installed" means the install step failed or the job ran elsewhere. "could
+  not be assumed" or AccessDenied means the trust policy principal, external
+  id or role ARN is wrong. "Platform AWS identity … not configured" means
+  step 3 isn't done. "reported on an account other than" means the role ARN's
+  account differs from the account Prowler assessed.
+- **Walkthrough for customers:** `docs/AWS-IAM-POSTURE.md`.
+- **Verify:** a scan result with `prowler` `completed` and the test account
+  listed, the planted escalation policy reported, and the real fixture merged
+  with tests passing.
+- **Raised:** 2026-10-31 (PR #158).
+
+### OT-47: Optional: hash-pin Prowler's Python dependencies 🟢
+- **What and why:** the workflow verifies Prowler's own wheel by SHA-256, but
+  pip resolves its dependencies (boto3, pydantic and many others) at install
+  time without hashes. A compromised dependency release would run inside the
+  scan job, which holds the service-role key and customer credentials in its
+  environment. Pinning with hashes closes that.
+- **How:**
+  1. In a clean directory with Python 3.12: `python -m venv v`, activate it
+     (`. v/bin/activate`, or `v\Scripts\activate` on Windows), then
+     `pip install pip-tools`.
+  2. Put the single line `prowler==5.47.0` in a file `prowler.in`.
+  3. Run `pip-compile --generate-hashes --output-file requirements-prowler.txt prowler.in`.
+  4. Commit `requirements-prowler.txt` under `hebridescyber-app/` and change
+     the workflow's "Install prowler" step to
+     `sudo /opt/prowler/bin/pip install --require-hashes -r requirements-prowler.txt`
+     (keep the SHA-256 check of the prowler wheel itself).
+  5. When bumping Prowler, regenerate the file in the same PR.
+- **Verify:** the "Install prowler" step in a scheduled-scan run succeeds with
+  `--require-hashes` and prints the pinned version.
+- **Raised:** 2026-10-31 (PR #158).
 
 ### OT-42: Lookout tier limits 🟡
 - **What and why:** checkout makes it easy to sell more analyst time than one
@@ -795,6 +941,89 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** the decision and the pilot result recorded in the plan and in
   `PRODUCT-IDEAS.md` P-06.
 - **Raised:** 2026-10-31.
+
+### OT-48: SAML single sign-on 🟢
+- **What and why:** the 2026-10-31 Copilot sprint plan put SAML SSO in
+  Sprint 3. The earlier SSO modules were deleted on 2026-10-13 (only
+  migrations 034-036 remain), so it is a new build: an identity-provider
+  integration, role mapping and audit events, plus a larger attack surface
+  on the sign-in path. `LAUNCH-PRIORITY.md` item 4 already says to build it
+  only once a customer asks.
+- **Your call:** build it now for one identity provider (which one), or wait
+  for a customer request.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-10-31 (Copilot plan reconciliation in `LAUNCH-PRIORITY.md`).
+
+### OT-49: Automated update PRs and Dependabot alerts 🟡
+- **What and why:** two new weekly workflows open pull requests on their own:
+  `scanner-tool-updates.yml` (one PR per scanner tool with a newer release)
+  and `npm-audit-fix.yml` (a rolling `npm audit fix` PR). A PR opened with
+  GitHub's default token doesn't start CI, so the workflows use the existing
+  `GH_PAT` secret when it can push. Separately, the repository has Dependabot
+  alerts and Dependabot security updates switched off (checked 2026-11-01),
+  so the security-update PRs `dependabot.yml`'s comment expects never open.
+- **How:**
+  1. Make sure `GH_PAT` can push branches and open PRs on this repository
+     (fine-grained token: Contents and Pull requests, read and write), or
+     replace it with one that can. It is also used to dispatch
+     `on-demand-scan.yml`, so keep the Actions permission it has.
+  2. Settings → Code security: turn on Dependabot alerts and Dependabot
+     security updates.
+- **Verify:** Actions → "Scanner tool updates" → Run workflow. The PRs it
+  opens show their checks running, with no "GH_PAT is not set" warning in
+  the run. `gh api repos/andrew-barvas/hebrides-cyber/automated-security-fixes`
+  reports `"enabled": true`.
+- **Raised:** 2026-11-01.
+
+### OT-51: Exploit go or no-go 🟢
+- **What and why:** Exploit (`PRODUCT-IDEAS.md` P-07,
+  `EXPLOIT-PRODUCT-PLAN.md`) sells authorised, contracted penetration tests on
+  top of the offensive engine that already exists. The cost is legal and
+  insurance work (OT-13, OT-55), not code. Your 2026-11-01 decision (PR #169)
+  builds an Exploit page that stays noindex, unlinked and marked "not yet
+  available" until OT-13 is signed off; this item is the launch decision itself.
+- **How:** after OT-13 and OT-55 have answers, decide whether to run the manual
+  pilot (one hand-scoped engagement for an existing customer, using the gated
+  engine and a hand-written report). The plan's kill criteria apply.
+- **Verify:** the decision recorded here and P-07's status updated.
+- **Raised:** 2026-11-02.
+
+### OT-52: Exploit is booked by hand only 🟢
+- **What and why:** the plan recommends that live offensive work is always
+  scoped, contracted and scheduled by a person, never bought through checkout.
+  PR #169's page copy already assumes this ("no self-serve checkout for live
+  testing"), so this only needs confirming.
+- **How:** confirm, or say what should change.
+- **Verify:** "owner confirmed" recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-53: Autonomous agents in Exploit's first version 🟢
+- **What and why:** `strix` and `cairn` are autonomous agents in the offensive
+  profile, currently `not_configured` by your 2026-10-23 decision. They need the
+  strictest controls. The plan recommends leaving them out of the first
+  version and starting with the bounded, non-destructive confirmation checks.
+- **How:** decide in or out for the first version.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-54: Exploit pricing 🟢
+- **What and why:** the plan's hypothesis is a four-figure, quoted engagement,
+  not a subscription. Set it from the manual pilot's real analyst hours.
+- **How:** decide after the pilot (OT-51).
+- **Verify:** the price recorded here and in the plan.
+- **Raised:** 2026-11-02.
+
+### OT-55: Insurance for contracted offensive testing 🟡
+- **What and why:** OT-13 covers PI insurance before any offensive traffic.
+  Exploit goes further: it sells authorised attack traffic against customer
+  systems under contract, so the cover must explicitly include contracted
+  penetration testing, and the engagement contract needs a liability position
+  and a stop clause.
+- **How:** ask the insurer and the solicitor (alongside OT-13) to confirm the
+  cover and contract wording for this service.
+- **Verify:** the insurer's written confirmation and the approved contract on
+  file.
+- **Raised:** 2026-11-02.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
