@@ -398,11 +398,16 @@ export async function runMetadataLeakCheck(
       })
     );
 
-    // Log but don't fail for individual fetch errors
-    for (const r of results) {
-      if (r.status === "rejected") {
-        // Silently skip inaccessible files
-      }
+    // One unreachable file is skipped, but if none could be fetched at all
+    // (timeouts, refused connections) nothing was checked, and an empty
+    // "completed" would read as clean and resolve last scan's findings
+    // (CLAUDE.md rule 7). A 404 or an HTML page is an answer, not a failure.
+    if (results.every((r) => r.status === "rejected")) {
+      const reason = (results[0] as PromiseRejectedResult).reason as Error;
+      return {
+        status: "error",
+        note: `None of the ${candidateUrls.length} linked file(s) could be fetched (${reason?.message ?? "unknown error"}).`,
+      };
     }
 
     // Deduplicate

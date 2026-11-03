@@ -1,5 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { buildFindings, PLATFORM_TLS_TECHNOLOGIES, type TestsslEntry } from "./deepTls";
+import { buildFindings, PLATFORM_TLS_TECHNOLOGIES, scanProblemOf, testsslScopeArgs, type TestsslEntry } from "./deepTls";
+
+describe("deepTls scan problems", () => {
+  it("treats a file of only WARN/FATAL entries as a failed run", () => {
+    expect(
+      scanProblemOf([
+        { id: "scanProblem", severity: "FATAL", finding: "Can't connect to '127.0.0.1:1'" },
+        { id: "engine_problem", severity: "WARN", finding: "No engine or GOST support via engine with your /usr/bin/openssl" },
+      ])
+    ).toBe("Can't connect to '127.0.0.1:1'");
+  });
+
+  it("never treats an empty file as a failure: a healthy server writes nothing at LOW", () => {
+    expect(scanProblemOf([])).toBeNull();
+  });
+
+  it("never treats a scanner-side WARN on its own as a failure", () => {
+    expect(scanProblemOf([{ id: "engine_problem", severity: "WARN", finding: "No engine" }])).toBeNull();
+  });
+
+  it("keeps a run that rated at least one check", () => {
+    expect(
+      scanProblemOf([
+        { id: "engine_problem", severity: "WARN", finding: "No engine" },
+        { id: "TLS1", severity: "LOW", finding: "offered (deprecated)" },
+      ])
+    ).toBeNull();
+  });
+});
+
+describe("deepTls scope under a non-intrusive profile", () => {
+  const intrusive = ["--heartbleed", "--ccs-injection", "--ticketbleed", "--robot"];
+
+  it("runs every probe by default", () => {
+    expect(testsslScopeArgs()).toEqual(expect.arrayContaining(intrusive));
+  });
+
+  it("drops only the probes that send crafted input to trigger a flaw", () => {
+    const narrowed = testsslScopeArgs(true);
+    for (const flag of intrusive) expect(narrowed).not.toContain(flag);
+    expect(narrowed).toEqual(testsslScopeArgs().filter((a) => !intrusive.includes(a)));
+    // The configuration checks Lookout sells stay in.
+    expect(narrowed).toEqual(expect.arrayContaining(["--protocols", "--std", "--fs", "--server-defaults", "--sweet32", "--drown"]));
+  });
+});
 
 const platformEntries: TestsslEntry[] = [
   { id: "cipherlist_OBSOLETED", severity: "LOW", finding: "offered" },
