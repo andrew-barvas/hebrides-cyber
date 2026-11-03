@@ -332,12 +332,17 @@ describe("POST /api/run-scan", () => {
         { data: null, error: { code: "23514", message: 'new row for relation "scans" violates check constraint "scans_status_check"' } },
       ];
       queues.scan_jobs = [{ error: null }];
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
       const { req, res } = mockReqRes({ scanId: "scan-1" });
 
       await handler(req, res);
 
       expect(res._getStatusCode()).toBe(500);
-      expect(res._getJSONData()).toMatchObject({ code: "queue_failed", error: expect.stringContaining("scans_status_check") });
+      expect(res._getJSONData()).toEqual({ code: "queue_failed", error: "Couldn't queue the scan." });
+      // The constraint name is the diagnostic — it must reach the server log, never the browser.
+      expect(JSON.stringify(res._getJSONData())).not.toContain("scans_status_check");
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("scans_status_check"));
+      consoleError.mockRestore();
       expect(queues.scan_jobs).toHaveLength(1); // no job inserted
       expect(triggerOnDemandWorkflowMock).not.toHaveBeenCalled();
     });
