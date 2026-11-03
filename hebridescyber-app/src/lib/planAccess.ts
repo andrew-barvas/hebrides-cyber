@@ -8,19 +8,50 @@
 // - the tiers nest upward: Agency includes everything Pro has, and Tier A
 //   (the top tier, which unlocks the opt-in offensive scanning suite) includes
 //   everything Agency and Pro have.
+// - the Lookout managed exposure review plans (docs/DEFENSIVE-ASSESSMENT-PLAN.md)
+//   sit beside the scanner tiers: Essentials grants Pro features and Assured
+//   grants Agency features (the plan's proposal, pending OT-42). Neither grants
+//   Tier A, so neither can unlock the offensive profile.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** "basic" is any paid plan. */
 export type PlanTier = "basic" | "pro" | "agency" | "tier_a";
 
+/**
+ * Every `subscriptions.plan` value a checkout, the webhook or an admin may
+ * write. One list, so a new plan can't be accepted in one place and dropped
+ * in another.
+ */
+export const SUBSCRIPTION_PLANS = ["basic", "pro", "agency", "tier_a", "lookout_essentials", "lookout_assured"] as const;
+export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[number];
+
+export function isSubscriptionPlan(value: unknown): value is SubscriptionPlan {
+  return typeof value === "string" && (SUBSCRIPTION_PLANS as readonly string[]).includes(value);
+}
+
+/** Customer-facing name of each plan, for emails and billing display. */
+export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
+  basic: "Basic",
+  pro: "Pro",
+  agency: "Agency",
+  tier_a: "Tier A",
+  lookout_essentials: "Lookout Essentials",
+  lookout_assured: "Lookout Assured",
+};
+
+/** The Lookout managed exposure review plans, as opposed to the scanner plans. */
+export function isLookoutPlan(plan: string | null | undefined): boolean {
+  return plan === "lookout_essentials" || plan === "lookout_assured";
+}
+
 type SubscriptionRow = { plan?: string | null; status?: string | null } | null | undefined;
 
 // Each tier's set of satisfying `plan` values, highest-inclusive-downward. A
 // plan satisfies a required tier when it appears in that tier's set.
-const PLANS_FOR_TIER: Record<PlanTier, readonly string[]> = {
-  basic: ["basic", "pro", "agency", "tier_a"],
-  pro: ["pro", "agency", "tier_a"],
-  agency: ["agency", "tier_a"],
+const PLANS_FOR_TIER: Record<PlanTier, readonly SubscriptionPlan[]> = {
+  basic: ["basic", "pro", "agency", "tier_a", "lookout_essentials", "lookout_assured"],
+  pro: ["pro", "agency", "tier_a", "lookout_essentials", "lookout_assured"],
+  agency: ["agency", "tier_a", "lookout_assured"],
   tier_a: ["tier_a"],
 };
 
@@ -35,7 +66,7 @@ export function plansFor(tier: PlanTier): readonly string[] {
  * than comparing plan strings, which leave Tier A out.
  */
 export function planIncludes(plan: string | null | undefined, tier: PlanTier): boolean {
-  return Boolean(plan) && PLANS_FOR_TIER[tier].includes(plan as string);
+  return Boolean(plan) && (PLANS_FOR_TIER[tier] as readonly string[]).includes(plan as string);
 }
 
 /** Pure: does this subscription row grant the tier? */

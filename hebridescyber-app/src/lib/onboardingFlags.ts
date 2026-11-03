@@ -11,7 +11,7 @@
 //   every paid plan), an outbound webhook, Slack, Teams, or an on-call
 //   integration (PagerDuty, Opsgenie).
 
-import { planIncludes } from "./planAccess";
+import { planIncludes, type SubscriptionPlan } from "./planAccess";
 
 export type OnboardingInput = {
   verifiedDomainCount: number;
@@ -19,7 +19,7 @@ export type OnboardingInput = {
   startedScanCount: number;
   hasCompletedScan: boolean;
   /** The plan while its subscription is active, else "none". */
-  activePlan: "none" | "basic" | "pro" | "agency" | "tier_a";
+  activePlan: "none" | SubscriptionPlan;
   webhookCount: number;
   slackWebhookUrl: string | null;
   teamsWebhookUrl: string | null;
