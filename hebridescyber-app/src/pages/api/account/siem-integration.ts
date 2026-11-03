@@ -4,6 +4,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { validateSiemWebhook } from "@/lib/siemIntegration";
 import { logAuditEvent } from "@/lib/audit";
+import { respondInternalError } from "@/lib/apiError";
 
 const createSchema = z.object({
   name: z.string().min(1).max(100).default("Default SIEM"),
@@ -39,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
     return res.status(200).json({ integrations: data });
   }
 
@@ -68,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
@@ -99,7 +100,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -113,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,

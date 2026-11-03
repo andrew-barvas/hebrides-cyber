@@ -23,6 +23,7 @@ import { findTicketIntegration, summariseTicketIntegration } from "@/lib/ticketL
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { parseBody } from "@/lib/validate";
 import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
+import { respondInternalError } from "@/lib/apiError";
 
 const patchSchema = z.object({
   provider: z.enum(TICKET_PROVIDERS),
@@ -108,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("provider", provider)
       .select("provider")
       .maybeSingle();
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/ticket-integration", error);
     if (!data) return res.status(404).json({ error: `No ${provider} integration is connected.` });
     return res.status(200).json({ ok: true, provider, autoCloseEnabled });
   }
@@ -118,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!deleteParsed) return;
     const { provider } = deleteParsed;
     const { error } = await supabaseAdmin.from("ticket_integrations").delete().eq("owner", caller.ownerId).eq("provider", provider);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/ticket-integration", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -142,7 +143,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ),
       { onConflict: "owner,provider" }
     );
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/ticket-integration", error);
     return res.status(200).json({ ok: true, provider: "jira" });
   }
 
@@ -155,7 +156,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sealSecrets({ owner: caller.ownerId, provider: "linear", linear_api_key: apiKey, linear_team_id: teamId }, ["linear_api_key"]),
       { onConflict: "owner,provider" }
     );
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/ticket-integration", error);
     return res.status(200).json({ ok: true, provider: "linear" });
   }
 
@@ -172,7 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ),
       { onConflict: "owner,provider" }
     );
-    if (error) return res.status(notEnabledYet(error) ? 503 : 500).json({ error: notEnabledYet(error) ? NOT_ENABLED_MESSAGE : error.message });
+    if (error) return notEnabledYet(error) ? res.status(503).json({ error: NOT_ENABLED_MESSAGE }) : respondInternalError(res, "account/ticket-integration", error);
     return res.status(200).json({ ok: true, provider: "servicenow" });
   }
 
@@ -185,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sealSecrets({ owner: caller.ownerId, provider: "github", github_owner: owner, github_repo: repo, github_token: token }, ["github_token"]),
       { onConflict: "owner,provider" }
     );
-    if (error) return res.status(notEnabledYet(error) ? 503 : 500).json({ error: notEnabledYet(error) ? NOT_ENABLED_MESSAGE : error.message });
+    if (error) return notEnabledYet(error) ? res.status(503).json({ error: NOT_ENABLED_MESSAGE }) : respondInternalError(res, "account/ticket-integration", error);
     return res.status(200).json({ ok: true, provider: "github" });
   }
 

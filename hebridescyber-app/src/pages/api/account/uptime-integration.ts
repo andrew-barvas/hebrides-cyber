@@ -16,6 +16,7 @@ import { planGate } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { uptimeRobotProvider } from "@/lib/uptimeRobot";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const postSchema = z.object({
   provider: z.literal("uptimerobot").default("uptimerobot"),
@@ -69,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .upsert(sealSecrets({ owner: caller.ownerId, provider: "uptimerobot", api_key: body.apiKey, last_error: null, updated_at: new Date().toISOString() }, ["api_key"]), {
       onConflict: "owner,provider",
     });
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/uptime-integration", error);
 
   await logAuditEvent(supabaseAdmin, { actorId: caller.ownerId, action: "uptime.connected", resourceType: "uptime_integration", metadata: { provider: "uptimerobot" } });
   return res.status(200).json({ ok: true, provider: "uptimerobot" });
