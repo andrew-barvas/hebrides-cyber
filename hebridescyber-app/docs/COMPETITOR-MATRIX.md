@@ -6,7 +6,7 @@ rubric (§4), the advantages and disadvantages, and what not to build. This file
 answers a different question: **what does each side actually ship, dimension by
 dimension, and which gaps could we close ourselves?**
 
-**As of: 2026-10-30.**
+**As of: 2026-11-03.** The Hebrides Cyber table and the gap table below were updated on this date from `master`; the competitor list is unchanged and still unverified. A fuller look at Lookout and Exploit, with dated sources, is in `COMPETITIVE-REVIEW-2026-11.md`.
 
 ## The rule this file follows
 
@@ -42,14 +42,22 @@ Vendor positioning only; unverified, no source date yet.
 | Burp Suite Enterprise | Enterprise web application scanning | the Burp engine; customer-run scanning agents | customer-run |
 | OWASP ZAP | Open-source scanner | free; automation framework | self-hosted |
 
+## The three products
+
+| Product | Status on 2026-11-03 | Evidence |
+|---|---|---|
+| Scanner | Live: Basic, Pro, Agency; Tier A by quote and not marketed | the table below |
+| Lookout (managed exposure review) | Not launched. The `exposure` scan profile is merged; the report, the named-engineer process and pilot customers are not. Launch needs the go or no-go decision in the design doc | `docs/DEFENSIVE-ASSESSMENT-PLAN.md`, `src/lib/scanProfiles.ts`, `sql/migrations/065_exposure_profile.sql` |
+| Exploit (authorised penetration test) | Plan only. Blocked on OT-13 (insurance and a solicitor-reviewed contract). The first ladder step, a "Request validation" button on serious findings, is in draft PR #192 and sends no traffic | `docs/EXPLOIT-PRODUCT-PLAN.md` |
+
 ## Hebrides Cyber, dimension by dimension
 
-Checked against the code on 2026-10-30. Paths are relative to `hebridescyber-app/`.
+Checked against the code on 2026-11-03. Paths are relative to `hebridescyber-app/`.
 
 | Dimension | What ships | Evidence |
 |---|---|---|
 | Primary focus | Web scanning for UK SMEs and agencies, with the supply chain (dependencies, code, infrastructure-as-code, GitHub workflows) in the same product | `docs/FUNCTIONALITY-MATRIX.md`, `docs/SCANNER-INVENTORY.md` |
-| Scan types | A passive base suite on every scan; safe-active tools chosen by scan profile; authenticated scanning with a saved cookie or Basic credential, or a recorded form login; API checks (OpenAPI and Postman import, GraphQL); dependency, code, IaC and workflow scanning of a connected repo; an offensive profile for Tier A only, gated by plan and a per-target authorization | `src/lib/scanProfiles.ts`, `src/lib/scanExecution.ts`, `src/lib/offensiveAuthorization.ts` |
+| Scan types | A passive base suite on every scan; safe-active tools chosen by scan profile; authenticated scanning with a saved cookie or Basic credential, or a recorded form login (with an optional TOTP step for accounts that use an authenticator app); API checks (OpenAPI and Postman import, GraphQL); dependency, code, IaC and workflow scanning of a connected repo; an offensive profile for Tier A only, gated by plan and a per-target authorization; customer-defined nuclei checks for Agency and Tier A (HTTP only, own host only, off under the Lookout `exposure` profile); an AWS IAM and privilege-escalation check through Prowler (needs a customer role; not yet run against a real account) | `src/lib/scanProfiles.ts`, `src/lib/scanExecution.ts`, `src/lib/offensiveAuthorization.ts`, `src/lib/totp.ts`, `src/lib/customNucleiTemplates.ts`, `src/lib/customChecks.ts`, `src/worker/tools/prowlerIam.ts` |
 | Proof of exploit | Reflected and DOM-based XSS, open redirect, CORS and exposed-file findings are re-checked and marked "confirmed exploitable"; the report shows attack chains | `src/lib/scanners/proofOfExploit.ts`, `xssConfirm.ts`, `src/lib/attackPathAnalysis.ts` |
 | Compliance mapping | Cyber Essentials, OWASP Top 10, CIS Controls v8, ISO 27001, PCI DSS, NIS2 and DORA; SOC 2 and HIPAA derived by crosswalk. Worded as an automated indicator, never a certification | `src/lib/scanners/compliance.ts` |
 | CI gate | Fails a build only on new, untriaged findings at or above a threshold. A POSIX script for any CI system, templates for five, and a packaged GitHub Action | `public/ci/hebrides-scan.sh`, `action/index.js`, `src/app/docs/ci/page.tsx` |
@@ -58,9 +66,9 @@ Checked against the code on 2026-10-30. Paths are relative to `hebridescyber-app
 | Attack surface | Certificate-log (crt.sh) and Subfinder discovery on every scan; a certificate-log sweep every 6 hours; alerts for subdomain takeover, lookalike domains, DNS changes and new hostnames; DNS brute-force on Tier A only. The 6-hourly sweep sends the new-hostname alert itself, so an owner is told within hours rather than at their next scan; DNS-change alerts still come from scans. Not hourly | `src/lib/easmPipeline.ts`, `src/lib/attackSurfaceMonitor.ts`, `src/lib/scanners/takeover.ts`, `src/lib/lookalikeDomainMonitor.ts`, `.github/workflows/easm-discovery.yml` |
 | Deployment | SaaS on Azure Static Web Apps; scans run on GitHub Actions workers that claim jobs from a Postgres queue. No customer-run or on-premises scanner | `docs/ARCHITECTURE-NOTES.md` |
 | Pricing model | One free scan, then paid plans (Basic, Pro, Agency, Tier A) with a cap on monitored sites per plan. Prices are on the pricing page, not here | `src/lib/freeTier.ts`, `src/lib/planAccess.ts`, `sql/migrations/018_monitored_targets_plan_cap.sql` |
-| Reporting | Executive PDF (white-label), compliance report, remediation pack, CycloneDX SBOM with VEX, CSV and JSON export, an Agency portfolio PDF, scheduled reports. No SARIF yet | `src/lib/executiveReport.ts`, `src/lib/sbomExport.ts`, `src/pages/api/v1/scans/[id]/export.ts`, `src/lib/portfolioReport.ts` |
+| Reporting | Executive PDF (white-label), compliance report, remediation pack, CycloneDX SBOM with VEX, CSV, JSON and SARIF 2.1.0 export (with an opt-in GitHub code scanning upload step in the CI template), an Agency portfolio PDF, scheduled reports | `src/lib/executiveReport.ts`, `src/lib/sbomExport.ts`, `src/lib/sarif.ts`, `src/pages/api/v1/scans/[id]/export.ts`, `src/lib/portfolioReport.ts` |
 | Scale model | A Postgres job queue with `SKIP LOCKED` claims; 3 worker shards, each stopping at 15 jobs or 25 minutes per run; a daily scheduled enqueue. Recent runs take about 6 minutes; not measured under load | `.github/workflows/scheduled-scans.yml`, `src/scripts/run-queued-scan-jobs.ts` |
-| Platform security | Row-level security on every table; customer credentials encrypted at rest with AES-256-GCM; service-role isolation; an audit log; two-factor sign-in. **No SOC 2, ISO 27001 or Cyber Essentials certification yet.** Open hardening items are tracked in `OWNER-TODO.md` | `src/lib/credentialEncryption.ts`, `docs/security.md`, `docs/OWNER-TODO.md` |
+| Platform security | Row-level security on every table; customer credentials encrypted at rest with AES-256-GCM; service-role isolation; an audit log; two-factor sign-in. **No SOC 2, ISO 27001 or Cyber Essentials certification yet.** A public `/trust` page says so, and `CONTROLS-EVIDENCE.md` maps controls to evidence and lists the gaps. Open hardening items are tracked in `OWNER-TODO.md` | `src/lib/credentialEncryption.ts`, `src/app/trust/page.tsx`, `docs/CONTROLS-EVIDENCE.md`, `docs/security.md`, `docs/OWNER-TODO.md` |
 | Best-fit buyer | UK SMEs, agencies and MSPs, and teams that need Cyber Essentials evidence | `marketing/`, `src/app/agencies/` |
 
 Also shipping, and easy to miss: DMARC report ingestion, a Cyber Essentials
@@ -74,18 +82,18 @@ a rough development estimate, not a quote.
 
 | # | Capability | Positioned by | What we would build | Effort | Status |
 |---|---|---|---|---|---|
-| 1 | Instant public check, no signup | free tools from several scanner vendors, and the retiring NCSC Web Check | Paste a domain, get a grade, from passive checks only (TLS, headers from one request, mail-authentication DNS, certificate-log subdomains). A scan today needs domain verification. | 3–5 days | Approved 2026-10-30 |
-| 2 | SARIF export | several scanner and code-security vendors | `?format=sarif` on the existing export route, plus an upload step in the CI templates so findings appear in GitHub's Security tab. GitHub needs code scanning enabled on the repository (a paid feature on private repositories). | 1–2 days | Approved 2026-10-30 |
-| 3 | Customer-defined checks | scanners with extension ecosystems (ZAP, Burp, nuclei) | Let Agency and Tier A accounts add their own nuclei templates, run only against their verified targets. Templates must be restricted to the target's own host, with code and headless modes disabled. | about 1 week | Approved 2026-10-30 |
-| 4 | Analyst review of a finding | Astra | A "request an analyst review" action on a finding, routed to the operator as a paid add-on. Little engineering; it monetises existing consultancy. | 1–2 days | Not started |
+| 1 | Instant public check, no signup | free tools from several scanner vendors, and the retiring NCSC Web Check | Paste a domain, get a grade, from passive checks only (TLS, headers from one request, mail-authentication DNS, certificate-log subdomains). A scan today needs domain verification. | 3–5 days | Built, in draft PR #154. Stays switched off in production until Upstash is configured (OT-06) |
+| 2 | SARIF export | several scanner and code-security vendors | `?format=sarif` on the existing export route, plus an upload step in the CI templates so findings appear in GitHub's Security tab. GitHub needs code scanning enabled on the repository (a paid feature on private repositories). | 1–2 days | Shipped (#151). The GitHub upload step has not been exercised against a real repository |
+| 3 | Customer-defined checks | scanners with extension ecosystems (ZAP, Burp, nuclei) | Let Agency and Tier A accounts add their own nuclei templates, run only against their verified targets. Templates must be restricted to the target's own host, with code and headless modes disabled. | about 1 week | Shipped (#155), API only: no dashboard editor yet, and no template has been run through real nuclei |
+| 4 | Analyst review of a finding | Astra | A "request an analyst review" action on a finding, routed to the operator as a paid add-on. Little engineering; it monetises existing consultancy. | 1–2 days | Started: a "Request validation" button records a request for a human-run test and emails the operator (draft PR #192). Not yet a paid add-on, and no operator view |
 | 5 | Reachability on dependency findings | Snyk | Tag each vulnerable-package finding with whether production code imports the package. Evidence only; never changes severity. | about 1 week | Not started |
 | 6 | Local command line and pre-commit hook | Snyk, ZAP | A `hebrides` command for secrets, lockfile changes and code checks before a push, built on the dependency-diff API and CI script that exist. | 2–3 days for the command line; weeks for an IDE plugin | Not started |
 | 7 | Customer-run scanner agent for internal applications | Burp Suite Enterprise, Invicti, Qualys | A worker container customers run inside their network, outbound HTTPS only. Needs an agent-facing claim and submit API with per-agent tokens (today's workers hold database credentials), and results treated as untrusted. Also answers the fixed-scanner-IP request enterprise buyers make. | 2–3 weeks | Plan once a buyer asks |
 
-Built since: a Prowler wrapper for AWS IAM (PR #158; awaiting a first real-account
-run, OT-46). Still planned: Prowler for Azure and GCP; a
-two-session access-control test with TOTP support for authenticated scans; and
-queue-wait monitoring.
+Built since 2026-10-30: TOTP support for authenticated scans (#156); a Prowler
+wrapper for AWS IAM (#158; awaiting a first real-account run, OT-46); a public
+`/trust` page and a controls-to-evidence map (#157). Still planned: Prowler for
+Azure and GCP; a two-session access-control test; and queue-wait monitoring.
 
 **Not worth building:** an interactive-testing agent inside the customer's
 application (needs a runtime agent per language); researcher-sourced signature
