@@ -21,6 +21,11 @@
 #   HEBRIDES_RESULT_FILE      full JSON result (default hebrides-scan.json)
 #   HEBRIDES_JUNIT_FILE       optional: also write a JUnit XML report here,
 #                             so new findings show in your CI's test view
+#   HEBRIDES_SARIF_FILE       optional: also write a SARIF 2.1.0 report here
+#                             (all findings, not only new ones), for GitHub
+#                             code scanning or any tool that reads SARIF.
+#                             Failing to fetch it only warns; it never changes
+#                             the result of the gate.
 #   HEBRIDES_API_BASE_URL     default https://www.hebridescyber.co.uk
 #
 # Exit codes: 0 passed; 1 blocked by new findings; 2 could not scan (bad
@@ -38,6 +43,7 @@ timeout="${HEBRIDES_TIMEOUT_SECONDS:-540}"
 interval="${HEBRIDES_POLL_SECONDS:-5}"
 result_file="${HEBRIDES_RESULT_FILE:-hebrides-scan.json}"
 junit_file="${HEBRIDES_JUNIT_FILE:-}"
+sarif_file="${HEBRIDES_SARIF_FILE:-}"
 
 # Annotations where the CI understands them; plain lines everywhere else.
 say() {
@@ -135,6 +141,23 @@ blocking=$(jq -r --arg f "$fail_on" "$defs"' if .compared_to_previous_scan == tr
 
 echo "Security score: $score/100"
 echo "Report: $base/dashboard/scans/$scan_id"
+
+# SARIF is a reporting extra: a failed fetch warns and carries on, so it can
+# never turn a passing scan into a failing pipeline (or the reverse). It is
+# written before the first-scan exit below so a baseline scan still reports.
+if [ -n "$sarif_file" ]; then
+  sarif_code=$(api GET "/api/v1/scans/$scan_id/export?format=sarif")
+  case "$sarif_code" in
+    2??)
+      if cp "$body_file" "$sarif_file" 2>/dev/null; then
+        echo "SARIF report written to $sarif_file"
+      else
+        say warning "could not write the SARIF report to $sarif_file; the scan result is unaffected"
+      fi
+      ;;
+    *) say warning "could not fetch the SARIF report (HTTP $sarif_code); the scan result is unaffected" ;;
+  esac
+fi
 
 if [ -n "$junit_file" ]; then
   jq -r --arg f "$fail_on" --arg compared "$compared" "$defs"'
