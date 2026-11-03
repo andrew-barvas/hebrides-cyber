@@ -16,6 +16,7 @@ import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
 import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
+import { runCustomChecksForOwner } from "./customChecks";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
@@ -73,6 +74,7 @@ import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
+import { runProwlerIam } from "../worker/tools/prowlerIam";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -164,7 +166,7 @@ async function runExtendedTools(
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
   crawledUrls: string[] = [],
-  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted. */
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted, ZAP passive-only. */
   nonIntrusive = false
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
@@ -215,7 +217,7 @@ async function runExtendedTools(
     toolConfig.nuclei
       ? runNuclei(targetUrl, detectedTechnologies, { nonIntrusive })
       : Promise.resolve({ status: "not_configured" as const, findings: [] as Finding[] }),
-    toolConfig.zap ? runZap(targetUrl) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
+    toolConfig.zap ? runZap(targetUrl, { passiveOnly: nonIntrusive }) : Promise.resolve({ status: "not_configured" as const, alerts: [] as never[] }),
     toolConfig.sqlmap
       ? runSqlmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, vulnerable: false as const, findings: [] as never[] }),
@@ -454,6 +456,11 @@ async function runExtendedTools(
       });
     }
   }
+
+  // The account's own nuclei checks (Agency and Tier A), run only where nuclei
+  // is, and never under a non-intrusive profile: a customer template may send
+  // POST bodies and payload lists, which the exposure profile promises not to.
+  if (toolConfig.nuclei && !nonIntrusive) findings.push(...(await runCustomChecksForOwner(supabaseAdmin, ownerId, targetUrl)));
 
   // ZAP's own alert.solution is real, evidenced, per-finding remediation
   // from its own knowledge base — runZap() (src/worker/tools/zap.ts) attaches
@@ -1081,6 +1088,27 @@ export async function executeScan(
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).cloudPosture = { status: "error", note: "Cloud posture check failed" };
+        }
+      }
+
+      // Prowler IAM / privilege-escalation posture (src/worker/tools/prowlerIam.ts).
+      // Same reason to live here: it needs supabaseAdmin + ownerId. Findings
+      // from a partly failed run are still real evidence, so they are kept;
+      // the "error" status stops them (and last scan's) being read as fixed.
+      if (toolConfig.prowler) {
+        try {
+          const pr = await runProwlerIam(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).prowler = pr;
+          if ("findings" in pr && pr.findings.length > 0) {
+            for (const finding of pr.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+            }
+            findings.push(...pr.findings);
+            for (const f of pr.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
         }
       }
     }

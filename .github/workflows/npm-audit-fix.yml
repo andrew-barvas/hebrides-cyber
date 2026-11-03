@@ -1,0 +1,106 @@
+name: npm audit fix
+
+# Resolves npm advisories automatically where it is safe to, as a pull request.
+#
+# dependency-audit.yml reports advisories (and fails on high/critical in
+# production dependencies); Dependabot raises version PRs. This job closes the
+# gap between the two: every week it runs `npm audit fix` WITHOUT --force, so
+# only semver-compatible versions are installed, and opens or refreshes one
+# rolling pull request (branch deps/npm-audit-fix) with the lockfile change.
+# That PR runs the full deploy.yml gate like any other.
+#
+# What `npm audit fix` cannot do without a breaking (major) upgrade is listed in
+# the PR body and the job summary. The weekly Claude maintenance routine picks
+# those up, makes the major upgrade with the code changes it needs, and fixes
+# anything this PR's CI shows broken. Nothing is merged automatically.
+#
+# GH_PAT (optional) is used to push and open the PR so that its CI runs; with
+# the default token the PR opens but its checks need a close-and-reopen.
+
+on:
+  schedule:
+    # Mondays 06:47 UTC, after dependency-audit.yml's weekly run.
+    - cron: "47 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-audit-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    defaults:
+      run:
+        working-directory: hebridescyber-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Advisories before
+        run: npm audit --audit-level=none > /tmp/before.txt 2>&1 || true
+
+      - name: npm audit fix (semver-compatible only)
+        run: npm audit fix --no-fund || true
+
+      - name: Advisories after
+        run: |
+          npm audit --audit-level=none > /tmp/after.txt 2>&1 || true
+          {
+            echo "### npm audit fix"
+            echo
+            echo "**Before:** $(tail -n 3 /tmp/before.txt | tr '\n' ' ')"
+            echo
+            echo "**Still open after a semver-compatible fix:**"
+            echo
+            echo '```'
+            cat /tmp/after.txt
+            echo '```'
+          } | tee /tmp/body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or refresh the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          USING_PAT: ${{ secrets.GH_PAT != '' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "npm audit fix changed nothing." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch=deps/npm-audit-fix
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add package.json package-lock.json
+          git commit -m "deps: npm audit fix (semver-compatible)"
+          # One rolling branch: each week's run replaces the last unmerged one.
+          git push --force "$remote" "HEAD:refs/heads/$branch"
+          {
+            echo
+            echo "Opened by \`.github/workflows/npm-audit-fix.yml\`. Lockfile-only, semver-compatible changes from \`npm audit fix\` (no \`--force\`). Advisories that need a major upgrade are left for the weekly Claude maintenance routine or a session."
+          } >> /tmp/body.md
+          gh label create npm-audit-fix --color 0e8a16 --description "Automated npm audit fix" --force > /dev/null
+          existing=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file /tmp/body.md
+            echo "Refreshed PR #$existing" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base "${GITHUB_REF_NAME}" --head "$branch" --title "deps: npm audit fix (semver-compatible)" --body-file /tmp/body.md --label npm-audit-fix
+          fi
+          if [ "$USING_PAT" != "true" ]; then
+            echo "::warning::GH_PAT is not set, so CI did not start on the npm-audit-fix PR. Close and reopen it to run it."
+          fi

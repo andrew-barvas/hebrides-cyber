@@ -82,6 +82,12 @@ flowchart TB
     T3 -.-> N1
 ```
 
+> **`monitored_targets.criticality` / `.environment` (067).** `low | normal |
+> high` (default `normal`) and `production | staging | development | test` (or
+> null). They weight the estate "fix this first" rank (`estatePriority.ts`).
+> Owner-writable under 026's UPDATE policy like `scan_profile`; team members
+> can read but not change them.
+
 > **Review findings referenced:** S-1/S-2 (plaintext credentials-at-rest) and the
 > dead org/RBAC/SSO schema are detailed in
 > [`PRODUCT-REVIEW-2026-10.md`](PRODUCT-REVIEW-2026-10.md) (Phase 6 / Phase 1).

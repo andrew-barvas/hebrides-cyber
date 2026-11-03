@@ -25,8 +25,9 @@ import { COMPLIANCE_REPORT_DISCLAIMER, generateComplianceReport, withComplianceR
 import { partitionByTriage, TRIAGE_STATE_LABELS, type TriageIndex } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
 import { confirmedProof } from "./proofEvidence";
-import { ATTACK_ATTRIBUTION, getAttackRefs, getCweIds } from "./scanners/attackMap";
+import { ATTACK_ATTRIBUTION, getAttackRefs, getCweIds, getWhatToLog, type AttackRef } from "./scanners/attackMap";
 import { evidenceSummary, readEvidence } from "./findingEvidence";
+import { signedInCrawlStatus } from "./signedInCrawlStatus";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
 
@@ -128,6 +129,10 @@ export function incompleteChecks(results: Record<string, unknown> | null): { nam
     const status = (value as { status?: unknown }).status;
     if (typeof status === "string" && NOT_RUN.has(status)) out.push({ name, status: status as keyof typeof STATUS_WORDS });
   }
+  // Nested under extended.authCheck, so the loop above never sees it.
+  const signedIn = signedInCrawlStatus(results);
+  if (signedIn?.state === "failed") out.push({ name: "signed-in crawl", status: "error" });
+  else if (signedIn?.state === "partial") out.push({ name: "signed-in crawl", status: "partial" });
   return out;
 }
 
@@ -137,6 +142,27 @@ function severityCounts(findings: Finding[]): Record<Finding["severity"], number
   const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   for (const f of findings) counts[f.severity]++;
   return counts;
+}
+
+/**
+ * "What to log" guidance for the IT supplier: each ATT&CK technique the open
+ * findings map to, most urgent finding first, with the logs that would record
+ * its use. Reconnaissance techniques have nothing to log and are listed apart.
+ */
+export function collectWhatToLog(findings: Finding[]): { logged: (AttackRef & { sources: string[] })[]; recon: AttackRef[] } {
+  const seen = new Set<string>();
+  const logged: (AttackRef & { sources: string[] })[] = [];
+  const recon: AttackRef[] = [];
+  for (const f of prioritise(findings)) {
+    for (const ref of findingRefs(f).attack) {
+      if (seen.has(ref.id)) continue;
+      seen.add(ref.id);
+      const sources = getWhatToLog(ref.id);
+      if (sources.length) logged.push({ ...ref, sources });
+      else recon.push(ref);
+    }
+  }
+  return { logged, recon };
 }
 
 export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
@@ -175,6 +201,16 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
     return `<p class="muted refs"><b>Why it matters:</b> ${parts.join(" · ")}</p>`;
   };
   const usesAttack = open.some((f) => findingRefs(f).attack.length > 0);
+  const toLog = collectWhatToLog(open);
+  const whatToLogHtml =
+    toLog.logged.length || toLog.recon.length
+      ? `<h2>What to log</h2>
+       <p class="muted">For your IT supplier: logs that would record an attacker using these exposures. Fixing the exposure comes first; logging tells you whether it was used before you did.</p>
+       ${toLog.logged.length ? `<table><thead><tr><th>Technique</th><th>Logs to keep</th></tr></thead><tbody>${toLog.logged
+         .map((t) => `<tr><td><a href="${e(t.url)}">${e(t.id)}</a> ${e(t.name)}</td><td>${t.sources.map(e).join("<br>")}</td></tr>`)
+         .join("")}</tbody></table>` : ""}
+       ${toLog.recon.length ? `<p class="muted">${toLog.recon.map((t) => `${e(t.id)} ${e(t.name)}`).join("; ")}: information gathering that happens outside your systems, so there is nothing to log. Reduce what your site discloses instead.</p>` : ""}`
+      : "";
 
   const countChips = SEVERITY_ORDER.map((s) => `<div class="chip"><b style="color:${SEVERITY_COLOUR[s]}">${counts[s]}</b><span>${e(s)}</span></div>`).join("");
 
@@ -292,6 +328,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   <tbody>${rows || '<tr><td colspan="5">No open findings.</td></tr>'}</tbody></table>
   ${usesAttack ? `<p class="muted">ATT&amp;CK techniques show how an adversary could use an exposure, to help decide what to fix first. ${e(ATTACK_ATTRIBUTION)}</p>` : ""}
 
+  ${whatToLogHtml}
   ${acceptedHtml}
   ${incompleteHtml}
 
