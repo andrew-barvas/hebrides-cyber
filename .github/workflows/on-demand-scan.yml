@@ -32,6 +32,7 @@ name: On-Demand Scan
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  - to claim/run/write the job
 #   AZURE_OPENAI_*                            - optional, AI scan summary
 #   WPSCAN_API_TOKEN                          - optional, WordPress plugin CVE match
+#   NVD_API_KEY                               - optional, raises NVD's rate limit
 #   GOOGLE_SAFE_BROWSING_API_KEY              - optional, malware/phishing check
 #   HIBP_API_KEY                              - optional, breach exposure check
 #   RESEND_API_KEY                            - post-scan emails (alerts, scan complete)
@@ -101,6 +102,7 @@ jobs:
           CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
           WORKER_ID: gha-ondemand-${{ github.run_id }}
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
           HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
         run: npm run queue:run-worker
