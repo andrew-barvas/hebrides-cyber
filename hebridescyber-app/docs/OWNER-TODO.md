@@ -79,6 +79,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-49 | Let automated update PRs run CI (`GH_PAT` scope) and turn on Dependabot security alerts | 🟡 Medium | Open | 2026-11-01 | |
+| OT-50 | Scanner tool licences: WPScan commercial terms, sqlmap/nmap "derived work" wording, Nikto data files | 🟠 High | Decision | 2026-11-01 | |
 | OT-51 | Exploit: go or no-go on the product (P-07), given OT-13 is the gating cost | 🟢 Strategic | Decision | 2026-11-02 | |
 | OT-52 | Exploit: confirm engagements are booked by hand only, never self-serve checkout | 🟢 Low | Decision | 2026-11-02 | |
 | OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
@@ -711,7 +712,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-31 (Copilot plan reconciliation in `LAUNCH-PRIORITY.md`).
 
-### OT-49: Automated update PRs and Dependabot alerts 🟡
+### OT-49: Automated update PRs and Dependabot alerts 🟠
 - **What and why:** two new weekly workflows open pull requests on their own:
   `scanner-tool-updates.yml` (one PR per scanner tool with a newer release)
   and `npm-audit-fix.yml` (a rolling `npm audit fix` PR). A PR opened with
@@ -720,10 +721,14 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   alerts and Dependabot security updates switched off (checked 2026-11-01),
   so the security-update PRs `dependabot.yml`'s comment expects never open.
 - **How:**
-  1. Make sure `GH_PAT` can push branches and open PRs on this repository
-     (fine-grained token: Contents and Pull requests, read and write), or
-     replace it with one that can. It is also used to dispatch
-     `on-demand-scan.yml`, so keep the Actions permission it has.
+  1. Replace `GH_PAT`. On 2026-11-01 the first "Scanner tool updates" run
+     failed in every update job with `fatal: Authentication failed`, so the
+     current value is expired, revoked or has no access to this repository.
+     The new token needs Contents, Pull requests and **Workflows** (read and
+     write): every tool bump edits files under `.github/workflows`, which
+     GitHub's built-in Actions token can never push, so there is no fallback.
+     It is also used to dispatch `on-demand-scan.yml`, so give it Actions
+     (read and write) too.
   2. Settings → Code security: turn on Dependabot alerts and Dependabot
      security updates.
 - **Verify:** Actions → "Scanner tool updates" → Run workflow. The PRs it
@@ -732,6 +737,43 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   reports `"enabled": true`.
 - **Raised:** 2026-11-01.
 
+### OT-50: Scanner tool licences 🟠
+- **What and why:** every scanner tool's upstream licence was checked on
+  2026-11-01 (the full list is the last column of `SCANNER-INVENTORY.md`
+  A(a)). Most are MIT, Apache-2.0 or GPL tools that we run unmodified as
+  separate programs, which is fine for a hosted service. Four need a legal
+  read before we sell more:
+  1. **WPScan CLI** (`wpscan.ts`, run in the opt-in `cms` profile). Its
+     WPScan Public Source License lists "Using WPScan to provide commercial
+     managed/Software-as-a-Service services" as commercial use that needs a
+     paid licence (contact@wpscan.com). Running it for paying customers
+     probably falls under that.
+  2. **sqlmap and nmap.** Both licences add their own reading of "derived
+     work": any program that executes the tool and parses its results. Our
+     wrappers (`sqlmap.ts`, `nmap.ts`, `networkExposure.ts`) do exactly that.
+     GPL obligations attach to distribution, and we host rather than
+     distribute, but both projects sell commercial licences for this case.
+     nmap's NPSL §6 also requires a hosted service to show a "uses the Nmap
+     Security Scanner" notice. That is now on `/what-we-check` and in
+     `USER-GUIDE.md` §3.1.
+  3. **Nikto** (opt-in wrapper being added). The code is GPL-3.0, but its
+     `databases/` files "are licensed for use with Nikto only" and "may not
+     be reused without written consent from CIRT.net". Running Nikto
+     unmodified with its own databases looks like use with Nikto. CIRT.net's
+     licensing page (cirt.net/Nikto-Licensing) returned 404 on 2026-11-01, so
+     its commercial terms could not be read.
+  4. **AGPL-3.0 tools** (hydra, kiterunner, Arjun, badsecrets). They run
+     unmodified, so the AGPL network clause, which covers modified
+     versions, should not apply. Keep them unmodified.
+- **Your call:** for WPScan, buy a commercial licence or take the CLI out of
+  the `cms` profile (WordPress checks still run through `webapp.ts` and the
+  WPScan vulnerability API, whose own terms also need checking against your
+  `WPSCAN_API_TOKEN` plan). For sqlmap and nmap, get a solicitor's view
+  alongside OT-13 or ask the projects. For Nikto, email CIRT.net before
+  marketing it.
+- **Verify:** a decision recorded here per tool; any licence bought noted in
+  `THIRD-PARTY-NOTICES.md`.
+- **Raised:** 2026-11-01 (licence audit of the Copilot tool list).
 ### OT-51: Exploit go or no-go 🟢
 - **What and why:** Exploit (`PRODUCT-IDEAS.md` P-07,
   `EXPLOIT-PRODUCT-PLAN.md`) sells authorised, contracted penetration tests on
