@@ -1,15 +1,31 @@
-# --- Always-on scan workers with a fixed source IP (P1-1) ---
+# --- Always-on scan workers, with an optional fixed source IP (P1-1) ---
 #
 # The queue loop (src/scripts/run-queued-scan-jobs.ts) as an Azure Container
 # Apps Job, built from the Dockerfile's `scan-worker` stage, started by a KEDA
-# rule whenever scan_jobs rows are pending, with all egress leaving through a
-# NAT gateway on one static public IP. That IP is what customers allowlist in
-# their WAF and what /trust publishes (src/lib/scannerEgress.ts).
+# rule whenever scan_jobs rows are pending.
+#
+# The fixed source IP is a switch, off by default to keep this free for now:
+#   scan_static_egress_ip = false (default): the job runs in a workload
+#     profiles environment with Azure-managed egress. Outbound addresses are
+#     Microsoft's, can change, and are not ours alone, so nothing is published
+#     and /trust says so. Cost: the Consumption profile's monthly free grant
+#     (180,000 vCPU-seconds and 360,000 GiB-seconds per subscription, about 12
+#     hours of this 4 vCPU / 8 GiB job), then per second of use.
+#   scan_static_egress_ip = true: adds a VNet, a subnet, an NSG and a NAT
+#     gateway on one static public IP, and moves the environment onto that
+#     subnet, so every scan leaves from that one address. That is the address
+#     customers allowlist and /trust publishes (src/lib/scannerEgress.ts).
+#     Cost at list price, East US 2: ~$33/month for the NAT gateway plus
+#     $0.045/GB processed, ~$3.65/month for the IP. Turning it on REPLACES the
+#     environment and the job (a subnet can't be added to an existing
+#     environment); they hold no state, so that is safe. Once on, the IP has
+#     prevent_destroy: turning it back off fails the plan by design, because
+#     losing the address breaks every customer allowlist.
 #
 # Replaces nothing yet: .github/workflows/scheduled-scans.yml stays as the
 # fallback and works the same queue (claim_scan_job() is SKIP LOCKED, so two
-# paths never run one job twice). docs/RUNBOOK.md "Scan workers" has the
-# apply/deploy steps and the cut-over.
+# paths never run one job twice). docs/RUNBOOK.md 6.18 has the apply/deploy
+# steps and the cut-over.
 #
 # NOT APPLIED. Same caveats as main.tf: review with `terraform plan`, and
 # target these resources rather than applying the whole file, which also holds
@@ -18,19 +34,20 @@
 #   terraform plan -target=azurerm_container_app_job.scan_worker \
 #     -target=azurerm_subnet_nat_gateway_association.scan_workers \
 #     -target=azurerm_subnet_network_security_group_association.scan_workers
-# (the targets pull in everything they depend on).
+# (the targets pull in everything they depend on; the last two are empty
+# while the switch is off).
 #
 # Why a second Container Apps environment rather than the existing
-# azurerm_container_app_environment.main: a NAT gateway needs the environment
-# on a subnet of our own VNet, which on Container Apps means a workload
-# profiles environment, and adding a subnet to an existing environment
-# replaces it. Keeping the web app's environment untouched also keeps scan
+# azurerm_container_app_environment.main: the job needs a workload profiles
+# environment, and the NAT gateway needs that environment on a subnet of our
+# own VNet. Keeping the web app's environment untouched also keeps scan
 # traffic and the web app's egress apart.
-#
-# Cost at list price, East US 2: the NAT gateway (~$33/month plus $0.045/GB
-# processed) and the Standard static IP (~$3.65/month) are fixed. Executions
-# bill per second of vCPU and memory on the Consumption profile, and nothing
-# runs while the queue is empty (min_executions = 0).
+
+variable "scan_static_egress_ip" {
+  description = "Route scan egress through a NAT gateway on one static public IP (~$37/month). Off: Azure-managed egress, nothing to publish."
+  type        = bool
+  default     = false
+}
 
 variable "scan_worker_vnet_cidr" {
   description = "Address space of the scan workers' VNet. Only needs to avoid overlapping a network it is ever peered with."
@@ -100,6 +117,8 @@ resource "random_password" "zap_api_key" {
 }
 
 resource "azurerm_public_ip" "scan_egress" {
+  count = var.scan_static_egress_ip ? 1 : 0
+
   name                = "hebridescyber-scan-egress-ip"
   resource_group_name = data.azurerm_resource_group.existing.name
   location            = data.azurerm_resource_group.existing.location
@@ -114,6 +133,8 @@ resource "azurerm_public_ip" "scan_egress" {
 }
 
 resource "azurerm_nat_gateway" "scan_egress" {
+  count = var.scan_static_egress_ip ? 1 : 0
+
   name                = "hebridescyber-scan-egress-nat"
   resource_group_name = data.azurerm_resource_group.existing.name
   location            = data.azurerm_resource_group.existing.location
@@ -123,11 +144,15 @@ resource "azurerm_nat_gateway" "scan_egress" {
 }
 
 resource "azurerm_nat_gateway_public_ip_association" "scan_egress" {
-  nat_gateway_id       = azurerm_nat_gateway.scan_egress.id
-  public_ip_address_id = azurerm_public_ip.scan_egress.id
+  count = var.scan_static_egress_ip ? 1 : 0
+
+  nat_gateway_id       = azurerm_nat_gateway.scan_egress[0].id
+  public_ip_address_id = azurerm_public_ip.scan_egress[0].id
 }
 
 resource "azurerm_virtual_network" "scan_workers" {
+  count = var.scan_static_egress_ip ? 1 : 0
+
   name                = "hebridescyber-scan-vnet"
   resource_group_name = data.azurerm_resource_group.existing.name
   location            = data.azurerm_resource_group.existing.location
@@ -135,9 +160,11 @@ resource "azurerm_virtual_network" "scan_workers" {
 }
 
 resource "azurerm_subnet" "scan_workers" {
+  count = var.scan_static_egress_ip ? 1 : 0
+
   name                 = "scan-workers"
   resource_group_name  = data.azurerm_resource_group.existing.name
-  virtual_network_name = azurerm_virtual_network.scan_workers.name
+  virtual_network_name = azurerm_virtual_network.scan_workers[0].name
   address_prefixes     = [var.scan_worker_subnet_cidr]
 
   delegation {
@@ -150,22 +177,28 @@ resource "azurerm_subnet" "scan_workers" {
 }
 
 resource "azurerm_subnet_nat_gateway_association" "scan_workers" {
-  subnet_id      = azurerm_subnet.scan_workers.id
-  nat_gateway_id = azurerm_nat_gateway.scan_egress.id
+  count = var.scan_static_egress_ip ? 1 : 0
+
+  subnet_id      = azurerm_subnet.scan_workers[0].id
+  nat_gateway_id = azurerm_nat_gateway.scan_egress[0].id
 }
 
 # Nothing listens in this subnet: the job has no ingress. The default rules
 # already deny inbound from the internet and allow outbound, which is what the
 # workers need; the group exists so that stays explicit and auditable.
 resource "azurerm_network_security_group" "scan_workers" {
+  count = var.scan_static_egress_ip ? 1 : 0
+
   name                = "hebridescyber-scan-workers-nsg"
   resource_group_name = data.azurerm_resource_group.existing.name
   location            = data.azurerm_resource_group.existing.location
 }
 
 resource "azurerm_subnet_network_security_group_association" "scan_workers" {
-  subnet_id                 = azurerm_subnet.scan_workers.id
-  network_security_group_id = azurerm_network_security_group.scan_workers.id
+  count = var.scan_static_egress_ip ? 1 : 0
+
+  subnet_id                 = azurerm_subnet.scan_workers[0].id
+  network_security_group_id = azurerm_network_security_group.scan_workers[0].id
 }
 
 resource "azurerm_container_app_environment" "scan_workers" {
@@ -173,17 +206,20 @@ resource "azurerm_container_app_environment" "scan_workers" {
   resource_group_name        = data.azurerm_resource_group.existing.name
   location                   = data.azurerm_resource_group.existing.location
   log_analytics_workspace_id = azurerm_log_analytics_workspace.container_apps.id
-  infrastructure_subnet_id   = azurerm_subnet.scan_workers.id
-  # No app in this environment takes requests, so nothing gets a public endpoint.
-  internal_load_balancer_enabled = true
+  # On our subnet only with the static IP; otherwise Azure manages the network.
+  infrastructure_subnet_id = var.scan_static_egress_ip ? azurerm_subnet.scan_workers[0].id : null
+  # No app in this environment takes requests, so nothing gets a public
+  # endpoint. Only settable on an environment in our own subnet.
+  internal_load_balancer_enabled = var.scan_static_egress_ip ? true : null
 
   workload_profile {
     name                  = "Consumption"
     workload_profile_type = "Consumption"
   }
 
-  # Egress only leaves through the NAT gateway once the subnet is attached to
-  # it, so the environment must not exist (and run a job) before that.
+  # With the static IP on, egress only leaves through the NAT gateway once the
+  # subnet is attached to it, so the environment must not exist (and run a
+  # job) before that. An empty dependency while the switch is off.
   depends_on = [azurerm_subnet_nat_gateway_association.scan_workers]
 }
 
@@ -335,8 +371,8 @@ resource "azurerm_container_app_job" "scan_worker" {
 }
 
 output "scan_egress_ip" {
-  description = "The scan workers' source IP. Publish it in src/lib/scannerEgress.ts once applied."
-  value       = azurerm_public_ip.scan_egress.ip_address
+  description = "The scan workers' fixed source IP; null while scan_static_egress_ip is off. Publish it in src/lib/scannerEgress.ts once applied."
+  value       = var.scan_static_egress_ip ? azurerm_public_ip.scan_egress[0].ip_address : null
 }
 
 output "scan_worker_job_name" {

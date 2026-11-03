@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { publishedScannerIps } from "@/lib/scannerEgress";
 
 // The "Where our scans come from" section of /trust. Renders inside the page's
@@ -27,9 +28,9 @@ export default function ScanSourceIps({ ips = publishedScannerIps() }: { ips?: s
         </>
       ) : (
         <p>
-          We are moving our scanners onto a fixed source address that you can allowlist. It is not published yet,
-          and we will list it here when it is live. Until then, scans come from GitHub&apos;s shared cloud
-          addresses, which change and are not ours alone.
+          We do not scan from a fixed address yet. Scans come from shared cloud addresses that change and are not
+          ours alone, so they cannot usefully be allowlisted by IP. A fixed address is ready to switch on: if your
+          WAF or firewall needs one, <Link href="/contact">tell us</Link>.
         </p>
       )}
     </>
