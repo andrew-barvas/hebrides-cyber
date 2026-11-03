@@ -11,6 +11,7 @@
 import { appendFileSync } from "node:fs";
 import { createScriptSupabase } from "../lib/scriptSupabase";
 import {
+  FIX_FIRST_IN_REPORT,
   isReportDue,
   pdfReportDue,
   runDueReport,
@@ -18,6 +19,7 @@ import {
   type ScheduledReport,
 } from "../lib/scheduledReports";
 import { sendEmail } from "../lib/email";
+import { loadFixFirstList } from "../lib/estatePriority";
 import { planGate } from "../lib/planAccess";
 import { htmlToPdf } from "../lib/reportPdf";
 
@@ -68,7 +70,13 @@ async function main() {
 
   for (const report of due) {
     try {
-      const outcome = await runDueReport(supabaseAdmin, report, { siteUrl, renderPdf: htmlToPdf, send: sendEmail, planCheck });
+      const outcome = await runDueReport(supabaseAdmin, report, {
+        siteUrl,
+        renderPdf: htmlToPdf,
+        send: sendEmail,
+        planCheck,
+        loadFixFirst: (ownerId, host) => loadFixFirstList(supabaseAdmin, ownerId, { limit: FIX_FIRST_IN_REPORT, host }),
+      });
       switch (outcome.kind) {
         case "not_entitled":
           lapsed++;
