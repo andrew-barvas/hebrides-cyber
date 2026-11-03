@@ -142,23 +142,25 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure"
 // The `exposure` profile's whole tool list, and its ceiling: the managed
 // exposure review (Lookout, docs/DEFENSIVE-ASSESSMENT-PLAN.md) is sold as
 // "no exploitation, no test payloads", so nothing that sends one may run under
-// it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP (its
-// wrapper runs an active scan, not passive rules only), the offensive-only
-// suite, and proof-of-exploit re-checks (see isNonIntrusiveProfile). Only tools
-// with a real-binary *.integration.test.ts are listed (CLAUDE.md rule 15).
-// subdomains has none (subfinder only queries third-party sources, so there is
-// no hermetic target), and the base suite already covers certificate-
-// transparency subdomains. nuclei and deepTls run in their non-intrusive modes
-// here: nuclei without the payload-sending baseline tags (nuclei.ts), and
-// testssl.sh without its Heartbleed, CCS, Ticketbleed and ROBOT probes
-// (deepTls.ts). metadataLeak needs no binary; under this profile it reads only
-// the documents the base crawl recorded, since gospider, photon and katana are
-// left out: they don't honour robots.txt, which the Lookout copy promises.
+// it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP's AJAX
+// spider, the offensive-only suite, and proof-of-exploit re-checks (see
+// isNonIntrusiveProfile). Only tools with a real-binary *.integration.test.ts
+// are listed (CLAUDE.md rule 15). subdomains has none (subfinder only queries
+// third-party sources, so there is no hermetic target), and the base suite
+// already covers certificate-transparency subdomains. nuclei, deepTls and ZAP
+// run in their non-intrusive modes here: nuclei without the payload-sending
+// baseline tags (nuclei.ts), testssl.sh without its Heartbleed, CCS,
+// Ticketbleed and ROBOT probes (deepTls.ts), and ZAP passive-only (zap.ts):
+// spider and passive rules, never the active scanner. metadataLeak needs no
+// binary; under this profile it reads only the documents the base crawl
+// recorded, since gospider, photon and katana are left out: they don't honour
+// robots.txt, which the Lookout copy promises.
 export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
   "httpx",
   "networkExposure",
   "nmap",
   "nuclei",
+  "zap",
   "deepTls",
   "metadataLeak",
 ]);
@@ -166,7 +168,8 @@ export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToo
 /**
  * Profiles that must never send a test payload: no injection testers, no
  * active scan, no proof-of-exploit re-check. `safe` runs no extended tools at
- * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei and deepTls restricted.
+ * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei and deepTls restricted
+ * and ZAP passive-only.
  */
 export function isNonIntrusiveProfile(profile: ScanProfile): boolean {
   return profile === "safe" || profile === "exposure";
