@@ -16,9 +16,16 @@
 // Login brute-force protection doesn't belong here either: credentials go
 // from the browser straight to Supabase Auth (src/lib/auth.ts), which
 // rate-limits its own endpoints. tests/e2e/dashboard.spec.ts covers both halves.
+//
+// 3. Product sub-sites (src/lib/productSites.ts): lookout.* and exploit.* are
+//    rewritten to their page in this app, and any other path on those hosts is
+//    redirected to the main site. Runs first, but the rewritten page still gets
+//    the nonce and CSP. A product page kept out of search gets X-Robots-Tag on
+//    whichever host serves it.
 import { NextRequest, NextResponse } from "next/server";
 import { createMiddlewareClient } from "@/lib/supabase/middleware";
 import { buildCsp, generateNonce } from "@/lib/csp";
+import { isNoindexPath, routeProductSite } from "@/lib/productSites";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/admin", "/account"];
 
@@ -34,8 +41,18 @@ export async function proxy(original: NextRequest) {
   requestHeaders.set("Content-Security-Policy", csp);
   const req = new NextRequest(original, { headers: requestHeaders });
 
+  const productRoute = routeProductSite(original.headers.get("host"), original.nextUrl.pathname, original.nextUrl.search);
+  if (productRoute?.kind === "redirect") {
+    return NextResponse.redirect(new URL(productRoute.url, original.nextUrl), 308);
+  }
+
   let response: NextResponse;
-  if (isProtectedPath(req.nextUrl.pathname)) {
+  if (productRoute?.kind === "rewrite") {
+    const target = req.nextUrl.clone();
+    target.pathname = productRoute.pathname;
+    response = NextResponse.rewrite(target, { request: req });
+    if (!productRoute.indexable) response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  } else if (isProtectedPath(req.nextUrl.pathname)) {
     const { supabase, response: base } = createMiddlewareClient(req);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -48,6 +65,7 @@ export async function proxy(original: NextRequest) {
     }
   } else {
     response = NextResponse.next({ request: req });
+    if (isNoindexPath(req.nextUrl.pathname)) response.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
 
   response.headers.set("Content-Security-Policy", csp);
