@@ -6,6 +6,7 @@ import { statusPageUrl } from "@/lib/statusPage";
 // find from anywhere, not only from a link they were sent.
 const resourceLinks = [
   { href: "/check", label: "Free website check" },
+  { href: "/lookout", label: "Lookout: managed exposure review" },
   { href: "/web-check-alternative", label: "NCSC Web Check alternative" },
   { href: "/cyber-essentials", label: "Cyber Essentials readiness" },
   { href: "/ai-threats", label: "AI-driven threats" },

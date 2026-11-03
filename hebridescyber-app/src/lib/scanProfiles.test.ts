@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { resolveToolConfig, enablesOffensiveTools, isNonIntrusiveProfile, EXTENDED_TOOL_NAMES, OFFENSIVE_ONLY_TOOLS, EXCLUDED_FROM_FULL, EXPOSURE_TOOLS } from "./scanProfiles";
+import { runZap } from "../worker/tools/zap";
 
 describe("resolveToolConfig", () => {
   it("'full' enables every extended tool except the offensive-only suite and the tools excluded from full", () => {
@@ -127,12 +128,12 @@ describe("resolveToolConfig", () => {
 
 describe("'exposure' (managed exposure review)", () => {
   // Sold as "no exploitation, no test payloads" (docs/DEFENSIVE-ASSESSMENT-PLAN.md).
-  const PAYLOAD_TOOLS = ["sqlmap", "commix", "dalfox", "zap", "zapAjaxSpider", "apiSpecInjection", "arjun", "kiterunner", "sessionCheck", ...OFFENSIVE_ONLY_TOOLS] as const;
+  const PAYLOAD_TOOLS = ["sqlmap", "commix", "dalfox", "zapAjaxSpider", "apiSpecInjection", "arjun", "kiterunner", "sessionCheck", ...OFFENSIVE_ONLY_TOOLS] as const;
 
   it("enables exactly its own tool list", () => {
     const config = resolveToolConfig("exposure");
     for (const name of EXTENDED_TOOL_NAMES) expect(config[name], name).toBe(EXPOSURE_TOOLS.has(name));
-    expect([...EXPOSURE_TOOLS].sort()).toEqual(["httpx", "networkExposure", "nmap", "nuclei"]);
+    expect([...EXPOSURE_TOOLS].sort()).toEqual(["httpx", "networkExposure", "nmap", "nuclei", "zap"]);
   });
 
   it("never enables an injection tester, ZAP's active scan or an offensive-only tool", () => {
@@ -154,6 +155,51 @@ describe("'exposure' (managed exposure review)", () => {
     for (const profile of ["full", "api", "cms", "osint", "offensive", "ai-pentest"] as const) {
       expect(isNonIntrusiveProfile(profile), profile).toBe(false);
     }
+  });
+
+  describe("ZAP passive-only mode", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      delete process.env.ZAP_API_URL;
+      delete process.env.ZAP_API_KEY;
+    });
+
+    // Answers each ZAP API call by path, and records every path requested.
+    function stubZap(): string[] {
+      const paths: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+        const path = new URL(url).pathname;
+        paths.push(path);
+        const body: Record<string, unknown> =
+          path === "/JSON/spider/action/scan/" ? { scan: "1" }
+          : path === "/JSON/spider/view/status/" ? { status: "100" }
+          : path === "/JSON/pscan/view/recordsToScan/" ? { recordsToScan: "0" }
+          : path === "/JSON/ascan/action/scan/" ? { scan: "2" }
+          : path === "/JSON/ascan/view/status/" ? { status: "100" }
+          : path === "/JSON/core/view/alerts/" ? { alerts: [{ risk: "Low", name: "Missing header", description: "d", url: "https://example.com/", solution: "s", reference: "" }] }
+          : {};
+        return { ok: true, json: () => Promise.resolve(body) };
+      }));
+      process.env.ZAP_API_URL = "http://localhost:8090";
+      process.env.ZAP_API_KEY = "testkey";
+      return paths;
+    }
+
+    it("spiders, drains the passive queue and reads alerts with no ascan request", async () => {
+      const paths = stubZap();
+      const result = await runZap("https://example.com/", { passiveOnly: isNonIntrusiveProfile("exposure") });
+      expect(result.status).toBe("completed");
+      expect(result.alerts).toHaveLength(1);
+      expect(paths).toContain("/JSON/pscan/view/recordsToScan/");
+      expect(paths.filter((p) => p.includes("/ascan/"))).toEqual([]);
+    });
+
+    it("an active profile still runs the active scan", async () => {
+      const paths = stubZap();
+      const result = await runZap("https://example.com/", { passiveOnly: isNonIntrusiveProfile("full") });
+      expect(result.status).toBe("completed");
+      expect(paths).toContain("/JSON/ascan/action/scan/");
+    });
   });
 });
 
