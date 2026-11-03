@@ -226,31 +226,6 @@ def run_scan(gmp, config_id):
         raise SystemExit(f"scan ended as {status!r}")
 
 
-def wait_for_scap(gmp):
-    """Informational: when gvmd finished importing SCAP (CPE/CVE) and CERT data.
-
-    The scan above does not need them, but a production deployment would, and
-    the import is the heaviest database work gvmd does, so it is where the
-    memory peak is likely to be. Never fails the job.
-    """
-    deadline = time.time() + 25 * 60
-    while time.time() < deadline:
-        counts = {}
-        for kind in ("cve", "cpe", "cert_bund_adv", "dfn_cert_adv"):
-            try:
-                resp = cmd(gmp, f'<get_info type="{kind}" filter="rows=1"/>')
-                counts[kind] = int(text(resp, "info_count/filtered", "0") or 0)
-            except Exception:
-                counts[kind] = 0
-        log(f"SCAP/CERT loaded: {counts}")
-        result["scap_counts"] = counts
-        if all(counts.values()):
-            result["scap_ready_at"] = time.time()
-            return
-        time.sleep(30)
-    log("SCAP/CERT import not finished within 25 minutes")
-
-
 def main(gmp):
     try:
         wait_for_feed(gmp)
@@ -261,8 +236,6 @@ def main(gmp):
         save()
         run_scan(gmp, config_id)
         result["scan_done_at"] = time.time()
-        save()
-        wait_for_scap(gmp)
     except SystemExit as exc:
         result["error"] = str(exc)
         save()
