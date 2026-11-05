@@ -62,6 +62,53 @@ const eslintConfig = [
     },
   },
   {
+    // Exploitability Analysis Engine (docs/EXPLOITABILITY-ENGINE.md §3.6): an
+    // evidence-only analysis layer that must never send network traffic or
+    // call a scanner tool or validator. This is the direct-import half of that
+    // guarantee; importGraph.test.ts catches the transitive case and
+    // noNetwork.test.ts the runtime case. Type-only imports are allowed —
+    // they are erased at compile time. Tests may import node builtins to set
+    // up the traps.
+    files: ["src/lib/exploitability/**/*.ts"],
+    ignores: ["src/lib/exploitability/**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            ...["http", "https", "net", "tls", "dns", "dgram", "child_process", "http2"].flatMap((m) => [
+              { name: m, message: "The exploitability engine sends no network traffic." },
+              { name: `node:${m}`, message: "The exploitability engine sends no network traffic." },
+            ]),
+            { name: "undici", message: "The exploitability engine sends no network traffic." },
+            { name: "@/lib/execTool", message: "The exploitability engine runs no tools." },
+            { name: "@/lib/httpProbe", message: "The exploitability engine sends no network traffic." },
+            { name: "@/lib/scanExecution", message: "The exploitability engine must not reach the scan pipeline." },
+            { name: "@/lib/scanners", message: "Import Finding with `import type` — the pipeline itself is off limits.", allowTypeImports: true },
+          ],
+          patterns: [
+            {
+              group: ["@/lib/scanners/*", "!@/lib/scanners/attackMap", "!@/lib/scanners/compliance"],
+              message: "Only attackMap and compliance (pure lookups) may be imported at runtime; use `import type` for anything else.",
+              allowTypeImports: true,
+            },
+            {
+              group: ["../scanners", "../scanners/*", "../../scanners", "../../scanners/*", "../execTool", "../../execTool", "../scanExecution", "../../scanExecution", "../httpProbe", "../../httpProbe"],
+              message: "Use the @/ alias; relative paths would bypass the exploitability engine's import restrictions.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-globals": [
+        "error",
+        ...["fetch", "WebSocket", "XMLHttpRequest", "EventSource"].map((name) => ({
+          name,
+          message: "The exploitability engine sends no network traffic.",
+        })),
+      ],
+    },
+  },
+  {
     // .cjs config files are CommonJS by definition — require() is correct there.
     files: ["**/*.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
