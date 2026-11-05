@@ -44,7 +44,7 @@ function row(over: Partial<FindingRow> = {}): FindingRow {
   return {
     key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
     severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: daysAgo(10), ageDays: 10, slaState: null, slaDueAt: null,
-    knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: null, triage: null, ...over,
+    knownExploited: false, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: null, triage: null, ...over,
   };
 }
 
@@ -68,7 +68,7 @@ describe("buildFindingRows", () => {
       {
         scanId: "scan-a",
         findings: [
-          { checkId: "nuclei.cve-1", detail: "x".repeat(900), cveIds: ["CVE-2021-1"], threatIntel: { knownExploited: true, ransomware: true, epss: 0.7 } },
+          { checkId: "nuclei.cve-1", detail: "x".repeat(900), cveIds: ["CVE-2021-1"], cvssScore: 9.8, threatIntel: { knownExploited: true, ransomware: true, epss: 0.7 } },
           { checkId: "nuclei.cve-1", detail: "duplicate ignored" },
           { detail: "no check id" },
           { checkId: "headers.hsts", threatIntel: {} },
@@ -82,14 +82,14 @@ describe("buildFindingRows", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       host: "a.example", checkBase: "nuclei.cve-1", category: "nuclei", severity: "critical", ageDays: 20, scanId: "scan-a",
-      knownExploited: true, ransomware: true, epss: 0.7, cveIds: ["CVE-2021-1"], slaState: "breached",
+      knownExploited: true, ransomware: true, epss: 0.7, cvssScore: 9.8, cveIds: ["CVE-2021-1"], slaState: "breached",
     });
     expect(rows[0].detail).toHaveLength(500);
   });
 
   it("keeps a finding the latest scan no longer carries, from its lifecycle row", () => {
     const rows = buildFindingRows([life("b.example", "tls.x", "high", 40, { last_scan_id: "old" })], detail, EMPTY_TRIAGE_INDEX, DEFAULT_SLA_POLICY, NOW);
-    expect(rows[0]).toMatchObject({ detail: null, scanId: "old", knownExploited: false, epss: null, cveIds: [], slaState: "breached" });
+    expect(rows[0]).toMatchObject({ detail: null, scanId: "old", knownExploited: false, epss: null, cvssScore: null, cveIds: [], slaState: "breached" });
     const noScan = buildFindingRows([life("b.example", "tls.x", "high", 1)], detail, EMPTY_TRIAGE_INDEX, null, NOW);
     expect(noScan[0].scanId).toBeNull();
     expect(noScan[0].slaState).toBeNull();
@@ -154,7 +154,7 @@ describe("applyFilters", () => {
 
 describe("parseFindingsQuery", () => {
   it("defaults", () => {
-    expect(parseFindingsQuery({})).toEqual({ filters: DEFAULT_FILTERS, view: "grouped", page: 1, pageSize: 50, format: "json" });
+    expect(parseFindingsQuery({})).toEqual({ filters: DEFAULT_FILTERS, sort: "severity", view: "grouped", page: 1, pageSize: 50, format: "json" });
   });
   it("reads every parameter", () => {
     const q = parseFindingsQuery({
@@ -163,8 +163,13 @@ describe("parseFindingsQuery", () => {
     });
     expect(q).toEqual({
       filters: { site: "shop.example", severities: ["high", "critical"], kev: true, epssMin: 0.25, category: "dns", triage: "snoozed", sla: "due_soon", minAgeDays: 30 },
-      view: "rows", page: 3, pageSize: 20, format: "csv",
+      sort: "severity", view: "rows", page: 3, pageSize: 20, format: "csv",
     });
+  });
+  it("reads sort=priority, which defaults to rows but honours an explicit view", () => {
+    expect(parseFindingsQuery({ sort: "priority" })).toMatchObject({ sort: "priority", view: "rows" });
+    expect(parseFindingsQuery({ sort: "priority", view: "grouped" })).toMatchObject({ sort: "priority", view: "grouped" });
+    expect(parseFindingsQuery({ sort: "random" })).toMatchObject({ sort: "severity", view: "grouped" });
   });
   it("takes the first of repeated parameters and falls back on junk", () => {
     const q = parseFindingsQuery({ kev: "no", epssMin: "7", triage: "nope", sla: "x", minAgeDays: "-1", page: "0", pageSize: "0", severity: "" });
@@ -321,6 +326,8 @@ describe("loadFindingsView", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toMatchObject({ available: true, triageAvailable: true, slaEnabled: true, detailComplete: true, truncated: false });
+    // Exposed for estatePriority's host signals.
+    expect(result.data.detailByHost.size).toBeGreaterThan(0);
     const [a, b] = result.data.rows;
     expect(a).toMatchObject({ host: "a.example", knownExploited: true, scanId: "s2", slaState: "breached" });
     expect(b.triage?.state).toBe("false_positive");
@@ -343,7 +350,7 @@ describe("loadFindingsView", () => {
   it("reports unavailable before migration 043", async () => {
     vi.mocked(hasSlaAccess).mockResolvedValue(false);
     const result = await loadFindingsView(fakeClient(tables({ lifecycle: { data: null, error: { code: "42P01", message: "x" } } })), "o", NOW);
-    expect(result).toEqual({ ok: true, data: { available: false, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [] } });
+    expect(result).toEqual({ ok: true, data: { available: false, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [], detailByHost: new Map() } });
   });
 
   it("fails on any other lifecycle error", async () => {

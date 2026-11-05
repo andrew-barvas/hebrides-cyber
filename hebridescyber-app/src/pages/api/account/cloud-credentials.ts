@@ -10,6 +10,7 @@ import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { encryptCredentials, isCredentialEncryptionConfigured } from "@/lib/credentialEncryption";
+import { respondInternalError } from "@/lib/apiError";
 
 const awsSchema = z.object({
   provider: z.literal("aws"),
@@ -69,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // credentials" rather than 500ing the Dashboard for every Agency
     // account on every load.
     if (error && !isMissingSchemaError(error)) {
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/cloud-credentials", error);
     }
     return res.status(200).json({ credentials: data ?? [] });
   }
@@ -99,7 +100,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "Cloud credentials aren't available on this account yet — try again shortly." });
       }
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/cloud-credentials", error);
     }
     return res.status(200).json({ ok: true });
   }
@@ -131,7 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isMissingSchemaError(error)) {
       return res.status(503).json({ error: "Cloud credentials aren't available on this account yet — try again shortly." });
     }
-    return res.status(500).json({ error: error.message });
+    return respondInternalError(res, "account/cloud-credentials", error);
   }
   return res.status(200).json({ ok: true });
 }

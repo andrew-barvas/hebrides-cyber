@@ -111,6 +111,12 @@ describe("buildSecretFindings", () => {
     expect(f.remediation).toContain("Rotate the credential first");
   });
 
+  it("records where the secret is as structured metadata, never the value", () => {
+    const [f] = buildSecretFindings("acme/app", [entry()]).findings;
+    expect(f.metadata).toEqual({ ruleId: "aws-access-token", file: "src/config.ts", line: 12 });
+    expect(JSON.stringify(f.metadata)).not.toContain("AKIAIOSFODNN7EXAMPLE");
+  });
+
   it("collapses one secret seen across many commits into one finding", () => {
     const { findings } = buildSecretFindings("acme/app", [entry({ Commit: "c1" }), entry({ Commit: "c2" }), entry({ Commit: "c3" })]);
     expect(findings).toHaveLength(1);

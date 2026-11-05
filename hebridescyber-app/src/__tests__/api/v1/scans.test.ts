@@ -197,7 +197,7 @@ describe("/api/v1/scans", () => {
       m.insertJob = { error: { message: "queue down" } };
       const res = await post();
       expect(res.statusCode).toBe(500);
-      expect(res._getJSONData().error).toContain("queue down");
+      expect(res._getJSONData().error).toBe("Failed to queue scan.");
       expect(m.scanUpdates).toContainEqual({ status: "failed" });
       expect(m.trigger).not.toHaveBeenCalled();
     });

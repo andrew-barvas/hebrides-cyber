@@ -24,6 +24,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { resolveGithubAuth } from "@/lib/githubApp";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   githubRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "githubRepo must look like 'owner/repo'"),
@@ -62,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .eq("github_repo", githubRepo);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/connect-repo", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -115,6 +116,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .from("repo_connections")
     .upsert({ owner: caller.ownerId, github_repo: githubRepo }, { onConflict: "owner,github_repo" });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/connect-repo", error);
   return res.status(200).json({ ok: true, githubRepo });
 }
