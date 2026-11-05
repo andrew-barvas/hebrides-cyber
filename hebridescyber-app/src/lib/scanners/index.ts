@@ -38,6 +38,7 @@ export { enrichFindingsWithCvss } from "./cvssEnrich";
 export { enrichFindingsWithThreatIntel } from "./threatIntel";
 import { scoreFromPenalties } from "./riskScore";
 import * as FIX from "./remediationText";
+import type { FindingExploitability } from "../exploitability/types";
 
 export type {
   TlsResult, HeadersResult, DnsResult, ExposureResult, FingerprintResult,
@@ -166,6 +167,13 @@ export type Finding = {
   cvssScore?: number;
   /** CVSS v3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H". */
   cvssVector?: string;
+  /**
+   * Exploitability assessment summary (src/lib/exploitability/), applied after
+   * the score is computed. Enrichment only: never changes severity or the
+   * score. Absent = not assessed (no catalogue entry, or a scan stored before
+   * the engine existed) — never read absence as "not exploitable".
+   */
+  exploitability?: FindingExploitability;
   /**
    * Threat intelligence for CVE-backed findings (threatIntel.ts), applied as
    * a final pass like CVSS. CVSS says how bad a flaw *could* be; these say

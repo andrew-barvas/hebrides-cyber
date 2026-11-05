@@ -213,8 +213,10 @@ which is different from `false` (see `threat_intel` above).
 finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
 `expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
-(`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
-as stored).
+(`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitability` and so
+on, camelCase as stored). `exploitability` (`score`, `band`, `confidence`,
+`modelVersion`) is absent when the finding wasn't assessed, which doesn't mean
+it isn't exploitable.
 
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
