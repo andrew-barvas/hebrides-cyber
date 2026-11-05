@@ -18,12 +18,14 @@ had been right, and the module that settled it.
 
 - [Scan flow, queue and cadence](#scan-flow-two-step-proof-of-ownership-queue-backed)
 - [Scanner pipeline](#scanner-pipeline)
+- [Microsoft 365 / Entra ID posture](#microsoft-365--entra-id-posture-p1-4)
 - [Dependency checks, CI templates, accuracy benchmark](#pull-request-dependency-checks-e-71)
 - [Remediation, tickets, finding lifecycle, alerts, admin panel](#real-remediation-prs-vs-ai-tailored-fixes-vs-static-remediation-text-vs-the-remediation-pack)
 - [Portfolio, findings view, GitHub access, content generation](#portfolio-report-agency)
 - [Sign-up, erasure, secrets at rest, audit log](#sign-up-password-reset-and-auto-provisioned-profiles)
 - [Mobile & PWA, database schema](#mobile--pwa)
 - [Database tests, signed-in e2e, deployment](#deployment)
+- [UI, rate limiting and payments](#ui-rate-limiting-and-payments)
 
 ---
 
@@ -115,6 +117,10 @@ survives only with a quote found in the response and a non-catch-all page. The r
 It never changes severity, score or `findingLifecycle`. Full design: `AI-TRIAGE-DESIGN.md`.
 `sessionCheck.ts` also samples session tokens and `tokenEntropy.ts` (pure) judges them. Burp
 comparison: `BURP-PARITY.md`.
+
+## Microsoft 365 / Entra ID posture (P1-4)
+
+Read-only checks of a customer's Microsoft 365 tenant, the `m365` extended tool (`full`, `osint` and the Lookout `exposure` profile). A Global Administrator consents our multi-tenant Entra app once: `POST /api/account/m365-connect` (Pro and above, session only) returns Microsoft's v2 admin-consent URL with an HMAC-signed `state` and sets an HttpOnly nonce cookie scoped to the callback; `GET /api/account/m365-callback` (no session, IP rate-limited) needs both to match (`m365Consent.ts`), then asks for an app-only token for the returned tenant and checks its `roles` claim against `M365_REQUIRED_APP_ROLES` before saving anything, so neither a forged `tenant` parameter nor a partial consent is stored. `DELETE /api/account/m365-connect` forgets the tenant and tells the admin how to delete our enterprise app, which our read-only permissions can't do. Table `m365_tenants` (migration 068): owner, tenant ID, consent and last-checked times, owner-readable, service-role writes, no secret of the customer's. Our credential is `M365_CLIENT_ID`/`M365_CLIENT_SECRET`, environment only; the token lives for one scan. `scanners/m365Posture.ts` holds one pure function per check over the Graph JSON, so the tests replay hand-built responses; `runM365PostureChecks` runs in `executeScan()` next to `cloudPosture`. Any failed Graph read makes that check, and so the whole `extended.m365` result, `error` (rule 7); evidenced findings from the other checks are still kept. Limits (Graph has no read for them): mailbox-level forwarding, the outbound spam policy and the Purview unified audit switch. Design, permissions, the developer-tenant test plan and the privacy text: `docs/M365-POSTURE.md`.
 
 ## Uptime monitoring (bring your own UptimeRobot)
 
@@ -223,6 +229,16 @@ Before migration 046 every read degrades to "nothing triaged" (`loadTriageIndexF
 
 `/dashboard/findings` (`FindingsExplorer.tsx`, nav item "Findings") lists every open finding across the owner's sites, from `GET /api/findings` (`pages/api/findings/index.ts`, session or key, owner-scoped, paginated, `format=csv` export). All logic is in `src/lib/findingsView.ts`: open = `finding_lifecycle` rows with `resolved_at` null, enriched with the host's latest completed scan (detail, KEV/EPSS — a finding that scan doesn't carry stays listed from its lifecycle row) and `findingTriage.ts`'s active triage (default filter "Not triaged"). Filters: site, severity, KEV, EPSS, category, triage state, SLA state (only with `hasSlaAccess`), age; grouping is by checkId base ("missing HSTS on 7 sites"). Bulk Accept/authorise, False positive and Snooze go through the existing bulk `PUT /api/findings/triage` (200 per request, chunked client-side); nothing reimplements triage. CSV cells go through `csvCell` (formula-safe). Before 043 it answers `available: false`; before 046 triage is absent and bulk actions are disabled; a failed triage read is a 500, never "nothing triaged". `findingsView.ts` has server-only imports, so client code imports types from it only.
 
+## Estate priority: "fix this first" (P1-2)
+
+One ranked list of open findings across every site an account monitors, with a plain-English reason for each position ("High severity, KEV listed, on a high-criticality site"). It is the centrepiece of a Lookout report. All rules are in `src/lib/estatePriority.ts` (pure apart from its two loaders) and run over `findingsView.ts`'s rows, so `finding_lifecycle` decides what is open and active triage (accepted risk, false positive, snoozed) takes a finding out. Info findings (penalty 0) never appear.
+
+`score = findingPenalty()` (`riskScore.ts`, unchanged: severity, CVSS floor, KEV/ransomware, EPSS) `×` site criticality (high 1.5, low 0.6) `×` non-production environment (0.8) `×` internet-facing service (1.3, for `network-exposure.open-port`, `network-exposure.service-cve`, `ports.risky-port`, `nmap.dangerous-port`, `recon.shodan-cves`) `×` host confirmed live (1.1) `×` WAF in front (0.85, web-attack categories only, never a KEV finding). Ties fall back to `compareFindings`. Each multiplier that applies is one factor in the reason. **A missing signal never moves a finding in either direction**: a host not confirmed live isn't treated as down, a site with no WhatWaf verdict isn't treated as unprotected, and a site with no criticality is normal. Host signals come from each host's latest completed scan (the stored findings only — `scan_results` doesn't keep tool output): WAF from `whatwaf.waf-detected`, live from that host's own `headers.*`/`fingerprint.*`/`playwright.*` findings or an `http-probe.live:<host>` finding in any scan.
+
+Criticality and environment are `monitored_targets` columns (067), set per site in `MonitoredTargets.tsx` (Assets) under 026's owner-only UPDATE policy; there is no separate column grant, since that policy already scopes every column to the owner. The values live in `targetCriticality.ts` so browser code doesn't import the server loaders. Before 067 `loadTargetContexts` reports `available: false` and every site ranks as normal; any other read failure is `complete: false` and the list is marked partial, never silently defaulted.
+
+Surfaces: `GET /api/findings?sort=priority` and its public alias `GET /api/v1/findings` (same handler; rows carry `priority { rank, score, base, factors, reason }`, CSV leads with rank/score/reason, grouped view orders groups by their best rank); `FixFirstPanel` on the dashboard overview (top 5); the "Fix first" view in `FindingsExplorer` (`/dashboard/findings?sort=priority`); and the scheduled report's email, PDF and JSON (top 10 via `loadFixFirstList`, scoped to the report's site when it has one; a failed read says so in the report and never blocks it).
+
 ## GitHub access for customer repos
 
 `src/lib/githubApp.ts`'s `resolveGithubAuth(githubRepo)` is the one function every customer-repo-touching module calls (`generate-fix-pr.ts`, `secretScan.ts`, `dependencyManifest.ts`, `dockerBaseImage.ts`, `connect-repo.ts`) — never read `process.env.GITHUB_PAT` directly in a new one. It tries a GitHub App installation token first (per-repo, expires in an hour, resolved live via `GET /repos/{owner}/{repo}/installation` — no webhook or install-callback flow needed), falling back to the shared `GITHUB_PAT` when the App isn't configured or isn't installed on that repo. `GITHUB_PAT` is also used, unrelated to any of this, by `src/lib/onDemandScanTrigger.ts` to dispatch this repo's own `on-demand-scan.yml` — don't conflate the two concerns when reasoning about that token's scope.
@@ -302,6 +318,7 @@ Key tables (all in `sql/migrations/`):
 - `repo_connections` — GitHub repos per user (unique on owner + repo; the most recently connected one is scanned until targets map to repos), gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)
 - `monitored_targets` — agency-tier sites for nightly scheduled scans
 - `contact_enquiries` — contact form submissions; service-role only (no browser RLS policy)
+- `m365_tenants` — the Microsoft 365 tenant an owner consented (`068_m365_tenants.sql`, unique on owner); tenant ID and timestamps only, owner-readable, service-role-write-only — see "Microsoft 365 / Entra ID posture (P1-4)"
 - `verifications` — domain ownership tokens
 - `blog_posts` — both the daily blog and weekly newsletter live here, differentiated only by slug prefix (`cyber-brief-` vs `week-of-`); a row needs both `status = 'published'` and `published_at` non-null to be publicly visible
 - `audit_logs` — see "Audit log" below
@@ -319,3 +336,121 @@ When adding a new scanner check or API route: a unit test belongs alongside it p
 Azure Static Web Apps hybrid mode (not pure static export) is the default, live path. Every route (App Router pages, `pages/api/*`) is served by the managed Next.js server (Oryx-provisioned Functions), which bypasses `staticwebapp.config.json`'s `globalHeaders` entirely — confirmed by curling production and finding CSP/X-Frame-Options/etc. absent even on a 404, with only platform-level HSTS coming through. **Security headers are set in `next.config.mjs`'s own `headers()`**, which runs inside the Next.js response path and is what actually applies in production; `staticwebapp.config.json`'s `globalHeaders` is kept in sync as a fallback for any file served as a pure static asset without hitting the Next server, but is not load-bearing. Keep both files in sync if the header policy changes. `next.config.mjs` also sets `poweredByHeader: false`.
 
 **Alternate path: Azure Container Apps** (`Dockerfile`, `.github/workflows/deploy-containerapp.yml`, the `azurerm_container_registry`/`azurerm_container_app*` resources in `azure/terraform/main.tf`) — exists to get off SWA's Free-tier Functions execution ceiling (the same ceiling that already forced the queue-worker architecture above) without adopting a second cloud. Deliberately parallel, not a migration: `deploy.yml` still owns the live push-to-master deploy; `deploy-containerapp.yml` is `workflow_dispatch`-only. `next.config.mjs`'s `output: 'standalone'` only activates when the Dockerfile's build stage sets `NEXT_OUTPUT_MODE=standalone` — Oryx's SWA build never sets that var, so its build output is untouched by this path's existence. Not yet applied anywhere; see that Terraform block's own comments for the TODOs (globally-unique names, secret values) before a real `terraform apply`.
+
+## UI, rate limiting and payments
+
+Moved verbatim from CLAUDE.md on 2026-11-01.
+
+#### Theme system
+
+Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark`
+to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`.
+Default is dark (cyber theme).
+
+**The cyber tokens are CSS variables, not fixed hex.** The `@theme` block in
+`src/app/globals.css` maps them to `rgb(var(--c-*))` (Tailwind 4 has no
+`tailwind.config`; it builds `/50` opacity modifiers with `color-mix()`, so no
+`<alpha-value>` placeholder is needed), and the `:root` / `.dark` blocks in the
+same file hold the two palettes. This is what makes light mode work: any
+surface built from these tokens re-themes automatically, with no `dark:`
+variant on any of the ~700 usages.
+
+**Tailwind 4 cascade-layer rule (easy to break, silent when you do).** In v4
+utilities live in a CSS layer, and *unlayered* CSS beats every layered rule
+whatever its specificity. So any element-level rule in `globals.css` (`html`,
+`body`, `a, button`, `input`, `:focus-visible`…) must sit inside `@layer base`,
+or it will override a component's own `h-6` / `min-h-0` / `text-sm` /
+`focus-visible:outline-none`. Custom classes meant to *beat* utilities (the
+light/dark opacity-parity overrides, `.bg-grid`, `.text-glow`) are deliberately
+unlayered. Also: the `next/font` variable is `--font-jetbrains-mono`, not
+`--font-mono` — Tailwind's own `--font-mono` theme variable points at it, and
+naming them the same makes the variable reference itself.
+
+| Token | Role | Light | Dark |
+|-------|------|-------|------|
+| `cyberbg` | page background | `#F6F7F9` | `#070B14` |
+| `cyberpanel` | card/panel background | `#FFFFFF` | `#0D1524` |
+| `cyberborder` | borders on panels | `#D6DCE4` | `#1C2940` |
+| `cybertext` | primary body text | `#2F3A44` | `#FFFFFF` |
+| `neon` | accent, links, glow | `#067A5B` | `#39FFC0` |
+
+Rules when adding UI:
+
+- **Never use `text-white` on a themed surface** — it cannot follow the theme
+  and turns invisible in light mode. Use `text-cybertext`. `text-white` is
+  correct only on a permanently dark background such as `bg-atlantic`.
+- Same for `bg-white/N` and `border-white/N` overlays — use `bg-cybertext/N`.
+- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`,
+  `slatelight`) do not change between themes. Pair them with an explicit text
+  colour rather than letting text inherit.
+- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode
+  (the parity block in `globals.css`). Alpha tuned for white-on-black reads far
+  too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
+- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled
+  right down in light mode.
+
+Three more per-theme tokens meet WCAG AA without the parity overrides above —
+prefer them over alpha steps in new code: `cybermuted` (secondary text),
+`danger`, `warning`. The shadcn/ui names (`bg-primary`,
+`text-muted-foreground`, `border-input`, …) are aliases onto the same variables
+so CLI-generated components render on-brand; don't use them in hand-written
+code.
+
+#### UI primitives
+
+New UI is composed from `src/components/ui/` — the shadcn/ui pattern,
+hand-written against the cyber tokens (lowercase filenames there, matching
+shadcn). Current set: `button` (primary/secondary/ghost/danger; `asChild` to
+style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the
+`// section` overline with the `//` hidden from screen readers), `input`/`label`
+(every input gets a label, `sr-only` if visually redundant), `alert` (danger →
+`role="alert"`, else `role="status"`), `stat-card`, `segmented-control`
+(`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()`
+(`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another
+panel/button/input — the older feature components still do, and migrate
+incrementally.
+
+#### App shell
+
+`src/components/app-shell/AppShell.tsx`, mounted by
+`src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+)
+or scrolling section tabs, plus one session + subscription load exposed through
+`useAppSession()`. Use its `plan` for feature gating (the stored plan only while
+`status === "active"`, else `"none"`) and `billingPlan` for billing display. It
+also runs the MFA (AAL2) step-up redirect for every route it wraps —
+`proxy.ts` only checks authentication. Pages inside it render content only:
+no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
+
+| Route | Holds |
+|---|---|
+| `/dashboard` | Overview — KPIs, trends, latest findings, onboarding checklist |
+| `/dashboard/scans` | `RunScanForm` + paginated scan list |
+| `/dashboard/scans/history` | Trends (per-site score/category history) |
+| `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
+| `/dashboard/findings` | every open finding across all sites (E-74) |
+| `/dashboard/sla` | remediation SLAs — deadlines, time-to-fix, targets (Agency) |
+| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` |
+| `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
+
+Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`,
+`activeNavHref` — longest segment-prefix wins).
+
+#### Rate limiting
+
+`src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN`) for shared state across Function instances. Falls
+back to an in-memory `Map` in dev — not safe across instances; don't rely on it
+in production. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2)
+from the right of `X-Forwarded-For` and strips the port; `GET /api/client-ip`
+returns what it resolves — probe it with a forged header after any hosting
+change. See rule 18.
+
+#### Payments
+
+Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on
+`checkout.session.completed`, `invoice.payment_failed` and
+`customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the
+`STRIPE_PRICE_*` vars. Until the price IDs are set, checkout answers 503
+`checkout_unavailable` (customer wording plus a contact link on /pricing; the
+missing variable is logged server-side, never sent to the browser). `plan` is
+free-text, so adding a tier is a code change, not a schema one. Gating: rule 17.

@@ -29,6 +29,7 @@ import { recordLogin, playwrightLoginRun } from "@/lib/scanners/loginRecorder";
 import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, revealSecrets, sealSecrets } from "@/lib/credentialEncryption";
 import { isDomainVerified } from "@/lib/ownership";
 import { isValidTotpSecret, normaliseTotpSecret } from "@/lib/totp";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   monitoredTargetId: z.string().min(1, "monitoredTargetId is required"),
@@ -134,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ),
     { onConflict: "monitored_target_id" }
   );
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/record-login", error);
 
   return res.status(200).json({ ok: true });
 }

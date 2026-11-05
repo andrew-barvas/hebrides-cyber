@@ -13,6 +13,7 @@
 // byte-identical strings (protocol, trailing slash, case).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { respondInternalError } from "@/lib/apiError";
 
 type ScanCandidate = {
   target_url: string;
@@ -45,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "v1/targets/[host]/trend", error);
 
   const points: { date: string; score: number }[] = [];
   for (const c of (candidates ?? []) as unknown as ScanCandidate[]) {

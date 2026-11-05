@@ -1,5 +1,6 @@
-// GET /api/v1/scans/{id}/export?format=csv|json — bulk finding export for a
-// single scan. Sits alongside GET /api/v1/scans/{id} (the full report with
+// GET /api/v1/scans/{id}/export?format=csv|json|sarif — bulk finding export for a
+// single scan. `sarif` is the SARIF 2.1.0 log GitHub code scanning reads (see
+// lib/sarif.ts for how findings map to it). Sits alongside GET /api/v1/scans/{id} (the full report with
 // New/Fixed diffing) rather than replacing it: this route is deliberately
 // flat and tabular — one row per finding, no diff status, no nested
 // objects beyond a couple of joined string columns — for someone piping
@@ -15,11 +16,13 @@ import type { Finding } from "@/lib/scanners";
 import { csvCell } from "@/lib/csv";
 import { evidenceSummary, readEvidence } from "@/lib/findingEvidence";
 import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
+import { getAttackRefs, getCweIds } from "@/lib/scanners/attackMap";
+import { buildSarif } from "@/lib/sarif";
 
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
     "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
-    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence",
+    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence", "attack_techniques", "cwe_ids",
   ];
   const rows = findings.map((f) => [
     f.severity,
@@ -40,6 +43,9 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
     (f.corroboratedBy ?? []).map((c) => `${c.tool}: ${c.title}`).join("; "),
     // One line, "GET <url> → 200 (type); matched: …", redacted at capture.
     evidenceSummary(readEvidence(f.evidence)),
+    // Scans stored before attackMap.ts carry no refs; map them at export time, as the executive report does.
+    (f.attackRefs ?? getAttackRefs(f.checkId)).map((r) => `${r.id} ${r.name}`).join("; "),
+    (f.cwe ?? getCweIds(f.checkId)).join("; "),
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }
@@ -51,7 +57,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
 
   const scanId = req.query.id as string;
-  const format = (req.query.format as string | undefined)?.toLowerCase() === "json" ? "json" : "csv";
+  const requested = (req.query.format as string | undefined)?.toLowerCase();
+  const format = requested === "json" || requested === "sarif" ? requested : "csv";
 
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner, target_url").eq("id", scanId).maybeSingle();
   if (!scan) return res.status(404).json({ error: "Scan not found" });
@@ -68,6 +75,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (format === "json") {
     res.setHeader("Content-Disposition", `attachment; filename="${filenameSafeHost}-findings.json"`);
     return res.status(200).json({ scan_id: scanId, target_url: scan.target_url, findings });
+  }
+
+  if (format === "sarif") {
+    const log = buildSarif({ targetUrl: scan.target_url, scanId, findings, siteUrl: process.env.NEXT_PUBLIC_SITE_URL });
+    res.setHeader("Content-Type", "application/sarif+json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameSafeHost}-findings.sarif"`);
+    return res.status(200).send(JSON.stringify(log));
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
