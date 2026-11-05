@@ -15,6 +15,7 @@ import { useState } from "react";
 import type { DiffStatus, FindingsDiff } from "@/lib/findingsDiff";
 import { COMPLIANCE_FRAMEWORK_LABELS, ALL_CONTROLS_BY_FRAMEWORK, type ComplianceRef, type ComplianceFramework } from "@/lib/scanners/compliance";
 import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
+import { getAttackRefs, getCweIds, type AttackRef } from "@/lib/scanners/attackMap";
 import { computeCriticalPaths, computeChokepoints, type CriticalPath } from "@/lib/attackPathAnalysis";
 import type { FixDifficulty } from "@/lib/scanners/fixDifficulty";
 import { TRIAGE_STATE_LABELS } from "@/lib/findingTriage";
@@ -42,6 +43,9 @@ export type ViewFinding = {
   /** Other tools that reported the same issue — see src/lib/findingConsolidation.ts. */
   corroboratedBy?: Array<{ tool: string; checkId: string; title: string }>;
   complianceRefs?: ComplianceRef[];
+  /** MITRE ATT&CK techniques and CWE ids — see scanners/attackMap.ts. Absent on older scans. */
+  attackRefs?: AttackRef[];
+  cwe?: string[];
   fixDifficulty?: FixDifficulty;
   estimatedFixMinutes?: number;
   cvssScore?: number;
@@ -64,6 +68,33 @@ export type ViewFinding = {
 };
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+
+/** "CWE-298" → its MITRE definition page. */
+function cweUrl(id: string): string {
+  return `https://cwe.mitre.org/data/definitions/${id.replace(/^CWE-/i, "")}.html`;
+}
+
+/** ATT&CK technique and CWE badges. Scans stored before attackMap.ts are mapped at render time, as the executive report does. */
+function AttackRefBadges({ finding }: { finding: Pick<ViewFinding, "checkId" | "attackRefs" | "cwe"> }) {
+  const attack = finding.attackRefs ?? getAttackRefs(finding.checkId);
+  const cwe = finding.cwe ?? getCweIds(finding.checkId);
+  if (attack.length === 0 && cwe.length === 0) return null;
+  const badge = "rounded-sm border border-cyberborder px-1.5 py-0.5 font-mono text-[10px] text-cybertext/60 hover:border-neon hover:text-neon transition-colors print:text-slate-500";
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {attack.map((ref) => (
+        <a key={ref.id} href={ref.url} title={`MITRE ATT&CK: ${ref.name}`} target="_blank" rel="noopener noreferrer" className={badge}>
+          {ref.id} ↗
+        </a>
+      ))}
+      {cwe.map((id) => (
+        <a key={id} href={cweUrl(id)} title="Common Weakness Enumeration" target="_blank" rel="noopener noreferrer" className={badge}>
+          {id} ↗
+        </a>
+      ))}
+    </div>
+  );
+}
 
 const FIX_DIFFICULTY_META: Record<FixDifficulty, { label: string; time: string; text: string; bg: string; border: string }> = {
   trivial: { label: "Trivial", time: "~15 min", text: "text-neon", bg: "bg-neon/10", border: "border-neon/30" },
@@ -700,6 +731,8 @@ export function FindingCard({
           ))}
         </div>
       )}
+
+      <AttackRefBadges finding={finding} />
 
       {finding.remediation && (
         // .remediation-details is force-expanded in print — see globals.css, so

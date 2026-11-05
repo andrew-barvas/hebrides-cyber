@@ -45,6 +45,11 @@ export type ScanCoverage = {
    *  network-exposure.service-cve:* findings then isn't a fix. Optional so
    *  coverage built elsewhere needn't carry it. */
   incompleteChecks?: Set<string>;
+  /** checkIds a base check that otherwise ran couldn't evaluate this scan,
+   *  from its `incompleteChecks` (recon.ts when Shodan InternetDB is down).
+   *  Matches the id itself or any `id:key` beneath it. Optional: coverage
+   *  built by hand (tests, older callers) has none. */
+  incompleteBaseChecks?: Set<string>;
 };
 
 export function normaliseToolKey(name: string): string {
@@ -82,12 +87,22 @@ export function scanCoverage(
     if (Array.isArray(incomplete)) for (const prefix of incomplete) if (typeof prefix === "string" && prefix) incompleteChecks.add(prefix);
   }
   const failedBaseChecks = new Set<string>();
+  const incompleteBaseChecks = new Set<string>();
   for (const [key, value] of Object.entries(base ?? {})) {
     if (key === "extended" || !value || typeof value !== "object") continue;
     const status = (value as { status?: unknown }).status;
     if (typeof status === "string" && BASE_NOT_RUN.has(status)) failedBaseChecks.add(normaliseToolKey(key));
+    const incomplete = (value as { incompleteChecks?: unknown }).incompleteChecks;
+    if (Array.isArray(incomplete)) for (const id of incomplete) if (typeof id === "string") incompleteBaseChecks.add(id);
   }
-  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks, incompleteChecks };
+  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks, incompleteChecks, incompleteBaseChecks };
+}
+
+/** Whether `checkId` is, or extends with ":…", one of the ids a check reported it could not evaluate. */
+function isIncomplete(checkId: string | undefined, incomplete: Set<string> | undefined): boolean {
+  if (!checkId || !incomplete?.size) return false;
+  for (const id of incomplete) if (checkId === id || checkId.startsWith(`${id}:`)) return true;
+  return false;
 }
 
 // checkId namespaces that don't normalise to their tool's key in `extended`.
@@ -114,16 +129,9 @@ export function findingSource(checkId: string, fromExtended: boolean, extendedTo
 }
 
 /** Could a scan with this coverage have detected `checkId`, a finding from `source`? */
-/** Whether `checkId` is, or extends with ":…", one of the prefixes a tool couldn't evaluate. */
-function isIncomplete(checkId: string | undefined, coverage: ScanCoverage): boolean {
-  if (!checkId || !coverage.incompleteChecks || coverage.incompleteChecks.size === 0) return false;
-  for (const prefix of coverage.incompleteChecks) if (checkId === prefix || checkId.startsWith(`${prefix}:`)) return true;
-  return false;
-}
-
 export function isCovered(source: string, coverage: ScanCoverage, checkId?: string): boolean {
-  if (isIncomplete(checkId, coverage)) return false;
-  if (source === "base") return !checkId || !coverage.failedBaseChecks.has(baseCheckKey(checkId));
+  if (isIncomplete(checkId, coverage.incompleteChecks)) return false;
+  if (source === "base") return !checkId || (!coverage.failedBaseChecks.has(baseCheckKey(checkId)) && !isIncomplete(checkId, coverage.incompleteBaseChecks));
   if (source === "extended") return coverage.extendedRan;
   return coverage.completedTools.has(source);
 }

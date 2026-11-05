@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "5mb" } },
@@ -119,6 +120,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .select("brand_logo_url, brand_name")
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/branding-logo", error);
   return res.status(200).json(data);
 }

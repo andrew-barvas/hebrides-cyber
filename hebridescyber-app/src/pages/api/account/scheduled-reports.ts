@@ -4,6 +4,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { planGate } from "@/lib/planAccess";
+import { respondInternalError } from "@/lib/apiError";
 
 // "pdf" (the default here and in migration 032) is attached as a real PDF by
 // send-scheduled-reports.ts; CSV and JSON go inline in the email body.
@@ -54,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // reports" rather than 500ing the Dashboard for every paid-plan
     // account on every load.
     if (error && !isMissingSchemaError(error)) {
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/scheduled-reports", error);
     }
     return res.status(200).json({ reports: isMissingSchemaError(error) ? [] : data });
   }
@@ -81,7 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
       }
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/scheduled-reports", error);
     }
     return res.status(201).json(data);
   }
@@ -108,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
       }
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/scheduled-reports", error);
     }
     return res.status(200).json({ ok: true });
   }
@@ -127,7 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "Scheduled reports aren't available on this account yet — try again shortly." });
       }
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "account/scheduled-reports", error);
     }
     return res.status(200).json({ ok: true });
   }

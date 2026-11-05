@@ -12,6 +12,10 @@ export type ReconResult =
        *  not "none". Checks that work from the list must not treat it as
        *  complete. Optional: older stored results lack it. */
       ctLookupFailed?: boolean;
+      /** checkIds this run couldn't evaluate because its data source failed
+       *  (Shodan InternetDB down, crt.sh unreadable). findingLifecycle.ts won't
+       *  resolve an open finding listed here (CLAUDE.md rule 7). */
+      incompleteChecks?: string[];
     }
   | { status: "error"; note: string };
 
@@ -57,14 +61,15 @@ async function resolveIp(hostname: string): Promise<string | null> {
 
 // ── Shodan InternetDB ─────────────────────────────────────────────────────────
 
-async function queryShodan(ip: string): Promise<ShodanData | null> {
+/** null = InternetDB has no data for this IP (404); "failed" = it couldn't be read. */
+async function queryShodan(ip: string): Promise<ShodanData | null | "failed"> {
   try {
     const res = await fetch(`https://internetdb.shodan.io/${ip}`, {
       signal: AbortSignal.timeout(8_000),
     });
     // 404 = no data for this IP
     if (res.status === 404) return null;
-    if (!res.ok) return null;
+    if (!res.ok) return "failed";
     const body = (await res.json()) as {
       cves?: string[];
       ports?: number[];
@@ -80,7 +85,7 @@ async function queryShodan(ip: string): Promise<ShodanData | null> {
       hostnames: body.hostnames ?? [],
     };
   } catch {
-    return null;
+    return "failed";
   }
 }
 
@@ -164,11 +169,21 @@ export async function checkRecon(targetUrl: string): Promise<ReconResult> {
       queryCrtSh(domain),
     ]);
 
-    const shodan = ip ? await queryShodan(ip) : null;
+    const lookup = ip ? await queryShodan(ip) : null;
+    const shodan = lookup === "failed" ? null : lookup;
 
-    return subdomains
-      ? { status: "checked", ip, shodan, subdomains }
-      : { status: "checked", ip, shodan, subdomains: [], ctLookupFailed: true };
+    const incompleteChecks = [
+      ...(lookup === "failed" ? ["recon.shodan-cves"] : []),
+      ...(subdomains ? [] : ["recon.subdomains-found"]),
+    ];
+    return {
+      status: "checked",
+      ip,
+      shodan,
+      subdomains: subdomains ?? [],
+      ...(subdomains ? {} : { ctLookupFailed: true }),
+      ...(incompleteChecks.length ? { incompleteChecks } : {}),
+    };
   } catch (err) {
     return { status: "error", note: `Recon check failed: ${(err as Error).message}` };
   }

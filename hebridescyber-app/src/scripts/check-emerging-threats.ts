@@ -9,22 +9,12 @@
 // --dry-run prints the matches and writes/sends nothing.
 // Exit code 1 when the KEV feed can't be read or any lookup, write or send
 // failed — a failed lookup is never treated as "not affected".
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { runEmergingThreatCheck } from "../lib/emergingThreatAlerts";
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   const summary = await runEmergingThreatCheck(supabaseAdmin, {
     dryRun,
