@@ -120,6 +120,24 @@ const TESTSSL_SCOPE_ARGS = [
   "--drown",
 ];
 
+/**
+ * Probes left out under a non-intrusive profile (`exposure`, Lookout). Each
+ * one sends crafted input designed to trigger the flaw itself rather than
+ * reading what the server offers: a heartbeat with an oversized length
+ * (Heartbleed), an early ChangeCipherSpec (CCS injection), a session ticket
+ * built to leak memory (Ticketbleed), and a run of malformed RSA paddings
+ * (ROBOT). That is the "Intrusive" traffic class in
+ * docs/DEFENSIVE-ASSESSMENT-PLAN.md, which Lookout promises not to send. The
+ * rest of the scope only inspects which protocols, ciphers and options the
+ * server accepts.
+ */
+const INTRUSIVE_PROBE_ARGS: ReadonlySet<string> = new Set(["--heartbleed", "--ccs-injection", "--ticketbleed", "--robot"]);
+
+/** The testssl.sh check flags for a run, narrowed for a non-intrusive profile. */
+export function testsslScopeArgs(nonIntrusive = false): string[] {
+  return nonIntrusive ? TESTSSL_SCOPE_ARGS.filter((a) => !INTRUSIVE_PROBE_ARGS.has(a)) : [...TESTSSL_SCOPE_ARGS];
+}
+
 const TESTSSL_OUTPUT_ARGS = [
   "--severity", "LOW",
   "--disable-rating",
@@ -247,7 +265,11 @@ const SUPPRESSED_PREFIXES = ["cookie_", "overall_grade"];
  */
 export const PLATFORM_TLS_TECHNOLOGIES = ["Azure CDN", "Azure App Service"] as const;
 
-export type DeepTlsOptions = { platformManagedTls?: boolean };
+export type DeepTlsOptions = {
+  platformManagedTls?: boolean;
+  /** The profile promises no test payloads: skip INTRUSIVE_PROBE_ARGS. */
+  nonIntrusive?: boolean;
+};
 
 const PLATFORM_INFRA_IDS = new Set([
   "cert_trust_wildcard",  // Azure CDN shares a wildcard cert across customers on the platform
@@ -562,6 +584,22 @@ export function buildFindings(
 // ---- Runner -----------------------------------------------------------------
 
 /**
+ * The run's own failure: a FATAL entry with nothing rated alongside it. That
+ * is the shape of a run that never reached the server, since an unreachable
+ * host writes a single FATAL `scanProblem` entry. Reporting it as "completed"
+ * with no findings would read as a clean result and close last scan's
+ * findings (CLAUDE.md rule 7). WARN alone is not a failure: it is about our
+ * side (testssl.sh's own `engine_problem`, say), and with --severity LOW a
+ * fully healthy server writes nothing else.
+ */
+export function scanProblemOf(entries: TestsslEntry[]): string | null {
+  const fatal = entries.find((e) => e.severity.toUpperCase() === "FATAL");
+  if (!fatal) return null;
+  const rated = entries.some((e) => !["WARN", "FATAL"].includes(e.severity.toUpperCase()));
+  return rated ? null : fatal.finding;
+}
+
+/**
  * Runs testssl.sh against the target's TLS endpoint and returns unified
  * Finding[].
  *
@@ -597,7 +635,7 @@ export async function runDeepTls(targetUrl: string, options: DeepTlsOptions = {}
   const jsonFile = join(tmpdir(), `testssl-${randomUUID()}.json`);
   const uri = `${host}:${port}`;
 
-  const args = [...TESTSSL_OUTPUT_ARGS, "--jsonfile", jsonFile, ...TESTSSL_SCOPE_ARGS, uri];
+  const args = [...TESTSSL_OUTPUT_ARGS, "--jsonfile", jsonFile, ...testsslScopeArgs(options.nonIntrusive), uri];
 
   const readEntries = async (): Promise<TestsslEntry[]> => {
     try {
@@ -614,6 +652,8 @@ export async function runDeepTls(targetUrl: string, options: DeepTlsOptions = {}
     });
 
     const entries = await readEntries();
+    const problem = scanProblemOf(entries);
+    if (problem) return { status: "error", host, findings: [], note: `testssl.sh could not test the server: ${problem}` };
     const { findings, truncated, warnCount } = buildFindings(entries, options);
     return {
       status: "completed",
@@ -634,6 +674,8 @@ export async function runDeepTls(targetUrl: string, options: DeepTlsOptions = {}
     // may already hold everything it managed to probe, so salvage it rather
     // than discarding a mostly-complete run.
     const entries = await readEntries();
+    const problem = scanProblemOf(entries);
+    if (problem) return { status: "error", host, findings: [], note: `testssl.sh could not test the server: ${problem}` };
     if (entries.length > 0) {
       const { findings, truncated, warnCount } = buildFindings(entries, options);
       return {

@@ -177,7 +177,7 @@ becomes `[redacted]`, so you see which keys were exposed but not their values.
 It's omitted when the check never read the body, as for directory listings,
 which keep only the "Index of" heading in `matched`. Evidence is stored with
 the scan result and deleted with it, and is absent on scans from before
-2026-10-30. The CSV export puts it in one `evidence` column (last), as
+2026-10-30. The CSV export puts it in one `evidence` column, as
 `GET <url> → <status> (<type>); matched: …`.
 
 Each finding also carries `triage` — your current decision about it on this
@@ -202,21 +202,27 @@ report shape with New/Fixed diffing.
 
 | Query param | Default | Notes |
 |-------------|---------|-------|
-| `format` | `csv` | `csv` or `json` |
+| `format` | `csv` | `csv`, `json` or `sarif` |
 
 CSV columns: `severity, title, detail, check_id, cve_ids, cvss_score,
 cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
 `compliance_refs` are `;`-joined lists within a single cell.
 `known_exploited`/`epss` are blank when threat intel wasn't looked up,
 which is different from `false` (see `threat_intel` above).
-`triage_state, triage_reason, triage_expires_at` come last, blank when the
-finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
+`triage_state, triage_reason, triage_expires_at` follow, blank when the
+finding isn't triaged, then `corroborated_by` and `evidence`. The last two
+columns are `attack_techniques` (`T1557 Adversary-in-the-Middle; …`) and
+`cwe_ids` (`CWE-298; …`), blank when the finding type has no curated mapping;
+scans stored before the mapping existed are mapped at export time. MITRE
+ATT&CK® is a registered trademark of The MITRE Corporation. in JSON each finding has `triage` (`state`, `reason`,
 `expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
-(`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitability` and so
-on, camelCase as stored). `exploitability` (`score`, `band`, `confidence`,
-`modelVersion`) is absent when the finding wasn't assessed, which doesn't mean
-it isn't exploitable.
+(`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitabilityAssessment`
+and so on, camelCase as stored). `exploitabilityAssessment` (`score`, `band`,
+`confidence`, `modelVersion`) is absent when the finding wasn't assessed, which
+doesn't mean it isn't exploitable.
+
+`format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
 
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
@@ -400,6 +406,68 @@ and each file's `error` say why. A new lockfile (`base: null`) counts every
 package as introduced. If OSV.dev can't be reached the response is `502` with
 `"code": "lookup_failed"` rather than an empty result. `403`
 `"code": "plan_required"` on Basic.
+
+### `GET /api/v1/findings`
+
+Every open finding across your sites, the same list as the dashboard's
+Findings page (also served at `GET /api/findings`). API key or session.
+
+```bash
+curl -H "Authorization: Bearer $HC_API_KEY" \
+  "https://www.hebridescyber.co.uk/api/v1/findings?sort=priority&pageSize=10"
+```
+
+Query parameters: `sort=priority` (below), `view=grouped|rows`, `site`,
+`severity=critical,high`, `kev=1`, `epssMin=0.1`, `category`,
+`triage=open|triaged|all|accepted_risk|false_positive|snoozed`,
+`sla=breached|due_soon|on_track`, `minAgeDays`, `page`, `pageSize` (max 100),
+`format=csv`.
+
+**`sort=priority`** returns the "fix this first" list: open findings across
+every site, most urgent first. Accepted, false-positive, snoozed and info
+findings are left out whatever `triage` says. It defaults to `view=rows`, and
+each row carries its position and the reason for it:
+
+```json
+{
+  "sort": "priority",
+  "criticalityAvailable": true,
+  "priorityComplete": true,
+  "totalFindings": 23,
+  "items": [
+    {
+      "host": "shop.example.co.uk",
+      "checkId": "network-exposure.open-port:3389",
+      "severity": "high",
+      "title": "[network] Open port 3389/tcp — RDP",
+      "knownExploited": false,
+      "priority": {
+        "rank": 1,
+        "score": 29.3,
+        "base": 15,
+        "factors": [
+          { "key": "severity", "label": "High severity", "multiplier": 1 },
+          { "key": "internet_facing", "label": "on an internet-facing service (port 3389)", "multiplier": 1.3 },
+          { "key": "criticality", "label": "on a high-criticality site", "multiplier": 1.5 }
+        ],
+        "reason": "High severity, on an internet-facing service (port 3389), on a high-criticality site"
+      }
+    }
+  ]
+}
+```
+
+`base` is the finding's own risk (severity, CVSS, CISA KEV, EPSS). The rank
+then weights it by how critical you've said the site is (Assets → monitored
+sites: high ×1.5, low ×0.6), a non-production environment (×0.8), an
+internet-facing service (×1.3), a host confirmed live (×1.1) and a WAF in
+front of web-attack findings (×0.85, never for a KEV-listed finding). A signal
+we don't have never moves a finding. `priorityComplete: false` means site
+criticality or scan detail couldn't be read, so the order may be off: don't
+treat it as final. `criticalityAvailable: false` means criticality isn't set
+up on this database yet and every site counts as normal. With `format=csv`
+the first three columns are `priority_rank`, `priority_score` and
+`priority_reason`.
 
 ### `GET /PUT /DELETE /api/findings/triage`
 

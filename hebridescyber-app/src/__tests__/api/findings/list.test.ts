@@ -3,10 +3,15 @@ import { createMocks, type RequestMethod } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { FindingRow } from "@/lib/findingsView";
 
-const { authenticateApiRequestMock, loadMock } = vi.hoisted(() => ({ authenticateApiRequestMock: vi.fn(), loadMock: vi.fn() }));
+const { authenticateApiRequestMock, loadMock, targetsMock } = vi.hoisted(() => ({
+  authenticateApiRequestMock: vi.fn(),
+  loadMock: vi.fn(),
+  targetsMock: vi.fn(),
+}));
 
 vi.mock("@/lib/apiAuth", () => ({ authenticateApiRequest: authenticateApiRequestMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/findingsView", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/findingsView")>()), loadFindingsView: loadMock }));
+vi.mock("@/lib/estatePriority", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/estatePriority")>()), loadTargetContexts: targetsMock }));
 
 import handler from "@/pages/api/findings/index";
 
@@ -24,7 +29,7 @@ type Body = {
 const row = (over: Partial<FindingRow> = {}): FindingRow => ({
   key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
   severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: "2026-09-01T00:00:00Z", ageDays: 30, slaState: null, slaDueAt: null,
-  knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: "s1", triage: null, exploitability: null, ...over,
+  knownExploited: false, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "s1", triage: null, exploitabilityAssessment: null, ...over,
 });
 
 const rows = [
@@ -38,8 +43,9 @@ describe("GET /api/findings", () => {
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "o1", via: "session" });
     loadMock.mockReset().mockResolvedValue({
       ok: true,
-      data: { available: true, triageAvailable: true, slaEnabled: false, detailComplete: true, truncated: false, rows },
+      data: { available: true, triageAvailable: true, slaEnabled: false, detailComplete: true, truncated: false, rows, detailByHost: new Map() },
     });
+    targetsMock.mockReset().mockResolvedValue({ available: true, complete: true, contexts: new Map([["a.example", { criticality: "high", environment: null }]]) });
   });
 
   it("requires authentication and GET", async () => {
@@ -83,9 +89,71 @@ describe("GET /api/findings", () => {
   });
 
   it("passes through an unavailable table", async () => {
-    loadMock.mockResolvedValue({ ok: true, data: { available: false, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [] } });
+    loadMock.mockResolvedValue({ ok: true, data: { available: false, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [], detailByHost: new Map() } });
     const body = (await call())._getJSONData();
     expect(body).toMatchObject({ available: false, totalFindings: 0, groups: [] });
+  });
+
+  it("doesn't read target criticality unless sort=priority", async () => {
+    await call();
+    expect(targetsMock).not.toHaveBeenCalled();
+  });
+
+  it("sort=priority ranks rows across sites with a reason, defaulting to rows", async () => {
+    const res = await call("GET", { sort: "priority" });
+    const body = res._getJSONData() as Omit<Body, "items"> & {
+      items: Array<{ host: string; checkId: string; priority: { rank: number; reason: string } }>;
+    };
+    expect(targetsMock).toHaveBeenCalledWith({ tag: "admin" }, "o1");
+    expect(body).toMatchObject({ sort: "priority", view: "rows", criticalityAvailable: true, priorityComplete: true, totalFindings: 3 });
+    expect(body.items.map((i) => [i.host, i.checkId, i.priority.rank])).toEqual([
+      ["b.example", "dns.spf", 1],
+      ["a.example", "headers.hsts", 2],
+      ["b.example", "headers.hsts", 3],
+    ]);
+    expect(body.items[1].priority.reason).toBe("Medium severity, on a high-criticality site");
+  });
+
+  it("sort=priority leaves triaged findings out even with triage=all", async () => {
+    loadMock.mockResolvedValue({
+      ok: true,
+      data: {
+        available: true, triageAvailable: true, slaEnabled: false, detailComplete: true, truncated: false, detailByHost: new Map(),
+        rows: [row(), row({ key: "t", host: "b.example", triage: { state: "false_positive", reason: "x", expiresAt: null } })],
+      },
+    });
+    const body = (await call("GET", { sort: "priority", triage: "all" }))._getJSONData() as Body;
+    expect(body.items.map((i) => i.host)).toEqual(["a.example"]);
+  });
+
+  it("sort=priority orders groups by their best-ranked finding", async () => {
+    const body = (await call("GET", { sort: "priority", view: "grouped" }))._getJSONData() as Body;
+    expect(body.groups.map((g) => g.key)).toEqual(["dns.spf", "headers.hsts"]);
+    // b.example low (its high SPF finding: 15 × 0.6 = 9), a.example high (its
+    // medium HSTS: 7 × 1.5 = 10.5) — the HSTS group now holds rank 1.
+    targetsMock.mockResolvedValue({
+      available: true,
+      complete: true,
+      contexts: new Map([
+        ["a.example", { criticality: "high", environment: null }],
+        ["b.example", { criticality: "low", environment: null }],
+      ]),
+    });
+    const reordered = (await call("GET", { sort: "priority", view: "grouped" }))._getJSONData() as Body;
+    expect(reordered.groups.map((g) => g.key)).toEqual(["headers.hsts", "dns.spf"]);
+  });
+
+  it("sort=priority marks the list partial when criticality couldn't be read", async () => {
+    targetsMock.mockResolvedValue({ available: true, complete: false, contexts: new Map() });
+    const body = (await call("GET", { sort: "priority" }))._getJSONData();
+    expect(body).toMatchObject({ priorityComplete: false });
+  });
+
+  it("sort=priority CSV leads with rank, score and reason", async () => {
+    const res = await call("GET", { sort: "priority", format: "csv" });
+    const lines = res._getData().split("\r\n");
+    expect(lines[0].startsWith("priority_rank,priority_score,priority_reason,site,")).toBe(true);
+    expect(lines[1].startsWith("1,15,High severity,b.example,")).toBe(true);
   });
 
   it("500s when the data can't be loaded", async () => {

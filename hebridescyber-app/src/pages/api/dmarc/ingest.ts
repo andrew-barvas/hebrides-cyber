@@ -15,6 +15,7 @@ import { checkRateLimit, getClientIp, type RateLimitPolicy } from "@/lib/rateLim
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { parseDmarcAggregateReport } from "@/lib/dmarcAggregate";
 import { toReportInsert, resolveIngestToken } from "@/lib/dmarcReports";
+import { respondInternalError } from "@/lib/apiError";
 
 export const config = { api: { bodyParser: false } };
 
@@ -77,7 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isMissingSchemaError(error)) {
       return res.status(503).json({ error: "DMARC report storage isn't available yet (migration 060 pending)" });
     }
-    return res.status(500).json({ error: error.message });
+    return respondInternalError(res, "dmarc/ingest", error);
   }
 
   return res.status(202).json({

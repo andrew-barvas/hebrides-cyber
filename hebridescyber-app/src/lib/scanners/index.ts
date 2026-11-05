@@ -33,6 +33,7 @@ import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInvent
 import { runCookieConsent, type CookieConsentResult } from "./cookieConsent";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { applyAttackRefs, type AttackRef } from "./attackMap";
+import { type Exploitability } from "./exploitabilityVerdict";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
 export { enrichFindingsWithThreatIntel } from "./threatIntel";
@@ -171,9 +172,11 @@ export type Finding = {
    * Exploitability assessment summary (src/lib/exploitability/), applied after
    * the score is computed. Enrichment only: never changes severity or the
    * score. Absent = not assessed (no catalogue entry, or a scan stored before
-   * the engine existed) — never read absence as "not exploitable".
+   * the engine existed) — never read absence as "not exploitable". Separate
+   * from `exploitability`, the three-tier verdict
+   * (exploitabilityVerdict.ts), which a stored scan may already carry.
    */
-  exploitability?: FindingExploitability;
+  exploitabilityAssessment?: FindingExploitability;
   /**
    * Threat intelligence for CVE-backed findings (threatIntel.ts), applied as
    * a final pass like CVSS. CVSS says how bad a flaw *could* be; these say
@@ -199,6 +202,16 @@ export type Finding = {
    * never that the finding lacks a basis.
    */
   evidence?: FindingEvidence;
+  /**
+   * How sure we are this finding is usable against *this* target — confirmed
+   * (a non-destructive check observed the preconditions), theoretical (the
+   * class is exploitable in the wild per KEV/EPSS/CVSS, not confirmed here), or
+   * unknown (neither — never "safe"). A reporting/prioritisation signal only,
+   * set by a final pass (exploitabilityVerdict.ts) after the proof, CVSS and
+   * threat-intel passes; it never changes severity or score. Absent on scans
+   * stored before this field existed.
+   */
+  exploitability?: Exploitability;
   /** Arbitrary metadata for enrichment passes (proof-of-exploit, scanner-specific context). */
   metadata?: Record<string, unknown>;
 };
@@ -1132,8 +1145,9 @@ export function summariseResults(results: ScanResults): { summary: string; findi
   // --- Software CVE DB (WordPress core / PHP / Apache CVE matches) ----------
   // Findings are already fully formed (with checkId and cveIds) by the
   // module itself — unlike wpVulnDb above, no per-vulnerability derivation
-  // is needed here, just attach remediation text and append.
-  if (results.softwareCveDb.status === "checked") {
+  // is needed here, just attach remediation text and append. "partial" keeps
+  // the lookups that answered; its status stops the lifecycle resolving any.
+  if (results.softwareCveDb.status === "checked" || results.softwareCveDb.status === "partial") {
     for (const finding of results.softwareCveDb.findings) {
       const remediation = finding.checkId?.startsWith("softwareCveDb.wordpressCore")
         ? FIX.SOFTWARE_CVE_WORDPRESS_CORE
