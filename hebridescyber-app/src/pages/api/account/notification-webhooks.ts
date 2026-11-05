@@ -27,6 +27,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { isValidSlackWebhookUrl, isValidTeamsWebhookUrl } from "@/lib/webhookUrlValidation";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   slackWebhookUrl: z.string().url().nullish(),
@@ -87,11 +88,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status: "active",
       ...webhookFields,
     });
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/notification-webhooks", error);
     return res.status(200).json({ ok: true });
   }
 
   const { error } = await supabaseAdmin.from("subscriptions").update(webhookFields).eq("owner", caller.ownerId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/notification-webhooks", error);
   return res.status(200).json({ ok: true });
 }

@@ -39,6 +39,11 @@ export type ScanCoverage = {
    *  scan. The base suite always runs, but a TLS timeout or a rate-limited
    *  WPScan lookup saw nothing, and must not resolve what it saw last time. */
   failedBaseChecks: Set<string>;
+  /** checkIds a base check that otherwise ran couldn't evaluate this scan,
+   *  from its `incompleteChecks` (recon.ts when Shodan InternetDB is down).
+   *  Matches the id itself or any `id:key` beneath it. Optional: coverage
+   *  built by hand (tests, older callers) has none. */
+  incompleteBaseChecks?: Set<string>;
 };
 
 export function normaliseToolKey(name: string): string {
@@ -73,12 +78,21 @@ export function scanCoverage(
     if ((status === "completed" || status === "checked") && (crawlStatus === undefined || crawlStatus === "checked")) completedTools.add(normaliseToolKey(key));
   }
   const failedBaseChecks = new Set<string>();
+  const incompleteBaseChecks = new Set<string>();
   for (const [key, value] of Object.entries(base ?? {})) {
     if (key === "extended" || !value || typeof value !== "object") continue;
     const status = (value as { status?: unknown }).status;
     if (typeof status === "string" && BASE_NOT_RUN.has(status)) failedBaseChecks.add(normaliseToolKey(key));
+    const incomplete = (value as { incompleteChecks?: unknown }).incompleteChecks;
+    if (Array.isArray(incomplete)) for (const id of incomplete) if (typeof id === "string") incompleteBaseChecks.add(id);
   }
-  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks };
+  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks, incompleteBaseChecks };
+}
+
+function isIncomplete(checkId: string, incomplete: Set<string> | undefined): boolean {
+  if (!incomplete?.size) return false;
+  for (const id of incomplete) if (checkId === id || checkId.startsWith(`${id}:`)) return true;
+  return false;
 }
 
 // checkId namespaces that don't normalise to their tool's key in `extended`.
@@ -106,7 +120,7 @@ export function findingSource(checkId: string, fromExtended: boolean, extendedTo
 
 /** Could a scan with this coverage have detected `checkId`, a finding from `source`? */
 export function isCovered(source: string, coverage: ScanCoverage, checkId?: string): boolean {
-  if (source === "base") return !checkId || !coverage.failedBaseChecks.has(baseCheckKey(checkId));
+  if (source === "base") return !checkId || (!coverage.failedBaseChecks.has(baseCheckKey(checkId)) && !isIncomplete(checkId, coverage.incompleteBaseChecks));
   if (source === "extended") return coverage.extendedRan;
   return coverage.completedTools.has(source);
 }

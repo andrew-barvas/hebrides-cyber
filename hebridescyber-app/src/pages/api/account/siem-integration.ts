@@ -4,6 +4,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { validateSiemWebhook } from "@/lib/siemIntegration";
 import { logAuditEvent } from "@/lib/audit";
+import { respondInternalError } from "@/lib/apiError";
 
 const createSchema = z.object({
   name: z.string().min(1).max(100).default("Default SIEM"),
@@ -39,13 +40,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
     return res.status(200).json({ integrations: data });
   }
 
   if (req.method === "POST") {
     const body = parseBody(createSchema, req.body, res);
     if (!body) return;
+
+    // forwardToSiem() has no syslog transport yet (it needs a TCP/TLS socket,
+    // which the Static Web Apps functions can't open), so a syslog row would
+    // be saved and then silently deliver nothing. Refuse it until it exists.
+    if (body.type === "syslog") {
+      return res.status(400).json({ error: "Syslog delivery is not available yet. Use type \"webhook\"." });
+    }
 
     if (body.type === "webhook") {
       const validation = await validateSiemWebhook(body.endpoint, body.authHeader, body.format);
@@ -68,7 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
@@ -99,7 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -113,7 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", body.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/siem-integration", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
