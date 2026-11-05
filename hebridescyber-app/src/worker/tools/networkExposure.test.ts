@@ -13,6 +13,7 @@ vi.mock("node:util", () => ({
 }));
 
 import { parseNaabuJson, classifyPort, runNetworkExposure } from "./networkExposure";
+import { createCveIndex, memoryCveIndexStore } from "../../lib/cveIndex";
 
 // Real naabu `-json` output: one object per line, plus a progress line on
 // stderr that never reaches stdout. Port 3306 (MySQL) and 6379 (Redis) are
@@ -29,7 +30,7 @@ const NAABU_JSON = [
 const NMAP_XML = `<?xml version="1.0"?>
 <nmaprun><host><ports>
 <port protocol="tcp" portid="443"><state state="open"/><service name="https" product="nginx" version="1.24.0"/></port>
-<port protocol="tcp" portid="3306"><state state="open"/><service name="mysql" product="MySQL" version="8.0.35"/></port>
+<port protocol="tcp" portid="3306"><state state="open"/><service name="mysql" product="MySQL" version="8.0.35"><cpe>cpe:/a:mysql:mysql:8.0.35</cpe></service></port>
 <port protocol="tcp" portid="6379"><state state="open"/><service name="redis"/></port>
 </ports></host></nmaprun>`;
 
@@ -87,6 +88,53 @@ describe("runNetworkExposure", () => {
     expect(execFileMock.mock.calls[1][0]).toBe("nmap");
   });
 
+  it("matches identified services against the CVE index, reaching NVD's current vendor name", async () => {
+    execFileMock
+      .mockResolvedValueOnce({ stdout: NAABU_JSON, stderr: "" })
+      .mockResolvedValueOnce({ stdout: NMAP_XML, stderr: "" });
+    const cveIndex = createCveIndex(
+      memoryCveIndexStore({
+        state: { backfill_completed_at: "2026-10-01T00:00:00Z", last_success_at: "2026-11-01T00:00:00Z", last_modified_through: "2026-11-01T00:00:00Z", cve_count: 1 },
+        matches: [
+          {
+            cve_id: "CVE-2024-20963",
+            part: "a",
+            vendor: "oracle",
+            product: "mysql",
+            exact_version: null,
+            any_update: false,
+            start_including: "8.0.0",
+            start_excluding: null,
+            end_including: "8.0.35",
+            end_excluding: null,
+            conditional: false,
+            criteria: "cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*",
+          },
+        ],
+        records: [],
+      }),
+      { now: new Date("2026-11-01T12:00:00Z") }
+    );
+    const result = await runNetworkExposure("https://example.com", { cveIndex, fetchEol: async () => [{ cycle: "8.0", eol: "2026-04-30" }] });
+    if (result.status !== "completed") throw new Error(result.status);
+    expect(result.serviceCves.status).toBe("checked");
+    const mysql = result.serviceCves.services.find((s) => s.port === 3306);
+    expect(mysql?.matches.map((m) => m.cveId)).toEqual(["CVE-2024-20963"]);
+    expect(result.ports.find((p) => p.port === 3306)?.cpes).toEqual(["cpe:/a:mysql:mysql:8.0.35"]);
+    // nginx 1.24.0 and redis had no CPE: not looked up, so not resolvable this scan.
+    expect(result.incompleteChecks).toEqual(["network-exposure.service-cve:443", "network-exposure.service-cve:6379"]);
+  });
+
+  it("leaves every service check unevaluated when no CVE index is given", async () => {
+    execFileMock
+      .mockResolvedValueOnce({ stdout: NAABU_JSON, stderr: "" })
+      .mockResolvedValueOnce({ stdout: NMAP_XML, stderr: "" });
+    const result = await runNetworkExposure("https://example.com", { fetchEol: async () => null });
+    if (result.status !== "completed") throw new Error(result.status);
+    expect(result.serviceCves.status).toBe("not_configured");
+    expect(result.incompleteChecks).toContain("network-exposure.service-cve");
+  });
+
   it("reports not_configured when naabu is missing (ENOENT), never a clean result", async () => {
     const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
     execFileMock.mockRejectedValueOnce(enoent);
@@ -107,6 +155,7 @@ describe("runNetworkExposure", () => {
     expect(result.status).toBe("completed");
     if (result.status !== "completed") return;
     expect(result.ports).toEqual([]);
+    expect(result.incompleteChecks).toEqual([]);
   });
 
   it("falls back to the discovered ports with no service when nmap fails", async () => {
@@ -118,6 +167,13 @@ describe("runNetworkExposure", () => {
     if (result.status !== "completed") return;
     expect(result.ports).toHaveLength(1);
     expect(result.ports[0]).toMatchObject({ port: 6379, risk: "critical", version: null });
+    // No banners at all: nothing was matched, and nothing may be resolved.
+    expect(result.serviceCves.status).toBe("error");
+    expect(result.incompleteChecks).toEqual([
+      "network-exposure.service-cve",
+      "network-exposure.service-eol",
+      "network-exposure.service-version-unknown",
+    ]);
   });
 
   it("carries through a naabu port nmap reports closed on its own connect", async () => {
