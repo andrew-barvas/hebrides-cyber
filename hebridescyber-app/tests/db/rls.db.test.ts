@@ -9,6 +9,8 @@ const B = "bbbbbbbb-0000-0000-0000-000000000002"; // owner B (no subscription)
 const M = "cccccccc-0000-0000-0000-000000000003"; // member of A's team
 const SCAN_A = "a1000000-0000-0000-0000-000000000001";
 const SCAN_B = "b1000000-0000-0000-0000-000000000002";
+const ENG_A = "a2000000-0000-0000-0000-000000000001";
+const ENG_B = "b2000000-0000-0000-0000-000000000002";
 
 const asA: Actor = { role: "authenticated", uid: A };
 const asB: Actor = { role: "authenticated", uid: B };
@@ -51,6 +53,11 @@ const KEY_TABLES: TableSpec[] = [
   { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
   { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
   { table: "uptime_monitors", ownerCol: "owner", insert: "insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, 'https://new.test', 'uptimerobot', '999')" },
+  { table: "exploitability_assessments", ownerCol: "owner", insert: `insert into exploitability_assessments (owner, scan_id, host, check_id, score, band, confidence, factors, conditions, model_version, catalogue_version) values ($1, '${SCAN_A}', 'new.test', 'c.new', 50, 'plausible', 'low', '[]', '[]', 'exp-v1', 'pc-test')` },
+  { table: "engagements", ownerCol: "owner", insert: "insert into engagements (owner, reference, created_by) values ($1, 'ref-new', $1)" },
+  { table: "engagement_scope_hosts", ownerCol: "owner", insert: `insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ('${ENG_A}', $1, 'new.test', true, $1)` },
+  { table: "exploit_chains", ownerCol: "owner", insert: `insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, '${ENG_A}', '{}', 0, 'exp-v1', 'pc-test')` },
+  { table: "exploit_simulations", ownerCol: "owner", insert: `insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, '${ENG_A}', $1, '{}', 'exp-v1')` },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -61,6 +68,7 @@ const SERVICE_WRITE_ONLY = [
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
   "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors",
+  "exploitability_assessments", "engagements", "engagement_scope_hosts", "exploit_chains", "exploit_simulations",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -116,6 +124,12 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
       await q("insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, $2, 'uptimerobot', $3)", [o, `https://${h}`, `ext-${h}`]);
       await q("insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'enc:k')", [o]);
+      await q("insert into exploitability_assessments (owner, scan_id, host, check_id, score, band, confidence, factors, conditions, model_version, catalogue_version) values ($1, $2, $3, 'c.1', 50, 'plausible', 'low', '[]', '[]', 'exp-v1', 'pc-test')", [o, o === A ? SCAN_A : SCAN_B, h]);
+      const eng = o === A ? ENG_A : ENG_B;
+      await q("insert into engagements (id, owner, reference, created_by) values ($1, $2, 'ref-1', $2)", [eng, o]);
+      await q("insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ($1, $2, $3, true, $2)", [eng, o, h]);
+      await q("insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, $2, '{}', 0, 'exp-v1', 'pc-test')", [o, eng]);
+      await q("insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, $2, $1, '{}', 'exp-v1')", [o, eng]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");

@@ -3,10 +3,11 @@
 // that nothing after completion can turn a completed scan into a failure.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, record } = vi.hoisted(() => {
+const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, record, engineFault } = vi.hoisted(() => {
   const calls: string[] = [];
   return {
     calls,
+    engineFault: { throws: false },
     attackSurfaceMock: vi.fn(),
     lookalikeMock: vi.fn(),
     whatwafMock: vi.fn(),
@@ -36,8 +37,20 @@ vi.mock("./oncallAlerts", () => ({ triggerOncallAlerts: record("triggerOncallAle
 vi.mock("./siemIntegration", () => ({ forwardToSiem: record("forwardToSiem") }));
 vi.mock("./audit", () => ({ logAuditEvent: vi.fn(async (_db: unknown, e: { action: string }) => calls.push(`audit:${e.action}`)) }));
 vi.mock("../worker/tools/whatwaf", () => ({ runWhatWaf: whatwafMock }));
+vi.mock("./exploitability", async (orig) => {
+  const actual = await orig<typeof import("./exploitability")>();
+  return {
+    ...actual,
+    assessFindings: (...args: Parameters<typeof actual.assessFindings>) => {
+      if (engineFault.throws) throw new Error("engine fault");
+      return actual.assessFindings(...args);
+    },
+  };
+});
 
 import { executeScan } from "./scanExecution";
+import { scoreFromFindings, summariseResults } from "./scanners";
+import * as findingTriage from "./findingTriage";
 import { canDetectFromResults } from "./findingLifecycle";
 import { EXTENDED_TOOL_NAMES } from "./scanProfiles";
 
@@ -45,6 +58,7 @@ import { EXTENDED_TOOL_NAMES } from "./scanProfiles";
 function fakeSupabase() {
   const scanUpdates: Array<Record<string, unknown>> = [];
   const resultInserts: Array<{ results: Record<string, unknown> }> = [];
+  const assessmentInserts: Array<Record<string, unknown>> = [];
   const client = {
     from: (table: string) => {
       const b: Record<string, unknown> = {};
@@ -55,6 +69,7 @@ function fakeSupabase() {
       };
       b.insert = (values: { results: Record<string, unknown> }) => {
         if (table === "scan_results") resultInserts.push(values);
+        if (table === "exploitability_assessments") assessmentInserts.push(...(values as unknown as Array<Record<string, unknown>>));
         return b;
       };
       b.maybeSingle = () => Promise.resolve({ data: null, error: null });
@@ -63,7 +78,7 @@ function fakeSupabase() {
       return b;
     },
   };
-  return { client: client as never, scanUpdates, resultInserts };
+  return { client: client as never, scanUpdates, resultInserts, assessmentInserts };
 }
 
 beforeEach(() => {
@@ -131,6 +146,92 @@ describe("executeScan wiring", () => {
     expect(attackSurfaceMock).not.toHaveBeenCalled();
     expect(lookalikeMock).not.toHaveBeenCalled();
     expect(calls).not.toContain("syncAssetInventory");
+  });
+});
+
+describe("executeScan exploitability pass", () => {
+  type Stored = { checkId?: string; severity: string; exploitability?: { band: string } };
+  const EXPOSED = "exposure.exposed-file:/.env";
+  const reported = () => [
+    { checkId: EXPOSED, severity: "critical", title: "Exposed .env", detail: "", remediation: "", metadata: { proofOfExploit: { confirmed: true } } },
+    { checkId: "headers.hsts", severity: "medium", title: "No HSTS", detail: "", remediation: "" },
+  ];
+  const findingsOf = (inserts: Array<{ results: Record<string, unknown> }>) => inserts[0].results.findings as Stored[];
+
+  it("stores the summary on assessed findings and a row per assessment, with severity untouched", async () => {
+    vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
+    const { client, resultInserts, assessmentInserts } = fakeSupabase();
+    const result = await executeScan(client, "scan-x", "owner-1", "https://shop.example", { confirmExploits: false });
+
+    expect(result).toMatchObject({ ok: true, score: 88 });
+    const [exposed, hsts] = findingsOf(resultInserts);
+    expect(exposed.severity).toBe("critical");
+    expect(exposed.exploitability).toBeDefined();
+    expect(hsts.exploitability).toBeUndefined();
+    expect(assessmentInserts).toHaveLength(1);
+    expect(assessmentInserts[0]).toMatchObject({ owner: "owner-1", scan_id: "scan-x", host: "shop.example", check_id: EXPOSED });
+  });
+
+  it("runs after the score, so the score never sees it", async () => {
+    vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
+    const seen: boolean[] = [];
+    vi.mocked(scoreFromFindings).mockImplementationOnce((findings) => {
+      seen.push(...findings.map((f) => "exploitability" in f));
+      return 88;
+    });
+    const { client, resultInserts } = fakeSupabase();
+    await executeScan(client, "scan-x", "owner-1", "https://shop.example", { confirmExploits: false });
+
+    expect(seen).toEqual([false, false]);
+    expect(findingsOf(resultInserts)[0].exploitability).toBeDefined();
+  });
+
+  it("completes the scan with the same score and no assessments if the engine throws", async () => {
+    vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    engineFault.throws = true;
+    try {
+      const { client, scanUpdates, resultInserts, assessmentInserts } = fakeSupabase();
+      const result = await executeScan(client, "scan-x", "owner-1", "https://shop.example", { confirmExploits: false });
+
+      expect(result).toMatchObject({ ok: true, score: 88 });
+      expect(scanUpdates.some((u) => u.status === "completed")).toBe(true);
+      expect(findingsOf(resultInserts)[0].exploitability).toBeUndefined();
+      expect(assessmentInserts).toEqual([]);
+    } finally {
+      engineFault.throws = false;
+      errors.mockRestore();
+    }
+  });
+
+  it("never stores `reproduced` under the exposure profile", async () => {
+    vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
+    const { client, resultInserts, assessmentInserts } = fakeSupabase();
+    const toolOverrides = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, false]));
+    await executeScan(client, "scan-x", "owner-1", "https://shop.example", { profile: "exposure", toolOverrides });
+
+    expect(findingsOf(resultInserts)[0].exploitability?.band).toBe("likely");
+    expect(assessmentInserts[0].band).toBe("likely");
+  });
+
+  it("gives an active false positive no assessment, but keeps it stored", async () => {
+    vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
+    const index = findingTriage.buildTriageIndex(
+      [{ id: "t1", owner: "owner-1", target_host: "shop.example", check_id: EXPOSED, state: "false_positive", reason: "a test fixture", expires_at: null, created_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }],
+      new Date(),
+    );
+    const load = vi.spyOn(findingTriage, "loadTriageIndexForTarget").mockResolvedValueOnce({ host: "shop.example", index });
+    try {
+      const { client, resultInserts, assessmentInserts } = fakeSupabase();
+      await executeScan(client, "scan-x", "owner-1", "https://shop.example", { confirmExploits: false });
+
+      const [exposed] = findingsOf(resultInserts);
+      expect(exposed.checkId).toBe(EXPOSED);
+      expect(exposed.exploitability).toBeUndefined();
+      expect(assessmentInserts).toEqual([]);
+    } finally {
+      load.mockRestore();
+    }
   });
 });
 

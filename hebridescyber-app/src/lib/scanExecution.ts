@@ -62,7 +62,9 @@ import type { ReconResult } from "./scanners/recon";
 import { sendCriticalAlertEmail } from "./scanAlerts";
 import { sendScanCompletionEmail } from "./scanCompletionEmail";
 import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
-import { syncFindingLifecycle } from "./findingLifecycle";
+import { hostOf, syncFindingLifecycle } from "./findingLifecycle";
+import { assessFindings, attachExploitability, type ExploitabilityAssessment } from "./exploitability";
+import { persistAssessments, supersedeAssessments } from "./exploitability/persist";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
 import { triageIfEnabled } from "./scanners/aiTriage";
@@ -1152,6 +1154,22 @@ export async function executeScan(
     summary = await generateAiSummary(results, scoredFindings);
     score = scoreFromFindings(scoredFindings);
 
+    // Exploitability (src/lib/exploitability): pure, sends nothing, so it runs
+    // for every profile. It runs after the score so it can't affect it, and over
+    // scoredFindings because a false positive gets no assessment. Enrichment
+    // only, and never fails the scan.
+    const exploitabilityHost = hostOf(targetUrl);
+    let assessments: ExploitabilityAssessment[] = [];
+    if (exploitabilityHost) {
+      try {
+        assessments = assessFindings(scoredFindings, { host: exploitabilityHost, scanProfile: profile });
+        attachExploitability(findings, assessments);
+      } catch (err) {
+        assessments = [];
+        console.error("[exploitability] assessment failed:", err instanceof Error ? err.message : "unknown error");
+      }
+    }
+
     // One result per scan: a re-run (admin retry, stale-job recovery, or a
     // job that was somehow enqueued twice) replaces the previous result
     // rather than appending a second row. Two rows for one scan broke every
@@ -1168,6 +1186,14 @@ export async function executeScan(
       score,
     });
     if (resultsError) throw new Error(resultsError.message);
+
+    // Both never throw, and no-op before migration 071.
+    if (exploitabilityHost) {
+      await persistAssessments(supabaseAdmin, scanId, ownerId, assessments);
+      const kept = new Set(scoredFindings);
+      const falsePositives = findings.filter((f) => !kept.has(f)).flatMap((f) => (f.checkId ? [f.checkId] : []));
+      await supersedeAssessments(supabaseAdmin, ownerId, exploitabilityHost, falsePositives);
+    }
 
     await supabaseAdmin.from("scans").update({
       status: "completed",
