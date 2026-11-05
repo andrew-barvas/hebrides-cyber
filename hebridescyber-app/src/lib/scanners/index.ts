@@ -33,6 +33,7 @@ import { checkScriptInventory, foundByPhrase, integrityPhrase, type ScriptInvent
 import { runCookieConsent, type CookieConsentResult } from "./cookieConsent";
 import { getComplianceRefs, type ComplianceRef } from "./compliance";
 import { applyAttackRefs, type AttackRef } from "./attackMap";
+import { type Exploitability } from "./exploitabilityVerdict";
 import { getFixDifficulty, estimateFixMinutes, type FixDifficulty } from "./fixDifficulty";
 export { enrichFindingsWithCvss } from "./cvssEnrich";
 export { enrichFindingsWithThreatIntel } from "./threatIntel";
@@ -191,6 +192,16 @@ export type Finding = {
    * never that the finding lacks a basis.
    */
   evidence?: FindingEvidence;
+  /**
+   * How sure we are this finding is usable against *this* target — confirmed
+   * (a non-destructive check observed the preconditions), theoretical (the
+   * class is exploitable in the wild per KEV/EPSS/CVSS, not confirmed here), or
+   * unknown (neither — never "safe"). A reporting/prioritisation signal only,
+   * set by a final pass (exploitabilityVerdict.ts) after the proof, CVSS and
+   * threat-intel passes; it never changes severity or score. Absent on scans
+   * stored before this field existed.
+   */
+  exploitability?: Exploitability;
   /** Arbitrary metadata for enrichment passes (proof-of-exploit, scanner-specific context). */
   metadata?: Record<string, unknown>;
 };
