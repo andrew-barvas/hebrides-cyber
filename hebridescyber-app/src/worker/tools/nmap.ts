@@ -25,6 +25,18 @@ export type NmapPort = {
   state: string;
   service: string;
   version: string | null;
+  /** nmap's product attribute alone ("OpenSSH"). Absent on hand-built ports. */
+  product?: string | null;
+  /** nmap's version attribute alone ("8.9p1 Ubuntu 3ubuntu0.10"). */
+  productVersion?: string | null;
+  /** nmap's extrainfo attribute ("Ubuntu Linux; protocol 2.0"). */
+  extraInfo?: string | null;
+  /**
+   * The <cpe> elements nmap emitted for this service, as written (CPE 2.2
+   * URIs such as "cpe:/a:openbsd:openssh:8.9p1"). Empty when nmap matched no
+   * CPE; serviceCve.ts matches CVEs from these.
+   */
+  cpes?: string[];
 };
 
 export type NmapResult =
@@ -34,10 +46,25 @@ export type NmapResult =
 
 const DANGEROUS_PORTS = [21, 22, 23, 25, 3306, 5432, 6379, 27017, 9200, 2375, 2376, 8500, 2379];
 
+function unescapeXml(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
 function xmlAttr(tag: string, name: string): string | null {
   const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
   if (!m) return null;
-  return m[1].replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  return unescapeXml(m[1]);
+}
+
+/**
+ * The <cpe> children of one port's <service> element. nmap writes the
+ * service as `<service .../>` when it has no CPE and as
+ * `<service ...><cpe>…</cpe></service>` when it has one or more.
+ */
+function serviceCpes(body: string): string[] {
+  const service = body.match(/<service\b[^>]*?(?:\/>|>([\s\S]*?)<\/service>)/);
+  const inner = service?.[1] ?? "";
+  return [...inner.matchAll(/<cpe>([^<]*)<\/cpe>/g)].map((m) => unescapeXml(m[1]).trim()).filter(Boolean);
 }
 
 /**
@@ -56,13 +83,19 @@ export function parseNmapXml(xml: string): NmapPort[] {
     if (!Number.isInteger(port)) continue;
     const service = body.match(/<service\b[^>]*>/)?.[0] ?? "";
     // nmap splits "OpenSSH 8.9p1" into product="OpenSSH" version="8.9p1".
-    const version = [xmlAttr(service, "product"), xmlAttr(service, "version")].filter(Boolean).join(" ");
+    const product = xmlAttr(service, "product") || null;
+    const productVersion = xmlAttr(service, "version") || null;
+    const version = [product, productVersion].filter(Boolean).join(" ");
     ports.push({
       port,
       protocol: xmlAttr(attrs, "protocol") ?? "tcp",
       state,
       service: xmlAttr(service, "name") || "unknown",
       version: version || null,
+      product,
+      productVersion,
+      extraInfo: xmlAttr(service, "extrainfo") || null,
+      cpes: serviceCpes(body),
     });
   }
   return ports;
