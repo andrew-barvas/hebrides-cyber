@@ -10,6 +10,7 @@
 //         × internet-facing service        ×1.3  (an open port / service CVE)
 //         × host confirmed live            ×1.1  (answered HTTP, or httpx saw it)
 //         × WAF in front                   ×0.85 (web-attack findings only, never KEV)
+//         × exploitability rating          ×0.7 to ×1.3, from the 0–100 score
 //
 // Each multiplier that applies becomes one factor in the explanation ("High
 // severity, KEV listed, on a high-criticality site"). A signal we don't have
@@ -25,6 +26,7 @@
 // Everything except the two loaders at the bottom is pure.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "./dbErrors";
+import { bandText } from "./exploitability/labels";
 import { hostOf } from "./findingLifecycle";
 import { compareFindings, loadFindingsView, type FindingRow, type HostDetail } from "./findingsView";
 import { findingPenalty } from "./scanners/riskScore";
@@ -49,6 +51,19 @@ export const NON_PRODUCTION_MULTIPLIER = 0.8;
 export const INTERNET_FACING_MULTIPLIER = 1.3;
 export const LIVE_HOST_MULTIPLIER = 1.1;
 export const WAF_MULTIPLIER = 0.85;
+
+/**
+ * 0.7 at score 0, 1 at score 50, 1.3 at score 100, on the scale of the other
+ * multipliers. It only ranks a finding down on real evidence: a low-confidence
+ * rating or a KEV listing can raise a finding but never lowers it. No rating is
+ * "unknown" and doesn't move it.
+ */
+export function exploitabilityMultiplier(row: Pick<FindingRow, "exploitabilityAssessment" | "knownExploited">): number {
+  const a = row.exploitabilityAssessment;
+  if (!a) return 1;
+  const m = Math.round((0.7 + (0.6 * a.score) / 100) * 100) / 100;
+  return m < 1 && (a.confidence === "low" || row.knownExploited) ? 1 : m;
+}
 
 /** Findings about a network service reachable from the internet. */
 const EXPOSED_SERVICE_CHECKS = new Set([
@@ -83,7 +98,8 @@ export type FactorKey =
   | "criticality"
   | "environment"
   | "live"
-  | "waf";
+  | "waf"
+  | "exploitability";
 
 export type PriorityFactor = {
   key: FactorKey;
@@ -157,6 +173,12 @@ export function scoreFinding(
   // Someone exploiting it now is not slowed down enough by a WAF to rank it lower.
   if (signals?.waf && !row.knownExploited && WAF_MITIGATED_CATEGORIES.has(row.category)) {
     factors.push({ key: "waf", label: `behind a WAF (${signals.waf})`, multiplier: WAF_MULTIPLIER });
+  }
+
+  const exploitability = exploitabilityMultiplier(row);
+  if (row.exploitabilityAssessment && exploitability !== 1) {
+    const { band, nonIntrusive } = row.exploitabilityAssessment;
+    factors.push({ key: "exploitability", label: `exploitability ${bandText(band, nonIntrusive).toLowerCase()}`, multiplier: exploitability });
   }
 
   const score = factors.reduce((s, f) => s * f.multiplier, base);

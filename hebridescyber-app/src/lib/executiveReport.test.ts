@@ -194,3 +194,43 @@ describe("renderExecutiveReportHtml", () => {
     expect(html).toContain(`Report date:</b> ${new Date().toISOString().slice(0, 10)}`);
   });
 });
+
+describe("exploitability section", () => {
+  const rating = (over: Partial<NonNullable<Finding["exploitabilityAssessment"]>> = {}) => ({ score: 87, band: "likely" as const, confidence: "medium" as const, nonIntrusive: false, modelVersion: "exp-v1", ...over });
+  const rated = (title: string, over = {}) => f({ title, checkId: `c.${title}`, exploitabilityAssessment: rating(over) });
+  const HEADING = "What to fix first, and why";
+
+  it("is left out by default, and when nothing is rated", () => {
+    expect(renderExecutiveReportHtml(input({ findings: [rated("A")] }))).not.toContain(HEADING);
+    expect(renderExecutiveReportHtml(input({ showExploitability: true }))).not.toContain(HEADING);
+  });
+
+  it("lists rated findings, highest score first, and says no rating isn't safe", () => {
+    const html = renderExecutiveReportHtml(input({ showExploitability: true, findings: [rated("Lower", { score: 20, band: "theoretical" }), rated("Higher")] }));
+    const section = html.slice(html.indexOf(HEADING), html.indexOf("Compliance snapshot"));
+    expect(section.indexOf("Higher")).toBeLessThan(section.indexOf("Lower"));
+    expect(html).toContain("<strong>Higher</strong>: Likely (medium confidence). Conditions for exploitation observed.");
+    expect(html).toContain("which doesn't mean it's safe");
+  });
+
+  it("reads assessed under a non-intrusive scan, and never reproduced or confirmed", () => {
+    const html = renderExecutiveReportHtml(input({ showExploitability: true, findings: [rated("Exposed file", { nonIntrusive: true })] }));
+    const section = html.slice(html.indexOf(HEADING), html.indexOf("Compliance snapshot"));
+    expect(section).toContain("Assessed likely");
+    expect(section).toContain("no test payloads");
+    expect(section).not.toMatch(/\b(reproduced|confirmed)\b/i);
+  });
+
+  it("leaves out a false positive, and escapes titles", () => {
+    const triage = buildTriageIndex([triageRow("c.Gone", "false_positive")], NOW);
+    const html = renderExecutiveReportHtml(input({ showExploitability: true, triage, findings: [rated("Gone"), rated("<b>Kept</b>")] }));
+    const section = html.slice(html.indexOf(HEADING), html.indexOf("Compliance snapshot"));
+    expect(section).not.toContain("Gone");
+    expect(section).toContain("&lt;b&gt;Kept&lt;/b&gt;");
+  });
+
+  it("caps the list and counts the rest", () => {
+    const findings = Array.from({ length: 12 }, (_, i) => rated(`F${i}`));
+    expect(renderExecutiveReportHtml(input({ showExploitability: true, findings }))).toContain("2 more rated findings not shown.");
+  });
+});
