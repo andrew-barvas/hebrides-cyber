@@ -15,6 +15,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { subscriptionGrants } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { renderExecutiveReportHtml } from "@/lib/executiveReport";
+import { hasProAccess } from "@/lib/planAccess";
 import { htmlToPdf } from "@/lib/reportPdf";
 import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 import type { Finding } from "@/lib/scanners";
@@ -77,6 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { index: triage } = await loadTriageIndexForTarget(supabaseAdmin, owner as string, targetUrl);
   const results = (scanResult.results ?? null) as Record<string, unknown> | null;
 
+  const showExploitability = await hasProAccess(supabaseAdmin, owner as string).catch(() => false);
   const html = renderExecutiveReportHtml({
     targetUrl,
     scannedAt: (scanResult.scans as { created_at?: string } | null)?.created_at ?? scanResult.created_at ?? null,
@@ -85,6 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     findings: ((results?.findings as Finding[] | undefined) ?? []),
     results,
     triage,
+    showExploitability,
     branding,
   });
 

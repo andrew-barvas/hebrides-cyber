@@ -88,7 +88,7 @@ describe("buildFindingRows", () => {
   });
 
   describe("exploitability", () => {
-    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, modelVersion: "exp-v1" };
+    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, nonIntrusive: false, modelVersion: "exp-v1" };
     const rated = new Map([["a.example", { scanId: "scan-a", findings: [{ checkId: "tls.x", exploitabilityAssessment: rating }, { checkId: "tls.y" }] }]]);
     const lifecycle = [life("a.example", "tls.x", "high", 1), life("a.example", "tls.y", "high", 1)];
 
