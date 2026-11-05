@@ -38,6 +38,7 @@ export type ExtendedToolName =
   | "sessionCheck"
   | "jwtAnalysis"
   | "cloudPosture"
+  | "m365"
   | "httpx"
   | "contentDiscovery"
   | "credentialSpray"
@@ -84,6 +85,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "sessionCheck",
   "jwtAnalysis",
   "cloudPosture",
+  "m365",
   "httpx",
   "contentDiscovery",
   "credentialSpray",
@@ -144,26 +146,36 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure"
 // "no exploitation, no test payloads", so nothing that sends one may run under
 // it. That rules out the injection testers (sqlmap, commix, dalfox), ZAP's AJAX
 // spider, the offensive-only suite, and proof-of-exploit re-checks (see
-// isNonIntrusiveProfile). Only tools
-// with a real-binary *.integration.test.ts are listed (CLAUDE.md rule 15):
-// deepTls and subdomains have none yet, and the base suite already covers TLS
-// and certificate-transparency subdomains. nuclei runs in its non-intrusive
-// mode here (nuclei.ts), never with the payload-sending baseline tags, and ZAP
-// in its passive-only mode (zap.ts): spider and passive rules, never the active
-// scanner.
+// isNonIntrusiveProfile). Only tools with a real-binary *.integration.test.ts
+// are listed (CLAUDE.md rule 15). subdomains has none (subfinder only queries
+// third-party sources, so there is no hermetic target), and the base suite
+// already covers certificate-transparency subdomains. nuclei, deepTls and ZAP
+// run in their non-intrusive modes here: nuclei without the payload-sending
+// baseline tags (nuclei.ts), testssl.sh without its Heartbleed, CCS,
+// Ticketbleed and ROBOT probes (deepTls.ts), and ZAP passive-only (zap.ts):
+// spider and passive rules, never the active scanner. metadataLeak needs no
+// binary; under this profile it reads only the documents the base crawl
+// recorded, since gospider, photon and katana are left out: they don't honour
+// robots.txt, which the Lookout copy promises.
+// m365 runs no binary: it only reads the customer's Microsoft 365 settings
+// through Graph with their admin's consent (scanners/m365Posture.ts), and
+// unit tests over recorded Graph JSON stand in for the integration test.
 export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
   "httpx",
+  "m365",
   "networkExposure",
   "nmap",
   "nuclei",
   "zap",
+  "deepTls",
+  "metadataLeak",
 ]);
 
 /**
  * Profiles that must never send a test payload: no injection testers, no
  * active scan, no proof-of-exploit re-check. `safe` runs no extended tools at
- * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei restricted and ZAP
- * passive-only.
+ * all; `exposure` runs only EXPOSURE_TOOLS, with nuclei and deepTls restricted
+ * and ZAP passive-only.
  */
 export function isNonIntrusiveProfile(profile: ScanProfile): boolean {
   return profile === "safe" || profile === "exposure";
@@ -198,6 +210,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     metadataLeak: true,
     cloudPosture: true,
     prowler: true,
+    m365: true,
     httpx: true,
     katana: true,
   },

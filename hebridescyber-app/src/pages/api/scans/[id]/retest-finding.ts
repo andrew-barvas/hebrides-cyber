@@ -30,6 +30,7 @@ import { isExtendedToolFinding } from "@/lib/extendedToolCheckIds";
 import { callerCanActFor } from "@/lib/teamAccess";
 import type { Finding, ScanResults } from "@/lib/scanners";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   checkId: z.string().min(1, "checkId is required"),
@@ -94,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .insert({ owner: actingOwnerId, target_url: scan.target_url, status: "running", owner_verified: true })
     .select("id")
     .single();
-  if (insertError || !newScan) return res.status(500).json({ error: insertError?.message ?? "Failed to create retest scan" });
+  if (insertError || !newScan) return respondInternalError(res, "scans/[id]/retest-finding", insertError, { publicMessage: "Failed to create retest scan" });
 
   const { error: jobError } = await supabaseAdmin.from("scan_jobs").insert({
     owner: actingOwnerId,
@@ -104,7 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
   if (jobError) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", newScan.id);
-    return res.status(500).json({ error: `Failed to queue retest: ${jobError.message}` });
+    return respondInternalError(res, "scans/[id]/retest-finding", jobError, { publicMessage: "Failed to queue retest." });
   }
 
   await triggerOnDemandWorkflow();
