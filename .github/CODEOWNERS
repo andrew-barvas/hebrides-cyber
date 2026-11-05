@@ -1,0 +1,4 @@
+# Every path has a named owner, so a PR always has someone accountable for
+# reviewing it. Add a narrower line below (last match wins) when a second
+# maintainer takes over an area, e.g. `/hebridescyber-app/sql/ @someone`.
+* @andrew-barvas

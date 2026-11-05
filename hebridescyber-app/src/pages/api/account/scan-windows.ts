@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   targetUrl: z.string().url(),
@@ -29,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .eq("owner", caller.ownerId)
     .eq("target_url", body.targetUrl);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/scan-windows", error);
 
   return res.status(200).json({ ok: true });
 }

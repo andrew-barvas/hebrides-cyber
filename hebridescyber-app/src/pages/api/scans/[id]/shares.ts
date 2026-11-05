@@ -9,6 +9,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { generateShareToken } from "@/lib/reportShares";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const MAX_EXPIRY_DAYS = 365;
 
@@ -46,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("scan_id", scanId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "scans/[id]/shares", error);
     return res.status(200).json({ shares: (data ?? []).map(withShareUrl) });
   }
 
@@ -76,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id, token, expires_at, revoked_at, view_count, created_at")
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "scans/[id]/shares", error);
 
     // Flagged as the highest-priority audit event of this batch — a share
     // link is a credential that's externally reachable (see
@@ -103,7 +104,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", id)
       .eq("scan_id", scanId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "scans/[id]/shares", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,

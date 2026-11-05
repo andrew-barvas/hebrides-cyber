@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .limit(1)
     .maybeSingle();
 
-  if (error || !scanResult) return res.status(404).json({ error: error?.message ?? "Scan result not found" });
+  if (error || !scanResult) return res.status(404).json({ error: "Scan result not found" });
 
   const owner = (scanResult.scans as { owner?: string } | null)?.owner;
   if (owner !== caller.ownerId) {
