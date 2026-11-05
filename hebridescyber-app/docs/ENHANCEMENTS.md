@@ -1826,3 +1826,29 @@ importers); migrations 034-036 remain.
    Moodle version (`/lib/upgrade.txt`).
 **Impact/effort**: high / medium. **Category**: code (detection).
 **Source**: CMS/tooling gap review, 2026-10-18.
+
+## E-78 — Open-source tool candidates from the AppSec Santa list
+
+**Status: open — candidates only, nothing built.** One PR per tool, each
+needing a pinned install, a real-binary `*.integration.test.ts` (CLAUDE.md
+rule 15) and a licence check before it runs inside a paid service.
+**What** (in suggested order):
+1. **OSV-Scanner** (Apache-2.0): replace or cross-check `dependencyManifest`
+   with its OSV-backed matching. Single binary, lowest risk.
+2. **TruffleHog** (AGPL-3.0): verifies whether a found secret is still live,
+   which cuts `secretScan` false positives. Check the AGPL terms against how
+   we run it before adopting.
+3. **Syft + Grype** (Apache-2.0): SBOM generation plus vulnerability
+   matching; the SBOM could be a report deliverable for supplier
+   questionnaires (see P-06 Lookout).
+4. **KICS** (Apache-2.0): more IaC types than Checkov. Low priority.
+5. **Nikto and OpenVAS**: already decided (Q1) and owned by
+   `DEFENSIVE-ASSESSMENT-PLAN.md`; listed here only so the list is
+   complete. Check that no session has claimed Nikto before starting.
+6. **DefectDojo**: possible analyst triage workspace for Lookout. A whole
+   platform to host; revisit once there are paying Lookout customers.
+**Impact/effort**: medium / low-medium each. **Category**: code (new tools).
+**Source**: appsecsanta.com/open-source-tools review, 2026-11-01. Licences
+for tools the page marks "not stated" are unchecked. The AI red-team tools on
+that list (Garak, PyRIT and others) send adversarial prompts and are out of
+scope here.
