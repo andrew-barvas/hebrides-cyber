@@ -6,7 +6,7 @@ import { buildFacets, groupFindings, type FindingRow } from "@/lib/findingsView"
 const row = (over: Partial<FindingRow> = {}): FindingRow => ({
   key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
   severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: "2026-09-01T00:00:00Z", ageDays: 30, slaState: null, slaDueAt: null,
-  knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: "scan-1", triage: null, exploitability: null, ...over,
+  knownExploited: false, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "scan-1", triage: null, exploitabilityAssessment: null, ...over,
 });
 
 const ROWS = [
@@ -352,14 +352,14 @@ describe("FindingsExplorer", () => {
     });
 
     it("puts the top rating on the group, and the note that no rating isn't safe", async () => {
-      listBody = () => body({ rows: [row({ exploitability: rating })] });
+      listBody = () => body({ rows: [row({ exploitabilityAssessment: rating })] });
       render(<FindingsExplorer token="tok" />);
       expect(await screen.findByText(/Likely · medium confidence/)).toBeInTheDocument();
       expect(screen.getByText(NOTE)).toBeInTheDocument();
     });
 
     it("opens the conditions behind a row's rating on demand, and fetches nothing until then", async () => {
-      listBody = () => body({ view: "rows", rows: [row({ exploitability: rating })] });
+      listBody = () => body({ view: "rows", rows: [row({ exploitabilityAssessment: rating })] });
       fetchMock.mockImplementation(async (url: string) =>
         url.startsWith("/api/exploitability/")
           ? json(200, {

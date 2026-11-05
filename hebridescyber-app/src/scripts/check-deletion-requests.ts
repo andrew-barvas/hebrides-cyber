@@ -8,22 +8,12 @@
 // Run with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... RESEND_API_KEY=... [CONTACT_EMAIL=...] npm run account:deletion-reminders
 
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { runDeletionReminder } from "../lib/accountErasure";
 import { sendEmail } from "../lib/email";
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
   const to = process.env.CONTACT_EMAIL || "hello@hebridescyber.co.uk";
 
   const outcome = await runDeletionReminder(supabaseAdmin, (subject, html) => sendEmail({ to, subject, html }));

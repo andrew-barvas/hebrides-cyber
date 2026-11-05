@@ -63,12 +63,14 @@ export type FindingRow = {
   knownExploited: boolean;
   ransomware: boolean;
   epss: number | null;
+  /** Highest CVSS base score of the finding's CVE(s), when the scan recorded one. */
+  cvssScore: number | null;
   cveIds: string[];
   /** The scan this finding was last seen in, for linking to its report. */
   scanId: string | null;
   triage: FindingRowTriage | null;
   /** Null = not assessed, or not on a Pro-and-up plan — never "not exploitable". */
-  exploitability: FindingExploitability | null;
+  exploitabilityAssessment: FindingExploitability | null;
 };
 
 export type LifecycleOpenRow = LifecycleRow & { last_scan_id?: string | null };
@@ -79,8 +81,9 @@ export type ScanFinding = {
   title?: string;
   detail?: string;
   cveIds?: string[];
+  cvssScore?: number;
   threatIntel?: { knownExploited?: boolean; ransomware?: boolean; epss?: number };
-  exploitability?: FindingExploitability;
+  exploitabilityAssessment?: FindingExploitability;
 };
 
 export type HostDetail = { scanId: string; findings: ScanFinding[] };
@@ -144,11 +147,12 @@ export function buildFindingRows(
       knownExploited: intel?.knownExploited === true,
       ransomware: intel?.ransomware === true,
       epss: typeof intel?.epss === "number" ? intel.epss : null,
+      cvssScore: typeof found?.cvssScore === "number" && Number.isFinite(found.cvssScore) ? found.cvssScore : null,
       cveIds: Array.isArray(found?.cveIds) ? found.cveIds.filter((c) => typeof c === "string") : [],
       scanId: detailByHost.get(host)?.scanId ?? row.last_scan_id ?? null,
       triage: active ? { state: active.state, reason: active.reason, expiresAt: active.expires_at } : null,
       // A false positive gets no rating, including one marked since the scan ran.
-      exploitability: showExploitability && active?.state !== "false_positive" ? (found?.exploitability ?? null) : null,
+      exploitabilityAssessment: showExploitability && active?.state !== "false_positive" ? (found?.exploitabilityAssessment ?? null) : null,
     });
   }
   return rows;
@@ -223,6 +227,8 @@ function positiveInt(value: string | undefined, max: number): number | null {
 
 export type FindingsQuery = {
   filters: FindingFilters;
+  /** "priority" = the estate "fix this first" rank (estatePriority.ts). */
+  sort: "severity" | "priority";
   view: "grouped" | "rows";
   page: number;
   pageSize: number;
@@ -252,7 +258,9 @@ export function parseFindingsQuery(query: RawQuery): FindingsQuery {
       sla: sla === "breached" || sla === "due_soon" || sla === "on_track" ? sla : null,
       minAgeDays: positiveInt(first(query, "minAgeDays"), 3650),
     },
-    view: first(query, "view") === "rows" ? "rows" : "grouped",
+    sort: first(query, "sort") === "priority" ? "priority" : "severity",
+    // A ranked list is a list of rows, so priority defaults to them.
+    view: (first(query, "view") ?? (first(query, "sort") === "priority" ? "rows" : undefined)) === "rows" ? "rows" : "grouped",
     page: Math.max(1, positiveInt(first(query, "page"), 1_000_000) ?? 1),
     pageSize: pageSize && pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE,
     format: first(query, "format") === "csv" ? "csv" : "json",
@@ -329,7 +337,7 @@ export function groupFindings(rows: FindingRow[]): FindingGroup[] {
       sites,
       knownExploited: sorted.some((r) => r.knownExploited),
       maxEpss: epss.length > 0 ? Math.max(...epss) : null,
-      topExploitability: sorted.reduce<FindingExploitability | null>((top, r) => (r.exploitability && (!top || r.exploitability.score > top.score) ? r.exploitability : top), null),
+      topExploitability: sorted.reduce<FindingExploitability | null>((top, r) => (r.exploitabilityAssessment && (!top || r.exploitabilityAssessment.score > top.score) ? r.exploitabilityAssessment : top), null),
       oldestFirstSeenAt: sorted.reduce((a, r) => (r.firstSeenAt < a ? r.firstSeenAt : a), sorted[0].firstSeenAt),
       rows: sorted,
     });
@@ -402,14 +410,22 @@ export const CSV_HEADER = [
   "triage_expires",
 ] as const;
 
+/** Leading columns when the rows are the estate priority rank (sort=priority). */
+export const PRIORITY_CSV_HEADER = ["priority_rank", "priority_score", "priority_reason"] as const;
+
+type CsvRow = FindingRow & { priority?: { rank: number; score: number; reason: string } };
+
 /** One CSV, header included. Every cell goes through csvCell, so text that
  *  came from a scanned site (titles quote headers, paths, hostnames) can't run
- *  as a spreadsheet formula. Lines end CRLF (RFC 4180). */
-export function findingsToCsv(rows: FindingRow[]): string {
-  const lines = [CSV_HEADER.join(",")];
+ *  as a spreadsheet formula. Lines end CRLF (RFC 4180). With `priority`, each
+ *  row leads with its estate rank, score and reason. */
+export function findingsToCsv(rows: CsvRow[], opts: { priority?: boolean } = {}): string {
+  const lines = [[...(opts.priority ? PRIORITY_CSV_HEADER : []), ...CSV_HEADER].join(",")];
   for (const r of rows) {
+    const lead = opts.priority ? [String(r.priority?.rank ?? ""), String(r.priority?.score ?? ""), r.priority?.reason ?? ""] : [];
     lines.push(
       [
+        ...lead,
         r.host,
         r.severity,
         r.title,
@@ -447,6 +463,8 @@ export type FindingsViewData = {
   detailComplete: boolean;
   truncated: boolean;
   rows: FindingRow[];
+  /** Each host's latest completed scan, for estatePriority's host signals. */
+  detailByHost: Map<string, HostDetail>;
 };
 
 const LIFECYCLE_SELECT = "id, target_host, check_id, severity, title, first_seen_at, last_seen_at, resolved_at, last_scan_id";
@@ -499,7 +517,7 @@ export type FindingsViewResult = { ok: true; data: FindingsViewData } | { ok: fa
 export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: string, now: Date = new Date()): Promise<FindingsViewResult> {
   const empty = (available: boolean): FindingsViewResult => ({
     ok: true,
-    data: { available, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [] },
+    data: { available, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [], detailByHost: new Map() },
   });
 
   const [open, triage, slaAccess, exploitabilityAccess] = await Promise.all([
@@ -539,6 +557,14 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
   const rows = buildFindingRows(lifecycle, detail ?? new Map(), buildTriageIndex(triage.rows, now), policy, now, exploitabilityAccess);
   return {
     ok: true,
-    data: { available: true, triageAvailable: triage.available, slaEnabled: slaAccess, detailComplete: detail !== null, truncated, rows },
+    data: {
+      available: true,
+      triageAvailable: triage.available,
+      slaEnabled: slaAccess,
+      detailComplete: detail !== null,
+      truncated,
+      rows,
+      detailByHost: detail ?? new Map(),
+    },
   };
 }

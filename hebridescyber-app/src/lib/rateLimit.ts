@@ -66,6 +66,11 @@ const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
+/** True when counters live in shared storage, so a limit holds across instances and restarts. */
+export function hasSharedRateLimitStore(): boolean {
+  return Boolean(upstashUrl && upstashToken);
+}
+
 // namespace keeps unrelated callers from sharing a bucket by accident —
 // run-scan.ts and v1/scans.ts deliberately share "run-scan" (one combined
 // scan-creation quota per owner regardless of entry point); a caller with a
@@ -73,11 +78,14 @@ export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 export async function checkRateLimit(
   key: string,
   namespace: string = "run-scan",
-  policy: RateLimitPolicy = DEFAULT_RATE_LIMIT
+  policy: RateLimitPolicy = DEFAULT_RATE_LIMIT,
+  // Fail closed when the shared store errors, for endpoints where letting
+  // traffic through is worse than refusing it (anonymous scans of third parties).
+  options: { failClosed?: boolean } = {}
 ): Promise<RateLimitResult> {
   const namespacedKey = `${namespace}:${key}`;
   if (upstashUrl && upstashToken) {
-    return checkRateLimitRedis(namespacedKey, policy);
+    return checkRateLimitRedis(namespacedKey, policy, options.failClosed === true);
   }
   return checkRateLimitInMemory(namespacedKey, policy);
 }
@@ -93,7 +101,7 @@ export async function checkRateLimit(
  * publishes a Lua script for this) if the fixed-window edge case becomes
  * a real problem in practice.
  */
-async function checkRateLimitRedis(key: string, policy: RateLimitPolicy): Promise<RateLimitResult> {
+async function checkRateLimitRedis(key: string, policy: RateLimitPolicy, failClosed = false): Promise<RateLimitResult> {
   const redisKey = `ratelimit:${key}`;
 
   try {
@@ -122,7 +130,8 @@ async function checkRateLimitRedis(key: string, policy: RateLimitPolicy): Promis
     // If Redis is unreachable, fail OPEN (allow the request) rather than
     // taking down scanning entirely because of a rate-limiter outage —
     // but log loudly so it gets noticed and fixed.
-    console.error("[rateLimit] Upstash request failed, allowing request through:", err);
+    console.error(`[rateLimit] Upstash request failed, ${failClosed ? "refusing" : "allowing"} request:`, err);
+    if (failClosed) return { allowed: false, retryAfterSeconds: 60 };
     return { allowed: true, retryAfterSeconds: 0 };
   }
 }

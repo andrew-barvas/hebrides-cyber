@@ -109,6 +109,7 @@ const REPORT_FRAMEWORKS: ComplianceFramework[] = [
   "cyber-essentials",
   "owasp-top-10",
   "cis-controls-v8",
+  "cis-m365",
   "nis2",
   "dora",
   "soc2",

@@ -6,24 +6,13 @@
 //
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run easm:discover [-- --dry-run]
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { runEasmPipeline } from "../lib/easmPipeline";
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-
   // Same Node-20-CI RealtimeClient workaround as the other scheduled scripts.
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   console.log(dryRun ? "DRY RUN — enumerating targets, discovering nothing." : "Running EASM discovery sweep…");
   const r = await runEasmPipeline(supabaseAdmin, { dryRun });
