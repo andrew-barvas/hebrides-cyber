@@ -44,7 +44,7 @@ function row(over: Partial<FindingRow> = {}): FindingRow {
   return {
     key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
     severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: daysAgo(10), ageDays: 10, slaState: null, slaDueAt: null,
-    knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: null, triage: null, ...over,
+    knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: null, triage: null, exploitability: null, ...over,
   };
 }
 
@@ -85,6 +85,40 @@ describe("buildFindingRows", () => {
       knownExploited: true, ransomware: true, epss: 0.7, cveIds: ["CVE-2021-1"], slaState: "breached",
     });
     expect(rows[0].detail).toHaveLength(500);
+  });
+
+  describe("exploitability", () => {
+    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, modelVersion: "exp-v1" };
+    const rated = new Map([["a.example", { scanId: "scan-a", findings: [{ checkId: "tls.x", exploitability: rating }, { checkId: "tls.y" }] }]]);
+    const lifecycle = [life("a.example", "tls.x", "high", 1), life("a.example", "tls.y", "high", 1)];
+
+    it("carries the stored rating when the account's plan includes it, and null when a finding has none", () => {
+      const rows = buildFindingRows(lifecycle, rated, EMPTY_TRIAGE_INDEX, null, NOW, true);
+      expect(rows.map((r) => r.exploitability)).toEqual([rating, null]);
+    });
+
+    it("hides it on a plan that doesn't include it, the default", () => {
+      const rows = buildFindingRows(lifecycle, rated, EMPTY_TRIAGE_INDEX, null, NOW);
+      expect(rows.map((r) => r.exploitability)).toEqual([null, null]);
+    });
+
+    it("drops the rating of a finding marked a false positive since the scan ran", () => {
+      const index = buildTriageIndex([triageRow("a.example", "tls.x", "false_positive")], NOW);
+      const rows = buildFindingRows(lifecycle.slice(0, 1), rated, index, null, NOW, true);
+      expect(rows[0].exploitability).toBeNull();
+    });
+
+    it("groups under the highest-scoring rating, or null when none is rated", () => {
+      const low = { ...rating, score: 20, band: "theoretical" as const };
+      const shared = { checkBase: "tls.x", checkId: "tls.x" };
+      const [group] = groupFindings([
+        row({ ...shared, key: "1", host: "a.example", exploitability: low }),
+        row({ ...shared, key: "2", host: "b.example", exploitability: rating }),
+        row({ ...shared, key: "3", host: "c.example" }),
+      ]);
+      expect(group.topExploitability).toEqual(rating);
+      expect(groupFindings([row()])[0].topExploitability).toBeNull();
+    });
   });
 
   it("keeps a finding the latest scan no longer carries, from its lifecycle row", () => {

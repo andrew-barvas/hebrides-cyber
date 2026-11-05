@@ -6,7 +6,7 @@ import { buildFacets, groupFindings, type FindingRow } from "@/lib/findingsView"
 const row = (over: Partial<FindingRow> = {}): FindingRow => ({
   key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
   severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: "2026-09-01T00:00:00Z", ageDays: 30, slaState: null, slaDueAt: null,
-  knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: "scan-1", triage: null, ...over,
+  knownExploited: false, ransomware: false, epss: null, cveIds: [], scanId: "scan-1", triage: null, exploitability: null, ...over,
 });
 
 const ROWS = [
@@ -338,6 +338,49 @@ describe("FindingsExplorer", () => {
     await screen.findByText("Missing HSTS");
     fireEvent.click(screen.getByRole("button", { name: /Export CSV/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not export your findings");
+  });
+
+  describe("exploitability", () => {
+    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, modelVersion: "exp-v1" };
+    const NOTE = /No rating means not assessed, not safe/;
+
+    it("shows no chip, no Why? and no note when nothing on the page is rated", async () => {
+      render(<FindingsExplorer token="tok" />);
+      await screen.findByText("Missing HSTS");
+      expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Why\?/ })).not.toBeInTheDocument();
+    });
+
+    it("puts the top rating on the group, and the note that no rating isn't safe", async () => {
+      listBody = () => body({ rows: [row({ exploitability: rating })] });
+      render(<FindingsExplorer token="tok" />);
+      expect(await screen.findByText(/Likely · medium confidence/)).toBeInTheDocument();
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
+    });
+
+    it("opens the conditions behind a row's rating on demand, and fetches nothing until then", async () => {
+      listBody = () => body({ view: "rows", rows: [row({ exploitability: rating })] });
+      fetchMock.mockImplementation(async (url: string) =>
+        url.startsWith("/api/exploitability/")
+          ? json(200, {
+              scanId: "scan-1",
+              modelVersion: "exp-v1",
+              notAssessed: 0,
+              assessments: [{ checkId: "headers.hsts", band: "likely", score: 87, conditions: [], factors: [], modelVersion: "exp-v1" }],
+            })
+          : json(200, listBody()),
+      );
+      render(<FindingsExplorer token="tok" />);
+      const why = await screen.findByRole("button", { name: /^Why\?/ });
+      const assessmentCalls = () => fetchMock.mock.calls.filter((c) => (c[0] as string).startsWith("/api/exploitability/"));
+      expect(assessmentCalls()).toHaveLength(0);
+      expect(why).toHaveAttribute("aria-expanded", "false");
+
+      fireEvent.click(why);
+      expect(await screen.findByText(/Score 87 of 100/)).toBeInTheDocument();
+      expect(assessmentCalls()[0][0]).toBe("/api/exploitability/assessments?scanId=scan-1");
+      expect(screen.getByRole("button", { name: /^Hide why/ })).toHaveAttribute("aria-expanded", "true");
+    });
   });
 
   it("labels controls for assistive tech", async () => {
