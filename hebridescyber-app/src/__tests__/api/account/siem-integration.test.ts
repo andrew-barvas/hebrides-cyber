@@ -84,10 +84,14 @@ describe("/api/account/siem-integration", () => {
       expect(callsTo("insert")).toEqual([]);
     });
 
-    it("skips webhook validation for syslog", async () => {
+    it("refuses syslog, which has no delivery transport yet, without storing or auditing it", async () => {
       db.result = { data: { id: UUID }, error: null };
-      await call("POST", { type: "syslog", endpoint: "syslog.example.com:514" });
+      const res = await call("POST", { type: "syslog", endpoint: "syslog.example.com:514" });
+      expect(res.statusCode).toBe(400);
+      expect(res._getJSONData().error).toContain("Syslog");
       expect(validateMock).not.toHaveBeenCalled();
+      expect(callsTo("insert")).toEqual([]);
+      expect(auditMock).not.toHaveBeenCalled();
     });
 
     it("creates with defaults, tags the owner, and audits it", async () => {
@@ -105,7 +109,7 @@ describe("/api/account/siem-integration", () => {
 
     it("500s without auditing when the insert fails", async () => {
       db.result = { data: null, error: { message: "boom" } };
-      expect((await call("POST", { type: "syslog", endpoint: "h:514" })).statusCode).toBe(500);
+      expect((await call("POST", { type: "webhook", endpoint: "https://siem.example.com/hook" })).statusCode).toBe(500);
       expect(auditMock).not.toHaveBeenCalled();
     });
   });

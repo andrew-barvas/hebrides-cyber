@@ -125,7 +125,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
 
     const body = res._getData() as string;
     const lines = body.split("\r\n");
-    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence");
+    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids");
     // Embedded quote/comma must be CSV-escaped (doubled quotes, wrapped in quotes).
     expect(lines[1]).toContain('"Finding with a ""quote"", and a comma"');
     expect(lines[1]).toContain("CVE-2024-1; CVE-2024-2");
@@ -201,8 +201,9 @@ describe("GET /api/v1/scans/[id]/export", () => {
     const lines = (csv.res._getData() as string).split("\r\n");
     // The reason is the customer's own text — formula-neutralised like titles.
     expect(lines[1]).toContain(`,snoozed,'=cmd|' /C calc'!A0 fix in sprint,${future}`);
-    expect(lines[2].endsWith(",,,")).toBe(true);
-    expect(lines[3].endsWith(",,,")).toBe(true);
+    // triage_state, triage_reason, triage_expires_at are columns 10-12; blank when expired or untriaged.
+    expect(lines[2].split(",").slice(10, 13)).toEqual(["", "", ""]);
+    expect(lines[3].split(",").slice(10, 13)).toEqual(["", "", ""]);
 
     const json = mockReqRes({ id: "scan-1", format: "json" });
     await handler(json.req, json.res);
@@ -234,7 +235,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence"]);
+    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids"]);
   });
 
   it("puts a finding's evidence in one CSV column and leaves it blank when there is none", async () => {
@@ -266,8 +267,52 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     const lines = (res._getData() as string).split("\r\n");
-    expect(lines[1].endsWith("GET https://example.com/.env → 200 (text/plain); matched: DB_")).toBe(true);
-    expect(lines[2].endsWith(",")).toBe(true);
+    expect(lines[1]).toContain(",GET https://example.com/.env → 200 (text/plain); matched: DB_,");
+    // No evidence, no checkId: the last three columns are blank.
+    expect(lines[2].endsWith(",,,")).toBe(true);
+  });
+
+  it("adds ATT&CK techniques and CWE ids, mapping older scans at export time", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = {
+      data: {
+        results: {
+          findings: [
+            // Stored before attackMap.ts: no refs on the finding, so the table supplies them.
+            { severity: "high", title: "Certificate expired", detail: "d", checkId: "tls.cert-expired" },
+            // Stored refs win over the current table.
+            { severity: "low", title: "Stored", detail: "d", checkId: "tls.cert-expired", attackRefs: [{ id: "T1190", name: "Exploit Public-Facing Application", url: "u" }], cwe: ["CWE-1"] },
+          ],
+        },
+      },
+    };
+    const { req, res } = mockReqRes({ id: "scan-1" });
+
+    await handler(req, res);
+
+    const lines = (res._getData() as string).split("\r\n");
+    expect(lines[1]).toMatch(/,T1557 [^,]+,CWE-298$/);
+    expect(lines[2].endsWith(",T1190 Exploit Public-Facing Application,CWE-1")).toBe(true);
+  });
+
+  it("returns a SARIF 2.1.0 log for format=sarif, with triage applied", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = {
+      data: { results: { findings: [{ checkId: "headers.csp", severity: "high", title: "Missing CSP", detail: "No policy", remediation: "Add one" }] } },
+    };
+    const { req, res } = mockReqRes({ id: "scan-1", format: "SARIF" });
+
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(res.getHeader("Content-Type")).toBe("application/sarif+json; charset=utf-8");
+    expect(res.getHeader("Content-Disposition")).toMatch(/-findings\.sarif"?$/);
+    const log = JSON.parse(res._getData() as string);
+    expect(log.version).toBe("2.1.0");
+    expect(log.runs[0].results).toHaveLength(1);
+    expect(log.runs[0].results[0].ruleId).toBe("headers.csp");
   });
 
   it("sanitises the target URL into a filesystem-safe filename", async () => {

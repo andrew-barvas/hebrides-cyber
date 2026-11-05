@@ -19,6 +19,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const START_RATE_LIMIT = { max: 20, windowSeconds: 60 * 60 };
 const CHECK_RATE_LIMIT = { max: 30, windowSeconds: 60 * 60 };
@@ -119,7 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       domain,
       token,
     });
-    if (insertError) return res.status(500).json({ error: insertError.message });
+    if (insertError) return respondInternalError(res, "verify-ownership", insertError);
   }
 
   return res.status(200).json({
