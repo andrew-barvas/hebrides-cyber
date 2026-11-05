@@ -51,6 +51,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "dmarc_ingest_tokens", ownerCol: "owner", insert: "insert into dmarc_ingest_tokens (owner, token) values ($1, 'tok-new-0123456789abcdef')" },
   { table: "ce_self_assessment", ownerCol: "owner", insert: "insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')" },
   { table: "uptime_monitors", ownerCol: "owner", insert: "insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, 'https://new.test', 'uptimerobot', '999')" },
+  { table: "custom_nuclei_templates", ownerCol: "owner", insert: "insert into custom_nuclei_templates (owner, template_id, name, severity, yaml) values ($1, 'new-check', 'n', 'low', 'y')" },
+  { table: "m365_tenants", ownerCol: "owner", insert: "insert into m365_tenants (owner, tenant_id) values ($1, '99999999-9999-9999-9999-999999999999')" },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -60,7 +62,7 @@ const SERVICE_WRITE_ONLY = [
   "emerging_threat_alerts", "repo_connections", "verifications", "scan_jobs",
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
-  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors",
+  "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors", "custom_nuclei_templates", "m365_tenants",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -115,7 +117,9 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into dmarc_ingest_tokens (owner, token) values ($1, $2)", [o, `tok-${h}-0123456789abcdef`]);
       await q("insert into ce_self_assessment (owner, control, question_key, answer) values ($1, 'Malware protection', 'malware.protection', 'yes')", [o]);
       await q("insert into uptime_monitors (owner, target_url, provider, external_id) values ($1, $2, 'uptimerobot', $3)", [o, `https://${h}`, `ext-${h}`]);
+      await q("insert into custom_nuclei_templates (owner, template_id, name, severity, yaml) values ($1, $2, 'n', 'low', 'y')", [o, `chk-${h.replace(/[^a-z0-9]/g, "-")}`]);
       await q("insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'enc:k')", [o]);
+      await q("insert into m365_tenants (owner, tenant_id) values ($1, gen_random_uuid())", [o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
@@ -308,6 +312,16 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
         await db.pool.query("update subscriptions set status = 'active' where owner = $1", [B]);
         await db.pool.query("insert into monitored_targets (owner, target_url) values ($1, 'https://b.test')", [B]);
       }
+    });
+
+    it("lets only the owner set criticality/environment (067), within the allowed values", async () => {
+      await asActor(db, asA, async (c) => {
+        expect((await attempt(c, "update monitored_targets set criticality = 'high', environment = 'production' where owner = $1", [A])).rowCount).toBeGreaterThan(0);
+        expect((await attempt(c, "update monitored_targets set criticality = 'high' where owner = $1", [B])).rowCount).toBe(0);
+        expect((await attempt(c, "update monitored_targets set criticality = 'extreme' where owner = $1", [A])).ok).toBe(false);
+        expect((await attempt(c, "update monitored_targets set environment = 'prod' where owner = $1", [A])).ok).toBe(false);
+        expect((await attempt(c, "update monitored_targets set environment = null, criticality = 'normal' where owner = $1", [A])).ok).toBe(true);
+      });
     });
 
     it("lets an owner update/delete their own target but not another's, nor re-home it", async () => {

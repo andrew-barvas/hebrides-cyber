@@ -5,21 +5,11 @@
 // Run with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run blog:publish-scheduled
 
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { publishDuePosts } from "../lib/blogSchedule";
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   const outcome = await publishDuePosts(supabaseAdmin);
   switch (outcome.status) {

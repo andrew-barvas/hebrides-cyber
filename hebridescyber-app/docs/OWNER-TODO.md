@@ -79,6 +79,31 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-45 | Lookout: decide pilot-first launch (Q5) and line up five pilot prospects | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-48 | Decide whether to build SAML single sign-on now | 🟢 Strategic | Decision | 2026-10-31 | |
 | OT-49 | Let automated update PRs run CI (`GH_PAT` scope) and turn on Dependabot security alerts | 🟡 Medium | Open | 2026-11-01 | |
+| OT-50 | Scanner tool licences: WPScan commercial terms, sqlmap/nmap "derived work" wording, Nikto data files | 🟠 High | Decision | 2026-11-01 | |
+| OT-51 | Exploit: go or no-go on the product (P-07), given OT-13 is the gating cost | 🟢 Strategic | Decision | 2026-11-02 | |
+| OT-52 | Exploit: confirm engagements are booked by hand only, never self-serve checkout | 🟢 Low | Decision | 2026-11-02 | |
+| OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
+| OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
+| OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
+
+## Common steps
+
+Several items below refer to these two procedures.
+
+**GitHub secret.** From `hebridescyber-app/`, run `gh auth login` once, then
+`gh secret set NAME`. It prompts for the value, so the secret stays out of
+shell history. Or use GitHub → repo → Settings → Secrets and variables →
+Actions → New repository secret. `gh secret list` shows names and dates only,
+which is how a session can confirm a secret exists without seeing it. A change
+to a secret that is baked into the site (names starting `NEXT_PUBLIC_`) needs
+a push to `master` or Actions → Deploy → Run workflow before it shows.
+
+**Azure app setting.** Azure portal → your Static Web App → Settings →
+Environment variables (older portals call it Configuration) → Add → name and
+value → Save. From the CLI: `az staticwebapp list -o table` finds the app
+name, then `az staticwebapp appsettings set --name <app> --setting-names NAME=value`.
+Sessions can't read these, so an item that depends on one stays "Check" until
+you confirm.
 
 ## Items
 
@@ -86,8 +111,18 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 - **What and why:** the password inside `DATABASE_URL` was pasted into a chat
   during setup on 2026-10-14, so treat it as exposed. That URL gives full
   database access.
-- **How:** follow `OWNER-SETUP.md` §1. Reset the password in Supabase
-  (Project settings → Database), then update the `DATABASE_URL` GitHub secret.
+- **How:** work through `OWNER-SETUP.md` §1 in this order:
+  1. Supabase dashboard → your project → Settings → Database → Database
+     password → Reset database password. Copy the new password straight away.
+  2. Same page → Connection string → URI. Replace `[YOUR-PASSWORD]` with the new
+     password (URL-encode any `@`, `:` or `/` in it).
+  3. Update the `DATABASE_URL` GitHub secret: `gh secret set DATABASE_URL` and
+     paste the whole string.
+  4. Update `DATABASE_URL` anywhere else it lives: your local `.env.local`, and
+     any Azure setting that holds it (see "Common steps").
+  5. While you're there, rotate anything else ever pasted into a chat: the
+     Supabase service-role key (Settings → API → regenerate, then update
+     `SUPABASE_SERVICE_ROLE_KEY` in GitHub and Azure) and any Stripe keys.
 - **Verify:** the next push to `master` passes "Apply migrations + verify
   schema". `gh secret list` shows `DATABASE_URL` with a date after 2026-10-14
   (on 2026-10-27 it still showed 2026-10-14).
@@ -146,6 +181,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   its description (`emergingThreatAlerts.ts`, `attackSurfaceMonitor.ts`,
   `lookalikeDomainMonitor.ts`, the scan-alert check in `scanExecution.ts`, and
   `scanCadence.ts`) and would be a follow-up PR.
+- **How:** decide, then act:
+  1. Open https://github.com/andrew-barvas/hebrides-cyber/pull/110 and read the
+     description and the file list.
+  2. If you want it: click Reopen pull request, check CI is green, then Squash
+     and merge. Then ask a session for the follow-up PR covering the server-side
+     jobs listed above.
+  3. If you don't: write one line on the PR (or here) saying why, so the next
+     session doesn't redo it. Tier A users then keep seeing the locked features
+     and the Overview error until another fix lands.
 - **Raised:** 2026-10-27.
 
 ### OT-05: Confirm `CREDENTIALS_ENC_KEY` in Azure and encrypt stored secrets 🟠
@@ -166,17 +210,38 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   `UPSTASH_REDIS_REST_URL`/`_TOKEN` aren't set. That leaves no limit on
   scans, logins-adjacent routes or the API. These are Azure app settings, so a
   session can't see them.
-- **How:** follow `OWNER-SETUP.md` §5. Create a free Upstash Redis database
-  and add both values as Azure Static Web App settings.
-- **Verify:** hammering `POST /api/scan` from one IP returns 429.
+- **How:**
+  1. Sign up at https://console.upstash.com (free tier).
+  2. Create database → Redis, pick the region closest to your Azure Static Web
+     App, leave TLS on, create.
+  3. On the database page open the REST API section and copy
+     `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+  4. Add both as Azure Static Web App settings (see "Common steps", Azure app setting).
+  5. Redeploy or restart is not needed for API routes, but a push to `master`
+     (or Actions → Deploy → Run workflow) makes sure the new settings are live.
+- **Verify:** repeated `POST` requests to `/api/run-scan` from one machine eventually return 429 (the limit is in `src/pages/api/run-scan.ts`).
+- **Also gates `/check`:** the no-signup website check (`POST /api/instant-check`) scans
+  sites its visitors do not own, so it answers 503 in production until these
+  two values are set, and it refuses traffic if Upstash errors. Once set,
+  `/check` works with no further change.
 - **Raised:** 2026-08-17.
 
 ### OT-07: Branch protection on `master` 🟠
 - **What and why:** `master` has no protection rule (the GitHub API returned
   "Branch not protected" on 2026-10-27). A PR with failing tests can be
   merged, and every merge deploys to production.
-- **How:** follow `OWNER-SETUP.md` §4b. A private repo needs GitHub Pro.
-  Require a PR and the `Lint, typecheck, test` check.
+- **How:**
+  1. GitHub → repo → Settings → Branches (or Rules → Rulesets) → Add rule /
+     New branch ruleset for `master`. A private repo needs GitHub Pro or Team
+     for this.
+  2. Tick Require a pull request before merging.
+  3. Tick Require status checks to pass, search for and add
+     `Lint, typecheck, test`.
+  4. Optional: Require branches to be up to date, Require linear history.
+  5. Decide whether admins are exempt. If they are, you can still merge past a
+     red check, so leave "Do not allow bypassing" ticked if you want it strict.
+  6. Save. Note that sessions that squash-merge will now be blocked until CI is
+     green, which is the point.
 - **Verify:** on a deliberately failing PR, the merge button is blocked.
 - **Raised:** 2026-08-26 (BETA-5).
 
@@ -185,9 +250,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   OT-26). `NEXT_PUBLIC_SENTRY_DSN`, which `deploy.yml` reads for browser
   errors, isn't set. The Azure app setting `SENTRY_DSN`, for API routes, can't
   be seen from here.
-- **How:** follow `OWNER-SETUP.md` §3. Add the GitHub secret
-  `NEXT_PUBLIC_SENTRY_DSN`, which can be the same DSN, and the Azure app
-  setting `SENTRY_DSN`.
+- **How:**
+  1. Sentry → create a project, platform Next.js (or reuse the one from
+     OT-26) → copy its DSN.
+  2. Add the GitHub secret `NEXT_PUBLIC_SENTRY_DSN` (see "Common steps", GitHub secret). This
+     must be a GitHub secret, not only an Azure setting: `deploy.yml` bakes it
+     into the browser bundle at build time.
+  3. Add the Azure setting `SENTRY_DSN` with the same DSN for API routes
+     (see "Common steps", Azure app setting).
+  4. Push to `master` or re-run Deploy so the browser bundle is rebuilt.
 - **Verify:** sign in as admin, open Admin → Overview and press "Send test
   error" (`POST /api/admin/sentry-test`). It answers "No Sentry DSN is
   configured" until the Azure setting is live; afterwards it shows an event id,
@@ -199,8 +270,21 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   and recorded shapes, not a live account. That a dashboard API key works as
   the v3 bearer token, and that status strings map as expected, is
   unverified until someone tries it.
-- **How:** follow `OWNER-SETUP.md`, "Verify uptime monitoring with a real
-  UptimeRobot key". Enter the key only in the dashboard field, never in chat.
+- **How:**
+  1. Sign up at uptimerobot.com (free). In it open Integrations → API and
+     create an API key.
+  2. Sign in to the dashboard as a Pro or Agency user → Integrations → Uptime
+     monitoring → paste the key → Connect. If it says the key was rejected,
+     copy the exact message and give it to a session (the v3 token type may
+     differ; the fix is in `uptimeRobot.ts`).
+  3. Click Create monitors for a verified site; confirm a monitor appears in
+     UptimeRobot.
+  4. In UptimeRobot pause that monitor. Wait for the next sync (up to 15
+     minutes) or reload the card after 5, and confirm the dashboard shows
+     Paused.
+  5. Resume it, then (needs OT-02 for email) take a test target down briefly
+     and confirm one down message and one up message arrive.
+  6. Never paste the key anywhere except the dashboard field.
 - **Verify:** that section's checklist passes. A paused monitor shows
   "Paused", and a down/up cycle sends one message each way (this needs OT-02
   for the email part).
@@ -217,15 +301,30 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   - Leave share links and tickets on every paid plan.
   - Leave scheduled reports as the plan page says.
   - Once you decide, a session pins it in tests (`SPRINT-PLAN.md` H5-1).
+- **How:**
+  1. Read the recommendation above and the five routes named.
+  2. Reply with one line per route: gate to Pro, gate to Agency, or leave open.
+  3. A session then adds `planGate` to the chosen routes
+     (`src/lib/planAccess.ts`) and pins the decision in tests (`SPRINT-PLAN.md`
+     H5-1). Update the pricing page copy if a route newly requires a plan.
 - **Raised:** 2026-10-06 (`NEXT-STEPS.md`, "Owner decisions needed").
 
 ### OT-11: Provision a deliberately vulnerable staging target (H3) 🟡
 - **What and why:** proving the extended tools find real issues in
   production (H3, POC-1, POC-5) needs a target we own and are allowed to
   attack.
-- **How:** deploy OWASP Juice Shop, or a similar target, on a free host under
-  a subdomain such as `lab.hebridescyber.co.uk`. Verify the domain in the
-  dashboard and add it as a monitored site on an internal account.
+- **How:**
+  1. Pick a free host (Azure Container Apps free grant, Fly.io, or a small VM)
+     and run OWASP Juice Shop: `docker run -d -p 3000:3000 bkimminich/juice-shop`
+     behind HTTPS.
+  2. Add a DNS record at GoDaddy for `lab.hebridescyber.co.uk` pointing at it.
+  3. In the dashboard sign in as an internal account, Assets → add the domain
+     and complete ownership verification (the TXT record or file it shows).
+  4. Add it as a monitored site and set its scan profile to `full`.
+  5. Run the scheduled-scan workflow (or wait for the cron), then open the
+     scan and check extended tools show `completed`.
+  6. Make sure it is never linked from public pages and that nothing sensitive
+     is hosted on it: it is deliberately vulnerable.
 - **Verify:** a scheduled scan of it has extended tools reporting
   `completed`, with findings. The H3 `verify` job in `scheduled-scans.yml`
   checks this.
@@ -233,9 +332,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 
 ### OT-12: Restore drill 🟡
 - **What and why:** backups are untested until one has been restored.
-- **How:** follow `BACKUP-RESTORE.md`. Restore into a scratch Supabase project
-  and record the date and result there. Consider Supabase Pro for
-  point-in-time recovery.
+- **How:** follow `BACKUP-RESTORE.md`:
+  1. Supabase → create a new scratch project (free tier is fine).
+  2. Follow the "Restore from a daily backup" section of that guide to restore
+     the latest backup into it.
+  3. Check row counts of `profiles`, `scans` and `subscriptions` against
+     production, and that a sample row reads correctly.
+  4. Record the date, how long it took and any problems in `BACKUP-RESTORE.md`.
+  5. Delete the scratch project. Consider Supabase Pro for point-in-time
+     recovery.
 - **Raised:** 2026-10-06 (E-13 / LIVE-4).
 
 ### OT-13: ToS solicitor review; PI insurance before offensive traffic 🟡
@@ -244,6 +349,18 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   send real attack traffic until the customer contract authorises it and PI
   insurance covers it. Your 2026-10-23 decision stands: leave them
   `not_configured` and don't market them.
+- **How:**
+  1. Choose a UK solicitor who handles SaaS or technology terms; ask for a fixed
+     quote.
+  2. Send them `docs/legal/terms-of-service-draft.md`, the privacy policy page,
+     and (for OT-35 and OT-43) the Lookout copy
+     `marketing/17-lookout-managed-exposure-review.md`.
+  3. Ask specifically about: authorisation to scan third-party-owned
+     assets, limitation of liability, the offensive-scan authorisation wording
+     for Tier A, and the Lookout service description.
+  4. Ask your insurer for professional indemnity cover that names security
+     testing, and get it in writing before any offensive traffic is sent.
+  5. Merge the approved wording into `src/app/terms/page.tsx`.
 - **Raised:** 2026-08-26 (BETA-B1); 2026-10-12 (Tier A, `NEXT-STEPS.md` item
   11).
 - **Prep ready (not the step itself):** `docs/legal/OT-13-insurer-brief.md` and
@@ -258,8 +375,13 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   and unsourced statistics such as the "43%" figure in
   `marketing/11-social-media-and-local-press-playbook.md`. The site's own
   Tier A pricing card is fixed in code separately.
-- **How:** read `marketing/` and `marketing/12-hie-grant-application.md`
-  against `docs/FUNCTIONALITY-MATRIX.md`, then remove or source each claim.
+- **How:**
+  1. Open `docs/FUNCTIONALITY-MATRIX.md` (what the product really does) beside
+     each file in `marketing/` and `marketing/12-hie-grant-application.md`.
+  2. For each claim you can't match to a row there (SSO/SAML, RBAC, SCIM, MSP
+     portal, "autonomous AI pen-test", the "43%" statistic), either delete it,
+     reword it to what exists, or add a named source.
+  3. Tell a session which files you approved, or ask it to make the edits.
 - **Raised:** 2026-10-22 (`SPRINT-PLAN.md` H5, `PRODUCT-REVIEW-2026-10.md`
   P0-2).
 
@@ -269,14 +391,24 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   "Restore branch" button.
 - **Your call:** say "prune merged branches" and a session will delete only
   those whose PR is merged.
+- **How:**
+  1. Reply "prune merged branches". A session lists branches whose PR is merged
+     (`gh pr list --state merged`) and shows you the list.
+  2. After you approve the list it deletes only those with
+     `git push origin --delete <branch>`. Each merged PR keeps a Restore branch
+     button if you need one back.
 - **Raised:** 2026-10-22.
 
 ### OT-16: Run the Container Apps deploy once 🟢
 - **What and why:** #51, #52 and #53 moved `deploy-containerapp.yml` to the
   Node 24 majors of its actions. It's only run by hand, so they're
   unverified. This only matters if you use the Container Apps path.
-- **How:** Actions → "Deploy to Azure Container Apps" → Run workflow, or use
-  the `deploy-containerapp` skill.
+- **How:**
+  1. Actions → Deploy to Azure Container Apps → Run workflow (or use the
+     `deploy-containerapp` skill). This needs the Azure credentials it
+     documents.
+  2. Watch the run; each action's Node 24 major should load without warnings.
+  3. If it fails, copy the failing step's log into a session.
 - **Raised:** 2026-10-26.
 
 ### OT-17: Optional scanner secrets 🟢
@@ -287,7 +419,15 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   - `INTERACTSH_TOKEN` gives a private out-of-band server for nuclei's
     SSRF/OAST templates. Without it they use the public pool.
   - Each check reports `not_configured` without its key. Nothing fails.
-- **How:** add each as a GitHub secret.
+- **How:**
+  1. `HIBP_API_KEY`: buy a key at haveibeenpwned.com/API/Key and verify the
+     domain(s) you'll search; then add it as a GitHub secret (see "Common steps").
+  2. `NVD_API_KEY`: request one at nvd.nist.gov/developers/request-an-api-key
+     (free, arrives by email); add it as a GitHub secret.
+  3. `INTERACTSH_TOKEN`: only if you run your own interactsh server; also set
+     the `INTERACTSH_SERVER` repository variable (Settings → Secrets and
+     variables → Actions → Variables).
+  4. Each is picked up at the next scheduled scan run.
 - **Raised:** 2026-10-27 (secrets audit).
 
 ### OT-18: Optional AI secrets 🟢
@@ -295,28 +435,46 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   AI triage (off by default; `AI_TRIAGE=1`) and the AI write-ups in
   `daily-blog.yml` and `weekly-newsletter.yml`. Without them those parts are
   skipped.
+- **How:**
+  1. Azure portal → create an Azure OpenAI resource and a model deployment.
+  2. Copy the endpoint, a key, and the deployment name.
+  3. Add GitHub secrets `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`,
+     `AZURE_OPENAI_DEPLOYMENT` (see "Common steps", GitHub secret).
+  4. To enable AI triage also set the repository variable `AI_TRIAGE` = `1`
+     (Settings → Secrets and variables → Actions → Variables). Read
+     `AI-TRIAGE-DESIGN.md` first and check the output by hand on a few of your
+     own sites.
 - **Raised:** 2026-10-27 (secrets audit).
 
 ### OT-19: DNS housekeeping 🟢
 - **How:**
-  1. Add a CAA record at GoDaddy (`0 issue "digicert.com"`, or the CA that
-     Azure SWA actually uses: check the live certificate's issuer first),
-     then rerun the own-site scan.
-  2. Defensively register `hebridescyber.com`.
-  3. Optionally add a `security@hebridescyber.co.uk` alias for
-     `security.txt`.
+  1. **CAA record.** Open the live certificate in a browser (padlock →
+     Certificate) and note the issuer. At GoDaddy → DNS → Add record → type
+     CAA, name `@`, flags 0, tag `issue`, value the issuer's CAA domain (for
+     DigiCert `digicert.com`). Re-run the own-site scan afterwards.
+  2. **`hebridescyber.com`.** Register it at GoDaddy and point it to redirect
+     to `https://www.hebridescyber.co.uk`.
+  3. **security@ alias.** In your email host create `security@hebridescyber.co.uk`
+     forwarding to you, then confirm `public/.well-known/security.txt` lists it.
 - **Raised:** 2026-10-06 (`NEXT-STEPS.md` Owner actions 6 and 9).
 
 ### OT-20: Publish the GitHub Action publicly 🟢
 - **What and why:** this repo is private, so customers can't `uses:` the
   action. Publish it from a small public repository.
+- **How:**
+  1. Create a new public GitHub repository (for example `hebrides-cyber-action`).
+  2. Copy the contents of the repo-root `action/` folder (its `action.yml` and
+     README) into it, and add a README `uses:` example.
+  3. Tag a release (`v1`) so customers can pin it.
+  4. Update the `/docs/ci` templates to reference the new repo.
 - **Raised:** 2026-10-06 (`NEXT-STEPS.md` Owner actions 5).
 
 ### OT-21: NCSC replacement campaign 🟢
 - **How:**
-  1. Run `sql/seed/002_ncsc_web_check_retirement_post.sql` in the Supabase
-     SQL editor to publish the post.
-  2. Send or post the drafts in `marketing/16-ncsc-replacement-campaign.md`.
+  1. Supabase dashboard → SQL editor → paste and run
+     `sql/seed/002_ncsc_web_check_retirement_post.sql`.
+  2. Open the blog on the live site to confirm the post is published.
+  3. Send or post the drafts in `marketing/16-ncsc-replacement-campaign.md`.
 - **Raised:** 2026-10-06 (`NEXT-STEPS.md` Owner actions 8).
 
 ### OT-22: Review the login-recording consent copy 🟢
@@ -326,8 +484,13 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   checkbox and any marketing copy need a wording review. The copy must say to
   use a dedicated test account, never a personal or admin login
   (`AUTHENTICATED-CRAWL.md`, "Still open").
-- **How:** read the consent text in the authenticated-scan form under Assets,
-  and any marketing mention, against that note. Approve or reword.
+- **How:**
+  1. Dashboard → Assets → the authenticated-scan form: read the consent
+     checkbox text.
+  2. Read the "Still open" section of `AUTHENTICATED-CRAWL.md`.
+  3. Check the text tells users to use a dedicated test account, never a
+     personal or admin login, and that it says what is recorded.
+  4. Approve it or send the rewording to a session.
 - **Raised:** 2026-10-05.
 
 ### OT-23: Decide whether to build the supplier security rating 🟢
@@ -337,6 +500,11 @@ Raised dates are the first commit that recorded each item. Last reviewed:
   It needs a ToS and policy change, because results currently require domain
   verification, so it depends on OT-13.
 - **Your call:** go or no-go. On go, a session writes the design.
+- **How:**
+  1. Read the competitor analysis (2026-10-27) and `PRODUCT-IDEAS.md`.
+  2. Decide go or no-go. It depends on OT-13: the terms currently require
+     domain verification before results are shown.
+  3. On go, ask a session to write the design.
 - **Raised:** 2026-10-27.
 
 ### OT-24: Stripe ✅
@@ -353,10 +521,11 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   `NEXT_PUBLIC_STATUS_PAGE_URL` is set to an https URL; until then it shows
   nothing. A status page hosted on the same site would be down with it, so it
   needs to be external.
-- **How:** create a free public status page (an UptimeRobot status page works,
-  and OT-09's monitor can feed it). Add its URL as the GitHub secret
-  `NEXT_PUBLIC_STATUS_PAGE_URL`, then push to `master` (or re-run Deploy) so it
-  is built in.
+- **How:**
+  1. Create a free public status page. UptimeRobot: Status pages → Create
+     status page, add the monitors from OT-09, publish, note the https URL.
+  2. Add the GitHub secret `NEXT_PUBLIC_STATUS_PAGE_URL` (see "Common steps", GitHub secret).
+  3. Push to `master` or re-run Deploy, because it is inlined at build time.
 - **Verify:** the live footer shows "Status" and the link opens the page.
 - **Raised:** 2026-10-28 (launch priority #2, AC4).
 
@@ -404,8 +573,13 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   that no longer exist. No workflow or source file reads them; the only
   mentions of `DIGEST_SERVICE_TOKEN` are comments saying it is no longer
   needed. An unused secret is a credential nobody is watching.
-- **How:** Settings → Secrets and variables → Actions → delete each one, or
-  `gh secret delete <NAME> --repo andrew-barvas/hebrides-cyber`.
+- **How:**
+  1. `gh secret list` and confirm `DIGEST_SERVICE_TOKEN`,
+     `NEWSLETTER_SERVICE_TOKEN` and `NEXT_PUBLIC_AZURE_FUNCTIONS_URL` appear.
+  2. `gh secret delete DIGEST_SERVICE_TOKEN`, then the other two (add
+     `--repo andrew-barvas/hebrides-cyber` if you're outside the checkout).
+  3. Remove the same names from Azure settings if present.
+  4. Push or re-run Deploy to confirm nothing depended on them.
 - **Verify:** `gh secret list` no longer shows them, and the next push to
   `master` still deploys.
 - **Raised:** 2026-10-28 (secrets audit).
@@ -419,8 +593,17 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
     use a per-repo GitHub App token instead of the shared `GH_PAT`, which
     reaches more than it needs to. The header of `src/lib/githubApp.ts`
     explains the trade-off.
-- **How:** add each as a GitHub secret. For the App, create it with contents
-  and pull-request write access and install it on the repos it should reach.
+- **How:**
+  1. `CONTACT_EMAIL`: only if `hello@hebridescyber.co.uk` isn't the mailbox you
+     read; add as a GitHub secret.
+  2. GitHub App: Settings → Developer settings → GitHub Apps → New. Give it
+     Repository permissions Contents: read and Pull requests: write, no
+     webhook needed. Create it and note the App ID.
+  3. Generate a private key (downloads a `.pem`). Add GitHub secrets
+     `GH_APP_ID` and `GH_APP_PRIVATE_KEY` (the whole PEM including the BEGIN
+     and END lines).
+  4. Install the App (Install App tab) on only the repos it should reach.
+  5. Delete the downloaded `.pem` from your machine.
 - **Verify:** `gh secret list` shows the names. For the App, a fix pull request
   on an installed repo opens without using `GH_PAT`.
 - **Raised:** 2026-10-28 (secrets audit).
@@ -429,9 +612,15 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **What and why:** the plan (`DEFENSIVE-ASSESSMENT-PLAN.md`) uses the working
   name "Lookout" and proposes Essentials £149/mo and Assured £299/mo. You chose
   these on 2026-10-30, but the name has not been checked.
-- **How:** search the UK IPO trade-mark register and Companies House for
-  "Lookout" in cyber security (class 42, and 9 if it becomes software); check a
-  domain or subdomain is free. Confirm VAT treatment of the prices.
+- **How:**
+  1. Search the UK IPO trade-mark register (search-trademark.service.gov.uk)
+     for "Lookout" in classes 42 and 9; note any live marks.
+  2. Search Companies House for company names containing "Lookout" in
+     software or security.
+  3. Check a domain or subdomain you'd use is free.
+  4. Confirm with your accountant whether £149 and £299 are the VAT-inclusive
+     or exclusive prices.
+  5. Record the result here, or pick Beacon / Harbour Watch and repeat.
 - **Verify:** a short written result (clear, or pick Beacon / Harbour Watch).
 - **Raised:** 2026-10-30.
 
@@ -439,9 +628,15 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **What and why:** you chose Stripe checkout from day one. Billing is
   monthly-only today, so this needs six new prices: Essentials and Assured, each
   monthly, quarterly and annual.
-- **How:** create the six recurring prices in the Stripe dashboard, then add
-  their IDs as env vars once the code names them (`create-checkout-session.ts`
-  `PRICE_IDS`). Do not publish checkout before the pilot criteria in the plan.
+- **How:**
+  1. Stripe dashboard → Product catalogue → add the Lookout Essentials and
+     Assured products if not yet present.
+  2. For each, create three recurring prices (monthly, every 3 months, yearly)
+     in GBP. Do this in test mode first, then live.
+  3. Copy the six price IDs (`price_…`).
+  4. Give them to a session to add as env vars and to `PRICE_IDS` in
+     `create-checkout-session.ts`; then set each in the place the session names (GitHub secret or Azure app setting; see "Common steps").
+  5. Don't publish checkout before the plan's pilot criteria are met.
 - **Verify:** a test-mode checkout completes for each price.
 - **Raised:** 2026-10-30.
 
@@ -450,8 +645,13 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   recurring, analyst-written service with scan windows and fair-use hours, and
   it uses active (non-injecting) scanning on verified domains. Wording needs a
   solicitor, together with OT-13.
-- **How:** send the plan's service description and the copy draft
-  (`marketing/17-lookout-managed-exposure-review.md`) with the OT-13 brief.
+- **How:**
+  1. Send your solicitor `marketing/17-lookout-managed-exposure-review.md`, the
+     plan's service description and `src/app/terms/page.tsx` §2 (same brief as
+     OT-13).
+  2. Ask them to review the recurring-service, fair-use-hours and
+     active-scanning wording.
+  3. Give the approved text to a session to merge into the terms.
 - **Verify:** approved wording merged into the terms.
 - **Raised:** 2026-10-30.
 
@@ -459,8 +659,12 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **What and why:** you chose to add OpenVAS and Nikto. OpenVAS needs a large
   feed sync and several services, which may not fit the ephemeral Actions
   runners. Decide after the prototype in the plan.
-- **How:** once the prototype reports feed size and time-to-first-scan, choose
-  Actions, a small VM, or a Container Apps job.
+- **How:**
+  1. Wait for the OpenVAS prototype result (feed size, time to first scan).
+  2. If the feed sync plus scan fits well inside a GitHub Actions job limit,
+     choose Actions. If not, choose a small VM (cheapest to keep the feed
+     warm) or an Azure Container Apps job.
+  3. Record the choice here.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 
@@ -473,9 +677,14 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   with reasons in `main.tf` so the scan passes. Image vulnerability scanning
   (CKV_AZURE_163) is a separate paid Defender for Containers plan. None of
   this matters unless you use the Container Apps path (OT-16).
-- **How:** keep Basic (no action), or move to Premium and replace the skips
-  with the real settings. Turn on Defender for Containers separately if you
-  want image scanning.
+- **How:**
+  1. Decide whether you use the Container Apps path (OT-16). If not, do nothing.
+  2. If you do and want the six hardening settings, change the registry SKU to
+     Premium in the Azure portal (or `azure/terraform/main.tf`) and ask a
+     session to replace the Checkov skips with the real settings.
+  3. Image scanning is a separate Defender for Containers plan; enable it under
+     Microsoft Defender for Cloud if wanted.
+  4. Record the decision here.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-30.
 
@@ -484,7 +693,15 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   the public `/trust` page says we are not certified. Getting attested needs
   an external auditor and a decision on SOC 2 Type I/II versus ISO 27001, and
   on whether it is worth the cost yet.
-- **How:** get two or three quotes; share `docs/CONTROLS-EVIDENCE.md` with them.
+- **How:**
+  1. List 2 or 3 auditors (SOC 2: a CPA firm; ISO 27001: a UKAS-accredited
+     certification body).
+  2. Send each `docs/CONTROLS-EVIDENCE.md` and ask for a fixed quote and the
+     elapsed time for Type I (point in time) and Type II (observation window).
+  3. Decide SOC 2 versus ISO 27001, or neither yet, based on what your
+     customers ask for.
+  4. Record the decision here. `/trust` may not claim certification until a
+     report exists.
 - **Verify:** a decision recorded here. Only after an auditor's report may
   `/trust` change its certification wording.
 - **Raised:** 2026-10-31.
@@ -494,8 +711,14 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   access control, incident response, change management, supplier management,
   data classification and retention, ISMS scope and roles). The repo has
   engineering controls but not these documents.
-- **How:** draft them yourself or via the platform chosen in OT-40, then
-  record the approval date and owner for each.
+- **How:**
+  1. Write one policy per topic: information security, access control, incident
+     response, change management, supplier management, data classification and
+     retention, ISMS scope and roles. Use your platform's templates (OT-40) or
+     a standard template pack.
+  2. Give each an owner, a version and an approval date.
+  3. Link each from `docs/CONTROLS-EVIDENCE.md` next to the control it
+     supports.
 - **Verify:** policies exist and are linked from the evidence map.
 - **Raised:** 2026-10-31.
 
@@ -503,7 +726,11 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **What and why:** tools such as Vanta, Drata or Secureframe collect
   evidence continuously and supply policy templates. Optional; an auditor can
   work without one. It costs money each year.
-- **How:** decide after OT-38, since some auditors partner with a platform.
+- **How:**
+  1. Take demos from two vendors (for example Vanta, Drata, Secureframe) after
+     OT-38, and ask whether your chosen auditor works with them.
+  2. Compare annual cost against doing evidence collection by hand.
+  3. Record the choice, including "none", here.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-31.
 
@@ -511,8 +738,13 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **What and why:** an external test of the platform itself is expected
   evidence for both standards. Needs a budget and a written scope and
   agreement with the tester.
-- **How:** pick a CREST-accredited provider, agree scope, and run it against a
-  staging copy where possible. Keep the report private.
+- **How:**
+  1. Pick a CREST-accredited provider; ask for quotes against a written scope
+     (the app, API, the scan workers, and Supabase configuration).
+  2. Provide a staging copy and test accounts; agree test windows and a
+     contact for emergencies.
+  3. Sign the rules of engagement, run the test, and keep the report private.
+  4. Triage each finding into issues and record the report date here.
 - **Verify:** a report received and findings triaged.
 
 ### OT-46: Prowler IAM check: AWS scan identity, secrets, first real run 🟡
@@ -649,7 +881,12 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   Assured 9 hours per quarter, up to 10 domains and 16 IP addresses; two new
   Lookout customers a month during the pilot; Essentials gets Pro dashboard
   features and Assured gets Agency ones.
-- **How:** approve or change each number in the plan's table.
+- **How:**
+  1. Open `DEFENSIVE-ASSESSMENT-PLAN.md`, "Pricing & Tiers".
+  2. For each proposed number (hours, domains, IPs, pilot sign-ups, dashboard
+     feature level) write approve or a new value.
+  3. Update the table and `marketing/17-lookout-managed-exposure-review.md`,
+     removing the [VERIFY] marks (or ask a session to).
 - **Verify:** the agreed numbers recorded in the plan and in
   `marketing/17-lookout-managed-exposure-review.md`, with the [VERIFY] marks
   removed.
@@ -661,10 +898,15 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   common ports, and five login submissions with made-up details (the base
   suite's rate-limit check). That last check can trip a customer's lockout
   alerts. The disclosure is what keeps "never exploitative" accurate.
-- **How:** read "What Lookout sends to your systems" in the copy file. Decide
-  whether the login check stays on for Lookout customers (switching it off is
-  a code change). Send the section to the solicitor with OT-35. Check that your
-  professional indemnity cover extends to an advisory review service.
+- **How:**
+  1. Read "What Lookout sends to your systems" in
+     `marketing/17-lookout-managed-exposure-review.md`.
+  2. Decide whether the five-login-submission rate-limit check stays on for
+     Lookout customers (turning it off is a code change a session can make).
+  3. Send the section to the solicitor with OT-35.
+  4. Ask your insurer for written confirmation that professional indemnity
+     covers an advisory review service.
+  5. Record the decision and keep the insurer's reply on file.
 - **Verify:** approved wording and the login-check decision recorded in the
   plan; insurer's confirmation on file.
 - **Raised:** 2026-10-31.
@@ -674,8 +916,12 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   baseline tag list, every input-injecting category excluded and out-of-band
   interaction off. The PR asks for your check of the tag lists before launch,
   because they decide what traffic Lookout sends.
-- **How:** read the nuclei section of the PR #144 description and comment on
-  the PR.
+- **How:**
+  1. Open draft PR #144 and find the nuclei section of its description.
+  2. Read the baseline tag list and the excluded categories; flag any tag
+     that sends input to a target or that you wouldn't want run against a
+     customer.
+  3. Comment on the PR with approved or the changes you want.
 - **Verify:** your approval on PR #144.
 - **Raised:** 2026-10-31.
 
@@ -685,7 +931,14 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   reports written by hand, analyst hours logged. Stop if fewer than 2 of 5
   prospects would pay £149 a month, or if a quarterly report takes more than
   4 analyst hours.
-- **How:** decide pilot-first or not, then name five prospects to approach.
+- **How:**
+  1. Decide: pilot first, or open checkout straight away.
+  2. If pilot: list five prospects (names, why they fit) and approach them with
+     the copy draft.
+  3. Track analyst hours per report. Stop if fewer than 2 of 5 would pay £149 a
+     month or a quarterly report takes more than 4 hours.
+  4. Record the decision and the results in the plan and `PRODUCT-IDEAS.md`
+     P-06.
 - **Verify:** the decision and the pilot result recorded in the plan and in
   `PRODUCT-IDEAS.md` P-06.
 - **Raised:** 2026-10-31.
@@ -702,7 +955,7 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** a decision recorded here.
 - **Raised:** 2026-10-31 (Copilot plan reconciliation in `LAUNCH-PRIORITY.md`).
 
-### OT-49: Automated update PRs and Dependabot alerts 🟡
+### OT-49: Automated update PRs and Dependabot alerts 🟠
 - **What and why:** two new weekly workflows open pull requests on their own:
   `scanner-tool-updates.yml` (one PR per scanner tool with a newer release)
   and `npm-audit-fix.yml` (a rolling `npm audit fix` PR). A PR opened with
@@ -711,10 +964,14 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   alerts and Dependabot security updates switched off (checked 2026-11-01),
   so the security-update PRs `dependabot.yml`'s comment expects never open.
 - **How:**
-  1. Make sure `GH_PAT` can push branches and open PRs on this repository
-     (fine-grained token: Contents and Pull requests, read and write), or
-     replace it with one that can. It is also used to dispatch
-     `on-demand-scan.yml`, so keep the Actions permission it has.
+  1. Replace `GH_PAT`. On 2026-11-01 the first "Scanner tool updates" run
+     failed in every update job with `fatal: Authentication failed`, so the
+     current value is expired, revoked or has no access to this repository.
+     The new token needs Contents, Pull requests and **Workflows** (read and
+     write): every tool bump edits files under `.github/workflows`, which
+     GitHub's built-in Actions token can never push, so there is no fallback.
+     It is also used to dispatch `on-demand-scan.yml`, so give it Actions
+     (read and write) too.
   2. Settings → Code security: turn on Dependabot alerts and Dependabot
      security updates.
 - **Verify:** Actions → "Scanner tool updates" → Run workflow. The PRs it
@@ -722,6 +979,93 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   the run. `gh api repos/andrew-barvas/hebrides-cyber/automated-security-fixes`
   reports `"enabled": true`.
 - **Raised:** 2026-11-01.
+
+### OT-50: Scanner tool licences 🟠
+- **What and why:** every scanner tool's upstream licence was checked on
+  2026-11-01 (the full list is the last column of `SCANNER-INVENTORY.md`
+  A(a)). Most are MIT, Apache-2.0 or GPL tools that we run unmodified as
+  separate programs, which is fine for a hosted service. Four need a legal
+  read before we sell more:
+  1. **WPScan CLI** (`wpscan.ts`, run in the opt-in `cms` profile). Its
+     WPScan Public Source License lists "Using WPScan to provide commercial
+     managed/Software-as-a-Service services" as commercial use that needs a
+     paid licence (contact@wpscan.com). Running it for paying customers
+     probably falls under that.
+  2. **sqlmap and nmap.** Both licences add their own reading of "derived
+     work": any program that executes the tool and parses its results. Our
+     wrappers (`sqlmap.ts`, `nmap.ts`, `networkExposure.ts`) do exactly that.
+     GPL obligations attach to distribution, and we host rather than
+     distribute, but both projects sell commercial licences for this case.
+     nmap's NPSL §6 also requires a hosted service to show a "uses the Nmap
+     Security Scanner" notice. That is now on `/what-we-check` and in
+     `USER-GUIDE.md` §3.1.
+  3. **Nikto** (opt-in wrapper being added). The code is GPL-3.0, but its
+     `databases/` files "are licensed for use with Nikto only" and "may not
+     be reused without written consent from CIRT.net". Running Nikto
+     unmodified with its own databases looks like use with Nikto. CIRT.net's
+     licensing page (cirt.net/Nikto-Licensing) returned 404 on 2026-11-01, so
+     its commercial terms could not be read.
+  4. **AGPL-3.0 tools** (hydra, kiterunner, Arjun, badsecrets). They run
+     unmodified, so the AGPL network clause, which covers modified
+     versions, should not apply. Keep them unmodified.
+- **Your call:** for WPScan, buy a commercial licence or take the CLI out of
+  the `cms` profile (WordPress checks still run through `webapp.ts` and the
+  WPScan vulnerability API, whose own terms also need checking against your
+  `WPSCAN_API_TOKEN` plan). For sqlmap and nmap, get a solicitor's view
+  alongside OT-13 or ask the projects. For Nikto, email CIRT.net before
+  marketing it.
+- **Verify:** a decision recorded here per tool; any licence bought noted in
+  `THIRD-PARTY-NOTICES.md`.
+- **Raised:** 2026-11-01 (licence audit of the Copilot tool list).
+### OT-51: Exploit go or no-go 🟢
+- **What and why:** Exploit (`PRODUCT-IDEAS.md` P-07,
+  `EXPLOIT-PRODUCT-PLAN.md`) sells authorised, contracted penetration tests on
+  top of the offensive engine that already exists. The cost is legal and
+  insurance work (OT-13, OT-55), not code. Your 2026-11-01 decision (PR #169)
+  builds an Exploit page that stays noindex, unlinked and marked "not yet
+  available" until OT-13 is signed off; this item is the launch decision itself.
+- **How:** after OT-13 and OT-55 have answers, decide whether to run the manual
+  pilot (one hand-scoped engagement for an existing customer, using the gated
+  engine and a hand-written report). The plan's kill criteria apply.
+- **Verify:** the decision recorded here and P-07's status updated.
+- **Raised:** 2026-11-02.
+
+### OT-52: Exploit is booked by hand only 🟢
+- **What and why:** the plan recommends that live offensive work is always
+  scoped, contracted and scheduled by a person, never bought through checkout.
+  PR #169's page copy already assumes this ("no self-serve checkout for live
+  testing"), so this only needs confirming.
+- **How:** confirm, or say what should change.
+- **Verify:** "owner confirmed" recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-53: Autonomous agents in Exploit's first version 🟢
+- **What and why:** `strix` and `cairn` are autonomous agents in the offensive
+  profile, currently `not_configured` by your 2026-10-23 decision. They need the
+  strictest controls. The plan recommends leaving them out of the first
+  version and starting with the bounded, non-destructive confirmation checks.
+- **How:** decide in or out for the first version.
+- **Verify:** a decision recorded here.
+- **Raised:** 2026-11-02.
+
+### OT-54: Exploit pricing 🟢
+- **What and why:** the plan's hypothesis is a four-figure, quoted engagement,
+  not a subscription. Set it from the manual pilot's real analyst hours.
+- **How:** decide after the pilot (OT-51).
+- **Verify:** the price recorded here and in the plan.
+- **Raised:** 2026-11-02.
+
+### OT-55: Insurance for contracted offensive testing 🟡
+- **What and why:** OT-13 covers PI insurance before any offensive traffic.
+  Exploit goes further: it sells authorised attack traffic against customer
+  systems under contract, so the cover must explicitly include contracted
+  penetration testing, and the engagement contract needs a liability position
+  and a stop clause.
+- **How:** ask the insurer and the solicitor (alongside OT-13) to confirm the
+  cover and contract wording for this service.
+- **Verify:** the insurer's written confirmation and the approved contract on
+  file.
+- **Raised:** 2026-11-02.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08

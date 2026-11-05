@@ -350,6 +350,10 @@ export function buildSecretFindings(githubRepo: string, entries: GitleaksReportE
       title: `[Gitleaks] Secret in repository: ${description} in ${file}`,
       detail: detailParts.join(" "),
       remediation: SECRET_REMEDIATION,
+      // Where the match is, as data (a path in the repo and a line; 0 when
+      // gitleaks gave none). Anything that needs a location, such as the SARIF
+      // export, reads this instead of parsing the detail text. Never the value.
+      metadata: { ruleId, file, line: startLine },
     });
   }
 

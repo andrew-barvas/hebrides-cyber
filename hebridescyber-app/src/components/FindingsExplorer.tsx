@@ -6,7 +6,10 @@
 // through the existing bulk PUT /api/findings/triage — this component never
 // decides what a triage state means (src/lib/findingTriage.ts does).
 //
-// Types only from findingsView.ts: its loader is server code.
+// "Fix first" is the estate priority rank (P1-2, estatePriority.ts): the same
+// rows from ?sort=priority, each with its rank and a plain-English reason.
+//
+// Types only from findingsView.ts / estatePriority.ts: their loaders are server code.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, ShieldCheck } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
@@ -18,10 +21,14 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { SNOOZE_PRESET_DAYS, TRIAGE_BULK_MAX, TRIAGE_REASON_MAX, TRIAGE_REASON_MIN, TRIAGE_STATE_LABELS, reasonLength } from "@/lib/findingTriage";
+import type { Priority } from "@/lib/estatePriority";
 import type { Facets, FindingGroup, FindingRow, FindingSeverity } from "@/lib/findingsView";
 import { cn } from "@/lib/utils";
 
-type ViewMode = "grouped" | "rows";
+export type ViewMode = "grouped" | "rows" | "priority";
+
+/** A row from ?sort=priority carries its estate rank. */
+type ListRow = FindingRow & { priority?: Priority };
 
 type FindingsResponse = {
   available: boolean;
@@ -30,9 +37,12 @@ type FindingsResponse = {
   detailComplete: boolean;
   truncated: boolean;
   facets: Facets;
-  view: ViewMode;
+  view: "grouped" | "rows";
+  sort?: "severity" | "priority";
+  priorityComplete?: boolean;
+  criticalityAvailable?: boolean;
   totalFindings: number;
-  items: FindingRow[];
+  items: ListRow[];
   groups: FindingGroup[];
   page: number;
   pageSize: number;
@@ -95,10 +105,11 @@ function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "cs
   p.set("triage", filters.triage);
   if (filters.sla) p.set("sla", filters.sla);
   if (filters.minAgeDays) p.set("minAgeDays", filters.minAgeDays);
+  if (view === "priority") p.set("sort", "priority");
   if (format) {
     p.set("format", format);
   } else {
-    p.set("view", view);
+    p.set("view", view === "priority" ? "rows" : view);
     p.set("page", String(page));
   }
   return p.toString();
@@ -159,7 +170,7 @@ function FindingLine({
   onToggle,
   showTitle,
 }: {
-  row: FindingRow;
+  row: ListRow;
   checked: boolean;
   onToggle: () => void;
   showTitle: boolean;
@@ -177,6 +188,11 @@ function FindingLine({
       />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
+          {row.priority && (
+            <span className="font-mono text-xs font-semibold text-neon">
+              <span className="sr-only">Priority </span>#{row.priority.rank}
+            </span>
+          )}
           {showTitle && <SeverityBadge severity={row.severity} />}
           <span className="break-all text-sm font-medium text-cybertext">{showTitle ? row.title : row.host}</span>
           <Flags row={row} />
@@ -197,6 +213,7 @@ function FindingLine({
             </>
           )}
         </p>
+        {row.priority && <p className="text-xs text-cybertext/80">Why here: {row.priority.reason}</p>}
         {row.triage && <p className="text-xs text-cybermuted">Reason: {row.triage.reason}</p>}
       </div>
     </li>
@@ -357,9 +374,9 @@ function BulkBar({
   );
 }
 
-export default function FindingsExplorer({ token }: { token: string | null }) {
+export default function FindingsExplorer({ token, initialView = "grouped" }: { token: string | null; initialView?: ViewMode }) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [view, setView] = useState<ViewMode>("grouped");
+  const [view, setView] = useState<ViewMode>(initialView);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<FindingsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -551,6 +568,7 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
             options={[
               { value: "grouped", label: "Grouped by check" },
               { value: "rows", label: "All findings" },
+              { value: "priority", label: "Fix first" },
             ]}
           />
           {filtersActive && (
@@ -571,6 +589,17 @@ export default function FindingsExplorer({ token }: { token: string | null }) {
         <Alert variant="warning" title="Some detail is missing">
           Exploit data (KEV / EPSS) couldn&apos;t be read from your latest scans, so those filters may miss findings.
         </Alert>
+      )}
+      {data?.sort === "priority" && data.priorityComplete === false && (
+        <Alert variant="warning" title="Ranking may be incomplete">
+          Site criticality or exploit data couldn&apos;t be read, so some findings are ranked as if on a normal-criticality site.
+        </Alert>
+      )}
+      {data?.sort === "priority" && data.priorityComplete !== false && (
+        <p className="text-xs text-cybermuted">
+          Ranked by severity and exploit data, weighted by how critical each site is (set it under Assets → monitored sites), whether the
+          host is live, exposed services and WAF protection. Accepted, false-positive and snoozed findings are left out.
+        </p>
       )}
       {data?.truncated && (
         <Alert variant="warning" title="Showing part of your findings">
