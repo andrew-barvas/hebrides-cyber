@@ -6,6 +6,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "node:crypto";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { isMissingSchemaError } from "@/lib/dbErrors";
+import { respondInternalError } from "@/lib/apiError";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
 
@@ -30,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("token")
       .eq("owner", caller.ownerId)
       .maybeSingle();
-    if (error && !isMissingSchemaError(error)) return res.status(500).json({ error: error.message });
+    if (error && !isMissingSchemaError(error)) return respondInternalError(res, "account/dmarc-ingest-token", error);
     if (error) return res.status(200).json({ available: false, token: null });
     return res.status(200).json({
       available: true,
@@ -48,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isMissingSchemaError(error)) {
       return res.status(503).json({ error: "DMARC report processing isn't available yet (migration 060 pending)." });
     }
-    return res.status(500).json({ error: error.message });
+    return respondInternalError(res, "account/dmarc-ingest-token", error);
   }
   return res.status(200).json({ token, ingestUrl: ingestUrl(token) });
 }

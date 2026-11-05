@@ -17,6 +17,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { validateCustomTemplate, MAX_TEMPLATES_PER_OWNER, MAX_TEMPLATE_BYTES } from "@/lib/customNucleiTemplates";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const createSchema = z.object({ yaml: z.string().min(1, "yaml is required").max(MAX_TEMPLATE_BYTES * 2, "template is too large") });
 const patchSchema = z.object({ id: z.string().uuid("id must be a valid UUID"), enabled: z.boolean() });
@@ -37,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === "GET") {
     const { data, error } = await supabaseAdmin.from("custom_nuclei_templates").select(COLUMNS).eq("owner", caller.ownerId).order("created_at", { ascending: true });
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/custom-checks", error);
     return res.status(200).json({ checks: data ?? [], limit: MAX_TEMPLATES_PER_OWNER });
   }
 
@@ -45,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsed = parseBody(deleteSchema, req.body, res);
     if (!parsed) return;
     const { error } = await supabaseAdmin.from("custom_nuclei_templates").delete().eq("id", parsed.id).eq("owner", caller.ownerId);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/custom-checks", error);
     await logAuditEvent(supabaseAdmin, { actorId: caller.ownerId, action: "custom_check.deleted", resourceType: "custom_check", resourceId: parsed.id });
     return res.status(200).json({ ok: true });
   }
@@ -60,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .select(COLUMNS)
       .maybeSingle();
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/custom-checks", error);
     if (!data) return res.status(404).json({ error: "Check not found" });
     return res.status(200).json({ check: data });
   }
@@ -72,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!check.ok) return res.status(422).json({ error: "This check can't be saved.", problems: check.errors });
 
   const { count, error: countError } = await supabaseAdmin.from("custom_nuclei_templates").select("id", { count: "exact", head: true }).eq("owner", caller.ownerId);
-  if (countError) return res.status(500).json({ error: countError.message });
+  if (countError) return respondInternalError(res, "account/custom-checks", countError);
   if ((count ?? 0) >= MAX_TEMPLATES_PER_OWNER) return res.status(409).json({ error: `You can keep ${MAX_TEMPLATES_PER_OWNER} custom checks. Delete one to add another.` });
 
   const { data, error } = await supabaseAdmin
@@ -82,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .single();
   if (error) {
     if (error.code === "23505") return res.status(409).json({ error: `You already have a check with the id "${check.id}".` });
-    return res.status(500).json({ error: error.message });
+    return respondInternalError(res, "account/custom-checks", error);
   }
   await logAuditEvent(supabaseAdmin, { actorId: caller.ownerId, action: "custom_check.created", resourceType: "custom_check", resourceId: data.id, metadata: { template_id: check.id, severity: check.severity } });
   return res.status(201).json({ check: data });

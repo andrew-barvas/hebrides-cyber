@@ -14,6 +14,10 @@ describe("/lookout", () => {
     const t = text();
     expect(t).toMatch(/What Lookout sends to your systems/);
     expect(t).toMatch(/submit your login page five times with made-up details/);
+    // Kept in step with EXPOSURE_TOOLS: the second crawl, document reads and TLS tests.
+    expect(t).toMatch(/a second crawler follows links for up to two minutes/);
+    expect(t).toMatch(/read the hidden details stored in them/);
+    expect(t).toMatch(/offering old protocol versions and weak encryption settings/);
   });
 
   it("shows the approved prices", () => {
