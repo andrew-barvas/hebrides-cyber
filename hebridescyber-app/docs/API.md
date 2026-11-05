@@ -177,7 +177,7 @@ becomes `[redacted]`, so you see which keys were exposed but not their values.
 It's omitted when the check never read the body, as for directory listings,
 which keep only the "Index of" heading in `matched`. Evidence is stored with
 the scan result and deleted with it, and is absent on scans from before
-2026-10-30. The CSV export puts it in one `evidence` column (last), as
+2026-10-30. The CSV export puts it in one `evidence` column, as
 `GET <url> → <status> (<type>); matched: …`.
 
 Each finding also carries `triage` — your current decision about it on this
@@ -209,8 +209,12 @@ cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
 `compliance_refs` are `;`-joined lists within a single cell.
 `known_exploited`/`epss` are blank when threat intel wasn't looked up,
 which is different from `false` (see `threat_intel` above).
-`triage_state, triage_reason, triage_expires_at` come last, blank when the
-finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
+`triage_state, triage_reason, triage_expires_at` follow, blank when the
+finding isn't triaged, then `corroborated_by` and `evidence`. The last two
+columns are `attack_techniques` (`T1557 Adversary-in-the-Middle; …`) and
+`cwe_ids` (`CWE-298; …`), blank when the finding type has no curated mapping;
+scans stored before the mapping existed are mapped at export time. MITRE
+ATT&CK® is a registered trademark of The MITRE Corporation. in JSON each finding has `triage` (`state`, `reason`,
 `expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
 (`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
