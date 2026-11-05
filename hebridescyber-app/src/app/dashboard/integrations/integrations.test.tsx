@@ -13,6 +13,7 @@ for (const name of [
   "ApiKeys",
   "ApiSpecConfig",
   "CloudCredentialsConfig",
+  "M365Config",
   "ConnectRepo",
   "NotificationPrefsSection",
   "OncallIntegrationConfig",
@@ -51,7 +52,7 @@ describe("Integrations page", { timeout: 20_000 }, () => {
   it("shows the real forms on Agency", async () => {
     session.plan = "agency";
     await renderPage();
-    for (const id of ["channel-slack", "channel-teams", "NotificationPrefsSection", "ScheduledReportsConfig", "CloudCredentialsConfig", "UptimeMonitoringConfig"]) {
+    for (const id of ["channel-slack", "channel-teams", "NotificationPrefsSection", "ScheduledReportsConfig", "CloudCredentialsConfig", "UptimeMonitoringConfig", "M365Config"]) {
       expect(screen.getByTestId(id)).toBeInTheDocument();
     }
     expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
@@ -61,11 +62,11 @@ describe("Integrations page", { timeout: 20_000 }, () => {
     await renderPage();
     expect(screen.queryByTestId("channel-slack")).not.toBeInTheDocument();
     expect(screen.queryByTestId("CloudCredentialsConfig")).not.toBeInTheDocument();
-    for (const locked of ["slack & microsoft teams alerts", "email notifications", "uptime monitoring", "scheduled reports", "cloud posture scanning"]) {
+    for (const locked of ["slack & microsoft teams alerts", "email notifications", "uptime monitoring", "scheduled reports", "cloud posture scanning", "microsoft 365 posture"]) {
       expect(screen.getByRole("heading", { name: locked })).toBeInTheDocument();
     }
     expect(screen.queryByTestId("UptimeMonitoringConfig")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(5);
+    expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(6);
   });
 
   it("unlocks chat alerts on Pro but keeps cloud posture Agency-only", async () => {
@@ -74,6 +75,7 @@ describe("Integrations page", { timeout: 20_000 }, () => {
     expect(screen.getByTestId("channel-slack")).toBeInTheDocument();
     expect(screen.getByTestId("ScheduledReportsConfig")).toBeInTheDocument();
     expect(screen.getByTestId("UptimeMonitoringConfig")).toBeInTheDocument();
+    expect(screen.getByTestId("M365Config")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "cloud posture scanning" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Compare plans" })).toHaveLength(1);
   });

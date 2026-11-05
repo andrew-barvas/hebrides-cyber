@@ -33,6 +33,7 @@ export type ComplianceFramework =
   | "cyber-essentials"
   | "owasp-top-10"
   | "cis-controls-v8"
+  | "cis-m365"
   | "iso-27001"
   | "pci-dss"
   | "nis2"
@@ -66,6 +67,21 @@ const CIS_7: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Contr
 const CIS_9: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 9 – Email and Web Browser Protections" };
 const CIS_12: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 12 – Network Infrastructure Management" };
 const CIS_16: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 16 – Application Software Security" };
+const CIS_5: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 5 – Account Management" };
+const CIS_6: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 6 – Access Control Management" };
+const CIS_8: ComplianceRef = { framework: "cis-controls-v8", control: "CIS Control 8 – Audit Log Management" };
+
+// CIS Microsoft 365 Foundations Benchmark. Cited by recommendation title, not
+// number: the benchmark renumbered its Entra ID sections between v3 and v4,
+// and the titles are what an assessor searches for.
+const CIS365_MFA_ADMINS: ComplianceRef = { framework: "cis-m365", control: "Ensure multifactor authentication is enabled for all users in administrative roles" };
+const CIS365_MFA_ALL: ComplianceRef = { framework: "cis-m365", control: "Ensure multifactor authentication is enabled for all users" };
+const CIS365_LEGACY_AUTH: ComplianceRef = { framework: "cis-m365", control: "Enable Conditional Access policies to block legacy authentication" };
+const CIS365_GLOBAL_ADMINS: ComplianceRef = { framework: "cis-m365", control: "Ensure that between two and four global admins are designated" };
+const CIS365_FORWARDING: ComplianceRef = { framework: "cis-m365", control: "Ensure all forms of mail forwarding are blocked and/or disabled" };
+const CIS365_GUEST_ACCESS: ComplianceRef = { framework: "cis-m365", control: "Ensure that guest user access is restricted" };
+const CIS365_GUEST_INVITES: ComplianceRef = { framework: "cis-m365", control: "Ensure guest user invitations are limited to the Guest Inviter role" };
+const CIS365_USER_CONSENT: ComplianceRef = { framework: "cis-m365", control: "Ensure user consent to apps accessing company data on their behalf is not allowed" };
 
 const ISO_A8: ComplianceRef = { framework: "iso-27001", control: "A.8 – Asset Management" };
 const ISO_A9: ComplianceRef = { framework: "iso-27001", control: "A.9 – Access Control" };
@@ -415,6 +431,25 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "cloudPosture.awsIamPasswordPolicy": [CE_ACCESS, OWASP_A07, CIS_16, PCI_REQ8, ISO_A9, NIS2_ART21],
   "cloudPosture.azureInfraEncryption": [CE_SECURE_CONFIG, OWASP_A02, CIS_3, PCI_REQ4, ISO_A13],
 
+  // --- Microsoft 365 / Entra ID posture (P1-4) ---
+  // Cyber Essentials' user access control requirement asks for MFA on cloud
+  // services, admin accounts kept to the people who need them, and accounts
+  // only for people who should have them; the guest and app-consent settings
+  // are that same requirement. Cyber Essentials doesn't ask for logging, so
+  // the sign-in log row cites CIS Controls and ISO only: the CIS M365 audit
+  // recommendation is the Purview audit log, which Graph can't read.
+  "m365.noSecurityBaseline": [CE_ACCESS, CE_SECURE_CONFIG, CIS365_MFA_ALL, CIS365_LEGACY_AUTH, OWASP_A07, CIS_6, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "m365.mfaNotEnforcedAllUsers": [CE_ACCESS, CIS365_MFA_ALL, OWASP_A07, CIS_6, PCI_REQ8, ISO_A9, NIS2_ART21, DORA_ART9],
+  "m365.mfaNotEnforcedAdmins": [CE_ACCESS, CIS365_MFA_ADMINS, OWASP_A07, CIS_6, PCI_REQ8, ISO_A9, NIS2_ART21, DORA_ART9],
+  "m365.legacyAuthAllowed": [CE_ACCESS, CE_SECURE_CONFIG, CIS365_LEGACY_AUTH, OWASP_A07, CIS_6, PCI_REQ8, ISO_A9, NIS2_ART21],
+  "m365.tooManyGlobalAdmins": [CE_ACCESS, CIS365_GLOBAL_ADMINS, CIS_5, CIS_6, ISO_A9, NIS2_ART21],
+  "m365.singleGlobalAdmin": [CE_ACCESS, CIS365_GLOBAL_ADMINS, CIS_5, ISO_A9],
+  "m365.externalForwarding": [CE_SECURE_CONFIG, CIS365_FORWARDING, CIS_3, CIS_9, ISO_A13, NIS2_ART21],
+  "m365.guestAccessUnrestricted": [CE_ACCESS, CIS365_GUEST_ACCESS, OWASP_A01, CIS_6, ISO_A9],
+  "m365.guestInvitesUnrestricted": [CE_ACCESS, CIS365_GUEST_INVITES, CIS_5, CIS_6, ISO_A9],
+  "m365.userConsentUnrestricted": [CE_ACCESS, CE_SECURE_CONFIG, CIS365_USER_CONSENT, CIS_6, ISO_A9, NIS2_ART21],
+  "m365.signInLogsUnavailable": [CIS_8, ISO_A12, NIS2_ART21],
+
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
 
@@ -464,6 +499,7 @@ export const COMPLIANCE_FRAMEWORK_LABELS: Record<ComplianceFramework, string> = 
   "cyber-essentials": "Cyber Essentials",
   "owasp-top-10": "OWASP Top 10",
   "cis-controls-v8": "CIS Controls v8",
+  "cis-m365": "CIS Microsoft 365",
   "iso-27001": "ISO 27001",
   "pci-dss": "PCI DSS",
   "nis2": "NIS2",

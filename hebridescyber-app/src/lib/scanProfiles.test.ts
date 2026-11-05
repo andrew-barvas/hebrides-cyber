@@ -133,7 +133,7 @@ describe("'exposure' (managed exposure review)", () => {
   it("enables exactly its own tool list", () => {
     const config = resolveToolConfig("exposure");
     for (const name of EXTENDED_TOOL_NAMES) expect(config[name], name).toBe(EXPOSURE_TOOLS.has(name));
-    expect([...EXPOSURE_TOOLS].sort()).toEqual(["deepTls", "httpx", "metadataLeak", "networkExposure", "nmap", "nuclei", "zap"]);
+    expect([...EXPOSURE_TOOLS].sort()).toEqual(["deepTls", "httpx", "m365", "metadataLeak", "networkExposure", "nmap", "nuclei", "zap"]);
   });
 
   it("never enables an injection tester, ZAP's active scan or an offensive-only tool", () => {

@@ -38,6 +38,7 @@ export type ExtendedToolName =
   | "sessionCheck"
   | "jwtAnalysis"
   | "cloudPosture"
+  | "m365"
   | "httpx"
   | "contentDiscovery"
   | "credentialSpray"
@@ -84,6 +85,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "sessionCheck",
   "jwtAnalysis",
   "cloudPosture",
+  "m365",
   "httpx",
   "contentDiscovery",
   "credentialSpray",
@@ -155,8 +157,12 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure"
 // binary; under this profile it reads only the documents the base crawl
 // recorded, since gospider, photon and katana are left out: they don't honour
 // robots.txt, which the Lookout copy promises.
+// m365 runs no binary: it only reads the customer's Microsoft 365 settings
+// through Graph with their admin's consent (scanners/m365Posture.ts), and
+// unit tests over recorded Graph JSON stand in for the integration test.
 export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
   "httpx",
+  "m365",
   "networkExposure",
   "nmap",
   "nuclei",
@@ -204,6 +210,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     metadataLeak: true,
     cloudPosture: true,
     prowler: true,
+    m365: true,
     httpx: true,
     katana: true,
   },
