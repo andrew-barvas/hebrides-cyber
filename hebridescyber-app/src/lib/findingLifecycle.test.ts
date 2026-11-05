@@ -112,6 +112,15 @@ describe("coverage and source", () => {
       expect.objectContaining({ check_id: "headers.csp-absent", resolved_at: SCAN_AT }),
     ]);
   });
+
+  it("keeps a finding open when a check that ran couldn't evaluate it (incompleteChecks)", () => {
+    // Shodan InternetDB was down: recon still ran (crt.sh answered), but its silence about CVEs isn't a fix.
+    const coverage = scanCoverage(undefined, { recon: { status: "checked", incompleteChecks: ["recon.shodan-cves"] } });
+    expect(isCovered("base", coverage, "recon.shodan-cves")).toBe(false);
+    expect(isCovered("base", coverage, "recon.shodan-cves:203.0.113.7")).toBe(false);
+    expect(isCovered("base", coverage, "recon.subdomains-found")).toBe(true);
+    expect(plan([existing({ check_id: "recon.shodan-cves" })], [], coverage)).toEqual([]);
+  });
 });
 
 describe("planLifecycleSync", () => {

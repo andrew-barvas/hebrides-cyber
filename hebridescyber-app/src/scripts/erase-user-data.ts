@@ -24,9 +24,7 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... [STRIPE_SECRET_KEY=...] [AZURE_STORAGE_CONNECTION_STRING=...] \
 //     npm run account:erase -- <email or user id> [--confirm] [--keep-stripe-subscription]
 
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { eraseAccount, findAccount, planErasure } from "../lib/accountErasure";
 import { getStripe } from "../lib/stripeClient";
 
@@ -41,16 +39,7 @@ async function main() {
     process.exit(1);
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   const account = await findAccount(supabaseAdmin, target);
   if (!account) {

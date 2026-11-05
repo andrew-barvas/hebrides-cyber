@@ -3,7 +3,7 @@
 // that nothing after completion can turn a completed scan into a failure.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, record, engineFault } = vi.hoisted(() => {
+const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, customChecksMock, nucleiMock, record, engineFault } = vi.hoisted(() => {
   const calls: string[] = [];
   return {
     calls,
@@ -11,6 +11,8 @@ const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, record, engineFaul
     attackSurfaceMock: vi.fn(),
     lookalikeMock: vi.fn(),
     whatwafMock: vi.fn(),
+    customChecksMock: vi.fn(async () => []),
+    nucleiMock: vi.fn(async () => ({ status: "completed", findings: [] })),
     record: (name: string, value: unknown = undefined) => vi.fn(async () => (calls.push(name), value)),
   };
 });
@@ -37,6 +39,8 @@ vi.mock("./oncallAlerts", () => ({ triggerOncallAlerts: record("triggerOncallAle
 vi.mock("./siemIntegration", () => ({ forwardToSiem: record("forwardToSiem") }));
 vi.mock("./audit", () => ({ logAuditEvent: vi.fn(async (_db: unknown, e: { action: string }) => calls.push(`audit:${e.action}`)) }));
 vi.mock("../worker/tools/whatwaf", () => ({ runWhatWaf: whatwafMock }));
+vi.mock("./customChecks", () => ({ runCustomChecksForOwner: customChecksMock }));
+vi.mock("../worker/tools/nuclei", () => ({ runNuclei: nucleiMock }));
 vi.mock("./exploitability", async (orig) => {
   const actual = await orig<typeof import("./exploitability")>();
   return {
@@ -150,7 +154,7 @@ describe("executeScan wiring", () => {
 });
 
 describe("executeScan exploitability pass", () => {
-  type Stored = { checkId?: string; severity: string; exploitability?: { band: string } };
+  type Stored = { checkId?: string; severity: string; exploitabilityAssessment?: { band: string } };
   const EXPOSED = "exposure.exposed-file:/.env";
   const reported = () => [
     { checkId: EXPOSED, severity: "critical", title: "Exposed .env", detail: "", remediation: "", metadata: { proofOfExploit: { confirmed: true } } },
@@ -166,8 +170,8 @@ describe("executeScan exploitability pass", () => {
     expect(result).toMatchObject({ ok: true, score: 88 });
     const [exposed, hsts] = findingsOf(resultInserts);
     expect(exposed.severity).toBe("critical");
-    expect(exposed.exploitability).toBeDefined();
-    expect(hsts.exploitability).toBeUndefined();
+    expect(exposed.exploitabilityAssessment).toBeDefined();
+    expect(hsts.exploitabilityAssessment).toBeUndefined();
     expect(assessmentInserts).toHaveLength(1);
     expect(assessmentInserts[0]).toMatchObject({ owner: "owner-1", scan_id: "scan-x", host: "shop.example", check_id: EXPOSED });
   });
@@ -176,14 +180,14 @@ describe("executeScan exploitability pass", () => {
     vi.mocked(summariseResults).mockReturnValueOnce({ findings: reported() } as never);
     const seen: boolean[] = [];
     vi.mocked(scoreFromFindings).mockImplementationOnce((findings) => {
-      seen.push(...findings.map((f) => "exploitability" in f));
+      seen.push(...findings.map((f) => "exploitabilityAssessment" in f));
       return 88;
     });
     const { client, resultInserts } = fakeSupabase();
     await executeScan(client, "scan-x", "owner-1", "https://shop.example", { confirmExploits: false });
 
     expect(seen).toEqual([false, false]);
-    expect(findingsOf(resultInserts)[0].exploitability).toBeDefined();
+    expect(findingsOf(resultInserts)[0].exploitabilityAssessment).toBeDefined();
   });
 
   it("completes the scan with the same score and no assessments if the engine throws", async () => {
@@ -196,7 +200,7 @@ describe("executeScan exploitability pass", () => {
 
       expect(result).toMatchObject({ ok: true, score: 88 });
       expect(scanUpdates.some((u) => u.status === "completed")).toBe(true);
-      expect(findingsOf(resultInserts)[0].exploitability).toBeUndefined();
+      expect(findingsOf(resultInserts)[0].exploitabilityAssessment).toBeUndefined();
       expect(assessmentInserts).toEqual([]);
     } finally {
       engineFault.throws = false;
@@ -210,7 +214,7 @@ describe("executeScan exploitability pass", () => {
     const toolOverrides = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, false]));
     await executeScan(client, "scan-x", "owner-1", "https://shop.example", { profile: "exposure", toolOverrides });
 
-    expect(findingsOf(resultInserts)[0].exploitability?.band).toBe("likely");
+    expect(findingsOf(resultInserts)[0].exploitabilityAssessment?.band).toBe("likely");
     expect(assessmentInserts[0].band).toBe("likely");
   });
 
@@ -227,7 +231,7 @@ describe("executeScan exploitability pass", () => {
 
       const [exposed] = findingsOf(resultInserts);
       expect(exposed.checkId).toBe(EXPOSED);
-      expect(exposed.exploitability).toBeUndefined();
+      expect(exposed.exploitabilityAssessment).toBeUndefined();
       expect(assessmentInserts).toEqual([]);
     } finally {
       load.mockRestore();
@@ -271,5 +275,29 @@ describe("executeScan extended findings: whatwaf", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ checkId: "whatwaf.waf-detected", severity: "info" });
     expect(findings[0].detail).not.toMatch(/confidence/i);
+  });
+});
+
+describe("executeScan: customer-defined checks", () => {
+  /** A scheduled-style scan with nuclei the only extended tool the profile keeps. */
+  async function scanWithNucleiOnly(profile: "full" | "exposure") {
+    customChecksMock.mockClear();
+    nucleiMock.mockClear();
+    const { client } = fakeSupabase();
+    const toolOverrides = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, n === "nuclei"]));
+    const scan = await executeScan(client, `scan-${profile}`, "owner-1", "https://shop.example", { profile, toolOverrides, confirmExploits: false });
+    expect(scan.ok).toBe(true);
+    expect(nucleiMock).toHaveBeenCalled();
+  }
+
+  it("runs the account's own checks alongside nuclei on an active profile", async () => {
+    await scanWithNucleiOnly("full");
+    expect(customChecksMock).toHaveBeenCalledWith(expect.anything(), "owner-1", "https://shop.example");
+  });
+
+  it("never runs them under the exposure profile, which promises no test payloads", async () => {
+    await scanWithNucleiOnly("exposure");
+    expect(customChecksMock).not.toHaveBeenCalled();
+    expect(nucleiMock).toHaveBeenCalledWith("https://shop.example", expect.any(Array), { nonIntrusive: true });
   });
 });

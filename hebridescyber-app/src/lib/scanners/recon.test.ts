@@ -48,6 +48,14 @@ describe("checkRecon", () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("internetdb"))).toBe(false);
   });
 
+  it("marks recon.shodan-cves incomplete when InternetDB fails, unlike its 404 (rule 7)", async () => {
+    serve({ dns: A, shodan: { status: 503 } });
+    expect(await checkRecon("https://example.com")).toMatchObject({ shodan: null, incompleteChecks: expect.arrayContaining(["recon.shodan-cves"]) });
+
+    serve({ dns: A, shodan: { status: 404 }, crt: { status: 200, body: [] } });
+    expect(await checkRecon("https://example.com")).not.toHaveProperty("incompleteChecks");
+  });
+
   it("de-duplicates CT names, splits multi-name certs and folds wildcards into their base", async () => {
     serve({
       crt: {

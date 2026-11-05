@@ -16,6 +16,7 @@ import { sendSlackAlert } from "./slack";
 import { sendTeamsAlert } from "./msTeams";
 import { planIncludes } from "./planAccess";
 import { runNuclei } from "../worker/tools/nuclei";
+import { runCustomChecksForOwner } from "./customChecks";
 import { runZap } from "../worker/tools/zap";
 import { runSqlmap } from "../worker/tools/sqlmap";
 import { runCommix } from "../worker/tools/commix";
@@ -67,6 +68,7 @@ import { assessFindings, attachExploitability, type ExploitabilityAssessment } f
 import { persistAssessments, supersedeAssessments } from "./exploitability/persist";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { applyExploitability } from "./scanners/exploitabilityVerdict";
 import { triageIfEnabled } from "./scanners/aiTriage";
 import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
@@ -76,6 +78,7 @@ import { logAuditEvent } from "./audit";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runProwlerIam } from "../worker/tools/prowlerIam";
+import { runM365PostureChecks } from "./scanners/m365Posture";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -167,8 +170,14 @@ async function runExtendedTools(
   ownerId: string,
   /** Pages the base crawl already visited; katana checks only the others. */
   crawledUrls: string[] = [],
-  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei runs restricted, ZAP passive-only. */
-  nonIntrusive = false
+  /** The profile promises no test payloads (isNonIntrusiveProfile): nuclei and deepTls run restricted, ZAP passive-only. */
+  nonIntrusive = false,
+  /**
+   * Document and image links the base crawl recorded (robots.txt honoured),
+   * for the metadata check; null when the crawl failed, so "no documents"
+   * is never inferred from a crawl that read nothing.
+   */
+  crawlDocumentUrls: string[] | null = null
 ): Promise<{ extended: Record<string, unknown>; findings: Finding[]; supersedesReconSubdomains: boolean }> {
   // Each entry below is gated on toolConfig.<name> — a disabled tool
   // resolves to exactly the same "not_configured"/"not_applicable" shape
@@ -244,6 +253,7 @@ async function runExtendedTools(
     toolConfig.deepTls
       ? runDeepTls(targetUrl, {
           platformManagedTls: detectedTechnologies.some((t) => (PLATFORM_TLS_TECHNOLOGIES as readonly string[]).includes(t)),
+          nonIntrusive,
         })
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, findings: [] as Finding[] }),
     // All five of these are only attempted when the scan owner has a row in
@@ -457,6 +467,11 @@ async function runExtendedTools(
       });
     }
   }
+
+  // The account's own nuclei checks (Agency and Tier A), run only where nuclei
+  // is, and never under a non-intrusive profile: a customer template may send
+  // POST bodies and payload lists, which the exposure profile promises not to.
+  if (toolConfig.nuclei && !nonIntrusive) findings.push(...(await runCustomChecksForOwner(supabaseAdmin, ownerId, targetUrl)));
 
   // ZAP's own alert.solution is real, evidenced, per-finding remediation
   // from its own knowledge base — runZap() (src/worker/tools/zap.ts) attaches
@@ -733,12 +748,24 @@ async function runExtendedTools(
     }
   }
 
-  // Metadata leak — checks files discovered by Photon/Gospider for metadata leakage
+  // Metadata leak — checks files discovered by the base crawl, Photon and
+  // Gospider for metadata leakage. Under `exposure` only the base crawl's
+  // links feed it: gospider is not in that profile, since it ignores
+  // robots.txt and Lookout's copy promises to respect it.
   const allDiscoveredFileUrls = [
-    ...photonAssets.filter((a) => a.type === "url").map((a) => a.value),
-    ...gospiderEndpoints.filter((e) => e.type === "url").map((e) => e.value),
+    ...new Set([
+      ...(crawlDocumentUrls ?? []),
+      ...photonAssets.filter((a) => a.type === "url").map((a) => a.value),
+      ...gospiderEndpoints.filter((e) => e.type === "url").map((e) => e.value),
+    ]),
   ];
-  if (toolConfig.metadataLeak && allDiscoveredFileUrls.length > 0) {
+  if (toolConfig.metadataLeak && allDiscoveredFileUrls.length === 0 && crawlDocumentUrls !== null) {
+    // The crawl read the site and found nothing to check: an honest clean
+    // result, which lets last scan's metadata findings resolve.
+    (extended as Record<string, unknown>).metadataLeak = { status: "completed", findings: [] };
+  } else if (toolConfig.metadataLeak && allDiscoveredFileUrls.length === 0) {
+    (extended as Record<string, unknown>).metadataLeak = { status: "error", note: "The site crawl failed, so no documents could be found to check." };
+  } else if (toolConfig.metadataLeak) {
     try {
       const metadataResult = await runMetadataLeakCheck(allDiscoveredFileUrls);
       (extended as Record<string, unknown>).metadataLeak = metadataResult;
@@ -1037,7 +1064,13 @@ export async function executeScan(
         console.error("[scan] tool kill-switch read failed, treating as none disabled:", (err as Error).message);
       }
       const toolConfig = applyKillSwitch(resolveToolConfig(profile, options.toolOverrides), disabledTools);
-      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, results.crawl && results.crawl.status !== "error" ? results.crawl.pages.map((p) => p.url) : [], isNonIntrusiveProfile(profile));
+      // A partial crawl that found no documents can't say there are none.
+      const crawl = results.crawl;
+      const crawlDocumentUrls =
+        crawl && crawl.status !== "error" && (crawl.status === "checked" || (crawl.documentUrls?.length ?? 0) > 0)
+          ? (crawl.documentUrls ?? [])
+          : null;
+      const toolOutcome = await runExtendedTools(targetUrl, repoConnection?.github_repo ?? null, authCredential, detectedTechnologies, toolConfig, supabaseAdmin, ownerId, crawl && crawl.status !== "error" ? crawl.pages.map((p) => p.url) : [], isNonIntrusiveProfile(profile), crawlDocumentUrls);
       extended = toolOutcome.extended;
       if (toolOutcome.supersedesReconSubdomains) {
         findings = findings.filter((f) => f.checkId !== "recon.subdomains-found");
@@ -1107,6 +1140,33 @@ export async function executeScan(
           if (extended) (extended as Record<string, unknown>).prowler = { status: "error", note: "Prowler IAM check failed", findings: [], accounts: [] };
         }
       }
+
+      // P1-4: Microsoft 365 / Entra ID posture. Like cloud posture, it is keyed on
+      // the owner's connected tenant rather than the target. On "error" the
+      // findings that were evidenced still land, but the status keeps
+      // findingLifecycle.ts from closing anything the failed reads missed.
+      if (toolConfig.m365) {
+        try {
+          const m365Result = await runM365PostureChecks(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).m365 = m365Result;
+          if (m365Result.status === "checked" || m365Result.status === "error") {
+            for (const finding of m365Result.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+              const difficulty = getFixDifficulty(finding.checkId);
+              if (difficulty) {
+                finding.fixDifficulty = difficulty;
+                finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+              }
+            }
+            applyAttackRefs(m365Result.findings);
+            findings.push(...m365Result.findings);
+            for (const f of m365Result.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).m365 = { status: "error", note: "Microsoft 365 posture check failed" };
+        }
+      }
     }
 
     await updateScanProgress(supabaseAdmin, scanId, {
@@ -1144,6 +1204,14 @@ export async function executeScan(
       // Runs after the deterministic proofs so it only sees what they couldn't prove.
       findings = await triageIfEnabled(targetUrl, findings);
     }
+
+    // Exploitability verdict (confirmed / theoretical / unknown): a final,
+    // traffic-free pass that reads the CVSS, threat-intel and proof-of-exploit
+    // results above. Unconditional — a non-intrusive profile sends no proof
+    // requests but can still be "theoretical" from CVE intel. A reporting and
+    // prioritisation signal only; it never changes severity or the score.
+    // See docs/EXPLOITABILITY-ANALYSIS-DESIGN.md §4, §6.
+    applyExploitability(findings);
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and
