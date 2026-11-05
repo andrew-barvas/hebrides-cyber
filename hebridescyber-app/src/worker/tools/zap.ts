@@ -1,6 +1,9 @@
 // OWASP ZAP active scanning integration.
 //
 // Runs a full spider + active scan against the target and collects alerts.
+// In passive-only mode (the `exposure` profile, isNonIntrusiveProfile) it
+// spiders, waits for the passive scan queue to drain and reads the passive
+// alerts; it never calls the active scanner, so it sends no attack payloads.
 // Requires a running ZAP daemon (started by the "Start ZAP daemon" step in
 // .github/workflows/scheduled-scans.yml — there is no docker-compose.yml).
 // When ZAP_API_URL is not set, returns gracefully.
@@ -11,6 +14,8 @@ const ZAP_SPIDER_POLL_MS = 5_000;
 const ZAP_SPIDER_TIMEOUT_MS = 120_000;
 const ZAP_ASCAN_POLL_MS = 5_000;
 const ZAP_ASCAN_TIMEOUT_MS = 300_000;
+const ZAP_PSCAN_POLL_MS = 2_000;
+const ZAP_PSCAN_TIMEOUT_MS = 120_000;
 
 export type ZapAlert = {
   risk: string;
@@ -95,7 +100,24 @@ async function pollUntilDone(
   throw new Error("ZAP scan timed out");
 }
 
-export async function runZap(targetUrl: string): Promise<ZapResult> {
+// The passive scanner works through a queue of recorded messages; its alerts
+// are only complete once that queue is empty.
+async function pollPassiveQueue(base: string, apiKey: string): Promise<void> {
+  const deadline = Date.now() + ZAP_PSCAN_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const resp = await zapGet<{ recordsToScan: string }>(base, "/JSON/pscan/view/recordsToScan/", apiKey);
+    if (parseInt(resp.recordsToScan, 10) === 0) return;
+    await new Promise((r) => setTimeout(r, ZAP_PSCAN_POLL_MS));
+  }
+  throw new Error("ZAP passive scan timed out");
+}
+
+export type ZapOptions = {
+  /** Spider and passive rules only: no active scan, no test payloads. */
+  passiveOnly?: boolean;
+};
+
+export async function runZap(targetUrl: string, options: ZapOptions = {}): Promise<ZapResult> {
   const zapApiUrl = process.env.ZAP_API_URL;
   const zapApiKey = process.env.ZAP_API_KEY;
 
@@ -125,22 +147,27 @@ export async function runZap(targetUrl: string): Promise<ZapResult> {
       ZAP_SPIDER_TIMEOUT_MS
     );
 
-    // --- Active scan --------------------------------------------------------
-    const ascanResp = await zapPost<{ scan: string }>(
-      zapApiUrl,
-      "/JSON/ascan/action/scan/",
-      { url: targetUrl },
-      zapApiKey
-    );
-    const ascanScanId = ascanResp.scan;
+    if (options.passiveOnly) {
+      // --- Passive scan only ------------------------------------------------
+      await pollPassiveQueue(zapApiUrl, zapApiKey);
+    } else {
+      // --- Active scan ------------------------------------------------------
+      const ascanResp = await zapPost<{ scan: string }>(
+        zapApiUrl,
+        "/JSON/ascan/action/scan/",
+        { url: targetUrl },
+        zapApiKey
+      );
+      const ascanScanId = ascanResp.scan;
 
-    await pollUntilDone(
-      zapApiUrl,
-      `/JSON/ascan/view/status/?scanId=${encodeURIComponent(ascanScanId)}`,
-      zapApiKey,
-      ZAP_ASCAN_POLL_MS,
-      ZAP_ASCAN_TIMEOUT_MS
-    );
+      await pollUntilDone(
+        zapApiUrl,
+        `/JSON/ascan/view/status/?scanId=${encodeURIComponent(ascanScanId)}`,
+        zapApiKey,
+        ZAP_ASCAN_POLL_MS,
+        ZAP_ASCAN_TIMEOUT_MS
+      );
+    }
 
     // --- Collect alerts -----------------------------------------------------
     const alertsResp = await zapGet<{ alerts: ZapAlert[] }>(
