@@ -16,10 +16,13 @@
 //
 // Enrichment only, exactly like wpvdb.ts: this module does no detection of
 // its own. It's called from src/lib/scanners/index.ts after fingerprint.ts
-// resolves, keyed off its riskySoftware array. Never throws — every check
-// degrades to no findings rather than failing the scan (see
+// resolves, keyed off its riskySoftware array. Never throws (see
 // docs/SCANNER-CONVENTIONS.md rule 4 and this codebase's universal
-// never-throw contract for scanner modules).
+// never-throw contract for scanner modules), but a lookup that failed is
+// never reported as a clean "checked": findingLifecycle.ts would otherwise
+// mark last scan's CVE findings fixed whenever NVD rate-limited us
+// (CLAUDE.md rule 7). The per-item functions return null for "couldn't
+// look", distinct from [] for "looked, nothing applies".
 import type { Finding } from "./index";
 import type { RiskyTech } from "./fingerprint";
 import { vulnerabilityAppliesToVersion, wpVulnSeverity } from "./wpvdb";
@@ -35,8 +38,13 @@ const NVD_USER_AGENT = "HebridesCyberBot/1.0 (+https://hebridescyber.co.uk)";
 // NVD's public unauthenticated rate limit is 5 requests/30s (same limit
 // src/lib/newsletter.ts's fetchRecentHighSeverityCves documents). This
 // module calls NVD at most twice per scan (PHP once, Apache once, only when
-// fingerprint.ts actually detected a risky version of each) — well inside
-// that limit, so no client-side throttling is needed here.
+// fingerprint.ts actually detected a risky version of each), but a worker
+// batch runs many scans back to back, so NVD_API_KEY (50 requests/30s) is
+// sent when set. A rate-limited lookup reports the check as not run.
+function nvdHeaders(): Record<string, string> {
+  const key = process.env.NVD_API_KEY;
+  return { "User-Agent": NVD_USER_AGENT, ...(key ? { apiKey: key } : {}) };
+}
 
 // ---- WordPress core (WPScan) -----------------------------------------------
 
@@ -70,23 +78,21 @@ async function fetchWordPressCoreVulnerabilities(version: string, token: string)
 
 /**
  * Looks up real CVE-backed vulnerabilities for a detected WordPress core
- * version via WPScan's Vulnerability Database. Gated on WPSCAN_API_TOKEN —
- * returns [] silently (not a status of its own) when unset, since this
- * function is only ever called from checkSoftwareCveDb() when a WordPress
- * version was already detected, and the orchestrator folds "not configured"
- * into its overall result rather than treating it as a distinct outcome per
- * software item.
+ * version via WPScan's Vulnerability Database. Gated on WPSCAN_API_TOKEN.
+ * Returns null when it couldn't look (token unset, or WPScan failed), which
+ * checkSoftwareCveDb() turns into a not-run status rather than "clean".
  *
  * Same "skip rather than guess" version-matching discipline as wpvdb.ts:
  * a vulnerability only applies when its fixed_in is null (still unpatched
  * upstream) or the detected version numerically precedes it.
  */
-export async function checkWordPressCoreCves(version: string): Promise<Finding[]> {
+export async function checkWordPressCoreCves(version: string): Promise<Finding[] | null> {
   const token = process.env.WPSCAN_API_TOKEN;
-  if (!token) return [];
+  if (!token) return null;
 
   const raw = await fetchWordPressCoreVulnerabilities(version, token);
-  if (!raw || raw.length === 0) return [];
+  if (!raw) return null;
+  if (raw.length === 0) return [];
 
   const applicable = raw.filter((v) => vulnerabilityAppliesToVersion(v, version));
   if (applicable.length === 0) return [];
@@ -136,7 +142,7 @@ async function fetchNvdCvesForCpe(cpeName: string): Promise<NvdParsedCve[] | nul
     const url = `${NVD_API_BASE}?cpeName=${encodeURIComponent(cpeName)}&resultsPerPage=50`;
     const res = await fetch(url, {
       signal: AbortSignal.timeout(NVD_TIMEOUT_MS),
-      headers: { "User-Agent": NVD_USER_AGENT },
+      headers: nvdHeaders(),
     });
     if (!res.ok) return null;
 
@@ -166,17 +172,18 @@ async function fetchNvdCvesForCpe(cpeName: string): Promise<NvdParsedCve[] | nul
  * flood a scan report. Severity is derived from the highest CVSS score
  * across all matched CVEs (>= 9 critical, >= 7 high, else medium), and
  * cveIds is capped at NVD_BUNDLE_CAP so the finding stays a reasonable size
- * even when NVD returns far more.
+ * even when NVD returns far more. Returns null when the NVD request failed.
  */
 export async function checkNvdCpeVulnerabilities(
   vendor: string,
   product: string,
   version: string,
   displayName: string
-): Promise<Finding[]> {
+): Promise<Finding[] | null> {
   const cpeName = `cpe:2.3:a:${vendor}:${product}:${version}:*:*:*:*:*:*:*`;
   const cves = await fetchNvdCvesForCpe(cpeName);
-  if (!cves || cves.length === 0) return [];
+  if (!cves) return null;
+  if (cves.length === 0) return [];
 
   const sorted = [...cves].sort((a, b) => (b.cvssScore ?? 0) - (a.cvssScore ?? 0));
   const maxScore = sorted[0]?.cvssScore ?? null;
@@ -200,9 +207,14 @@ export async function checkNvdCpeVulnerabilities(
 
 // ---- Orchestration ----------------------------------------------------------
 
+// "partial": some lookups answered and their findings are kept, but at least
+// one couldn't look, so findingLifecycle.ts must not resolve anything from
+// this check this scan (it treats partial/error/not_configured as not run).
 export type SoftwareCveDbResult =
   | { status: "checked"; findings: Finding[] }
+  | { status: "partial"; findings: Finding[]; note: string }
   | { status: "not_applicable"; note: string }
+  | { status: "not_configured"; note: string }
   | { status: "error"; note: string };
 
 /**
@@ -256,7 +268,9 @@ export const NVD_CPE_BY_NAME: Record<string, { vendor: string; product: string }
  *
  * Runs each applicable lookup independently via Promise.allSettled so one
  * failing lookup (WPScan down, NVD rate-limited) never suppresses findings
- * from the others. Never throws — same contract as every scanner module.
+ * from the others, then reports the check as partial (some looked), error
+ * (none looked) or not_configured (only the missing WPScan token stopped
+ * it). Never throws — same contract as every scanner module.
  */
 export async function checkSoftwareCveDb(riskySoftware: RiskyTech[]): Promise<SoftwareCveDbResult> {
   try {
@@ -268,29 +282,37 @@ export async function checkSoftwareCveDb(riskySoftware: RiskyTech[]): Promise<So
       return { status: "not_applicable", note: "No WordPress core, PHP, or Apache version was flagged as risky by fingerprint.ts." };
     }
 
-    const tasks: Promise<Finding[]>[] = [];
-    if (wordpress?.version) tasks.push(checkWordPressCoreCves(wordpress.version));
+    const tasks: { label: string; run: Promise<Finding[] | null> }[] = [];
+    if (wordpress?.version) tasks.push({ label: `WordPress ${wordpress.version}`, run: checkWordPressCoreCves(wordpress.version) });
     if (php?.version) {
       const cpe = NVD_CPE_BY_NAME.PHP;
-      tasks.push(checkNvdCpeVulnerabilities(cpe.vendor, cpe.product, php.version, "PHP"));
+      tasks.push({ label: `PHP ${php.version}`, run: checkNvdCpeVulnerabilities(cpe.vendor, cpe.product, php.version, "PHP") });
     }
     if (apache?.version) {
       const cpe = NVD_CPE_BY_NAME.Apache;
-      tasks.push(checkNvdCpeVulnerabilities(cpe.vendor, cpe.product, apache.version, "Apache"));
+      tasks.push({ label: `Apache ${apache.version}`, run: checkNvdCpeVulnerabilities(cpe.vendor, cpe.product, apache.version, "Apache") });
     }
 
     if (tasks.length === 0) {
       return { status: "not_applicable", note: "WordPress, PHP, or Apache were flagged as risky, but none had a detected version to look up." };
     }
 
-    const settled = await Promise.allSettled(tasks);
+    const settled = await Promise.allSettled(tasks.map((t) => t.run));
     const findings: Finding[] = [];
-    for (const result of settled) {
-      if (result.status === "fulfilled") findings.push(...result.value);
-      // A rejected task contributes nothing — never throws the whole check.
-    }
+    const failed: string[] = [];
+    settled.forEach((result, i) => {
+      if (result.status === "fulfilled" && result.value) findings.push(...result.value);
+      else failed.push(tasks[i].label);
+    });
 
-    return { status: "checked", findings };
+    if (failed.length === 0) return { status: "checked", findings };
+    const tokenOnly = failed.length === 1 && failed[0].startsWith("WordPress") && !process.env.WPSCAN_API_TOKEN;
+    if (failed.length === tasks.length) {
+      return tokenOnly
+        ? { status: "not_configured", note: "WPSCAN_API_TOKEN is not set — skipping the WordPress core CVE lookup. See .env.example." }
+        : { status: "error", note: `Software CVE lookup failed for: ${failed.join(", ")}` };
+    }
+    return { status: "partial", findings, note: `Software CVE lookup could not check: ${failed.join(", ")}` };
   } catch (err) {
     return { status: "error", note: `Software CVE lookup failed: ${(err as Error).message}` };
   }

@@ -26,6 +26,7 @@ import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const bodySchema = z.object({
   targetUrl: z.string().url().optional(),
@@ -147,7 +148,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
       .select("id")
       .single();
 
-    if (error || !scan) return res.status(500).json({ error: error?.message ?? "Failed to create scan" });
+    if (error || !scan) return respondInternalError(res, "run-scan", error, { publicMessage: "Failed to create scan" });
 
     return res.status(200).json({
       scanId: scan.id,
@@ -169,7 +170,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
     .eq("id", scanId)
     .maybeSingle();
 
-  if (fetchError || !scan) return res.status(404).json({ error: fetchError?.message ?? "Scan not found" });
+  if (fetchError || !scan) return res.status(404).json({ error: "Scan not found" });
   if (scan.owner !== caller.ownerId) return res.status(403).json({ error: "You do not own this scan" });
 
   // Idempotent replay: the dashboard polls this same endpoint while a scan is
@@ -260,7 +261,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   // "queued" here left every scan pending forever, with nothing enqueued,
   // while scans.status rejected 'queued' (fixed by migration 050).
   if (claimError) {
-    return res.status(500).json({ error: `Couldn't queue the scan: ${claimError.message}`, code: "queue_failed" });
+    return respondInternalError(res, "run-scan", claimError, { publicMessage: "Couldn't queue the scan.", extra: { code: "queue_failed" } });
   }
   if (!claimed?.length) {
     return res.status(202).json({ ok: true, scanId, status: "queued" });
@@ -280,7 +281,7 @@ async function handleScan(req: NextApiRequest, res: NextApiResponse) {
   });
   if (jobError) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scanId);
-    return res.status(500).json({ error: `Failed to queue scan: ${jobError.message}` });
+    return respondInternalError(res, "run-scan", jobError, { publicMessage: "Failed to queue scan." });
   }
 
   // Awaited so the dispatch call isn't cut off by the function returning —

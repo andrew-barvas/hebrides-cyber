@@ -44,13 +44,29 @@ describe("softwareCveDb", () => {
       expect(result.status).toBe("not_applicable");
     });
 
-    it("degrades cleanly with no findings when a WordPress entry is present but WPSCAN_API_TOKEN is unset", async () => {
+    it("reports not_configured, never a clean check, when a WordPress entry is present but WPSCAN_API_TOKEN is unset", async () => {
       delete process.env.WPSCAN_API_TOKEN;
       const result = await checkSoftwareCveDb([risky({ name: "WordPress", version: "5.4" })]);
-      expect(result.status).toBe("checked");
-      if (result.status === "checked") {
-        expect(result.findings).toEqual([]);
-      }
+      expect(result.status).toBe("not_configured");
+    });
+
+    it("reports error, not a clean check, when every NVD lookup fails (rule 7)", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+      const result = await checkSoftwareCveDb([
+        risky({ name: "PHP", version: "7.4.0" }),
+        risky({ name: "Apache", version: "2.2.0" }),
+      ]);
+      expect(result.status).toBe("error");
+      if (result.status === "error") expect(result.note).toContain("PHP 7.4.0");
+    });
+
+    it("sends NVD_API_KEY when it is set", async () => {
+      process.env.NVD_API_KEY = "nvd-test-key";
+      const mockFetch = vi.fn().mockResolvedValue(nvdResponse([]));
+      vi.stubGlobal("fetch", mockFetch);
+      await checkNvdCpeVulnerabilities("php", "php", "7.4.0", "PHP");
+      expect(mockFetch.mock.calls[0][1].headers.apiKey).toBe("nvd-test-key");
+      delete process.env.NVD_API_KEY;
     });
 
     it("produces one bundled Finding with both cveIds for a PHP entry with two mocked NVD CVEs", async () => {
@@ -74,7 +90,7 @@ describe("softwareCveDb", () => {
       }
     });
 
-    it("still returns findings from other items when one lookup rejects (Promise.allSettled)", async () => {
+    it("keeps findings from other items when one lookup fails, but reports partial (Promise.allSettled)", async () => {
       const mockFetch = vi.fn().mockImplementation(async (url: string) => {
         if (url.includes("php")) {
           throw new Error("network error");
@@ -88,10 +104,11 @@ describe("softwareCveDb", () => {
         risky({ name: "Apache", version: "2.2.0" }),
       ]);
 
-      expect(result.status).toBe("checked");
-      if (result.status === "checked") {
+      expect(result.status).toBe("partial");
+      if (result.status === "partial") {
         expect(result.findings).toHaveLength(1);
         expect(result.findings[0].checkId).toBe("softwareCveDb.nvdCpe:apache-http_server:2.2.0");
+        expect(result.note).toContain("PHP 7.4.0");
       }
     });
 
@@ -115,7 +132,7 @@ describe("softwareCveDb", () => {
       );
       const findings = await checkNvdCpeVulnerabilities("apache", "http_server", "2.2.0", "Apache");
       expect(findings).toHaveLength(1);
-      expect(findings[0].severity).toBe("critical");
+      expect(findings?.[0]?.severity).toBe("critical");
     });
 
     it("returns high when the max CVSS score is >= 7 and < 9", async () => {
@@ -125,7 +142,7 @@ describe("softwareCveDb", () => {
       );
       const findings = await checkNvdCpeVulnerabilities("php", "php", "7.4.0", "PHP");
       expect(findings).toHaveLength(1);
-      expect(findings[0].severity).toBe("high");
+      expect(findings?.[0]?.severity).toBe("high");
     });
 
     it("returns medium when the max CVSS score is below 7", async () => {
@@ -135,7 +152,7 @@ describe("softwareCveDb", () => {
       );
       const findings = await checkNvdCpeVulnerabilities("php", "php", "7.4.0", "PHP");
       expect(findings).toHaveLength(1);
-      expect(findings[0].severity).toBe("medium");
+      expect(findings?.[0]?.severity).toBe("medium");
     });
 
     it("returns no findings when NVD returns nothing", async () => {
@@ -144,22 +161,29 @@ describe("softwareCveDb", () => {
       expect(findings).toEqual([]);
     });
 
-    it("returns no findings when NVD request fails", async () => {
+    it("returns null (couldn't look), not [], when the NVD request fails", async () => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }));
       const findings = await checkNvdCpeVulnerabilities("apache", "http_server", "2.4.49", "Apache");
-      expect(findings).toEqual([]);
+      expect(findings).toBeNull();
     });
   });
 
   describe("checkWordPressCoreCves", () => {
-    it("returns [] silently when WPSCAN_API_TOKEN is not set", async () => {
+    it("returns null without calling WPScan when WPSCAN_API_TOKEN is not set", async () => {
       delete process.env.WPSCAN_API_TOKEN;
       const fetchSpy = vi.fn();
       vi.stubGlobal("fetch", fetchSpy);
 
       const findings = await checkWordPressCoreCves("5.4");
-      expect(findings).toEqual([]);
+      expect(findings).toBeNull();
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("returns null when WPScan fails", async () => {
+      process.env.WPSCAN_API_TOKEN = "test-token";
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
+      expect(await checkWordPressCoreCves("5.4")).toBeNull();
+      delete process.env.WPSCAN_API_TOKEN;
     });
 
     it("returns a Finding per applicable vulnerability when WPSCAN_API_TOKEN is set", async () => {
@@ -186,8 +210,8 @@ describe("softwareCveDb", () => {
 
       const findings = await checkWordPressCoreCves("5.4");
       expect(findings).toHaveLength(1);
-      expect(findings[0].cveIds).toEqual(["CVE-2021-1234"]);
-      expect(findings[0].checkId).toBe("softwareCveDb.wordpressCore:12345");
+      expect(findings?.[0]?.cveIds).toEqual(["CVE-2021-1234"]);
+      expect(findings?.[0]?.checkId).toBe("softwareCveDb.wordpressCore:12345");
 
       delete process.env.WPSCAN_API_TOKEN;
     });

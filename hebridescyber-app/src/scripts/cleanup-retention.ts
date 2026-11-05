@@ -21,9 +21,7 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... [AZURE_STORAGE_CONNECTION_STRING=...] \
 //     npx tsx src/scripts/cleanup-retention.ts
 
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 
 export const SCAN_RESULTS_RETENTION_DAYS = 365;
 export const CONTACT_ENQUIRIES_RETENTION_DAYS = 365;
@@ -34,17 +32,7 @@ function cutoffIso(days: number): string {
 }
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   let hadError = false;
 
