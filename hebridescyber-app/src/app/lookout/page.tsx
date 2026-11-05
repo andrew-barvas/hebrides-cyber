@@ -8,11 +8,12 @@ import { CtaLink, FaqList, FeatureCard, MockWindow, SectionHeading, SectionNav, 
 //
 // Claims rule (OT-14): every feature on this page maps to built code or the
 // documented manual service on the day it is live. Deliberately left out until
-// they are true: checkout (Stripe prices, OT-34), the included-estate limits
-// (OT-42), the document-metadata check (not in the `exposure` profile), passive
-// header checks via ZAP (PR #152) and "what to log" guidance. "What Lookout
-// sends to your systems" must stay, and must change whenever the `exposure`
-// profile or the base suite does. Name no tools.
+// they are true: checkout (Stripe prices, OT-34) and the included-estate limits
+// (OT-42). "What Lookout sends to your systems" must stay, and must change
+// whenever the `exposure` profile (EXPOSURE_TOOLS) or the base suite does: it
+// covers the passive second crawl (ZAP), the TLS protocol and cipher tests
+// (testssl.sh) and the document reads (metadataLeak) added in #152 and #181.
+// Name no tools.
 
 export const metadata: Metadata = {
   title: "Lookout: managed exposure review for UK businesses — Hebrides Cyber",
@@ -42,6 +43,10 @@ const FEATURES = [
   {
     title: "Email and domain protection",
     body: "Whether your domain can be used to send spoofed email, and whether your domain registration and certificates are about to lapse.",
+  },
+  {
+    title: "What your documents give away",
+    body: "Names, email addresses, internal system names and photo locations hidden in the documents and images on your website.",
   },
   {
     title: "Fixes in plain English",
@@ -89,7 +94,7 @@ const FAQ = [
   },
   {
     q: "Will the checks slow down or break my website?",
-    a: "They are designed to be light: ordinary page requests, a fixed list of file and port checks, and no test code sent to your forms. They only cover domains you have verified, inside a time window we agree with you.",
+    a: "They are designed to be light: ordinary page and document requests, a fixed list of file and port checks, a set of secure-connection (TLS) tests, and no test code sent to your forms. They only cover domains you have verified, inside a time window we agree with you.",
   },
   {
     q: "Will it show up in my logs?",
@@ -235,9 +240,11 @@ export default function LookoutPage() {
             <div className="rounded-lg border border-cyberborder bg-cyberpanel p-5">
               <h3 className="mb-3 font-semibold">Our checks</h3>
               <ul className="space-y-2 text-sm text-cybertext/70">
-                <Tick>load pages from your websites, follow links on them (up to 50 pages, respecting your robots.txt) and read the files those pages link to</Tick>
+                <Tick>load pages from your websites and follow links on them: our own crawler reads up to 50 pages and respects your robots.txt, and a second crawler follows links for up to two minutes</Tick>
+                <Tick>download the documents and images those pages link to, and read the hidden details stored in them</Tick>
                 <Tick>request a fixed list of well-known file locations, such as old backups and configuration files, to see whether any are public</Tick>
                 <Tick>connect to common network ports on your addresses to see which services answer, and identify the software behind them</Tick>
+                <Tick>connect to your secure (TLS) services many times, offering old protocol versions and weak encryption settings and running the standard tests for well-known TLS flaws, to see what they still accept</Tick>
                 <Tick>check for known misconfigurations and exposed admin pages</Tick>
                 <Tick>submit your login page five times with made-up details, to check that it slows down repeated attempts</Tick>
               </ul>
