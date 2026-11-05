@@ -25,6 +25,7 @@ erDiagram
     users ||--o{ webhooks : owns
     users ||--o{ teams : owns
     users ||--o{ cloud_credentials : owns
+    users ||--o| m365_tenants : connects
     users ||--o{ ticket_integrations : owns
     users ||--o{ finding_lifecycle : owns
     users ||--o{ finding_triage : owns
@@ -79,13 +80,19 @@ flowchart TB
     classDef t3 fill:#5a189a,stroke:#3c096c,color:#fff
     classDef t4 fill:#6a040f,stroke:#370617,color:#fff
     T1[Tier 1 - owner read + owner write via RLS:<br/>scans, monitored_targets, verifications, repo_connections,<br/>api_keys, webhooks, subscriptions webhook URLs]:::t1
-    T2[Tier 2 - owner read, SERVICE-ROLE write only:<br/>scan_results, scan_jobs, finding_lifecycle, finding_triage,<br/>asset_inventory, dns_snapshots, emerging_threat_alerts,<br/>lookalike_domains, ticket_links, deletion_requests,<br/>exploitability_assessments, engagements, engagement_scope_hosts,<br/>exploit_chains, exploit_simulations]:::t2
+    T2[Tier 2 - owner read, SERVICE-ROLE write only:<br/>scan_results, scan_jobs, finding_lifecycle, finding_triage,<br/>asset_inventory, dns_snapshots, emerging_threat_alerts,<br/>lookalike_domains, ticket_links, deletion_requests,<br/>m365_tenants - tenant ID only, no secret,<br/>exploitability_assessments, engagements, engagement_scope_hosts,<br/>exploit_chains, exploit_simulations]:::t2
     T3[Tier 3 - validate-before-save, service-role write:<br/>ticket_integrations, oncall, siem_integrations,<br/>cloud_credentials, target_auth_credentials,<br/>uptime_integrations - key encrypted, no client policy]:::t3
     T4[Tier 4 - no client policy at all:<br/>audit_logs, contact_enquiries,<br/>report_shares no public SELECT - token-match route only]:::t4
     N1["Secrets at rest: Tier-3 tokens, keys and session cookies are PLAINTEXT.<br/>cloud_credentials column is named credentials_encrypted but is NOT encrypted - FINDING S-1 and S-2"]:::t3
     N2["Dead schema: organizations, org_members, rbac, sso_providers<br/>migrations 034-036 - zero code importers. No multi-org/MSP tenancy exists."]:::t4
     T3 -.-> N1
 ```
+
+> **`monitored_targets.criticality` / `.environment` (067).** `low | normal |
+> high` (default `normal`) and `production | staging | development | test` (or
+> null). They weight the estate "fix this first" rank (`estatePriority.ts`).
+> Owner-writable under 026's UPDATE policy like `scan_profile`; team members
+> can read but not change them.
 
 > **Review findings referenced:** S-1/S-2 (plaintext credentials-at-rest) and the
 > dead org/RBAC/SSO schema are detailed in

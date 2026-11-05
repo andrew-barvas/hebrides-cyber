@@ -95,3 +95,41 @@ jobs:
           else
             gh issue create --label uptime --title "$title" --body "$body"
           fi
+
+  # The bare domain must 301 to www with the path kept (docs: canonical host).
+  # A DNS or Static Web Apps change can break it while /api/health on www stays
+  # green, and every link that uses the bare domain would then fail.
+  canonical-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the bare domain redirects to www
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          want="https://www.hebridescyber.co.uk/pricing?ref=uptime"
+          problem=""
+          for attempt in 1 2 3; do
+            out=$(curl -s -o /dev/null -m 20 -w "%{http_code} %{redirect_url}" "https://hebridescyber.co.uk/pricing?ref=uptime" || true)
+            code="${out%% *}"; location="${out#* }"
+            case "$code" in
+              301|308) if [ "$location" = "$want" ]; then problem=""; break; fi
+                       problem="redirects to \`$location\`, expected \`$want\`" ;;
+              *) problem="answered HTTP ${code:-000} instead of a 301 to www" ;;
+            esac
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
+          done
+          gh label create canonical-host --color B60205 --description "Bare domain no longer redirects to www" 2>/dev/null || true
+          existing=$(gh issue list --label canonical-host --state open --json number --jq '.[0].number // empty')
+          if [ -z "$problem" ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "Fixed: the bare domain 301s to www again."
+              gh issue close "$existing"
+            fi
+            exit 0
+          fi
+          echo "Bare domain $problem"
+          if [ -z "$existing" ]; then
+            gh issue create --label canonical-host --title "Bare domain no longer redirects to www"               --body "\`https://hebridescyber.co.uk/pricing?ref=uptime\` $problem (3 attempts 20s apart). Check the A record at GoDaddy and the Static Web Apps custom domains."
+          fi

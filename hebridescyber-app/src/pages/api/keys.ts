@@ -13,6 +13,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { validateAllowlist } from "@/lib/ipAllowlist";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const createSchema = z.object({
   name: z.string().min(1, "name is required").max(60, "name must be 60 characters or fewer"),
@@ -73,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "keys", error);
     return res.status(200).json({ keys: ((data ?? []) as ApiKeyRow[]).map(toClientKey) });
   }
 
@@ -96,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (isMissingSchemaError(error)) {
         return res.status(503).json({ error: "IP allowlists aren't enabled on this server yet (database migration 042 pending)." });
       }
-      return res.status(500).json({ error: error.message });
+      return respondInternalError(res, "keys", error);
     }
     if (!data) return res.status(404).json({ error: "Key not found" });
 
@@ -139,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id, name, key_prefix, created_at")
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "keys", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
@@ -167,7 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "keys", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,

@@ -51,6 +51,8 @@ export const CRAWL_LIMITS = {
   /** Pages allowed per URL "shape" (/post/:n), so numbered lists can't flood. */
   maxPerShape: 5,
   maxQueryParams: 3,
+  /** Document and image links recorded (not fetched) for the metadata check. */
+  maxDocumentLinks: 40,
 };
 
 /** Security headers whose absence on an inner page is reported when the start page sends them. */
@@ -110,6 +112,13 @@ export type CrawlResult =
       pages: CrawledPage[];
       /** More pages were found than the page cap or time budget allowed. */
       truncated: boolean;
+      /**
+       * Same-site document and image links (DOCUMENT_LINK_RE) on the pages
+       * visited, that robots.txt allows. Recorded, never fetched here: the
+       * metadata check (metadataLeak.ts) reads them. Optional because scans
+       * stored before it existed don't carry it.
+       */
+      documentUrls?: string[];
       /** Why the crawl is "partial", when it is. */
       note?: string;
     }
@@ -119,6 +128,10 @@ export type CrawlResult =
 
 const TRACKING_PARAM_RE = /^(?:utm_.*|fbclid|gclid|msclkid|mc_[a-z]+|_ga|ref|sessionid|phpsessid|sid)$/i;
 const BINARY_EXT_RE = /\.(?:pdf|zip|gz|tgz|tar|rar|7z|jpe?g|png|gif|svg|webp|ico|avif|bmp|mp[34]|mov|avi|webm|woff2?|ttf|eot|otf|css|js|mjs|map|json|xml|txt|docx?|xlsx?|pptx?|csv|exe|dmg|iso|apk|rss|atom)$/i;
+// The file types metadataLeak.ts can read (its DOCUMENT_EXTENSIONS and
+// IMAGE_EXTENSIONS). Kept here rather than imported so the base crawler does
+// not depend on src/worker.
+const DOCUMENT_LINK_RE = /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|jpe?g|tiff?)$/i;
 // Links that act rather than navigate. A GET to these can log the user out,
 // delete data or empty a cart on a badly-built site, so they are never followed.
 const ACTION_URL_RE = /(?:log-?out|sign-?out|log-?off|delete|remove|destroy|unsubscribe|revoke|deactivate|cancel|add[-_]?to[-_]?(?:cart|basket)|empty[-_]?cart|clear[-_]?cart|reset[-_]?password)/i;
@@ -613,9 +626,21 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
   const seenKeys = new Set<string>([urlKey(startUrl)]);
   const shapeCounts = new Map<string, number>([[urlShape(startUrl), 1]]);
   const queue: { url: URL; depth: number }[] = [];
+  const documentUrls = new Map<string, string>();
 
   const enqueue = (candidate: URL | null, depth: number): void => {
-    if (!candidate || depth > maxDepth || !isSameSite(candidate, startUrl)) return;
+    if (!candidate || !isSameSite(candidate, startUrl)) return;
+    // A document linked from a visited page is recorded even one level past
+    // maxDepth: it is never crawled, and the page linking it was.
+    if (
+      DOCUMENT_LINK_RE.test(candidate.pathname) &&
+      depth <= maxDepth + 1 &&
+      documentUrls.size < CRAWL_LIMITS.maxDocumentLinks &&
+      rules.allows(candidate.pathname + candidate.search)
+    ) {
+      documentUrls.set(urlKey(candidate), candidate.href);
+    }
+    if (depth > maxDepth) return;
     const key = urlKey(candidate);
     if (seenKeys.has(key) || skipReason(candidate, authenticated) || !rules.allows(candidate.pathname + candidate.search)) return;
     const shape = urlShape(candidate);
@@ -705,6 +730,7 @@ export async function checkCrawl(targetUrl: string, options: CrawlOptions = {}):
     startUrl: first.finalUrl.href,
     pages,
     truncated,
+    documentUrls: [...documentUrls.values()],
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
 }
