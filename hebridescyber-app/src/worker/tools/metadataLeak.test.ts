@@ -290,6 +290,29 @@ describe("runMetadataLeakCheck", () => {
     expect(result).toEqual({ status: "completed", findings: [] });
   });
 
+  it("reports an error, never a clean result, when no linked file could be fetched", async () => {
+    fetchMock.mockRejectedValue(new Error("connect ECONNREFUSED"));
+    const result = await runMetadataLeakCheck(["https://example.com/a.pdf", "https://example.com/b.jpg"]);
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.note).toContain("ECONNREFUSED");
+  });
+
+  it("still completes when only some files could be fetched", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce(makeResponse("/Author (Some One)"));
+    const result = await runMetadataLeakCheck(["https://example.com/a.pdf", "https://example.com/b.pdf"]);
+    if (result.status !== "completed") throw new Error("expected completed");
+    expect(result.findings).toContainEqual({ url: "https://example.com/b.pdf", type: "author", value: "Some One" });
+  });
+
+  it("treats a 404 for every file as an answer, not a failure", async () => {
+    fetchMock.mockResolvedValue({ ok: false, headers: new Map(), arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
+    const result = await runMetadataLeakCheck(["https://example.com/gone.pdf"]);
+    expect(result).toEqual({ status: "completed", findings: [] });
+  });
+
   it("limits to MAX_FILES_TO_CHECK", async () => {
     const urls = Array.from({ length: 25 }, (_, i) => `https://example.com/file${i}.pdf`);
     fetchMock.mockResolvedValue(makeResponse("nothing here"));
