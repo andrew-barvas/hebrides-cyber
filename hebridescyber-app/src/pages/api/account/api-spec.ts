@@ -15,6 +15,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { parseBody } from "@/lib/validate";
 import { validateNoSsrf } from "@/lib/ownership";
+import { respondInternalError } from "@/lib/apiError";
 
 const SPEC_FETCH_TIMEOUT_MS = 15_000;
 
@@ -90,7 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("updated_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/api-spec", error);
 
     // Return a summary rather than the full spec content to keep the
     // payload size reasonable — the scanner reads spec_content itself.
@@ -125,7 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", parsed.id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/api-spec", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -207,7 +208,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updated_at: new Date().toISOString(),
       })
       .eq("id", existing.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/api-spec", error);
   } else {
     const { error } = await supabaseAdmin
       .from("api_specs")
@@ -218,7 +219,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         spec_content: specContent,
         source_url: sourceUrl,
       });
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/api-spec", error);
   }
 
   return res.status(200).json({

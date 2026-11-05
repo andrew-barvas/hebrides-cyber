@@ -3498,3 +3498,148 @@ scope the actions (iam:PassRole, iam:CreatePolicyVersion, iam:AttachUserPolicy
 and similar) to named resources, add conditions, or remove them. Confirm in the
 IAM console's access analyzer that the change doesn't break a legitimate
 workflow, then re-scan.`;
+// --- Microsoft 365 / Entra ID posture (m365.*, ./m365Posture.ts) ---
+// Portal paths are the Microsoft Entra admin center (entra.microsoft.com) and
+// the Exchange admin center (admin.exchange.microsoft.com) as of 2026.
+
+export const M365_NO_BASELINE = `Neither security defaults nor any enabled Conditional Access policy is
+protecting sign-ins to this tenant, so a stolen password is enough to get in.
+
+**Small tenants without Entra ID P1 (most Microsoft 365 Business Standard
+and Basic plans):** turn on security defaults. Entra admin center →
+Identity → Overview → Properties → Manage security defaults → Enabled.
+
+**Tenants with Entra ID P1 or P2 (Business Premium, E3, E5):** use
+Conditional Access instead. Start from the Microsoft templates under
+Protection → Conditional Access → Create new policy from templates:
+"Require multifactor authentication for all users", "Require multifactor
+authentication for admins" and "Block legacy authentication". Run them in
+report-only mode for a few days, then switch them On.
+
+Before switching anything on, keep one or two break-glass Global Admin
+accounts excluded from the policies, with long random passwords stored
+offline.`;
+
+export const M365_MFA_ALL_USERS = `No enabled Conditional Access policy requires multifactor authentication
+for all users and all cloud apps, and security defaults are off. Any user
+whose password is phished, guessed or reused can be signed in to as.
+
+Entra admin center → Protection → Conditional Access → Create new policy
+from templates → "Require multifactor authentication for all users".
+Users: All users (exclude your break-glass accounts only). Target
+resources: All cloud apps. Grant: Require multifactor authentication.
+Run it report-only for a few days, check the sign-in log for anyone it
+would block, then set it On.
+
+Without Entra ID P1, turn on security defaults instead (Identity →
+Overview → Properties → Manage security defaults).`;
+
+export const M365_MFA_ADMINS = `Nothing requires multifactor authentication for administrator roles:
+security defaults are off and no enabled Conditional Access policy covers
+Global Administrator with an MFA requirement. A phished admin password gives
+an attacker the whole tenant.
+
+Entra admin center → Protection → Conditional Access → Create new policy
+from templates → "Require multifactor authentication for admins". Include
+at least Global, Security, Exchange, SharePoint, User and Billing
+Administrator. Prefer phishing-resistant methods (passkeys / FIDO2,
+Windows Hello for Business) for these accounts via an authentication
+strength.
+
+Without Entra ID P1, turn on security defaults, which require MFA for
+every admin role.`;
+
+export const M365_LEGACY_AUTH = `Legacy authentication (POP, IMAP, SMTP AUTH, ActiveSync basic auth and
+older Office clients) isn't blocked. Those protocols can't do MFA, so they
+are the usual way password-spraying attacks get into a mailbox even when
+MFA is turned on.
+
+Entra admin center → Protection → Conditional Access → Create new policy
+from templates → "Block legacy authentication". Users: All users. Client
+apps: Exchange ActiveSync clients and Other clients. Grant: Block access.
+
+Check the sign-in log first (filter Client app → the legacy types) for
+printers, scanners or line-of-business apps still using SMTP AUTH; move
+them to OAuth or an SMTP relay connector before you enforce the block.
+Security defaults also block legacy authentication if you don't have
+Entra ID P1.`;
+
+export const M365_TOO_MANY_GLOBAL_ADMINS = `More Global Administrators than you need. Every one is an account that can
+take over the whole tenant if it is phished. CIS recommends between two and
+four.
+
+1. Entra admin center → Identity → Roles & admins → Global Administrator
+   → review each assignment.
+2. Move people to the least-privileged role that covers their work (User,
+   Exchange, SharePoint, Helpdesk or Billing Administrator).
+3. With Entra ID P2, make the remaining assignments eligible through
+   Privileged Identity Management rather than permanent.`;
+
+export const M365_SINGLE_GLOBAL_ADMIN = `Only one Global Administrator. If that account is locked out, loses its MFA
+device or leaves the business, nobody can administer the tenant, and
+Microsoft's recovery process takes days.
+
+Add a second Global Administrator: a cloud-only break-glass account (an
+.onmicrosoft.com address) with a long random password and a FIDO2 key,
+stored offline and excluded from Conditional Access policies that could
+lock it out. Monitor its sign-ins. CIS recommends between two and four.`;
+
+export const M365_EXTERNAL_FORWARDING = `An enabled inbox rule forwards or redirects mail to an address outside your
+organisation's verified domains. Attackers who take over a mailbox add
+rules like this to keep reading mail after the password is changed, and it
+can leak personal data even when a user set it up themselves.
+
+1. Exchange admin center → Recipients → Mailboxes → the user → check the
+   rule with the user. If they didn't create it, treat the account as
+   compromised: reset the password, revoke sessions (Entra admin center →
+   Users → the user → Revoke sessions), review MFA methods and recent
+   sign-ins.
+2. Remove the rule (Outlook on the web → Settings → Mail → Rules, or
+   Remove-InboxRule in Exchange Online PowerShell).
+3. Block automatic external forwarding for everyone: Microsoft Defender
+   portal → Email & collaboration → Policies → Anti-spam → Anti-spam
+   outbound policy (Default) → Automatic forwarding rules → Off.`;
+
+export const M365_GUEST_ACCESS_OPEN = `Guest users have the same access to directory information as members of
+your organisation. A guest invited for one Teams channel can list every
+user, group and their memberships, which is exactly the reconnaissance an
+attacker wants.
+
+Entra admin center → Identity → External Identities → External
+collaboration settings → Guest user access → "Guest users have limited
+access to properties and memberships of directory objects" (the default),
+or the most restrictive option.`;
+
+export const M365_GUEST_INVITES_OPEN = `Anyone in the tenant, guests included, can invite more guests. Guest
+accounts are created without anyone in IT deciding to let that person in.
+
+Entra admin center → Identity → External Identities → External
+collaboration settings → Guest invite settings → "Only users assigned to
+specific admin roles can invite guest users" (assign the Guest Inviter role
+to the people who need it), or at least "Member users and users assigned to
+specific admin roles can invite guest users".`;
+
+export const M365_USER_CONSENT_OPEN = `Users can consent to any third-party application reading their mail,
+files or profile. Consent phishing ("this app wants to read your email —
+Accept") gives an attacker a token that survives a password reset and
+doesn't need MFA again.
+
+1. Entra admin center → Identity → Applications → Enterprise applications →
+   Consent and permissions → User consent settings → "Allow user consent for
+   apps from verified publishers, for selected permissions" or "Do not allow
+   user consent".
+2. Turn on the admin consent workflow on the same page so users can ask
+   for an app to be approved.
+3. Review Enterprise applications for apps already granted access that
+   nobody recognises, and remove them.`;
+
+export const M365_SIGN_IN_LOGS_UNAVAILABLE = `Entra ID sign-in logs can't be read for this tenant. Microsoft only keeps
+them for tenants with Entra ID P1 or P2 (Business Premium, E3, E5), so
+there is no record to investigate a suspicious sign-in or a compromised
+account against.
+
+Add Entra ID P1 (Microsoft 365 Business Premium includes it). Then check
+the Microsoft Purview audit log is on as well: Purview portal → Audit → if
+you see "Start recording user and admin activity", select it. Consider
+sending sign-in and audit logs to a Log Analytics workspace or your SIEM
+for longer retention than the default 30 days.`;

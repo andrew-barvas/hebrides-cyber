@@ -19,6 +19,7 @@ import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { decryptCredentials, encryptCredentials, isCredentialEncryptionConfigured } from "@/lib/credentialEncryption";
+import { respondInternalError } from "@/lib/apiError";
 
 const postBodySchema = z.object({
   label: z.string().min(1).max(100),
@@ -55,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .eq("provider", "aws");
   if (readError) {
     if (isMissingSchemaError(readError)) return res.status(200).json({ roles: [], platformAccountId: null });
-    return res.status(500).json({ error: readError.message });
+    return respondInternalError(res, "account/aws-role-credential", readError);
   }
 
   const roles: Array<{ id: string; label: string; externalId: string; roleArn: string | null }> = [];
@@ -92,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isMissingSchemaError(error)) {
       return res.status(503).json({ error: "Cloud credentials aren't available on this account yet — try again shortly." });
     }
-    return res.status(500).json({ error: error.message });
+    return respondInternalError(res, "account/aws-role-credential", error);
   }
   return res.status(200).json({ label: parsed.label, externalId, roleArn: roleArn || null, platformAccountId });
 }

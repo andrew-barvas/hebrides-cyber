@@ -18,9 +18,8 @@
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/run-queued-scan-jobs.ts
 
 import { captureWorkerError, captureWorkerFatal, flushWorkerSentry, initWorkerSentry, logPrefix, type JobContext } from "../lib/workerSentry";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
@@ -38,17 +37,7 @@ const MAX_JOBS_PER_RUN = 15;
 const TIME_BUDGET_MS = 25 * 60 * 1000; // 25 minutes
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   const workerId = process.env.WORKER_ID ?? `local-${process.pid}`;
   const startedAt = Date.now();
