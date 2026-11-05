@@ -39,6 +39,12 @@ export type ScanCoverage = {
    *  scan. The base suite always runs, but a TLS timeout or a rate-limited
    *  WPScan lookup saw nothing, and must not resolve what it saw last time. */
   failedBaseChecks: Set<string>;
+  /** checkId prefixes a completed extended tool reported it could not
+   *  evaluate (its result's `incompleteChecks`): networkExposure completes
+   *  even when the CVE index is unavailable, and its silence about
+   *  network-exposure.service-cve:* findings then isn't a fix. Optional so
+   *  coverage built elsewhere needn't carry it. */
+  incompleteChecks?: Set<string>;
   /** checkIds a base check that otherwise ran couldn't evaluate this scan,
    *  from its `incompleteChecks` (recon.ts when Shodan InternetDB is down).
    *  Matches the id itself or any `id:key` beneath it. Optional: coverage
@@ -69,6 +75,7 @@ export function scanCoverage(
   base?: Record<string, unknown> | null
 ): ScanCoverage {
   const completedTools = new Set<string>();
+  const incompleteChecks = new Set<string>();
   for (const [key, value] of Object.entries(extended ?? {})) {
     const status = (value as { status?: unknown } | null)?.status;
     // "checked" is cloud posture's word for it.
@@ -76,6 +83,8 @@ export function scanCoverage(
     // rejected, budget hit), its silence about crawl.auth.* findings isn't a fix.
     const crawlStatus = normaliseToolKey(key) === "authcheck" ? (value as { crawl?: { status?: unknown } } | null)?.crawl?.status : undefined;
     if ((status === "completed" || status === "checked") && (crawlStatus === undefined || crawlStatus === "checked")) completedTools.add(normaliseToolKey(key));
+    const incomplete = (value as { incompleteChecks?: unknown } | null)?.incompleteChecks;
+    if (Array.isArray(incomplete)) for (const prefix of incomplete) if (typeof prefix === "string" && prefix) incompleteChecks.add(prefix);
   }
   const failedBaseChecks = new Set<string>();
   const incompleteBaseChecks = new Set<string>();
@@ -86,11 +95,12 @@ export function scanCoverage(
     const incomplete = (value as { incompleteChecks?: unknown }).incompleteChecks;
     if (Array.isArray(incomplete)) for (const id of incomplete) if (typeof id === "string") incompleteBaseChecks.add(id);
   }
-  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks, incompleteBaseChecks };
+  return { extendedRan: completedTools.size > 0, completedTools, failedBaseChecks, incompleteChecks, incompleteBaseChecks };
 }
 
-function isIncomplete(checkId: string, incomplete: Set<string> | undefined): boolean {
-  if (!incomplete?.size) return false;
+/** Whether `checkId` is, or extends with ":…", one of the ids a check reported it could not evaluate. */
+function isIncomplete(checkId: string | undefined, incomplete: Set<string> | undefined): boolean {
+  if (!checkId || !incomplete?.size) return false;
   for (const id of incomplete) if (checkId === id || checkId.startsWith(`${id}:`)) return true;
   return false;
 }
@@ -120,6 +130,7 @@ export function findingSource(checkId: string, fromExtended: boolean, extendedTo
 
 /** Could a scan with this coverage have detected `checkId`, a finding from `source`? */
 export function isCovered(source: string, coverage: ScanCoverage, checkId?: string): boolean {
+  if (isIncomplete(checkId, coverage.incompleteChecks)) return false;
   if (source === "base") return !checkId || (!coverage.failedBaseChecks.has(baseCheckKey(checkId)) && !isIncomplete(checkId, coverage.incompleteBaseChecks));
   if (source === "extended") return coverage.extendedRan;
   return coverage.completedTools.has(source);
