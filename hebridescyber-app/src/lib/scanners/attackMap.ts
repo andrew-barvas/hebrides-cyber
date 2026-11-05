@@ -165,6 +165,8 @@ const ATTACK_MAP: Record<string, Entry> = {
 
   // Exposed network services
   "network-exposure.open-port": EXPOSED_SERVICE,
+  "network-exposure.service-cve": SERVER_CVE,
+  "network-exposure.service-eol": { attack: ["T1190"], cwe: ["CWE-1104"] },
   "nmap.dangerous-port": EXPOSED_SERVICE,
   "ports.risky-port": EXPOSED_SERVICE,
 
