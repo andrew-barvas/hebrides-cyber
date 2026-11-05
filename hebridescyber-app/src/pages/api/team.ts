@@ -7,6 +7,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const MAX_TEAM_NAME_LENGTH = 60;
 
@@ -111,6 +112,6 @@ async function createTeam(req: NextApiRequest, res: NextApiResponse, userId: str
     .select("id, name, created_at")
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "team", error);
   return res.status(201).json({ ...data, members: [] });
 }

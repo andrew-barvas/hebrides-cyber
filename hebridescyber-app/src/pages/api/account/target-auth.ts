@@ -17,6 +17,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
 import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
+import { respondInternalError } from "@/lib/apiError";
 
 
 const deleteBodySchema = z.object({
@@ -96,7 +97,7 @@ async function handleTargetAuth(
 
   if (req.method === "DELETE") {
     const { error } = await supabaseAdmin.from("target_auth_credentials").delete().eq("monitored_target_id", monitoredTargetId);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/target-auth", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -113,7 +114,7 @@ async function handleTargetAuth(
       ),
       { onConflict: "monitored_target_id" }
     );
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/target-auth", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -125,7 +126,7 @@ async function handleTargetAuth(
       ),
       { onConflict: "monitored_target_id" }
     );
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/target-auth", error);
     return res.status(200).json({ ok: true });
   }
 
