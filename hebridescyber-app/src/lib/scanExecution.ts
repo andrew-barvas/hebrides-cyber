@@ -66,6 +66,7 @@ import { autoCloseFixedFindingTickets } from "./ticketAutoClose";
 import { syncFindingLifecycle } from "./findingLifecycle";
 import { consolidateFindings } from "./findingConsolidation";
 import { enrichWithProofOfExploit } from "./scanners/proofOfExploit";
+import { applyExploitability } from "./scanners/exploitabilityVerdict";
 import { triageIfEnabled } from "./scanners/aiTriage";
 import { playwrightDomVerifier } from "./scanners/xssConfirm";
 import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, type TriageIndex } from "./findingTriage";
@@ -1201,6 +1202,14 @@ export async function executeScan(
       // Runs after the deterministic proofs so it only sees what they couldn't prove.
       findings = await triageIfEnabled(targetUrl, findings);
     }
+
+    // Exploitability verdict (confirmed / theoretical / unknown): a final,
+    // traffic-free pass that reads the CVSS, threat-intel and proof-of-exploit
+    // results above. Unconditional — a non-intrusive profile sends no proof
+    // requests but can still be "theoretical" from CVE intel. A reporting and
+    // prioritisation signal only; it never changes severity or the score.
+    // See docs/EXPLOITABILITY-ANALYSIS-DESIGN.md §4, §6.
+    applyExploitability(findings);
 
     // Findings the owner has marked false positive (E-64) don't count
     // towards this scan's score or its summary. They're still stored and

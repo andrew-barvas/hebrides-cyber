@@ -29,6 +29,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { validatePagerDutyKey, validateOpsgenieKey } from "@/lib/oncallIntegrations";
 import { parseBody } from "@/lib/validate";
 import { ENCRYPTION_NOT_CONFIGURED_MESSAGE, isCredentialEncryptionConfigured, sealSecrets } from "@/lib/credentialEncryption";
+import { respondInternalError } from "@/lib/apiError";
 
 const deleteSchema = z.object({
   provider: z.enum(["pagerduty", "opsgenie"]),
@@ -62,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!deleteParsed) return;
     const { provider } = deleteParsed;
     const { error } = await supabaseAdmin.from("ticket_integrations").delete().eq("owner", caller.ownerId).eq("provider", provider);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/oncall-integration", error);
     return res.status(200).json({ ok: true });
   }
 
@@ -81,7 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sealSecrets({ owner: caller.ownerId, provider: "pagerduty", pagerduty_routing_key: routingKey }, ["pagerduty_routing_key"]),
       { onConflict: "owner,provider" }
     );
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "account/oncall-integration", error);
     return res.status(200).json({ ok: true, provider: "pagerduty" });
   }
 
@@ -93,6 +94,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sealSecrets({ owner: caller.ownerId, provider: "opsgenie", opsgenie_api_key: apiKey, region }, ["opsgenie_api_key"]),
     { onConflict: "owner,provider" }
   );
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "account/oncall-integration", error);
   return res.status(200).json({ ok: true, provider: "opsgenie" });
 }

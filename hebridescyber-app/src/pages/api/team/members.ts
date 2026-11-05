@@ -14,6 +14,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 type TeamRole = "admin" | "developer" | "auditor" | "member";
 type TeamRow = { id: string; owner_id: string };
@@ -117,7 +118,7 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
     .from("team_members")
     .insert({ team_id: teamId, user_id: invitee.id, role: memberRole });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "team/members", error);
 
   await logAuditEvent(supabaseAdmin, {
     actorId: callerId,
@@ -147,7 +148,7 @@ async function setRole(req: NextApiRequest, res: NextApiResponse, callerId: stri
     .eq("team_id", teamId)
     .eq("user_id", userId);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "team/members", error);
 
   await logAuditEvent(supabaseAdmin, {
     actorId: callerId,
@@ -185,7 +186,7 @@ async function remove(req: NextApiRequest, res: NextApiResponse, callerId: strin
   }
 
   const { error } = await supabaseAdmin.from("team_members").delete().eq("team_id", teamId).eq("user_id", userId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "team/members", error);
 
   await logAuditEvent(supabaseAdmin, {
     actorId: callerId,

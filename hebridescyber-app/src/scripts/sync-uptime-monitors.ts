@@ -11,21 +11,13 @@
 //
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... CREDENTIALS_ENC_KEY=... npx tsx src/scripts/sync-uptime-monitors.ts
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { planGate } from "../lib/planAccess";
 import { sendUptimeAlert } from "../lib/uptimeAlerts";
 import { syncAllOwners } from "../lib/uptimeService";
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-  const db = createClient(supabaseUrl, serviceRoleKey, { realtime: { transport: ws as unknown as WebSocketLikeConstructor } });
+  const db = createScriptSupabase();
 
   const result = await syncAllOwners(db, {
     gate: (client, owner) => planGate(client, owner, "pro"),
