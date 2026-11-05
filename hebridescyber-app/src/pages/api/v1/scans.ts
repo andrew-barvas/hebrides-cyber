@@ -24,6 +24,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { isFreeTierExhausted, FREE_TIER_EXHAUSTED_MESSAGE } from "@/lib/freeTier";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const createScanSchema = z.object({
   target_url: z.string().url("target_url must be a valid URL"),
@@ -56,7 +57,7 @@ async function listScans(req: NextApiRequest, res: NextApiResponse, ownerId: str
   if (targetUrl) query = query.eq("target_url", targetUrl);
 
   const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return respondInternalError(res, "v1/scans", error);
 
   const scans = (data ?? []).map((s: Record<string, unknown>) => {
     const nested = s.scan_results as { score?: number | null; summary?: string | null }[] | null;
@@ -158,7 +159,7 @@ async function createScan(req: NextApiRequest, res: NextApiResponse, ownerId: st
   });
   if (jobError) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", scan.id);
-    return res.status(500).json({ error: `Failed to queue scan: ${jobError.message}` });
+    return respondInternalError(res, "v1/scans", jobError, { publicMessage: "Failed to queue scan." });
   }
 
   // Awaited so the dispatch call isn't cut off by the function returning —

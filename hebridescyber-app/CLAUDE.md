@@ -182,6 +182,22 @@ without needing to be asked.
     `playwright.config.ts` hardcodes `example-project` as the project ref;
     it must stay that.
 
+### API routes and scripts
+
+31. **An unexpected DB/service error in a non-admin route goes through
+    `respondInternalError(res, "<route>", error)` (`src/lib/apiError.ts`),
+    never `res.status(500).json({ error: error.message })`.** Postgres text
+    names tables, columns and constraints (CWE-209 — the verbose-error finding
+    our own scanner reports), and a handled 500 never reached Sentry. The
+    helper logs and captures the detail server-side and answers a fixed
+    message; pass `publicMessage`/`extra` for route wording or a `code`, never
+    anything derived from the error. `src/pages/api/admin/**` keeps raw text on
+    purpose (admin-only, the owner's diagnostic).
+32. **A script in `src/scripts/` gets its service-role client from
+    `createScriptSupabase()` (`src/lib/scriptSupabase.ts`)**, which fails fast
+    on missing env. Don't re-inline the env check + `createClient` + `ws`
+    transport.
+
 ## Architecture
 
 ### One API layer
@@ -206,7 +222,8 @@ key.
 | Context | Client | Key used |
 |---------|--------|----------|
 | Browser (dashboard, login) | `src/lib/supabaseClient.ts` | anon key — RLS enforced |
-| API routes & Functions | `createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)` | service role — bypasses RLS |
+| API routes & Functions | `supabaseAdmin` (`src/lib/supabaseAdmin.ts`) | service role — bypasses RLS |
+| Scripts / cron jobs | `createScriptSupabase()` (`src/lib/scriptSupabase.ts`) | service role — bypasses RLS |
 | Admin API routes | service role for writes; anon client to verify the caller's JWT | both |
 
 ### Scan flow, in one paragraph
