@@ -312,6 +312,16 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       }
     });
 
+    it("lets only the owner set criticality/environment (067), within the allowed values", async () => {
+      await asActor(db, asA, async (c) => {
+        expect((await attempt(c, "update monitored_targets set criticality = 'high', environment = 'production' where owner = $1", [A])).rowCount).toBeGreaterThan(0);
+        expect((await attempt(c, "update monitored_targets set criticality = 'high' where owner = $1", [B])).rowCount).toBe(0);
+        expect((await attempt(c, "update monitored_targets set criticality = 'extreme' where owner = $1", [A])).ok).toBe(false);
+        expect((await attempt(c, "update monitored_targets set environment = 'prod' where owner = $1", [A])).ok).toBe(false);
+        expect((await attempt(c, "update monitored_targets set environment = null, criticality = 'normal' where owner = $1", [A])).ok).toBe(true);
+      });
+    });
+
     it("lets an owner update/delete their own target but not another's, nor re-home it", async () => {
       await asActor(db, asA, async (c) => {
         expect((await attempt(c, "update monitored_targets set scan_profile = 'safe' where owner = $1", [A])).rowCount).toBeGreaterThan(0);

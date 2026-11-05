@@ -364,6 +364,68 @@ package as introduced. If OSV.dev can't be reached the response is `502` with
 `"code": "lookup_failed"` rather than an empty result. `403`
 `"code": "plan_required"` on Basic.
 
+### `GET /api/v1/findings`
+
+Every open finding across your sites, the same list as the dashboard's
+Findings page (also served at `GET /api/findings`). API key or session.
+
+```bash
+curl -H "Authorization: Bearer $HC_API_KEY" \
+  "https://www.hebridescyber.co.uk/api/v1/findings?sort=priority&pageSize=10"
+```
+
+Query parameters: `sort=priority` (below), `view=grouped|rows`, `site`,
+`severity=critical,high`, `kev=1`, `epssMin=0.1`, `category`,
+`triage=open|triaged|all|accepted_risk|false_positive|snoozed`,
+`sla=breached|due_soon|on_track`, `minAgeDays`, `page`, `pageSize` (max 100),
+`format=csv`.
+
+**`sort=priority`** returns the "fix this first" list: open findings across
+every site, most urgent first. Accepted, false-positive, snoozed and info
+findings are left out whatever `triage` says. It defaults to `view=rows`, and
+each row carries its position and the reason for it:
+
+```json
+{
+  "sort": "priority",
+  "criticalityAvailable": true,
+  "priorityComplete": true,
+  "totalFindings": 23,
+  "items": [
+    {
+      "host": "shop.example.co.uk",
+      "checkId": "network-exposure.open-port:3389",
+      "severity": "high",
+      "title": "[network] Open port 3389/tcp — RDP",
+      "knownExploited": false,
+      "priority": {
+        "rank": 1,
+        "score": 29.3,
+        "base": 15,
+        "factors": [
+          { "key": "severity", "label": "High severity", "multiplier": 1 },
+          { "key": "internet_facing", "label": "on an internet-facing service (port 3389)", "multiplier": 1.3 },
+          { "key": "criticality", "label": "on a high-criticality site", "multiplier": 1.5 }
+        ],
+        "reason": "High severity, on an internet-facing service (port 3389), on a high-criticality site"
+      }
+    }
+  ]
+}
+```
+
+`base` is the finding's own risk (severity, CVSS, CISA KEV, EPSS). The rank
+then weights it by how critical you've said the site is (Assets → monitored
+sites: high ×1.5, low ×0.6), a non-production environment (×0.8), an
+internet-facing service (×1.3), a host confirmed live (×1.1) and a WAF in
+front of web-attack findings (×0.85, never for a KEV-listed finding). A signal
+we don't have never moves a finding. `priorityComplete: false` means site
+criticality or scan detail couldn't be read, so the order may be off: don't
+treat it as final. `criticalityAvailable: false` means criticality isn't set
+up on this database yet and every site counts as normal. With `format=csv`
+the first three columns are `priority_rank`, `priority_score` and
+`priority_reason`.
+
 ### `GET /PUT /DELETE /api/findings/triage`
 
 Accept a risk (or authorise it), mark a false positive, or snooze a finding —

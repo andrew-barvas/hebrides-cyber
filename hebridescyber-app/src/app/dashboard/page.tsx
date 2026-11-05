@@ -20,6 +20,7 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import FleetOverview from "@/components/FleetOverview";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import EmergingThreatsPanel from "@/components/EmergingThreatsPanel";
+import FixFirstPanel from "@/components/FixFirstPanel";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
@@ -242,6 +243,8 @@ export default function DashboardPage() {
       {planIncludes(plan, "agency") && <PortfolioReportButton token={sessionToken} />}
 
       <FleetOverview />
+
+      <FixFirstPanel token={sessionToken} />
 
       <EmergingThreatsPanel token={sessionToken} paidPlan={planIncludes(plan, "basic")} />
 

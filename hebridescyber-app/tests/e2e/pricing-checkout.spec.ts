@@ -22,9 +22,10 @@ test("pricing page renders the three public tiers without a subscription", async
   await mockApi(page, {});
 
   await page.goto("/pricing");
-  await expect(page.getByRole("heading", { name: /basic/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /pro/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /agency/i })).toBeVisible();
+  // Exact names: the footer's "Product" column heading also contains "pro".
+  await expect(page.getByRole("heading", { name: "Basic", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pro", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agency", exact: true })).toBeVisible();
 });
 
 test("create-checkout-session accepts basic, pro, agency and tier_a; rejects unknown plans", async ({ page }) => {

@@ -5,9 +5,11 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import { uptimeStatusLabel, type UptimeLabel } from "@/lib/uptimeLabels";
 import { normaliseMonitorUrl, type UptimeStatus } from "@/lib/uptimeProvider";
+import { CRITICALITIES, ENVIRONMENTS, type Criticality, type Environment } from "@/lib/targetCriticality";
 
 type Target = { id: string; target_url: string; created_at: string; scan_profile: string };
 type AuthStatus = { auth_type: "cookie" | "basic" };
+type Importance = { criticality: Criticality; environment: Environment | null };
 
 /**
  * Uptime badges, keyed by normalised URL, from the same GET /api/uptime/status
@@ -39,6 +41,9 @@ export default function MonitoredTargets() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus | null>>({});
   const [uptime, setUptime] = useState<Record<string, UptimeLabel>>({});
+  // null = migration 067 not applied (or the read failed): the control is hidden
+  // rather than offering a setting that can't be saved.
+  const [importance, setImportance] = useState<Record<string, Importance> | null>(null);
   const [newUrl, setNewUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +65,17 @@ export default function MonitoredTargets() {
     if (fetchError) setError(fetchError.message);
     const list = (data ?? []) as Target[];
     setTargets(list);
+
+    // Separate from the main select so a database without migration 067
+    // still lists its targets.
+    const { data: imp, error: impError } = await supabase.from("monitored_targets").select("id, criticality, environment");
+    if (impError) {
+      setImportance(null);
+    } else {
+      const map: Record<string, Importance> = {};
+      for (const r of (imp ?? []) as Array<{ id: string } & Importance>) map[r.id] = { criticality: r.criticality, environment: r.environment };
+      setImportance(map);
+    }
 
     if (user) {
       // On error (e.g. migration 018 not yet applied to this database —
@@ -198,6 +214,14 @@ export default function MonitoredTargets() {
                   currentProfile={t.scan_profile ?? "full"}
                   onChange={load}
                 />
+                {importance && (
+                  <CriticalityConfig
+                    monitoredTargetId={t.id}
+                    targetUrl={t.target_url}
+                    current={importance[t.id] ?? { criticality: "normal", environment: null }}
+                    onChange={load}
+                  />
+                )}
               </li>
             );
           })}
@@ -522,6 +546,125 @@ function ScanProfileConfig({
       >
         Cancel
       </button>
+    </div>
+  );
+}
+
+const CRITICALITY_LABEL: Record<Criticality, string> = { low: "Low", normal: "Normal", high: "High" };
+const ENVIRONMENT_LABEL: Record<Environment, string> = { production: "Production", staging: "Staging", development: "Development", test: "Test" };
+
+/**
+ * Per-target criticality and environment (migration 067), which weight this
+ * site's findings in the estate "fix this first" ranking (estatePriority.ts).
+ * Owner-only under 026's UPDATE policy; a team member's save matches no row.
+ * Collapsed by default, same pattern as ScanProfileConfig above.
+ */
+function CriticalityConfig({
+  monitoredTargetId,
+  targetUrl,
+  current,
+  onChange,
+}: {
+  monitoredTargetId: string;
+  targetUrl: string;
+  current: Importance;
+  onChange: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [criticality, setCriticality] = useState<Criticality>(current.criticality);
+  const [environment, setEnvironment] = useState<Environment | "">(current.environment ?? "");
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const { data, error: updateError } = await supabase
+      .from("monitored_targets")
+      .update({ criticality, environment: environment || null })
+      .eq("id", monitoredTargetId)
+      .select("id");
+    setBusy(false);
+    if (updateError || !data || data.length === 0) {
+      setError(updateError ? "Couldn't save. Please try again." : "Only the account owner can change this.");
+      return;
+    }
+    setOpen(false);
+    await onChange();
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setCriticality(current.criticality);
+          setEnvironment(current.environment ?? "");
+          setOpen(true);
+        }}
+        className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cybermuted hover:text-neon transition-colors"
+      >
+        <span className="rounded-full border border-cyberborder px-2 py-0.5 font-mono text-[10px]">
+          {CRITICALITY_LABEL[current.criticality]}
+          {current.environment && ` · ${ENVIRONMENT_LABEL[current.environment]}`}
+        </span>
+        criticality
+      </button>
+    );
+  }
+
+  const selectClass = "h-8 rounded-md border border-cyberborder bg-cyberbg px-2 text-xs text-cybertext focus-visible:border-neon focus-visible:outline-hidden";
+  const critId = `crit-${monitoredTargetId}`;
+  const envId = `env-${monitoredTargetId}`;
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-cyberborder bg-cyberbg/50 p-3">
+      <p className="text-[11px] text-cybermuted">
+        How much this site matters. Findings on a high-criticality site rank higher in your &quot;fix this first&quot; list, and a
+        non-production site ranks a little lower.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label htmlFor={critId} className="flex flex-col gap-1 text-[11px] text-cybermuted">
+          Criticality<span className="sr-only"> of {targetUrl}</span>
+          <select id={critId} value={criticality} onChange={(e) => setCriticality(e.target.value as Criticality)} className={selectClass}>
+            {CRITICALITIES.map((c) => (
+              <option key={c} value={c}>
+                {CRITICALITY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label htmlFor={envId} className="flex flex-col gap-1 text-[11px] text-cybermuted">
+          Environment<span className="sr-only"> of {targetUrl}</span>
+          <select id={envId} value={environment} onChange={(e) => setEnvironment(e.target.value as Environment | "")} className={selectClass}>
+            <option value="">Not set</option>
+            {ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {ENVIRONMENT_LABEL[env]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={save}
+          className="rounded-md bg-neon px-3 py-1.5 text-xs font-semibold text-cyberbg disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-md border border-cyberborder px-3 py-1.5 text-xs text-cybertext/60 hover:border-neon hover:text-neon transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
