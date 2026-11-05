@@ -40,6 +40,8 @@ entry).
   ID to reference | [`ENHANCEMENTS.md`](ENHANCEMENTS.md) |
 | ...weigh a new product or revenue line (who pays, effort, kill criteria), or log an emerging threat against product ideas | [`PRODUCT-IDEAS.md`](PRODUCT-IDEAS.md) |
 | ...see the detailed design for the Lookout managed exposure review (P-06): tools, workflow, tiers, risks, owner decisions | [`DEFENSIVE-ASSESSMENT-PLAN.md`](DEFENSIVE-ASSESSMENT-PLAN.md) |
+| ...see which other tools could feed Lookout: 50 candidates scored for fit, a top 10 and a test plan | [`LOOKOUT-TOOL-SHORTLIST.md`](LOOKOUT-TOOL-SHORTLIST.md) |
+| ...see how the lookout./exploit. product sites are routed, the competitor page review behind them, and what Exploit needs before launch | [`PRODUCT-SITES.md`](PRODUCT-SITES.md) |
 | ...see what's actually blocking this from being safe to sell/scale, with
   verifiable exit criteria | [`ROADMAP.md`](ROADMAP.md) |
 | ...see what stands between this and a paid launch, with acceptance criteria | [`LAUNCH-PRIORITY.md`](LAUNCH-PRIORITY.md) |

@@ -24,6 +24,7 @@ on:
       - "hebridescyber-app/src/lib/scanners/crawler.ts"
       - "hebridescyber-app/src/worker/tools/wordlists/**"
       - "hebridescyber-app/src/lib/scanners/hostProbe*.ts"
+      - "hebridescyber-app/src/lib/scanners/deepTls*.ts"
       - "hebridescyber-app/src/worker/tools/networkExposure*.ts"
       - "hebridescyber-app/src/worker/tools/nmap*.ts"
       - "hebridescyber-app/src/worker/tools/zap*.ts"
@@ -123,8 +124,8 @@ jobs:
           KITERUNNER_SHA256: 6f0b70aabf747de592445a690281897eebbc45927e9264185d34ffb11637613b
           HTTPX_VERSION: v1.12.0
           HTTPX_SHA256: 9d8439e8b6c9aa7d1e2314817a392e00d5178da3af5652f7475f88868f418f76
-          FFUF_VERSION: 2.1.0
-          FFUF_SHA256: fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
+          FFUF_VERSION: 2.3.0
+          FFUF_SHA256: b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
           KATANA_VERSION: v1.8.0
           KATANA_SHA256: cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
           NAABU_VERSION: v2.6.1
@@ -183,6 +184,18 @@ jobs:
         # exactly what production installs.
         run: pip3 install --break-system-packages arjun==2.2.7
 
+      - name: Install testssl.sh (pinned)
+        # Same tag as scheduled-scans.yml. deepTls.integration.test.ts runs it,
+        # which is what lets deepTls run under the `exposure` profile (rule 15).
+        run: |
+          mkdir -p /tmp/capture
+          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
+          test -x /opt/testssl.sh/testssl.sh
+          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
+          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
+          head -5 /tmp/capture/testssl.version.txt
+          echo "TESTSSL_PATH=/opt/testssl.sh/testssl.sh" >> "$GITHUB_ENV"
+
       - name: Start the local test app
         run: |
           nohup python3 tests/fixtures/test-app/app.py > /tmp/test-app.log 2>&1 &
@@ -214,7 +227,7 @@ jobs:
           done
           echo "::error::ZAP did not become ready in time"; exit 1
 
-      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner, nmap, arjun, zap)
+      - name: Real-binary integration tests (sqlmap, dalfox, nuclei, gospider, kiterunner, nmap, arjun, zap, testssl.sh)
         env:
           RUN_TOOL_INTEGRATION: "1"
           KITERUNNER_WORDLIST: /opt/kiterunner/api-routes.kite
@@ -234,6 +247,7 @@ jobs:
           src/worker/tools/nmap.integration.test.ts
           src/worker/tools/arjun.integration.test.ts
           src/worker/tools/zap.integration.test.ts
+          src/lib/scanners/deepTls.integration.test.ts
 
       - name: Stop ZAP daemon
         if: always()
@@ -322,16 +336,6 @@ jobs:
           wpscan --version > /tmp/capture/wpscan.version.txt 2>&1 || true
           head -5 /tmp/capture/wpscan.version.txt
 
-      - name: Check the pinned testssl.sh install
-        if: always()
-        run: |
-          mkdir -p /tmp/capture
-          sudo git clone --depth 1 --branch v3.2.4 https://github.com/testssl/testssl.sh.git /opt/testssl.sh
-          test -x /opt/testssl.sh/testssl.sh
-          test "$(sudo git -C /opt/testssl.sh describe --tags --exact-match)" = "v3.2.4"
-          /opt/testssl.sh/testssl.sh --version > /tmp/capture/testssl.version.txt 2>&1 || true
-          head -5 /tmp/capture/testssl.version.txt
-
       - name: Check the pinned subfinder, gitleaks, trivy, zizmor and prowler installs
         # These are pinned only in scheduled-scans.yml, whose installs fail soft
         # (a broken install there just reports not_configured). This hard check,
@@ -342,8 +346,8 @@ jobs:
         env:
           SUBFINDER_VERSION: v2.17.0
           SUBFINDER_SHA256: a39c3e5c7a26ef3c430915c4d6cbf7716a00f26769a75e9405aba796142eba37
-          GITLEAKS_VERSION: 8.21.2
-          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
           TRIVY_VERSION: 0.76.0
           TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
           PROWLER_VERSION: 5.47.0

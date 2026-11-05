@@ -13,28 +13,13 @@
 // Run locally with:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx src/scripts/enqueue-scheduled-scans.ts
 
-import { createClient } from "@supabase/supabase-js";
-import type { WebSocketLikeConstructor } from "@supabase/realtime-js";
-import ws from "ws";
+import { createScriptSupabase } from "../lib/scriptSupabase";
 import { isDomainVerified } from "../lib/ownership";
 import { isScanDue, type Plan } from "../lib/scanCadence";
 import { isWithinScanWindow } from "../lib/scanWindows";
 
 async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-    process.exit(1);
-  }
-
-  // Same Node-20-CI-runner WebSocket workaround as fetch-scheduled-targets.ts
-  // — createClient() constructs a RealtimeClient unconditionally even though
-  // this script never subscribes to a channel.
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    realtime: { transport: ws as unknown as WebSocketLikeConstructor },
-  });
+  const supabaseAdmin = createScriptSupabase();
 
   const { data: activeSubs, error: subsError } = await supabaseAdmin
     .from("subscriptions")

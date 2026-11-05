@@ -133,12 +133,17 @@ describe("'exposure' (managed exposure review)", () => {
   it("enables exactly its own tool list", () => {
     const config = resolveToolConfig("exposure");
     for (const name of EXTENDED_TOOL_NAMES) expect(config[name], name).toBe(EXPOSURE_TOOLS.has(name));
-    expect([...EXPOSURE_TOOLS].sort()).toEqual(["httpx", "networkExposure", "nmap", "nuclei", "zap"]);
+    expect([...EXPOSURE_TOOLS].sort()).toEqual(["deepTls", "httpx", "m365", "metadataLeak", "networkExposure", "nmap", "nuclei", "zap"]);
   });
 
   it("never enables an injection tester, ZAP's active scan or an offensive-only tool", () => {
     const config = resolveToolConfig("exposure");
     for (const name of PAYLOAD_TOOLS) expect(config[name], name).toBe(false);
+  });
+
+  it("leaves out the crawlers that ignore robots.txt, which the Lookout copy promises to respect", () => {
+    const config = resolveToolConfig("exposure");
+    for (const name of ["gospider", "photon", "katana"] as const) expect(config[name], name).toBe(false);
   });
 
   it("a bundle can switch its tools off but cannot add a payload-sending one", () => {

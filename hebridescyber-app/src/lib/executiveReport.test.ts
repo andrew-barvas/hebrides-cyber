@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { escapeHtml, incompleteChecks, plainText, prioritise, ratingFor, renderExecutiveReportHtml, safeLogoUrl, REPORT_MUTED, REPORT_TEXT, type ExecutiveReportInput } from "./executiveReport";
+import { collectWhatToLog, escapeHtml, incompleteChecks, plainText, prioritise, ratingFor, renderExecutiveReportHtml, safeLogoUrl, REPORT_MUTED, REPORT_TEXT, type ExecutiveReportInput } from "./executiveReport";
 import { buildTriageIndex, EMPTY_TRIAGE_INDEX, type TriageDbRow } from "./findingTriage";
 import type { Finding } from "./scanners";
 
@@ -166,6 +166,23 @@ describe("renderExecutiveReportHtml", () => {
     const plain = renderExecutiveReportHtml(input());
     expect(plain).not.toContain("Why it matters");
     expect(plain).not.toContain("MITRE Corporation");
+  });
+
+  it("lists what to log per technique, most urgent first, and puts reconnaissance apart", () => {
+    const rdp = f({ title: "Open RDP", severity: "high", checkId: "network-exposure.open-port:3389" });
+    const spoof = f({ title: "No DMARC", severity: "medium", checkId: "dns.dmarc-missing" });
+    const leak = f({ title: "Version shown", severity: "low", checkId: "headers.info-disclosure" });
+    const { logged, recon } = collectWhatToLog([leak, spoof, rdp]);
+    expect(logged.map((t) => t.id)).toEqual(["T1133", "T1190", "T1566"]);
+    expect(recon.map((t) => t.id)).toEqual(["T1592.002"]);
+    const html = renderExecutiveReportHtml(input({ findings: [leak, spoof, rdp] }));
+    expect(html).toContain("<h2>What to log</h2>");
+    expect(html).toContain("DMARC aggregate reports for your domain");
+    expect(html).toMatch(/T1592\.002 Gather Victim Host Information: Software: information gathering that happens outside your systems/);
+  });
+
+  it("leaves the what-to-log section out when no finding maps to a technique", () => {
+    expect(renderExecutiveReportHtml(input())).not.toContain("What to log");
   });
 
   it("falls back to the raw target when it is not a URL", () => {
