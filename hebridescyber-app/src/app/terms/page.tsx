@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "The terms that apply when you use Hebrides Cyber's scanning, audit, and penetration-testing services.",
 };
 
-const LAST_UPDATED = "27 August 2026";
+const LAST_UPDATED = "1 November 2026";
 const CONTACT_EMAIL = "hello@hebridescyber.co.uk";
 const COMPANY = "Hebrides Cyber";
 const COMPANY_LOCATION = "Isle of Lewis, Scotland, UK";
@@ -46,6 +46,18 @@ export default function TermsPage() {
               <strong>Automated Security Score subscriptions</strong> (Basic/Pro/Agency) — scheduled automated
               scanning, a scored report, and remediation guidance, per the plan tier described on{" "}
               <Link href="/pricing">/pricing</Link>.
+            </li>
+            <li>
+              <strong>Lookout managed exposure review subscriptions</strong> (Lookout Essentials / Lookout
+              Assured) — scheduled automated checks of the domains and public IP addresses agreed with you at
+              scoping, reviewed by one of our engineers, with a periodic written report, review calls and
+              confirmation of fixes, as described on <Link href="/services">/services</Link>. Each plan
+              includes a fixed amount of engineer time; work beyond it, or a larger estate, is quoted
+              separately. The checks send active, non-intrusive traffic to the agreed assets (including a small
+              number of login submissions with made-up details), but Lookout is{" "}
+              <strong>not a penetration test: no exploitation, no test payloads</strong>, no password guessing
+              and no attempt to gain access. Nothing is checked until the scope is agreed and each domain is
+              verified under §4. Lookout is not 24/7 monitoring, incident response or a certification.
             </li>
             <li>
               <strong>One-off audits</strong> (Small Website Audit / Standard Web App Audit / Full SaaS Audit) —
@@ -111,8 +123,9 @@ export default function TermsPage() {
           <h2>6. Fees, billing, and cancellation</h2>
           <ul>
             <li>
-              Monthly subscription plans are billed via Stripe on a recurring basis at the price shown on{" "}
-              <Link href="/pricing">/pricing</Link> at signup. You can cancel at any time via the billing
+              Subscription plans are billed via Stripe on a recurring basis at the price shown on{" "}
+              <Link href="/pricing">/pricing</Link> (or, for Lookout, on <Link href="/services">/services</Link>)
+              at signup: monthly, or for Lookout monthly, quarterly or annually as chosen at checkout. You can cancel at any time via the billing
               portal; cancellation takes effect at the end of the current billing period, with no partial
               refund for the remainder.
             </li>

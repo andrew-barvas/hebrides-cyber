@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import type { SubscriptionPlan } from "@/lib/planAccess";
 
-export type Plan = "none" | "basic" | "pro" | "agency" | "tier_a";
+export type Plan = "none" | SubscriptionPlan;
 
 const COPY: Record<Plan, { label: string; message: string; cta: string; href: string }> = {
   none: {
@@ -32,6 +33,18 @@ const COPY: Record<Plan, { label: string; message: string; cta: string; href: st
   tier_a: {
     label: "Tier A plan",
     message: "You're on our top tier. Need deeper assurance? Ask about a manual penetration test or an incident response retainer.",
+    cta: "Enquire",
+    href: "/contact",
+  },
+  lookout_essentials: {
+    label: "Lookout Essentials plan",
+    message: "Want a monthly report, fix confirmation within the month and help with security questionnaires? Lookout Assured adds them.",
+    cta: "See Lookout Assured",
+    href: "/services",
+  },
+  lookout_assured: {
+    label: "Lookout Assured plan",
+    message: "Need extra domains, an IP range or a board-ready summary? Ask us for a quote.",
     cta: "Enquire",
     href: "/contact",
   },

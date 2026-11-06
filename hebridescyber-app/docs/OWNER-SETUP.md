@@ -52,6 +52,7 @@ the single biggest commercial blocker.
 3. Azure Portal → your Static Web App → **Settings → Environment variables** → add:
    - `STRIPE_SECRET_KEY` = `sk_live_…`
    - `STRIPE_PRICE_BASIC`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_AGENCY` (+ `STRIPE_PRICE_TIER_A` if used)
+   - Lookout (OT-34): `STRIPE_PRICE_LOOKOUT_ESSENTIALS_MONTHLY` / `_QUARTERLY` / `_ANNUAL` and the same three for `STRIPE_PRICE_LOOKOUT_ASSURED_*`
    - `STRIPE_WEBHOOK_SECRET` = `whsec_…`
    - **Save** (this restarts the app).
 

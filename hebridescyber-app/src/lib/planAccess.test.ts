@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, planGate, planIncludes, plansFor, subscriptionGrants } from "./planAccess";
+import { SUBSCRIPTION_PLANS, hasAgencyAccess, hasPlanAccess, hasProAccess, hasTierAAccess, isSubscriptionPlan, planGate, planIncludes, plansFor, subscriptionGrants } from "./planAccess";
 
 type Reply = { data: unknown; error?: { message: string } | null };
 
@@ -53,8 +53,29 @@ describe("planIncludes / plansFor", () => {
   });
 
   it("lists the plans that satisfy a tier, for queries that filter on plan", () => {
-    expect([...plansFor("basic")]).toEqual(["basic", "pro", "agency", "tier_a"]);
-    expect([...plansFor("agency")]).toEqual(["agency", "tier_a"]);
+    expect([...plansFor("basic")]).toEqual(["basic", "pro", "agency", "tier_a", "lookout_essentials", "lookout_assured"]);
+    expect([...plansFor("agency")]).toEqual(["agency", "tier_a", "lookout_assured"]);
+  });
+
+  it("Lookout Essentials grants Pro, Assured grants Agency, and neither grants Tier A", () => {
+    expect(planIncludes("lookout_essentials", "basic")).toBe(true);
+    expect(planIncludes("lookout_essentials", "pro")).toBe(true);
+    expect(planIncludes("lookout_essentials", "agency")).toBe(false);
+    expect(planIncludes("lookout_assured", "agency")).toBe(true);
+    for (const plan of ["lookout_essentials", "lookout_assured"]) {
+      expect(planIncludes(plan, "tier_a")).toBe(false);
+      expect(subscriptionGrants({ plan, status: "past_due" }, "basic")).toBe(false);
+    }
+  });
+});
+
+describe("SUBSCRIPTION_PLANS / isSubscriptionPlan", () => {
+  it("accepts every plan a tier can name, and nothing else", () => {
+    for (const tier of ["basic", "pro", "agency", "tier_a"] as const) {
+      for (const plan of plansFor(tier)) expect(isSubscriptionPlan(plan)).toBe(true);
+    }
+    expect([...SUBSCRIPTION_PLANS].sort()).toEqual([...plansFor("basic")].sort());
+    for (const value of [undefined, null, "", "none", "enterprise", "__proto__", 1]) expect(isSubscriptionPlan(value)).toBe(false);
   });
 });
 
