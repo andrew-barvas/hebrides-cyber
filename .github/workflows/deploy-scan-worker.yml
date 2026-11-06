@@ -1,0 +1,67 @@
+name: Deploy (scan worker)
+
+# Builds the Dockerfile's `scan-worker` stage (the queue loop plus every
+# pinned scan tool, docker/scan-tools.sh) and points the Azure Container Apps
+# Job from azure/terraform/scan-workers.tf at it. Manual trigger only, like
+# deploy-containerapp.yml: the job must exist first (an owner apply), and
+# scheduled-scans.yml keeps scanning from GitHub runners until then.
+#
+# The image build is itself the scan tools' install check: SCAN_TOOLS_STRICT=1
+# in the Dockerfile fails it on any tool that doesn't install, and its last
+# step fails unless every tool answers on PATH.
+#
+# Reuses deploy-containerapp.yml's secrets (ACR_LOGIN_SERVER, ACR_USERNAME,
+# ACR_PASSWORD, AZURE_CREDENTIALS, AZURE_RESOURCE_GROUP). The job name matches
+# azurerm_container_app_job.scan_worker.name.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-scan-worker
+  cancel-in-progress: false
+
+env:
+  SCAN_WORKER_JOB_NAME: hebridescyber-scan-worker
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    name: Build scan-worker image and update the job
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Log in to ACR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: hebridescyber-app
+          target: scan-worker
+          push: true
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/hebridescyber-scan-worker:${{ github.sha }}
+
+      - name: Log in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update the scan worker job image
+        uses: azure/CLI@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name "$SCAN_WORKER_JOB_NAME" \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --container-name scan-worker \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/hebridescyber-scan-worker:${{ github.sha }}

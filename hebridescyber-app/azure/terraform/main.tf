@@ -22,6 +22,11 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    # The scan workers' ZAP API key (scan-workers.tf).
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # Provisioned via azure/cli-scripts/bootstrap-tfstate.sh on 2026-08-27.

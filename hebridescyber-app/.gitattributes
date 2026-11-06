@@ -7,3 +7,7 @@
 # rest of the repo keeps its usual line-ending behaviour.
 src/worker/tools/fixtures/**   eol=lf
 src/lib/scanners/fixtures/**   eol=lf
+# Shell scripts copied into the scan-worker image run under Linux bash, which
+# fails on a CRLF line ending ("$'\r': command not found"). Keep them LF in
+# every checkout, so an image built from a Windows working tree still runs.
+docker/*.sh                    eol=lf

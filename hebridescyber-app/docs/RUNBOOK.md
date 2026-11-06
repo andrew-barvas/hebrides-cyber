@@ -67,8 +67,8 @@ When unsure, pick the higher level and downgrade later.
 |---|---|---|---|---|
 | **Web app and API** | One Next.js app: pages, `/api/*` routes | Azure Static Web Apps (hybrid mode, managed Functions) | site or API down | `/api/health`, post-deploy check, uptime monitor, Sentry |
 | **Database and auth** | Postgres, Supabase Auth, RLS | Supabase | sign-in, dashboard and the scan queue fail | `/api/health` (`supabase`) |
-| **Scan queue** | `scan_jobs` rows claimed by workers | Postgres + GitHub Actions | scans stay queued | `/api/health` (queue depth), Admin → Queue |
-| **Scan workers** | `scheduled-scans.yml`, `on-demand-scan.yml` | GitHub Actions runners | no scans run | Actions run history, Sentry (worker) |
+| **Scan queue** | `scan_jobs` rows claimed by workers | Postgres + GitHub Actions (+ Container Apps once applied) | scans stay queued | `/api/health` (queue depth and oldest wait; degrades past 2 h once `SCAN_QUEUE_WAIT_ALERT=1`), Admin → Queue |
+| **Scan workers** | `scheduled-scans.yml`, `on-demand-scan.yml`; once applied, the `hebridescyber-scan-worker` Container Apps Job (6.18) | GitHub Actions runners; Azure Container Apps behind a NAT gateway | no scans run | Actions run history, job execution history, Sentry (worker), `/api/health` queue wait |
 | **Payments** | Checkout, webhook, billing portal | Stripe + `/api/stripe/webhook` | no upgrades; plan state drifts | `/api/health` (`stripe`), Stripe dashboard |
 | **Email** | Alerts, scan-complete, reports, newsletters | Resend | alerts silently not sent | Admin email health (`/api/admin/email-health`) |
 | **Rate limiting** | Shared counters | Upstash Redis | **fails open** (no throttling) | none: check configuration |
@@ -199,6 +199,10 @@ report no results; no scheduled results since yesterday.
 app itself, so a web outage and a scan outage are independent.
 
 **Try, in order**
+0. **How long has the oldest job waited?** `GET /api/health` → `checks.queue`:
+   `depth` is how many are pending, `oldestWaitSeconds` how long the oldest has
+   waited. A long wait with a small depth means no worker is running at all. If
+   the Container Apps workers are live, start at 6.18.
 1. **Is a worker running?** Actions → "Scheduled Scans" and "On-demand scan".
    No recent run means the cron or the dispatch failed. Check the workflow is
    enabled and re-run it ("Run workflow"). On-demand scans are dispatched with
@@ -540,6 +544,85 @@ blaming the code.
    customer's data by hand.
 
 ---
+
+### 6.18 Scan workers on Container Apps (fixed source IP)
+
+**What it is:** the queue loop (`run-queued-scan-jobs.ts`) as an Azure
+Container Apps Job, `hebridescyber-scan-worker`, from the Dockerfile's
+`scan-worker` stage (every scan tool, pinned in `docker/scan-tools.sh`). KEDA
+starts an execution while `scan_jobs` rows are `pending` (up to
+`scan_worker_max_executions`, default 5). Each runs the loop until the queue is
+empty or its 25-minute budget is spent, then exits. ZAP runs beside it in the
+same replica. With `scan_static_egress_ip = true` all egress leaves through a
+NAT gateway on one static IP, the address customers allowlist; it is off by
+default (Azure-managed egress, nothing published) to avoid the NAT gateway's
+cost until a customer needs it. Infrastructure: `azure/terraform/scan-workers.tf`.
+`scheduled-scans.yml` stays as the fallback and works the same queue (SKIP
+LOCKED, so a job never runs twice); its scans come from GitHub's addresses.
+
+**Standing it up (owner; not yet done).**
+1. Nothing to approve for the default setup: executions run on the
+   Consumption profile's monthly free grant (about 12 hours of this job), then
+   per second of use. The fixed IP (step 8) is the only fixed cost.
+2. Create a read-only login for KEDA to count pending jobs (Supabase SQL
+   editor). KEDA must never hold the service-role key or any write grant:
+   ```sql
+   create role keda_queue_reader login password '<generate one>';
+   grant usage on schema public to keda_queue_reader;
+   grant select (id, status) on public.scan_jobs to keda_queue_reader;
+   create policy "KEDA counts the scan queue" on public.scan_jobs
+     for select to keda_queue_reader using (true);
+   ```
+   Its connection string is the Supabase pooler's **session mode** URI (IPv4;
+   the direct host is IPv6-only) with that user. That is the
+   `scan_queue_keda_connection` Terraform variable.
+3. `terraform plan` with the `-target`s listed at the top of
+   `scan-workers.tf` and the variables set (`supabase_url`,
+   `supabase_service_role_key`, `scan_queue_keda_connection`,
+   `scan_worker_secrets`, `scan_worker_settings`: the same values as the
+   GitHub secrets in `scheduled-scans.yml`'s worker step). Review, then
+   `apply`. Never apply the whole file (see `main.tf`'s IMPORTANT note).
+4. Actions → "Deploy (scan worker)" → Run workflow. The image build fails if
+   any tool doesn't install.
+5. With a test job queued, start one execution by hand (`az containerapp job
+   start -n hebridescyber-scan-worker -g rg-hebrides-cyber`). Check its log
+   shows the claim, the scan completes, and the target saw the new IP.
+6. Switch the alert on: `SCAN_QUEUE_WAIT_ALERT=1` in the Static Web App's
+   application settings. From then on `/api/health` degrades when a job has
+   waited over two hours, which pages through UptimeRobot and `uptime.yml`.
+7. Cut the Actions cron back once the job has run cleanly for a while; keep
+   the workflow as the fallback.
+8. **Only when a customer needs to allowlist us by IP:** approve ~$37/month
+   (NAT gateway ~$33 plus $0.045/GB, static IP ~$3.65), set
+   `scan_static_egress_ip = true`, plan and apply. This replaces the
+   environment and the job (they hold no state). Then put `terraform output
+   scan_egress_ip` into `SCANNER_EGRESS_IPS` in `src/lib/scannerEgress.ts`
+   (shown on `/trust`) and tell the customers who allowlist. Once on, the IP
+   has `prevent_destroy`: switching it off again fails the plan on purpose.
+
+**Signs of trouble:** `/api/health` degraded with `checks.queue.waitExceeded:
+true`; scans queued for hours; job executions failing.
+
+**Try, in order**
+1. **Are executions starting?** Portal → the job → Execution history, or
+   `az containerapp job execution list -n hebridescyber-scan-worker -g
+   rg-hebrides-cyber -o table`. None while jobs are pending means KEDA can't
+   count them: check the `keda-postgres-connection` secret (pooler URI,
+   password rotated?) and the job's system logs for scaler errors.
+2. **Executions fail at once:** a bad image or a missing secret. Re-run
+   "Deploy (scan worker)" from the last good commit, or `az containerapp job
+   update --image` back to the previous tag.
+3. **Executions hit the 2-hour replica timeout:** ZAP didn't shut down, or a
+   tool hung. The worker's log shows which job; switch that tool off (6.4).
+4. **Fall back now:** run "Scheduled Scans" by hand (Actions → Run workflow).
+   It drains the same queue from GitHub's runners. Customers who allowlist only
+   our IP may see those scans blocked.
+5. **The IP changed** (static IP on): it can't by accident (`prevent_destroy` on
+   `azurerm_public_ip.scan_egress`). If it was deliberately replaced, update
+   `scannerEgress.ts` and tell allowlisting customers before scans resume.
+
+**Verify:** a test scan completes from the job, and
+`checks.queue.oldestWaitSeconds` falls back to minutes.
 
 ## 7. Security incidents
 

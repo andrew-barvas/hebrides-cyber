@@ -235,7 +235,10 @@ then verify domain ownership and **enqueue** a `scan_jobs` row, answering
 HTTP request — a real scan once exceeded Azure SWA's Free-tier Functions
 execution ceiling. `executeScan()` (`src/lib/scanExecution.ts`) is the single
 implementation, called only by the queue workers
-(`src/scripts/run-queued-scan-jobs.ts`) running in GitHub Actions. It always
+(`src/scripts/run-queued-scan-jobs.ts`) running in GitHub Actions, and, once
+applied, an Azure Container Apps Job with a fixed source IP
+(`azure/terraform/scan-workers.tf`). Scan tool pins live in
+`docker/scan-tools.sh`, shared by both. It always
 runs the base passive suite; active tools run per the resolved profile, which
 in practice means scheduled jobs only. Full detail, including the queue and
 cadence: `docs/ARCHITECTURE-NOTES.md`.
