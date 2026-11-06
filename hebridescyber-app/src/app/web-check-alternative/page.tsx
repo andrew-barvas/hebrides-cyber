@@ -127,7 +127,7 @@ function CoverageTable({ rows, caption }: { rows: CheckRow[]; caption: string })
               </th>
               <td className="px-4 py-3 align-top text-cybertext/70">
                 {row.us}
-                <span className="mt-1 block text-xs text-cybertext/45">{row.detail}</span>
+                <span className="mt-1 block text-xs text-cybermuted">{row.detail}</span>
               </td>
               <td className="px-4 py-3 align-top">
                 <CoverageBadge coverage={row.coverage} />
@@ -260,7 +260,7 @@ export default function WebCheckAlternativePage() {
               <span className="text-neon">→</span> A shareable report, plus CSV / JSON export
             </li>
           </ul>
-          <p className="mt-4 text-xs text-cybertext/45 leading-relaxed">
+          <p className="mt-4 text-xs text-cybermuted leading-relaxed">
             Honest about the gaps: we don&apos;t yet run continuous discovery of unknown assets, and we
             don&apos;t receive DMARC aggregate reports. Both are on our public roadmap. See exactly what
             runs on <Link href="/what-we-check" className="text-neon hover:underline">what we check</Link>.

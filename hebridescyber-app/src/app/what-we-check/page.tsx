@@ -356,6 +356,7 @@ export default function WhatWeCheckPage() {
           </p>
         </div>
 
+        <h2 className="sr-only">Check categories</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {categories.map((c) => (
             <CategoryCard key={c.id} category={c} />
