@@ -217,8 +217,10 @@ scans stored before the mapping existed are mapped at export time. MITRE
 ATT&CK® is a registered trademark of The MITRE Corporation. in JSON each finding has `triage` (`state`, `reason`,
 `expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
-(`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
-as stored).
+(`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitabilityAssessment`
+and so on, camelCase as stored). `exploitabilityAssessment` (`score`, `band`,
+`confidence`, `modelVersion`) is absent when the finding wasn't assessed, which
+doesn't mean it isn't exploitable.
 
 `format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
 
