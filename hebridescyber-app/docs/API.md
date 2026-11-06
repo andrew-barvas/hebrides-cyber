@@ -219,7 +219,7 @@ ATT&CK® is a registered trademark of The MITRE Corporation. in JSON each findin
 `{ scan_id, target_url, findings }` with each finding's full stored shape
 (`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitabilityAssessment`
 and so on, camelCase as stored). `exploitabilityAssessment` (`score`, `band`,
-`confidence`, `modelVersion`) is absent when the finding wasn't assessed, which
+`confidence`, `nonIntrusive`, `modelVersion`) is absent when the finding wasn't assessed, which
 doesn't mean it isn't exploitable.
 
 `format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
@@ -311,6 +311,7 @@ analysis isn't available on this server yet.
       "factors": [{ "id": "exposure", "weight": 0.2, "value": 0.7, "reason": "…", "evidenceRefs": [] }],
       "conditions": [{ "id": "net.internet-reachable", "required": true, "state": "met", "basis": "evidence", "reason": "…", "evidenceRefs": [] }],
       "hardRulesApplied": [],
+      "nonIntrusive": false,
       "modelVersion": "exp-v1",
       "catalogueVersion": "pc-…",
       "superseded": false,
@@ -323,7 +324,9 @@ analysis isn't available on this server yet.
 `band` is `reproduced`, `likely`, `plausible`, `theoretical` or
 `not_exploitable_as_observed`. The score doesn't change a finding's severity or
 the scan's score. A factor whose `value` is `null` had no evidence, which lowers
-`confidence` and doesn't count in the finding's favour. `notAssessed` counts the
+`confidence` and doesn't count in the finding's favour. `nonIntrusive` is true
+when the scan sent no test payloads, as a Lookout review doesn't: that rating is
+assessed, and `band` is never `reproduced`. `notAssessed` counts the
 scan's findings with no current assessment: their type isn't rated yet, the scan
 predates the analysis, or you marked them a false positive. Not assessed doesn't
 mean safe.
