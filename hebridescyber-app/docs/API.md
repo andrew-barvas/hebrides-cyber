@@ -287,6 +287,47 @@ with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
 
+### `GET /api/v1/scans/{id}/exploitability`
+
+How usable each assessed finding in the scan looks, based only on what the scan
+already stored. This endpoint sends nothing to your site. Pro plan and above;
+your own scans only. Someone else's scan answers `404`, and `503` means the
+analysis isn't available on this server yet.
+
+```json
+{
+  "scanId": "…",
+  "modelVersion": "exp-v1",
+  "notAssessed": 12,
+  "assessments": [
+    {
+      "id": "…",
+      "scanId": "…",
+      "checkId": "tls.weak-protocol:tls1.0",
+      "host": "example.com",
+      "score": 87,
+      "band": "likely",
+      "confidence": "medium",
+      "factors": [{ "id": "exposure", "weight": 0.2, "value": 0.7, "reason": "…", "evidenceRefs": [] }],
+      "conditions": [{ "id": "net.internet-reachable", "required": true, "state": "met", "basis": "evidence", "reason": "…", "evidenceRefs": [] }],
+      "hardRulesApplied": [],
+      "modelVersion": "exp-v1",
+      "catalogueVersion": "pc-…",
+      "superseded": false,
+      "createdAt": "…"
+    }
+  ]
+}
+```
+
+`band` is `reproduced`, `likely`, `plausible`, `theoretical` or
+`not_exploitable_as_observed`. The score doesn't change a finding's severity or
+the scan's score. A factor whose `value` is `null` had no evidence, which lowers
+`confidence` and doesn't count in the finding's favour. `notAssessed` counts the
+scan's findings with no current assessment: their type isn't rated yet, the scan
+predates the analysis, or you marked them a false positive. Not assessed doesn't
+mean safe.
+
 ### `GET /api/v1/scans/{id}/sbom`
 
 A CycloneDX 1.5 JSON SBOM of the scan's dependencies, downloaded as

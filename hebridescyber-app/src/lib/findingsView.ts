@@ -21,6 +21,8 @@
 // would show accepted findings as open (same rule as the SLA API).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { csvCell } from "./csv";
+import type { FindingExploitability } from "./exploitability/types";
+import { hasProAccess } from "./planAccess";
 import { isMissingSchemaError } from "./dbErrors";
 import { buildTriageIndex, loadTriageForOwner, TRIAGE_STATES, type TriageIndex, type TriageState } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
@@ -67,6 +69,8 @@ export type FindingRow = {
   /** The scan this finding was last seen in, for linking to its report. */
   scanId: string | null;
   triage: FindingRowTriage | null;
+  /** Null = not assessed, or not on a Pro-and-up plan — never "not exploitable". */
+  exploitabilityAssessment: FindingExploitability | null;
 };
 
 export type LifecycleOpenRow = LifecycleRow & { last_scan_id?: string | null };
@@ -79,6 +83,7 @@ export type ScanFinding = {
   cveIds?: string[];
   cvssScore?: number;
   threatIntel?: { knownExploited?: boolean; ransomware?: boolean; epss?: number };
+  exploitabilityAssessment?: FindingExploitability;
 };
 
 export type HostDetail = { scanId: string; findings: ScanFinding[] };
@@ -99,14 +104,16 @@ function normaliseSeverity(value: string): FindingSeverity {
  * One row per open lifecycle row. `detailByHost` is the latest completed
  * scan's findings per host (may be missing for a host); `triage` is built
  * with the same `now`. `policy` null = SLA tracking not available to this
- * account, so no SLA state is attached.
+ * account, so no SLA state is attached. `showExploitability` false leaves every
+ * row's exploitability null: the account isn't on a plan that includes it.
  */
 export function buildFindingRows(
   lifecycle: LifecycleOpenRow[],
   detailByHost: ReadonlyMap<string, HostDetail>,
   triage: TriageIndex,
   policy: SlaPolicy | null,
-  now: Date
+  now: Date,
+  showExploitability = false
 ): FindingRow[] {
   const detailIndex = new Map<string, Map<string, ScanFinding>>();
   for (const [host, detail] of detailByHost) {
@@ -144,6 +151,8 @@ export function buildFindingRows(
       cveIds: Array.isArray(found?.cveIds) ? found.cveIds.filter((c) => typeof c === "string") : [],
       scanId: detailByHost.get(host)?.scanId ?? row.last_scan_id ?? null,
       triage: active ? { state: active.state, reason: active.reason, expiresAt: active.expires_at } : null,
+      // A false positive gets no rating, including one marked since the scan ran.
+      exploitabilityAssessment: showExploitability && active?.state !== "false_positive" ? (found?.exploitabilityAssessment ?? null) : null,
     });
   }
   return rows;
@@ -286,6 +295,8 @@ export type FindingGroup = {
   sites: string[];
   knownExploited: boolean;
   maxEpss: number | null;
+  /** The highest-scoring assessed row's rating; null when none is assessed. */
+  topExploitability: FindingExploitability | null;
   oldestFirstSeenAt: string;
   rows: FindingRow[];
 };
@@ -326,6 +337,7 @@ export function groupFindings(rows: FindingRow[]): FindingGroup[] {
       sites,
       knownExploited: sorted.some((r) => r.knownExploited),
       maxEpss: epss.length > 0 ? Math.max(...epss) : null,
+      topExploitability: sorted.reduce<FindingExploitability | null>((top, r) => (r.exploitabilityAssessment && (!top || r.exploitabilityAssessment.score > top.score) ? r.exploitabilityAssessment : top), null),
       oldestFirstSeenAt: sorted.reduce((a, r) => (r.firstSeenAt < a ? r.firstSeenAt : a), sorted[0].firstSeenAt),
       rows: sorted,
     });
@@ -508,7 +520,7 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
     data: { available, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [], detailByHost: new Map() },
   });
 
-  const [open, triage, slaAccess] = await Promise.all([
+  const [open, triage, slaAccess, exploitabilityAccess] = await Promise.all([
     supabaseAdmin
       .from("finding_lifecycle")
       .select(LIFECYCLE_SELECT)
@@ -518,6 +530,7 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
       .limit(MAX_OPEN_ROWS + 1),
     loadTriageForOwner(supabaseAdmin, ownerId),
     hasSlaAccess(supabaseAdmin, ownerId).catch(() => false),
+    hasProAccess(supabaseAdmin, ownerId).catch(() => false),
   ]);
 
   if (open.error) {
@@ -541,7 +554,7 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
   }
 
   const detail = await loadLatestDetail(supabaseAdmin, ownerId, new Set(lifecycle.map((r) => r.target_host.toLowerCase())));
-  const rows = buildFindingRows(lifecycle, detail ?? new Map(), buildTriageIndex(triage.rows, now), policy, now);
+  const rows = buildFindingRows(lifecycle, detail ?? new Map(), buildTriageIndex(triage.rows, now), policy, now, exploitabilityAccess);
   return {
     ok: true,
     data: {

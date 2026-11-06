@@ -12,6 +12,7 @@
 // Types only from findingsView.ts / estatePriority.ts: their loaders are server code.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, ShieldCheck } from "lucide-react";
+import { ExploitabilityChip, ExploitabilityPanel } from "@/components/ExploitabilityDetails";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -169,13 +170,16 @@ function FindingLine({
   checked,
   onToggle,
   showTitle,
+  token,
 }: {
   row: ListRow;
   checked: boolean;
   onToggle: () => void;
   showTitle: boolean;
+  token: string | null;
 }) {
   const id = useId();
+  const [whyOpen, setWhyOpen] = useState(false);
   return (
     <li className="flex items-start gap-3 py-2">
       <input
@@ -196,6 +200,13 @@ function FindingLine({
           {showTitle && <SeverityBadge severity={row.severity} />}
           <span className="break-all text-sm font-medium text-cybertext">{showTitle ? row.title : row.host}</span>
           <Flags row={row} />
+          {row.exploitabilityAssessment && <ExploitabilityChip summary={row.exploitabilityAssessment} />}
+          {row.exploitabilityAssessment && row.scanId && (
+            <Button variant="ghost" size="sm" aria-expanded={whyOpen} aria-controls={`${id}-why`} onClick={() => setWhyOpen((v) => !v)}>
+              {whyOpen ? "Hide why" : "Why?"}
+              <span className="sr-only"> this rating for {row.title} on {row.host}</span>
+            </Button>
+          )}
           {row.triage && (
             <span className="rounded-sm border border-neon/30 px-1.5 py-0.5 text-[11px] text-neon">{TRIAGE_STATE_LABELS[row.triage.state]}</span>
           )}
@@ -215,6 +226,7 @@ function FindingLine({
         </p>
         {row.priority && <p className="text-xs text-cybertext/80">Why here: {row.priority.reason}</p>}
         {row.triage && <p className="text-xs text-cybermuted">Reason: {row.triage.reason}</p>}
+        {whyOpen && row.scanId && <ExploitabilityPanel id={`${id}-why`} token={token} scanId={row.scanId} checkId={row.checkId} />}
       </div>
     </li>
   );
@@ -225,11 +237,13 @@ function GroupCard({
   selected,
   onToggleRow,
   onToggleGroup,
+  token,
 }: {
   group: FindingGroup;
   selected: ReadonlySet<string>;
   onToggleRow: (key: string) => void;
   onToggleGroup: (group: FindingGroup) => void;
+  token: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -256,6 +270,7 @@ function GroupCard({
             <SeverityBadge severity={group.severity} />
             <h3 className="text-sm font-semibold text-cybertext">{group.label}</h3>
             <Flags row={{ knownExploited: group.knownExploited, ransomware: false, epss: group.maxEpss }} />
+            {group.topExploitability && <ExploitabilityChip summary={group.topExploitability} />}
           </div>
           <p className="text-xs text-cybermuted">
             {group.siteCount === 1 ? `On ${group.sites[0]}` : `On ${group.siteCount} sites`} · {group.count} finding{group.count === 1 ? "" : "s"} ·{" "}
@@ -270,7 +285,7 @@ function GroupCard({
       {open && (
         <ul id={panelId} className="divide-y divide-cyberborder border-t border-cyberborder pl-7">
           {group.rows.map((r) => (
-            <FindingLine key={r.key} row={r} checked={selected.has(r.key)} onToggle={() => onToggleRow(r.key)} showTitle={false} />
+            <FindingLine key={r.key} row={r} checked={selected.has(r.key)} onToggle={() => onToggleRow(r.key)} showTitle={false} token={token} />
           ))}
         </ul>
       )}
@@ -645,13 +660,16 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
             {data.totalFindings} finding{data.totalFindings === 1 ? "" : "s"}
             {data.view === "grouped" && ` in ${data.total} group${data.total === 1 ? "" : "s"}`}
           </p>
+          {rowsOnPage.some((r) => r.exploitabilityAssessment) && (
+            <p className="text-xs text-cybermuted">Exploitability is rated for some finding types so far. No rating means not assessed, not safe.</p>
+          )}
           {data.view === "grouped" ? (
-            data.groups.map((g) => <GroupCard key={g.key} group={g} selected={selected} onToggleRow={toggleRow} onToggleGroup={toggleGroup} />)
+            data.groups.map((g) => <GroupCard key={g.key} group={g} selected={selected} onToggleRow={toggleRow} onToggleGroup={toggleGroup} token={token} />)
           ) : (
             <Card>
               <ul className="divide-y divide-cyberborder" aria-label="Open findings">
                 {data.items.map((r) => (
-                  <FindingLine key={r.key} row={r} checked={selected.has(r.key)} onToggle={() => toggleRow(r.key)} showTitle />
+                  <FindingLine key={r.key} row={r} checked={selected.has(r.key)} onToggle={() => toggleRow(r.key)} showTitle token={token} />
                 ))}
               </ul>
             </Card>

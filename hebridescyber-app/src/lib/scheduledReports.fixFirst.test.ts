@@ -18,7 +18,7 @@ const STYLE = { cell: "c", muted: "m" };
 const item = (rank: number, over: Partial<PrioritisedFinding> = {}): PrioritisedFinding => ({
   key: `k${rank}`, host: "shop.example", checkId: "nuclei.cve-1", checkBase: "nuclei.cve-1", category: "nuclei", severity: "high",
   title: `Finding ${rank}`, detail: null, firstSeenAt: "2026-10-01T00:00:00Z", ageDays: 31, slaState: null, slaDueAt: null,
-  knownExploited: true, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "s1", triage: null,
+  knownExploited: true, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "s1", triage: null, exploitabilityAssessment: null,
   priority: { rank, score: 33.8, base: 22.5, factors: [], reason: "High severity, KEV listed, on a high-criticality site" },
   ...over,
 });

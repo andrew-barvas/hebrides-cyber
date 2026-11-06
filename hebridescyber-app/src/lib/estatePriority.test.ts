@@ -17,7 +17,7 @@ import {
 const row = (over: Partial<FindingRow> = {}): FindingRow => ({
   key: "a.example headers.hsts", host: "a.example", checkId: "headers.hsts", checkBase: "headers.hsts", category: "headers",
   severity: "medium", title: "Missing HSTS", detail: null, firstSeenAt: "2026-09-01T00:00:00Z", ageDays: 30, slaState: null, slaDueAt: null,
-  knownExploited: false, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "s1", triage: null, ...over,
+  knownExploited: false, ransomware: false, epss: null, cvssScore: null, cveIds: [], scanId: "s1", triage: null, exploitabilityAssessment: null, ...over,
 });
 
 const noSignals: HostSignals = { live: false, waf: null };
