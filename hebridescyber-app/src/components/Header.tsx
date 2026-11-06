@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { getSession, signOut } from "@/lib/auth";
+import { mayHaveSupabaseSession } from "@/lib/supabase/sessionHint";
 
 function ThemeToggle() {
   const [dark, setDark] = useState(true);
@@ -42,6 +41,7 @@ export default function Header() {
   const pathname = usePathname();
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loadAuth, setLoadAuth] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -60,19 +60,46 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
+  // The Supabase client is loaded only for a visitor who may have a session, so
+  // signed-out visitors to public pages never download it. Re-checked on each
+  // navigation: signing in on /login then moving on brings the cookie with it.
+  // A sign-in in another tab shows up on this tab's next navigation.
   useEffect(() => {
-    async function refresh(session: import("@supabase/supabase-js").Session | null) {
-      setAuthed(Boolean(session));
-      if (!session) { setIsAdmin(false); return; }
-      const { data } = await supabase.from("users").select("is_admin").eq("id", session.user.id).maybeSingle();
-      setIsAdmin(Boolean(data?.is_admin));
-    }
-    getSession().then(refresh);
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => refresh(session));
-    return () => subscription.subscription.unsubscribe();
-  }, []);
+    if (mayHaveSupabaseSession()) setLoadAuth(true);
+    else if (!loadAuth) setAuthed(false);
+  }, [pathname, loadAuth]);
+
+  useEffect(() => {
+    if (!loadAuth) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      const [{ supabase }, { getSession }] = await Promise.all([
+        import("@/lib/supabaseClient"),
+        import("@/lib/auth"),
+      ]);
+      if (cancelled) return;
+
+      async function refresh(session: import("@supabase/supabase-js").Session | null) {
+        setAuthed(Boolean(session));
+        if (!session) { setIsAdmin(false); return; }
+        const { data } = await supabase.from("users").select("is_admin").eq("id", session.user.id).maybeSingle();
+        setIsAdmin(Boolean(data?.is_admin));
+      }
+      getSession().then(refresh);
+      const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => refresh(session));
+      unsubscribe = () => subscription.subscription.unsubscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [loadAuth]);
 
   async function handleSignOut() {
+    const { signOut } = await import("@/lib/auth");
     await signOut();
     setMenuOpen(false);
     router.push("/");

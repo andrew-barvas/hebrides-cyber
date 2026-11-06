@@ -19,6 +19,8 @@ const { getSessionMock, onAuthStateChangeMock, fromMock, signOutMock, state } = 
   },
 }));
 
+const SESSION_COOKIE = "sb-test-auth-token";
+
 vi.mock("next/navigation", () => ({
   usePathname: () => state.pathname,
   useRouter: () => ({ push: vi.fn() }),
@@ -42,6 +44,8 @@ beforeEach(() => {
   state.pathname = "/";
   state.session = null;
   state.isAdmin = false;
+  document.cookie = `${SESSION_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  window.history.replaceState(null, "", "/");
   getSessionMock.mockReset().mockImplementation(() => Promise.resolve(state.session));
   onAuthStateChangeMock.mockReset().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
   fromMock.mockReset().mockImplementation(() => ({
@@ -65,9 +69,43 @@ async function renderSignedIn(pathname: string, isAdmin = false) {
   state.pathname = pathname;
   state.session = { user: { id: "user-1" } };
   state.isAdmin = isAdmin;
+  document.cookie = `${SESSION_COOKIE}=x`;
   render(<Header />);
   await waitFor(() => expect(screen.getByText("Sign out")).toBeInTheDocument());
 }
+
+describe("Header — loading the Supabase client only when needed", () => {
+  it("never asks Supabase about a signed-out visitor", async () => {
+    await renderSignedOut();
+    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(onAuthStateChangeMock).not.toHaveBeenCalled();
+  });
+
+  it("picks up a sign-in on the next navigation, without a page reload", async () => {
+    const { rerender } = render(<Header />);
+    await waitFor(() => expect(screen.getByText("Sign in")).toBeInTheDocument());
+
+    state.session = { user: { id: "user-1" } };
+    document.cookie = `${SESSION_COOKIE}=x`;
+    state.pathname = "/dashboard";
+    rerender(<Header />);
+
+    await waitFor(() => expect(screen.getByText("Sign out")).toBeInTheDocument());
+  });
+
+  it("loads the client on a sign-in callback URL so it can finish the sign-in", async () => {
+    window.history.replaceState(null, "", "/?code=abc");
+    render(<Header />);
+    await waitFor(() => expect(onAuthStateChangeMock).toHaveBeenCalled());
+  });
+
+  it("returns to signed-out when the session ends", async () => {
+    await renderSignedIn("/blog");
+    const onChange = onAuthStateChangeMock.mock.calls[0][0];
+    onChange("SIGNED_OUT", null);
+    await waitFor(() => expect(screen.getByText("Sign in")).toBeInTheDocument());
+  });
+});
 
 describe("Header — marketing nav vs app-shell nav", () => {
   it("shows the full marketing nav and Sign in when signed out on the homepage", async () => {
