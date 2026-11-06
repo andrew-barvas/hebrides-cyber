@@ -136,7 +136,7 @@ export default function CyberEssentialsPage() {
               <span className="text-neon">→</span> Rescans that show what you&apos;ve fixed since last time
             </li>
           </ul>
-          <p className="mt-4 text-xs leading-relaxed text-cybertext/45">
+          <p className="mt-4 text-xs leading-relaxed text-cybermuted">
             The same findings are also mapped to ISO 27001, PCI DSS, NIS2, DORA, OWASP Top 10 and CIS Controls. If you used
             the NCSC&apos;s retired Web Check or Mail Check, see{" "}
             <Link href="/web-check-alternative" className="text-neon hover:underline">
