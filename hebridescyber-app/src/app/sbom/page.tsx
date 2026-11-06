@@ -105,6 +105,7 @@ export default function SbomPage() {
           </p>
         </div>
 
+        <h2 className="sr-only">SBOM features</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {features.map((f) => (
             <FeatureCard key={f.title} feature={f} />

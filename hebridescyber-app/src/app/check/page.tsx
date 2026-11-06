@@ -8,13 +8,13 @@ export const metadata: Metadata = {
 
 export default function CheckPage() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <div className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-3xl font-bold">Free website security check</h1>
-      <p className="mt-3 mb-8 text-slate-700">
+      <p className="mt-3 mb-8 text-cybertext/80">
         See how a site&apos;s HTTPS, security headers and email authentication look from the outside, in a few seconds, with no account. We only request the
         home page and look up DNS records, the same as a browser or mail server would.
       </p>
       <InstantCheck />
-    </main>
+    </div>
   );
 }

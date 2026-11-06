@@ -122,6 +122,7 @@ export default function TourismPage() {
           </p>
         </div>
 
+        <h2 className="sr-only">Common concerns</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {concerns.map((c) => (
             <ConcernCard key={c.title} concern={c} />

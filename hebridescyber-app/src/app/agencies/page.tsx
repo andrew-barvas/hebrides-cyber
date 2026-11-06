@@ -141,6 +141,7 @@ export default function AgenciesPage() {
           </p>
         </div>
 
+        <h2 className="sr-only">Agency capabilities</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {capabilities.map((c) => (
             <CapabilityCard key={c.title} capability={c} />
