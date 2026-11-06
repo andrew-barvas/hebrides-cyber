@@ -10,6 +10,7 @@ import {
   loadTargetContexts,
   rankFindings,
   scoreFinding,
+  exploitabilityMultiplier,
   type HostSignals,
   type TargetContext,
 } from "./estatePriority";
@@ -224,5 +225,34 @@ describe("loadTargetContexts", () => {
   it("marks any other failure incomplete rather than pretending every site is normal", async () => {
     const r = await loadTargetContexts(client({ data: null, error: { code: "500", message: "boom" } }).client, "o1");
     expect(r).toMatchObject({ available: true, complete: false });
+  });
+});
+
+describe("exploitabilityMultiplier", () => {
+  const rating = (score: number, confidence: "high" | "medium" | "low" = "medium", band: "likely" | "plausible" | "theoretical" = "likely", nonIntrusive = false) => ({ score, band, confidence, nonIntrusive, modelVersion: "exp-v1" });
+
+  it("runs 0.7 to 1.3 across the score, and an unrated finding doesn't move", () => {
+    expect(exploitabilityMultiplier(row({ exploitabilityAssessment: rating(0) }))).toBe(0.7);
+    expect(exploitabilityMultiplier(row({ exploitabilityAssessment: rating(50) }))).toBe(1);
+    expect(exploitabilityMultiplier(row({ exploitabilityAssessment: rating(100) }))).toBe(1.3);
+    expect(exploitabilityMultiplier(row())).toBe(1);
+  });
+
+  it("never ranks down on a low-confidence rating or a KEV listing, but can rank up", () => {
+    expect(exploitabilityMultiplier(row({ exploitabilityAssessment: rating(10, "low") }))).toBe(1);
+    expect(exploitabilityMultiplier(row({ knownExploited: true, exploitabilityAssessment: rating(10) }))).toBe(1);
+    expect(exploitabilityMultiplier(row({ exploitabilityAssessment: rating(100, "low") }))).toBe(1.3);
+  });
+
+  it("adds a factor that applies to the score and reads assessed for a non-intrusive scan", () => {
+    const plain = scoreFinding(row({ severity: "high" }), DEFAULT_TARGET_CONTEXT, undefined);
+    const raised = scoreFinding(row({ severity: "high", exploitabilityAssessment: rating(100, "medium", "likely", true) }), DEFAULT_TARGET_CONTEXT, undefined);
+    expect(raised.score).toBe(Math.round(plain.score * 1.3 * 10) / 10);
+    expect(raised.factors.at(-1)).toEqual({ key: "exploitability", label: "exploitability assessed likely", multiplier: 1.3 });
+  });
+
+  it("adds no factor when the rating leaves the finding where it was", () => {
+    const r = scoreFinding(row({ exploitabilityAssessment: rating(50) }), DEFAULT_TARGET_CONTEXT, undefined);
+    expect(labels(r)).not.toContain("exploitability");
   });
 });

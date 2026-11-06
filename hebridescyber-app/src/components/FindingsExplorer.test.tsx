@@ -341,7 +341,7 @@ describe("FindingsExplorer", () => {
   });
 
   describe("exploitability", () => {
-    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, modelVersion: "exp-v1" };
+    const rating = { score: 87, band: "likely" as const, confidence: "medium" as const, nonIntrusive: false, modelVersion: "exp-v1" };
     const NOTE = /No rating means not assessed, not safe/;
 
     it("shows no chip, no Why? and no note when nothing on the page is rated", async () => {

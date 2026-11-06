@@ -154,7 +154,7 @@ describe("executeScan wiring", () => {
 });
 
 describe("executeScan exploitability pass", () => {
-  type Stored = { checkId?: string; severity: string; exploitabilityAssessment?: { band: string } };
+  type Stored = { checkId?: string; severity: string; exploitabilityAssessment?: { band: string; nonIntrusive: boolean } };
   const EXPOSED = "exposure.exposed-file:/.env";
   const reported = () => [
     { checkId: EXPOSED, severity: "critical", title: "Exposed .env", detail: "", remediation: "", metadata: { proofOfExploit: { confirmed: true } } },
@@ -214,8 +214,9 @@ describe("executeScan exploitability pass", () => {
     const toolOverrides = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, false]));
     await executeScan(client, "scan-x", "owner-1", "https://shop.example", { profile: "exposure", toolOverrides });
 
-    expect(findingsOf(resultInserts)[0].exploitabilityAssessment?.band).toBe("likely");
-    expect(assessmentInserts[0].band).toBe("likely");
+    const [exposed] = findingsOf(resultInserts);
+    expect(exposed.exploitabilityAssessment).toMatchObject({ band: "likely", nonIntrusive: true });
+    expect(assessmentInserts[0]).toMatchObject({ band: "likely", non_intrusive: true });
   });
 
   it("gives an active false positive no assessment, but keeps it stored", async () => {
