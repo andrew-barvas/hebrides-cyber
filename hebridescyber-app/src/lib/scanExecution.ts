@@ -23,6 +23,8 @@ import { runCommix } from "../worker/tools/commix";
 import { runDalfox } from "../worker/tools/dalfox";
 import { runNmap } from "../worker/tools/nmap";
 import { runNetworkExposure } from "../worker/tools/networkExposure";
+import { buildServiceCveFindings } from "../worker/tools/serviceCve";
+import { createCveIndex, supabaseCveIndexStore } from "./cveIndex";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
@@ -243,9 +245,10 @@ async function runExtendedTools(
     toolConfig.nmap
       ? runNmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
-    // Broad port discovery (naabu top-1000) → nmap -sV on whatever's open.
+    // Broad port discovery (naabu top-1000) → nmap -sV on whatever's open,
+    // each identified service matched against the local CVE index (069).
     toolConfig.networkExposure
-      ? runNetworkExposure(targetUrl)
+      ? runNetworkExposure(targetUrl, { cveIndex: createCveIndex(supabaseCveIndexStore(supabaseAdmin)) })
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
     toolConfig.subdomains
       ? runSubdomainDiscovery(targetUrl)
@@ -425,7 +428,7 @@ async function runExtendedTools(
     commix: commixResult.status === "fulfilled" ? commixResult.value : { status: "error", vulnerable: false, findings: [], note: String(commixResult.reason) },
     dalfox: dalfoxResult.status === "fulfilled" ? dalfoxResult.value : { status: "error", findings: [], note: String(dalfoxResult.reason) },
     nmap: nmapResult.status === "fulfilled" ? nmapResult.value : { status: "error", ports: [], note: String(nmapResult.reason) },
-    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error", host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
+    networkExposure: networkExposureResult.status === "fulfilled" ? networkExposureResult.value : { status: "error" as const, host: targetUrl, ports: [], note: String(networkExposureResult.reason) },
     subdomains: subdomainsResult.status === "fulfilled" ? subdomainsResult.value : { status: "error", subdomains: [], findings: [], note: String(subdomainsResult.reason) },
     deepTls: deepTlsResult.status === "fulfilled" ? deepTlsResult.value : { status: "error", host: targetUrl, findings: [], note: String(deepTlsResult.reason) },
     secretScan: secretScanResult.status === "fulfilled" ? secretScanResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(secretScanResult.reason) },
@@ -552,6 +555,10 @@ async function runExtendedTools(
         remediation: nmapDangerousPortRemediation(p.port),
       });
     }
+    // Known CVEs and end of life for each identified service (serviceCve.ts).
+    // A lookup that couldn't run is in networkExposure.incompleteChecks, so
+    // lifecycle leaves last scan's service-cve findings as they were.
+    findings.push(...buildServiceCveFindings(extended.networkExposure.serviceCves));
   }
 
   // subdomains.ts (Subfinder) and deepTls.ts (testssl.sh) already emit
