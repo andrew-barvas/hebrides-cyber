@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authMock, gateMock, recordMock, revokeMock, target } = vi.hoisted(() => ({
+const { authMock, gateMock, recordMock, revokeMock, linkMock, target } = vi.hoisted(() => ({
+  linkMock: vi.fn(),
   authMock: vi.fn(),
   gateMock: vi.fn(),
   recordMock: vi.fn(),
@@ -17,7 +18,8 @@ vi.mock("@/lib/apiAuth", () => {
   return { authenticateApiRequest: authMock, supabaseAdmin: { from: () => b } };
 });
 vi.mock("@/lib/planAccess", () => ({ planGate: gateMock }));
-vi.mock("@/lib/offensiveAuthorization", () => ({ recordOffensiveAuthorization: recordMock, revokeOffensiveAuthorization: revokeMock }));
+vi.mock("@/lib/offensiveAuthorization", () => ({ authHostFromUrl: (u: string) => new URL(u).hostname, recordOffensiveAuthorization: recordMock, revokeOffensiveAuthorization: revokeMock }));
+vi.mock("@/lib/engagements", async (original) => ({ ...(await original<typeof import("@/lib/engagements")>()), checkAuthorizationLink: linkMock }));
 
 import handler from "@/pages/api/account/offensive-authorization";
 
@@ -34,6 +36,44 @@ beforeEach(() => {
   recordMock.mockReset().mockResolvedValue({ ok: true, host: "shop.example.com" });
   revokeMock.mockReset().mockResolvedValue({ ok: true });
   target.current = { data: { id: "t1", owner: "owner-1" }, error: null };
+});
+
+describe("/api/account/offensive-authorization with an engagement", () => {
+  const ENGAGEMENT = "e1000000-0000-4000-8000-000000000001";
+  const body = { targetUrl: URL_OK, acknowledge: true, engagementId: ENGAGEMENT };
+
+  it("links the authorisation once the engagement accepts this host", async () => {
+    linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: true } });
+    expect((await call("POST", body)).statusCode).toBe(200);
+    expect(linkMock.mock.calls[0].slice(1)).toEqual(["owner-1", ENGAGEMENT, "shop.example.com"]);
+    expect(recordMock.mock.calls[0][1]).toMatchObject({ engagementId: ENGAGEMENT });
+  });
+
+  it.each([
+    ["host_not_in_scope", 409],
+    ["state_disallows", 409],
+  ])("records nothing on %s", async (reason, status) => {
+    linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: false, reason } });
+    const res = await call("POST", body);
+    expect(res.statusCode).toBe(status);
+    expect(res._getJSONData().reason).toBe(reason);
+    expect(recordMock).not.toHaveBeenCalled();
+  });
+
+  it("is 404 for someone else's engagement and records nothing on a failed read", async () => {
+    linkMock.mockReset().mockResolvedValue({ status: "not_found" });
+    expect((await call("POST", body)).statusCode).toBe(404);
+    linkMock.mockReset().mockResolvedValue({ status: "error", error: { message: "down" } });
+    expect((await call("POST", body)).statusCode).toBe(500);
+    expect(recordMock).not.toHaveBeenCalled();
+  });
+
+  it("doesn't consult an engagement when none is named", async () => {
+    linkMock.mockReset();
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(200);
+    expect(linkMock).not.toHaveBeenCalled();
+    expect(recordMock.mock.calls[0][1].engagementId).toBeUndefined();
+  });
 });
 
 describe("/api/account/offensive-authorization", () => {

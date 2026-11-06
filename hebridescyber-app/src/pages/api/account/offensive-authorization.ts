@@ -13,7 +13,8 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
-import { recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
+import { checkAuthorizationLink, sendEngagementFailure } from "@/lib/engagements";
+import { authHostFromUrl, recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
 
 const postBodySchema = z.object({
   targetUrl: z.string().url("targetUrl must be a valid URL"),
@@ -23,6 +24,8 @@ const postBodySchema = z.object({
   scope: z.string().min(1).max(2000).optional(),
   // Optional ISO expiry; omitted means it stays until revoked.
   expiresAt: z.string().datetime().optional(),
+  // The engagement this was signed for, when there is one. Omitted, it behaves as it always has.
+  engagementId: z.string().uuid().optional(),
 });
 
 const deleteBodySchema = z.object({
@@ -75,12 +78,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (gate === "denied") return res.status(403).json({ error: "Offensive scanning is a Tier A feature." });
 
   const post = body as z.infer<typeof postBodySchema>;
+
+  if (post.engagementId) {
+    const host = authHostFromUrl(targetUrl);
+    if (!host) return res.status(400).json({ error: "Could not record the authorization." });
+    const link = await checkAuthorizationLink(supabaseAdmin, caller.ownerId, post.engagementId, host);
+    if (link.status !== "ok") return sendEngagementFailure(res, "account/offensive-authorization", link);
+    if (!link.data.ok) {
+      return res.status(409).json({
+        error: link.data.reason === "host_not_in_scope" ? "That host isn't on this engagement's scope." : "This engagement can't take new authorisations in its current state.",
+        reason: link.data.reason,
+      });
+    }
+  }
+
   const result = await recordOffensiveAuthorization(supabaseAdmin, {
     owner: caller.ownerId,
     authorizedBy: caller.ownerId,
     targetUrl,
     scope: post.scope ?? DEFAULT_SCOPE,
     expiresAt: post.expiresAt ?? null,
+    engagementId: post.engagementId,
   });
   if (!result.ok) {
     if (result.reason === "unavailable") return res.status(503).json({ error: "Offensive scanning isn't available yet." });

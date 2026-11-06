@@ -87,7 +87,7 @@ export async function hasActiveOffensiveAuthorization(
  */
 export async function recordOffensiveAuthorization(
   supabaseAdmin: SupabaseClient,
-  params: { owner: string; authorizedBy: string; targetUrl: string; scope: string; expiresAt?: string | null },
+  params: { owner: string; authorizedBy: string; targetUrl: string; scope: string; expiresAt?: string | null; engagementId?: string },
 ): Promise<{ ok: true; host: string } | { ok: false; reason: "invalid_url" | "unavailable" | "error" }> {
   const host = authHostFromUrl(params.targetUrl);
   if (!host) return { ok: false, reason: "invalid_url" };
@@ -109,6 +109,7 @@ export async function recordOffensiveAuthorization(
       authorized_by: params.authorizedBy,
       scope: params.scope,
       expires_at: params.expiresAt ?? null,
+      ...(params.engagementId ? { engagement_id: params.engagementId } : {}),
     });
     if (insert.error) {
       if (isMissingSchemaError(insert.error)) return { ok: false, reason: "unavailable" };
@@ -119,7 +120,7 @@ export async function recordOffensiveAuthorization(
       action: "offensive_scan.authorized",
       resourceType: "monitored_target",
       resourceId: host,
-      metadata: { owner: params.owner, scope: params.scope, expires_at: params.expiresAt ?? null },
+      metadata: { owner: params.owner, scope: params.scope, expires_at: params.expiresAt ?? null, ...(params.engagementId ? { engagement_id: params.engagementId } : {}) },
     });
     return { ok: true, host };
   } catch {
