@@ -361,7 +361,7 @@ export default function ServicesPage() {
               { step: "03", title: "We fix it or you do", body: "Ongoing monitoring keeps the score up. Or we can open PRs and fix findings directly in your codebase." },
             ].map(({ step, title, body }) => (
               <div key={step} className="relative">
-                <div aria-hidden="true" className="mb-3 inline-block font-mono text-3xl font-bold text-neon/20">{step}</div>
+                <div aria-hidden="true" className="mb-3 inline-block font-mono text-3xl font-bold text-neon/80">{step}</div>
                 <p className="mb-1 font-semibold text-cybertext text-sm">{title}</p>
                 <p className="text-xs text-cybertext/60 leading-relaxed">{body}</p>
               </div>

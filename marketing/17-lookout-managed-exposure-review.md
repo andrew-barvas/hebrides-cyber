@@ -40,7 +40,7 @@ Most small businesses have more online than they realise: old subdomains, forgot
 - **A clear picture of what's exposed.** We map the websites, subdomains and internet-facing services connected to your verified domains, and tell you when something new appears. **[VERIFY: PR #144 merged; Lookout targets use the `exposure` profile]**
 - **Checks for known weaknesses and risky settings.** Out-of-date and unsupported software, weak encryption, missing security settings, exposed admin pages and files that should not be public.
 - **Email and domain protection.** Whether your domain can be used to send spoofed email, and whether your domain registration and certificates are about to lapse.
-- **What your documents give away.** Names, email addresses, internal system names and photo locations hidden in files on your website. **[VERIFY: only once the metadata check is part of the `exposure` profile; cut until then]**
+- **What your documents give away.** Names, email addresses, internal system names and photo locations hidden in files on your website. **[VERIFY: the metadata check joined the `exposure` profile on 2026-11-02 (Lookout tool shortlist PR); keep only once that PR is merged]**
 - **Fixes in plain English.** Every finding says what it means for your business, how to fix it and roughly how long it takes, ranked by urgency.
 - **Evidence for insurers and customers.** Findings are mapped to Cyber Essentials, ISO 27001 and other standards, and to MITRE ATT&CK, so you can answer security questionnaires with something to show. **[VERIFY: ATT&CK mapping ships with PR #144; always "mapped to", never "certifies" or "compliant"]**
 - **A named engineer, not a ticket queue.** A review call each quarter (two on Assured) with the person who wrote your report.
@@ -55,6 +55,7 @@ Lookout is an active assessment, not passive observation. To find what an outsid
 - load pages from your websites, follow links on them (up to 50 pages, respecting your robots.txt) and read the files those pages link to
 - request a fixed list of well-known file locations, such as old backups and configuration files, to see whether any are public
 - connect to common network ports on your addresses to see which services answer, and identify the software behind them
+- connect to your website's secure (HTTPS) port many times, offering different encryption settings, to see which old or weak ones it still accepts
 - check for known misconfigurations and exposed admin pages
 - submit your login page five times with made-up details, to check that it slows down repeated attempts
 
@@ -64,7 +65,7 @@ They do **not**:
 - try to log in with real or default credentials, or go beyond what is reachable from the internet
 - check anything you have not proved you own or are authorised to have tested
 
-We agree a time window for the checks with you, and you may see our requests in your logs or your hosting provider's alerts. Tell your IT supplier before you start. **[VERIFY: list matches the `exposure` profile and base suite at launch; update when ZAP passive mode (PR #152) or the metadata check is added, or if the login check is switched off for Lookout (OT-43)]**
+We agree a time window for the checks with you, and you may see our requests in your logs or your hosting provider's alerts. Tell your IT supplier before you start. **[VERIFY: list matches the `exposure` profile and base suite at launch; the metadata check and the deeper encryption check were added 2026-11-02; update when ZAP passive mode (PR #152) is added, or if the login check is switched off for Lookout (OT-43)]**
 
 ---
 

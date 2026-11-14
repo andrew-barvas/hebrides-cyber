@@ -50,8 +50,9 @@ const OSV_TIMEOUT_MS = 10_000;
 const USER_AGENT = "HebridesCyberBot/1.0 (+https://www.hebridescyber.co.uk)";
 /** NVD allows 5 requests per rolling 30 s without a key, 50 with one. */
 export const NVD_DELAY_MS = { withoutKey: 6_500, withKey: 700 } as const;
-/** One retry after NVD's rate limiter (403/429) or a 503. */
+/** One retry after NVD's rate limiter (403/429), a 503, a timeout or a network error. */
 const NVD_RETRY_DELAY_MS = 30_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 /** GHSA aliases followed per CVE — a CVE rarely has more than one or two. */
 const MAX_GHSA_ALIASES = 5;
 const MAX_SCANS_PER_OWNER = 500;
@@ -67,11 +68,19 @@ export async function fetchNvdCve(cveId: string, apiKey: string | undefined, sle
   const url = `${NVD_CVE_API}?cveId=${encodeURIComponent(cveId)}`;
   const headers: Record<string, string> = { "User-Agent": USER_AGENT };
   if (apiKey) headers.apiKey = apiKey;
+  const get = () => fetch(url, { headers, signal: AbortSignal.timeout(NVD_TIMEOUT_MS) });
   try {
-    let res = await fetch(url, { headers, signal: AbortSignal.timeout(NVD_TIMEOUT_MS) });
+    let res: Response;
+    try {
+      res = await get();
+    } catch {
+      // NVD timed out twice on 2026-11-13 and failed the run; one retry first.
+      await sleep(NVD_RETRY_DELAY_MS);
+      res = await get();
+    }
     if (res.status === 403 || res.status === 429 || res.status === 503) {
       await sleep(NVD_RETRY_DELAY_MS);
-      res = await fetch(url, { headers, signal: AbortSignal.timeout(NVD_TIMEOUT_MS) });
+      res = await get();
     }
     if (!res.ok) return { ok: false, error: `NVD responded ${res.status} for ${cveId}` };
     const body = (await res.json()) as { vulnerabilities?: Array<{ cve?: NvdCveRecord }> };
@@ -309,6 +318,13 @@ export type RunSummary = {
   kevAdditions: number;
   cvesEvaluated: string[];
   cvesPending: string[];
+  /**
+   * Lookups that failed for a CVE the next run checks again (it is still
+   * inside the KEV look-back window). Not "not affected", and not yet a
+   * failure: a lookup that fails on the CVE's last day in the window goes in
+   * `errors` instead, so a CVE can never drop out of the window unchecked.
+   */
+  lookupsToRetry: string[];
   ownersChecked: number;
   hostsChecked: number;
   matches: Array<AlertItem & { ownerId: string }>;
@@ -380,6 +396,7 @@ export async function runEmergingThreatCheck(supabase: SupabaseClient, opts: Run
     kevAdditions: 0,
     cvesEvaluated: [],
     cvesPending: [],
+    lookupsToRetry: [],
     ownersChecked: 0,
     hostsChecked: 0,
     matches: [],
@@ -396,6 +413,8 @@ export async function runEmergingThreatCheck(supabase: SupabaseClient, opts: Run
   if (additions.length === 0) return summary;
 
   const delay = opts.nvdApiKey ? NVD_DELAY_MS.withKey : NVD_DELAY_MS.withoutKey;
+  // The oldest dateAdded still inside the window: a CVE added that day isn't checked again.
+  const lastChanceDay = new Date(now.getTime() - KEV_LOOKBACK_DAYS * DAY_MS).toISOString().slice(0, 10);
   const evaluated: Array<{ kev: KevAddition; ranges: CveTechRanges }> = [];
   for (const [i, addition] of additions.entries()) {
     if (i > 0) await sleep(delay);
@@ -406,8 +425,11 @@ export async function runEmergingThreatCheck(supabase: SupabaseClient, opts: Run
     } else if (result.status === "pending") {
       summary.cvesPending.push(addition.cveId);
       log(`  pending: ${result.note}`);
+    } else if (addition.dateAdded > lastChanceDay) {
+      summary.lookupsToRetry.push(result.note);
+      log(`  retry next run: ${result.note}`);
     } else {
-      summary.errors.push(result.note);
+      summary.errors.push(`${result.note} (last check before it leaves the ${KEV_LOOKBACK_DAYS}-day window)`);
       log(`  skipped: ${result.note}`);
     }
   }

@@ -110,8 +110,36 @@ describe.skipIf(!DB_TESTS_ENABLED)("migrations (real Postgres)", () => {
       "monitored_targets", "audit_logs", "contact_enquiries", "verifications", "scan_jobs",
       "asset_inventory", "dns_snapshots", "deletion_requests", "offensive_scan_authorizations",
       "lookalike_domain_sweeps", "lookalike_domains", "tool_kill_switches", "email_events",
+      "exploitability_assessments", "engagements", "engagement_scope_hosts", "exploit_chains", "exploit_simulations",
     ]) {
       expect(have.has(t), `missing table ${t}`).toBe(true);
+    }
+  });
+
+  it("keeps an authorisation with no engagement valid, and enforces the engagement constraints (migration 070)", async () => {
+    const owner = "70700000-0000-0000-0000-000000000001";
+    const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
+    const auth = await q("insert into offensive_scan_authorizations (owner, target_host, authorized_by, scope) values ($1, 'legacy70.test', $1, 'ack') returning engagement_id", [owner]);
+    expect(auth.rows[0].engagement_id).toBeNull();
+
+    const bad = "insert into engagements (owner, reference, created_by, state) values ($1, 'bad', $1, 'nonsense')";
+    await expect(q(bad, [owner])).rejects.toThrow(/engagements_state_check/);
+    const backwards = "insert into engagements (owner, reference, created_by, window_start, window_end) values ($1, 'bad', $1, now(), now() - interval '1 day')";
+    await expect(q(backwards, [owner])).rejects.toThrow(/engagements_window_check/);
+  });
+
+  it("removes an engagement's scope, chains and simulations with it (migrations 070, 071)", async () => {
+    const owner = "70700000-0000-0000-0000-000000000002";
+    const q = (sql: string, p: unknown[] = []) => db.pool.query(sql, p);
+    const { rows } = await q("insert into engagements (owner, reference, created_by) values ($1, 'cascade', $1) returning id", [owner]);
+    const id = rows[0].id;
+    await q("insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ($1, $2, 'c.test', true, $2)", [id, owner]);
+    await q("insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, $2, '{}', 0, 'exp-v1', 'pc-test')", [owner, id]);
+    await q("insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, $2, $1, '{}', 'exp-v1')", [owner, id]);
+    await q("delete from engagements where id = $1", [id]);
+    for (const t of ["engagement_scope_hosts", "exploit_chains", "exploit_simulations"]) {
+      const left = await q(`select 1 from ${t} where engagement_id = $1`, [id]);
+      expect(left.rowCount, t).toBe(0);
     }
   });
 

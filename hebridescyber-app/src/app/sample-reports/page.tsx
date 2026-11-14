@@ -235,7 +235,7 @@ function FindingRow({ finding }: { finding: Finding }) {
       <p className="text-xs text-cybertext/70 mb-2">{finding.detail}</p>
       <div className="rounded-sm bg-neon/5 border border-neon/10 px-3 py-2">
         <p className="text-xs text-neon/70">
-          <span className="font-mono text-neon/40">// fix: </span>
+          <span className="font-mono text-neon/70">// fix: </span>
           {finding.remediation}
         </p>
       </div>

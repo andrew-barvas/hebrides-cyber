@@ -11,6 +11,7 @@ import { generateWebhookSecret } from "@/lib/webhooks";
 import { logAuditEvent } from "@/lib/audit";
 import { validateNoSsrf } from "@/lib/ownership";
 import { parseBody } from "@/lib/validate";
+import { respondInternalError } from "@/lib/apiError";
 
 const createSchema = z.object({
   url: z.string().url("url must be a valid URL"),
@@ -38,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("owner", caller.ownerId)
       .order("created_at", { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "webhooks", error);
     return res.status(200).json({ webhooks: data ?? [] });
   }
 
@@ -89,7 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id, name, url, created_at")
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "webhooks", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,
@@ -117,7 +118,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", id)
       .eq("owner", caller.ownerId);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return respondInternalError(res, "webhooks", error);
 
     await logAuditEvent(supabaseAdmin, {
       actorId: caller.ownerId,

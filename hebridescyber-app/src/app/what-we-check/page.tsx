@@ -356,6 +356,7 @@ export default function WhatWeCheckPage() {
           </p>
         </div>
 
+        <h2 className="sr-only">Check categories</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {categories.map((c) => (
             <CategoryCard key={c.id} category={c} />
@@ -613,6 +614,25 @@ export default function WhatWeCheckPage() {
                 manual penetration testing
               </Link>{" "}
               — a human tester, not a scanner, is what actually finds these.
+            </p>
+          </div>
+        </div>
+
+        {/* Third-party tools. The Nmap notice is required by the Nmap Public Source
+            License §6 for a hosted service that runs Nmap scans (SCANNER-INVENTORY.md). */}
+        <div className="mt-16" id="open-source-tools">
+          <h2 className="mb-1 text-xl font-bold text-cybertext">Open-source tools we run</h2>
+          <div className="mt-4 rounded-xl border border-cyberborder bg-cyberpanel p-6 text-sm text-cybertext/70">
+            <p>
+              <strong className="text-cybertext">This service uses the Nmap Security Scanner</strong> to
+              perform its network service detection.{" "}
+              <a href="https://nmap.org/" className="text-neon underline hover:text-cybertext" rel="noopener noreferrer">
+                https://nmap.org/
+              </a>
+            </p>
+            <p className="mt-3">
+              Scheduled scans also run other open-source tools, including nuclei, OWASP ZAP, testssl.sh,
+              Trivy, Gitleaks and Opengrep, each unmodified, as a separate program under its own licence.
             </p>
           </div>
         </div>

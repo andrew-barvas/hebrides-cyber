@@ -18,12 +18,14 @@ had been right, and the module that settled it.
 
 - [Scan flow, queue and cadence](#scan-flow-two-step-proof-of-ownership-queue-backed)
 - [Scanner pipeline](#scanner-pipeline)
+- [Microsoft 365 / Entra ID posture](#microsoft-365--entra-id-posture-p1-4)
 - [Dependency checks, CI templates, accuracy benchmark](#pull-request-dependency-checks-e-71)
 - [Remediation, tickets, finding lifecycle, alerts, admin panel](#real-remediation-prs-vs-ai-tailored-fixes-vs-static-remediation-text-vs-the-remediation-pack)
 - [Portfolio, findings view, GitHub access, content generation](#portfolio-report-agency)
 - [Sign-up, erasure, secrets at rest, audit log](#sign-up-password-reset-and-auto-provisioned-profiles)
 - [Mobile & PWA, database schema](#mobile--pwa)
 - [Database tests, signed-in e2e, deployment](#deployment)
+- [UI, rate limiting and payments](#ui-rate-limiting-and-payments)
 
 ---
 
@@ -118,6 +120,10 @@ It never changes severity, score or `findingLifecycle`. Full design: `AI-TRIAGE-
 `sessionCheck.ts` also samples session tokens and `tokenEntropy.ts` (pure) judges them. Burp
 comparison: `BURP-PARITY.md`.
 
+## Microsoft 365 / Entra ID posture (P1-4)
+
+Read-only checks of a customer's Microsoft 365 tenant, the `m365` extended tool (`full`, `osint` and the Lookout `exposure` profile). A Global Administrator consents our multi-tenant Entra app once: `POST /api/account/m365-connect` (Pro and above, session only) returns Microsoft's v2 admin-consent URL with an HMAC-signed `state` and sets an HttpOnly nonce cookie scoped to the callback; `GET /api/account/m365-callback` (no session, IP rate-limited) needs both to match (`m365Consent.ts`), then asks for an app-only token for the returned tenant and checks its `roles` claim against `M365_REQUIRED_APP_ROLES` before saving anything, so neither a forged `tenant` parameter nor a partial consent is stored. `DELETE /api/account/m365-connect` forgets the tenant and tells the admin how to delete our enterprise app, which our read-only permissions can't do. Table `m365_tenants` (migration 068): owner, tenant ID, consent and last-checked times, owner-readable, service-role writes, no secret of the customer's. Our credential is `M365_CLIENT_ID`/`M365_CLIENT_SECRET`, environment only; the token lives for one scan. `scanners/m365Posture.ts` holds one pure function per check over the Graph JSON, so the tests replay hand-built responses; `runM365PostureChecks` runs in `executeScan()` next to `cloudPosture`. Any failed Graph read makes that check, and so the whole `extended.m365` result, `error` (rule 7); evidenced findings from the other checks are still kept. Limits (Graph has no read for them): mailbox-level forwarding, the outbound spam policy and the Purview unified audit switch. Design, permissions, the developer-tenant test plan and the privacy text: `docs/M365-POSTURE.md`.
+
 ## Uptime monitoring (bring your own UptimeRobot)
 
 UptimeRobot's terms bar reselling or white-labelling its monitoring and bar extra accounts to dodge the per-account cap, so each Pro-and-above customer connects **their own** UptimeRobot account. `uptimeRobot.ts` is the v3 client (written from UptimeRobot's published OpenAPI spec; unknown statuses map to `unknown`, never `up`; the key is only sent to `api.uptimerobot.com`), behind the `UptimeProvider` interface in `uptimeProvider.ts` so a native checker can replace it later. `uptimeService.ts` holds the logic: `decideUptimeAlert` (one down and one recovered message per outage, tracked by `uptime_monitors.down_alerted_at`), `planSync`, `syncOwnerMonitors` and `createMonitorsForTargets` (only targets the owner monitors AND has verified). Routes: `POST/DELETE /api/account/uptime-integration`, `POST /api/uptime/monitors`, `GET /api/uptime/status` (cached, refreshed when older than 5 minutes). `sync-uptime-monitors.ts` + `uptime-sync.yml` refresh every 15 minutes and send alerts through `uptimeAlerts.ts` (owner's Slack/Teams webhooks and email). The cron's loop is `syncAllOwners`, which checks `planGate("pro")` per owner and skips a lapsed subscription without using its key. The down/recovered write is a compare-and-set on `down_alerted_at` and the message goes only if that write lands, so the cron and a dashboard refresh syncing the same owner at once announce an outage once. `GET /api/uptime/status` flags a monitor `missing` when the last successful sync did not find it (deleted in UptimeRobot), and the card shows "Not found" rather than its stale status. Tables (migration 062): `uptime_integrations` (key encrypted, no client policy) and `uptime_monitors` (owner-readable). UI: `UptimeMonitoringConfig` on `/dashboard/integrations`, and an "Uptime: …" badge per site in `MonitoredTargets` (Assets), read from the same status route; both use `uptimeLabels.ts` so they describe a monitor the same way, and a site with no monitor, or any failure, shows no badge rather than a guess. A failed provider call never changes a stored status.
@@ -149,6 +155,10 @@ Five distinct, non-overlapping "help me fix this" features — don't conflate th
 - **Auto-close** — `src/lib/ticketAutoClose.ts`, called from `executeScan()`'s Phase 2 alongside the other notification hooks (same never-throw contract). Consumes `ScanReport.fixed_findings`, which `findingsDiff.ts` already computes — it does not form a second opinion about what counts as fixed. **Opt-in via `ticket_integrations.auto_close_enabled`, default false**: transitioning an issue in someone else's tracker is a visible action in a system this app doesn't own, and an account that connected Jira before this existed must never find its board moving on its own.
 - Jira has no "set status" API — `transitionJiraIssueToDone()` lists the issue's *currently available* transitions and picks one whose target `statusCategory.key === "done"`, rather than string-matching a name like "Done" which breaks on any customised workflow. Linear's `WorkflowState.type` vocabulary is fixed workspace-wide, so its equivalent needs no such care.
 - Close happens *before* the comment, deliberately: a workflow with no available done-transition would otherwise collect an identical "verified as fixed" comment on every nightly scan forever, since nothing records that we already said it.
+
+## Exploitability assessments
+
+`src/lib/exploitability/` scores how usable a stored finding looks to an outside attacker, as observed on that host. It is pure analysis of findings the scan already holds: it sends nothing, and an ESLint block, an import-graph test and a network-trap test enforce that. `executeScan()` runs it for every profile immediately after `scoreFromFindings`, so it can't change the score or a severity, and an engine failure never fails the scan. Assessed findings gain `Finding.exploitabilityAssessment` (the summary), which is separate from the three-tier `Finding.exploitability` verdict in `exploitabilityVerdict.ts`. Each full assessment goes in `exploitability_assessments` (`071_exploitability_analysis.sql`, owner-readable, service-role-write-only; before 071 the writes no-op). Only finding types in the precondition catalogue are assessed, so absence means "not assessed", never "not exploitable". A false positive gets no assessment, and its rows from earlier scans are marked `superseded`. `engagements` and `engagement_scope_hosts` (`070_engagements.sql`) and `exploit_chains` and `exploit_simulations` (071) exist for the later engagement work. `exploitability/scope/` holds the pure engagement state machine and `checkScope`, the fail-closed scope guard, and `load.ts` gathers its facts, but no route or worker calls them yet, nothing writes these tables, and the worker gate is unchanged. Reads go through `exploitability/load.ts`: `GET /api/exploitability/assessments` (`?scanId=`, or `/{id}`) and the mirror `GET /api/v1/scans/{id}/exploitability`, Pro and up, with API-key reads audited as `exploitability_assessment.viewed`; before 071 they answer 503. `/dashboard/findings` shows a band chip on assessed Pro-and-up rows, and "Why?" opens the conditions and factors. Under a non-intrusive profile (`exposure`, `safe`) the band can't be `reproduced` and every surface reads "assessed" (`non_intrusive`, 072; `exploitability/labels.ts`). The executive report has a "What to fix first, and why" section, and `estatePriority.ts` takes the score as a ×0.7 to ×1.3 factor; both only apply to Pro-and-up rows.
 
 ## Finding lifecycle and remediation SLAs
 
@@ -314,6 +324,7 @@ Key tables (all in `sql/migrations/`):
 - `repo_connections` — GitHub repos per user (unique on owner + repo; the most recently connected one is scanned until targets map to repos), gates `secretScan.ts`/`dependencyManifest.ts`/`dockerBaseImage.ts` (`009_repo_connections.sql`)
 - `monitored_targets` — agency-tier sites for nightly scheduled scans
 - `contact_enquiries` — contact form submissions; service-role only (no browser RLS policy)
+- `m365_tenants` — the Microsoft 365 tenant an owner consented (`068_m365_tenants.sql`, unique on owner); tenant ID and timestamps only, owner-readable, service-role-write-only — see "Microsoft 365 / Entra ID posture (P1-4)"
 - `verifications` — domain ownership tokens
 - `blog_posts` — both the daily blog and weekly newsletter live here, differentiated only by slug prefix (`cyber-brief-` vs `week-of-`); a row needs both `status = 'published'` and `published_at` non-null to be publicly visible
 - `audit_logs` — see "Audit log" below
@@ -331,3 +342,121 @@ When adding a new scanner check or API route: a unit test belongs alongside it p
 Azure Static Web Apps hybrid mode (not pure static export) is the default, live path. Every route (App Router pages, `pages/api/*`) is served by the managed Next.js server (Oryx-provisioned Functions), which bypasses `staticwebapp.config.json`'s `globalHeaders` entirely — confirmed by curling production and finding CSP/X-Frame-Options/etc. absent even on a 404, with only platform-level HSTS coming through. **Security headers are set in `next.config.mjs`'s own `headers()`**, which runs inside the Next.js response path and is what actually applies in production; `staticwebapp.config.json`'s `globalHeaders` is kept in sync as a fallback for any file served as a pure static asset without hitting the Next server, but is not load-bearing. Keep both files in sync if the header policy changes. `next.config.mjs` also sets `poweredByHeader: false`.
 
 **Alternate path: Azure Container Apps** (`Dockerfile`, `.github/workflows/deploy-containerapp.yml`, the `azurerm_container_registry`/`azurerm_container_app*` resources in `azure/terraform/main.tf`) — exists to get off SWA's Free-tier Functions execution ceiling (the same ceiling that already forced the queue-worker architecture above) without adopting a second cloud. Deliberately parallel, not a migration: `deploy.yml` still owns the live push-to-master deploy; `deploy-containerapp.yml` is `workflow_dispatch`-only. `next.config.mjs`'s `output: 'standalone'` only activates when the Dockerfile's build stage sets `NEXT_OUTPUT_MODE=standalone` — Oryx's SWA build never sets that var, so its build output is untouched by this path's existence. Not yet applied anywhere; see that Terraform block's own comments for the TODOs (globally-unique names, secret values) before a real `terraform apply`.
+
+## UI, rate limiting and payments
+
+Moved verbatim from CLAUDE.md on 2026-11-01.
+
+#### Theme system
+
+Tailwind `darkMode: 'class'`. `ThemeScript` in `src/app/layout.tsx` adds `dark`
+to `<html>` on load unless `localStorage.getItem('hc-theme') === 'light'`.
+Default is dark (cyber theme).
+
+**The cyber tokens are CSS variables, not fixed hex.** The `@theme` block in
+`src/app/globals.css` maps them to `rgb(var(--c-*))` (Tailwind 4 has no
+`tailwind.config`; it builds `/50` opacity modifiers with `color-mix()`, so no
+`<alpha-value>` placeholder is needed), and the `:root` / `.dark` blocks in the
+same file hold the two palettes. This is what makes light mode work: any
+surface built from these tokens re-themes automatically, with no `dark:`
+variant on any of the ~700 usages.
+
+**Tailwind 4 cascade-layer rule (easy to break, silent when you do).** In v4
+utilities live in a CSS layer, and *unlayered* CSS beats every layered rule
+whatever its specificity. So any element-level rule in `globals.css` (`html`,
+`body`, `a, button`, `input`, `:focus-visible`…) must sit inside `@layer base`,
+or it will override a component's own `h-6` / `min-h-0` / `text-sm` /
+`focus-visible:outline-none`. Custom classes meant to *beat* utilities (the
+light/dark opacity-parity overrides, `.bg-grid`, `.text-glow`) are deliberately
+unlayered. Also: the `next/font` variable is `--font-jetbrains-mono`, not
+`--font-mono` — Tailwind's own `--font-mono` theme variable points at it, and
+naming them the same makes the variable reference itself.
+
+| Token | Role | Light | Dark |
+|-------|------|-------|------|
+| `cyberbg` | page background | `#F6F7F9` | `#070B14` |
+| `cyberpanel` | card/panel background | `#FFFFFF` | `#0D1524` |
+| `cyberborder` | borders on panels | `#D6DCE4` | `#1C2940` |
+| `cybertext` | primary body text | `#2F3A44` | `#FFFFFF` |
+| `neon` | accent, links, glow | `#067A5B` | `#39FFC0` |
+
+Rules when adding UI:
+
+- **Never use `text-white` on a themed surface** — it cannot follow the theme
+  and turns invisible in light mode. Use `text-cybertext`. `text-white` is
+  correct only on a permanently dark background such as `bg-atlantic`.
+- Same for `bg-white/N` and `border-white/N` overlays — use `bg-cybertext/N`.
+- Fixed brand colours (`atlantic`, `seafoam`, `heather`, `slatedark`,
+  `slatelight`) do not change between themes. Pair them with an explicit text
+  colour rather than letting text inherit.
+- Low-opacity steps of `cybertext` and `neon` get an alpha boost in light mode
+  (the parity block in `globals.css`). Alpha tuned for white-on-black reads far
+  too faint as dark-on-light — `/40` would otherwise sit at ~2.1:1 contrast.
+- `shadow-glow` / `shadow-glowsm` vary by theme too; the neon bloom is dialled
+  right down in light mode.
+
+Three more per-theme tokens meet WCAG AA without the parity overrides above —
+prefer them over alpha steps in new code: `cybermuted` (secondary text),
+`danger`, `warning`. The shadcn/ui names (`bg-primary`,
+`text-muted-foreground`, `border-input`, …) are aliases onto the same variables
+so CLI-generated components render on-brand; don't use them in hand-written
+code.
+
+#### UI primitives
+
+New UI is composed from `src/components/ui/` — the shadcn/ui pattern,
+hand-written against the cyber tokens (lowercase filenames there, matching
+shadcn). Current set: `button` (primary/secondary/ghost/danger; `asChild` to
+style a `<Link>`; defaults to `type="button"`), `card` (+`CardTitle`, the
+`// section` overline with the `//` hidden from screen readers), `input`/`label`
+(every input gets a label, `sr-only` if visually redundant), `alert` (danger →
+`role="alert"`, else `role="status"`), `stat-card`, `segmented-control`
+(`aria-pressed`), `page-header`, `empty-state`, `skeleton`. Use `cn()`
+(`src/lib/utils.ts`) so callers can override classes. Don't hand-roll another
+panel/button/input — the older feature components still do, and migrate
+incrementally.
+
+#### App shell
+
+`src/components/app-shell/AppShell.tsx`, mounted by
+`src/app/dashboard/layout.tsx` and `src/app/account/layout.tsx`: sidebar (lg+)
+or scrolling section tabs, plus one session + subscription load exposed through
+`useAppSession()`. Use its `plan` for feature gating (the stored plan only while
+`status === "active"`, else `"none"`) and `billingPlan` for billing display. It
+also runs the MFA (AAL2) step-up redirect for every route it wraps —
+`proxy.ts` only checks authentication. Pages inside it render content only:
+no `min-h-screen`/`bg-grid` wrapper, no "← Dashboard" button.
+
+| Route | Holds |
+|---|---|
+| `/dashboard` | Overview — KPIs, trends, latest findings, onboarding checklist |
+| `/dashboard/scans` | `RunScanForm` + paginated scan list |
+| `/dashboard/scans/history` | Trends (per-site score/category history) |
+| `/dashboard/assets` | domain verification, monitored sites, discovered inventory |
+| `/dashboard/findings` | every open finding across all sites (E-74) |
+| `/dashboard/sla` | remediation SLAs — deadlines, time-to-fix, targets (Agency) |
+| `/dashboard/integrations` | every external connection; plan-gated ones render `LockedFeature` |
+| `/account` | profile, billing, branding, team, 2FA, audit requests, deletion |
+
+Nav items and active-state matching live in `AppNav.tsx` (`NAV_ITEMS`,
+`activeNavHref` — longest segment-prefix wins).
+
+#### Rate limiting
+
+`src/lib/rateLimit.ts` uses Upstash Redis (`UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN`) for shared state across Function instances. Falls
+back to an in-memory `Map` in dev — not safe across instances; don't rely on it
+in production. `getClientIp` takes the entry `TRUSTED_PROXY_HOPS` (default 2)
+from the right of `X-Forwarded-For` and strips the port; `GET /api/client-ip`
+returns what it resolves — probe it with a forged header after any hosting
+change. See rule 18.
+
+#### Payments
+
+Stripe webhooks at `src/pages/api/stripe/webhook.ts` update `subscriptions` on
+`checkout.session.completed`, `invoice.payment_failed` and
+`customer.subscription.deleted`. Requires `STRIPE_WEBHOOK_SECRET` and the
+`STRIPE_PRICE_*` vars. Until the price IDs are set, checkout answers 503
+`checkout_unavailable` (customer wording plus a contact link on /pricing; the
+missing variable is logged server-side, never sent to the browser). `plan` is
+free-text, so adding a tier is a code change, not a schema one. Gating: rule 17.

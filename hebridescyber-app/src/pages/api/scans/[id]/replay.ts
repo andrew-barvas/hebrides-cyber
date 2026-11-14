@@ -49,6 +49,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { validateNoSsrf, isDomainVerified } from "@/lib/ownership";
 import { triggerOnDemandWorkflow } from "@/lib/onDemandScanTrigger";
 import { callerCanActFor } from "@/lib/teamAccess";
+import { respondInternalError } from "@/lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -98,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .insert({ owner: actingOwnerId, target_url: scan.target_url, status: "running", owner_verified: true })
     .select("id")
     .single();
-  if (insertError || !newScan) return res.status(500).json({ error: insertError?.message ?? "Failed to create replay scan" });
+  if (insertError || !newScan) return respondInternalError(res, "scans/[id]/replay", insertError, { publicMessage: "Failed to create replay scan" });
 
   const { error: jobError } = await supabaseAdmin.from("scan_jobs").insert({
     owner: actingOwnerId,
@@ -109,7 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
   if (jobError) {
     await supabaseAdmin.from("scans").update({ status: "failed" }).eq("id", newScan.id);
-    return res.status(500).json({ error: `Failed to queue replay: ${jobError.message}` });
+    return respondInternalError(res, "scans/[id]/replay", jobError, { publicMessage: "Failed to queue replay." });
   }
 
   // See this module's header for why only a "safe" replay gets the fast
