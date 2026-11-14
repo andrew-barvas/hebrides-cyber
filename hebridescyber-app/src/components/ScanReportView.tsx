@@ -57,7 +57,7 @@ export type ViewFinding = {
     ransomware?: boolean;
     epss?: number;
     epssPercentile?: number;
-    publicExploit?: { exploitDbIds: string[] };
+    publicExploit?: { exploitDbIds?: string[]; githubPoc?: boolean };
   };
   /** Scanner metadata; only `proofOfExploit` is read here (see proofEvidence.ts). */
   metadata?: Record<string, unknown>;
@@ -115,6 +115,15 @@ export function sortFindingsBySeverity<T extends { severity: Severity; threatInt
   return [...list].sort(
     (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) || exploitRank(b) - exploitRank(a)
   );
+}
+
+/** The "Public exploit" badge's tooltip: which public sources list exploit code. */
+export function publicExploitTitle(p: { exploitDbIds?: string[]; githubPoc?: boolean }): string {
+  const sources = [
+    ...((p.exploitDbIds?.length ?? 0) > 0 ? [`Exploit-DB (${p.exploitDbIds!.map((id) => `EDB-${id}`).join(", ")})`] : []),
+    ...(p.githubPoc ? ["GitHub (listed by PoC-in-GitHub)"] : []),
+  ];
+  return `Public exploit code is listed on ${sources.join(" and ")}, so attackers don't need to write their own`;
 }
 
 export function formatEpss(epss: number): string {
@@ -666,10 +675,10 @@ export function FindingCard({
             Actively exploited{finding.threatIntel.ransomware ? " · ransomware" : ""}
           </span>
         )}
-        {(finding.threatIntel?.publicExploit?.exploitDbIds.length ?? 0) > 0 && (
+        {((finding.threatIntel?.publicExploit?.exploitDbIds?.length ?? 0) > 0 || finding.threatIntel?.publicExploit?.githubPoc === true) && (
           <span
             className="rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning"
-            title={`Public exploit code is listed on Exploit-DB (${finding.threatIntel!.publicExploit!.exploitDbIds.map((id) => `EDB-${id}`).join(", ")}), so attackers don't need to write their own`}
+            title={publicExploitTitle(finding.threatIntel!.publicExploit!)}
           >
             Public exploit
           </span>
