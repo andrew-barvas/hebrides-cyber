@@ -46,6 +46,7 @@ concurrency:
 jobs:
   enqueue:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -66,6 +67,11 @@ jobs:
   work:
     needs: enqueue
     runs-on: ubuntu-latest
+    # Install (~5 min) + the worker's 25-minute claim budget + a full-profile scan
+    # still running at that point (its tool timeouts sum to about an hour). Without
+    # this a hung job ran to GitHub's 6-hour default
+    # (361 minutes on 2026-08-19).
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       # Fixed-size shard pool, not one matrix entry per target — SKIP LOCKED
@@ -152,7 +158,7 @@ jobs:
           DALFOX_VERSION: 3.2.4
           DALFOX_SHA256: aaef3f3d26d2de6d4e61ef5295151d9de36e111981618136ac7ec54b578582b8
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/hahwul/dalfox/releases/download/v${DALFOX_VERSION}/dalfox-v${DALFOX_VERSION}-linux-x86_64.tar.gz" \
             -o /tmp/dalfox.tar.gz
           echo "${DALFOX_SHA256}  /tmp/dalfox.tar.gz" | sha256sum -c -
@@ -177,7 +183,7 @@ jobs:
           # nuclei binary above.
           NUCLEI_TEMPLATES_VERSION: v10.5.1
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/projectdiscovery/nuclei/releases/download/${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION#v}_linux_amd64.zip" \
             -o /tmp/nuclei.zip
           echo "${NUCLEI_SHA256}  /tmp/nuclei.zip" | sha256sum -c -
@@ -210,7 +216,7 @@ jobs:
           SUBFINDER_VERSION: v2.17.0
           SUBFINDER_SHA256: a39c3e5c7a26ef3c430915c4d6cbf7716a00f26769a75e9405aba796142eba37
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/projectdiscovery/subfinder/releases/download/${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION#v}_linux_amd64.zip" \
             -o /tmp/subfinder.zip \
             && echo "${SUBFINDER_SHA256}  /tmp/subfinder.zip" | sha256sum -c - \
@@ -230,7 +236,7 @@ jobs:
           HTTPX_VERSION: v1.12.0
           HTTPX_SHA256: 9d8439e8b6c9aa7d1e2314817a392e00d5178da3af5652f7475f88868f418f76
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/projectdiscovery/httpx/releases/download/${HTTPX_VERSION}/httpx_${HTTPX_VERSION#v}_linux_amd64.zip" \
             -o /tmp/httpx.zip \
             && echo "${HTTPX_SHA256}  /tmp/httpx.zip" | sha256sum -c - \
@@ -250,7 +256,7 @@ jobs:
           KATANA_VERSION: v1.8.0
           KATANA_SHA256: cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/projectdiscovery/katana/releases/download/${KATANA_VERSION}/katana_${KATANA_VERSION#v}_linux_amd64.zip" \
             -o /tmp/katana.zip \
             && echo "${KATANA_SHA256}  /tmp/katana.zip" | sha256sum -c - \
@@ -274,7 +280,7 @@ jobs:
           NAABU_SHA256: 018c4c9884dea971eda860435ede3021d1150732f34cfd245498c6726d8cab90
         run: |
           sudo apt-get install -y libpcap-dev >/dev/null 2>&1 || true
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/projectdiscovery/naabu/releases/download/${NAABU_VERSION}/naabu_${NAABU_VERSION#v}_linux_amd64.zip" \
             -o /tmp/naabu.zip \
             && echo "${NAABU_SHA256}  /tmp/naabu.zip" | sha256sum -c - \
@@ -295,7 +301,7 @@ jobs:
           FFUF_VERSION: 2.3.0
           FFUF_SHA256: b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \
             -o /tmp/ffuf.tar.gz \
             && echo "${FFUF_SHA256}  /tmp/ffuf.tar.gz" | sha256sum -c - \
@@ -319,7 +325,7 @@ jobs:
           GITLEAKS_VERSION: 8.30.1
           GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             -o /tmp/gitleaks.tar.gz \
             && echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c - \
@@ -351,7 +357,7 @@ jobs:
           TRIVY_VERSION: 0.76.0
           TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
             -o /tmp/trivy.tar.gz \
             && echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c - \
@@ -375,7 +381,7 @@ jobs:
           OPENGREP_VERSION: 1.31.0
           OPENGREP_SHA256: dbbe3c2058dbe600c449a8ba22ea79a1643a6660658400090d0323a8d0d31147
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86" \
             -o /tmp/opengrep \
             && echo "${OPENGREP_SHA256}  /tmp/opengrep" | sha256sum -c - \
@@ -399,7 +405,7 @@ jobs:
           PROWLER_SHA256: 8921b03330bc17182d7ed7260afe285bb6096829cacb14a74baa9d6914aef5b6
         run: |
           set -euo pipefail
-          curl -fsSL             "https://files.pythonhosted.org/packages/23/fa/bf388f40a49322653af49a07d515354758f1915767448e56b1af4824ed38/prowler-${PROWLER_VERSION}-py3-none-any.whl"             -o "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30             "https://files.pythonhosted.org/packages/23/fa/bf388f40a49322653af49a07d515354758f1915767448e56b1af4824ed38/prowler-${PROWLER_VERSION}-py3-none-any.whl"             -o "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
           echo "${PROWLER_SHA256}  /tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl" | sha256sum -c -
           sudo python3 -m venv /opt/prowler
           sudo /opt/prowler/bin/pip install --quiet "/tmp/prowler-${PROWLER_VERSION}-py3-none-any.whl"
@@ -490,7 +496,7 @@ jobs:
           # setup.py and runs as `python3 photon.py`, so a real install would be a
           # pinned clone plus a launcher, and photon.ts has never been run against
           # its output. Until then photon stays not_configured, and out of `full`.
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/jaeles-project/gospider/releases/download/v${GOSPIDER_VERSION}/gospider_v${GOSPIDER_VERSION}_linux_x86_64.zip" \
             -o /tmp/gospider.zip
           echo "${GOSPIDER_SHA256}  /tmp/gospider.zip" | sha256sum -c -
@@ -508,7 +514,7 @@ jobs:
           KITERUNNER_VERSION: 1.0.2
           KITERUNNER_SHA256: 6f0b70aabf747de592445a690281897eebbc45927e9264185d34ffb11637613b
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
             "https://github.com/assetnote/kiterunner/releases/download/v${KITERUNNER_VERSION}/kiterunner_${KITERUNNER_VERSION}_linux_amd64.tar.gz" \
             -o /tmp/kiterunner.tar.gz
           echo "${KITERUNNER_SHA256}  /tmp/kiterunner.tar.gz" | sha256sum -c -
@@ -670,6 +676,7 @@ jobs:
     needs: [enqueue, work]
     if: always() && needs.enqueue.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

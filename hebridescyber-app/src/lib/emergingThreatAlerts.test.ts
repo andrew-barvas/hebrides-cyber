@@ -265,19 +265,28 @@ describe("runEmergingThreatCheck", () => {
     await expect(run()).rejects.toThrow(/KEV feed could not be read/);
   });
 
-  it("skips a CVE whose NVD lookup failed and reports it — never 'not affected'", async () => {
+  it("skips a CVE whose NVD lookup failed and retries it next run — never 'not affected'", async () => {
     nvdRoute = () => new Response("", { status: 500 });
     const summary = await run();
     expect(summary.cvesEvaluated).toEqual([]);
-    expect(summary.errors).toEqual(["NVD responded 500 for CVE-2021-41773"]);
+    expect(summary.lookupsToRetry).toEqual(["NVD responded 500 for CVE-2021-41773"]);
+    expect(summary.errors).toEqual([]);
     expect(upserts).toEqual([]);
   });
 
   it("skips a CVE whose OSV lookup failed", async () => {
     osvRoute = () => new Response("", { status: 502 });
     const summary = await run();
-    expect(summary.errors).toEqual(["OSV responded 502 for CVE-2021-41773"]);
+    expect(summary.lookupsToRetry).toEqual(["OSV responded 502 for CVE-2021-41773"]);
     expect(summary.matches).toEqual([]);
+  });
+
+  it("fails on a lookup error on the CVE's last day in the window, so nothing drops out unchecked", async () => {
+    nvdRoute = () => new Response("", { status: 500 });
+    // Added 2026-09-30; with a 3-day window that is its last day on 2026-10-03.
+    const summary = await run({ now: new Date("2026-10-03T12:00:00Z") });
+    expect(summary.lookupsToRetry).toEqual([]);
+    expect(summary.errors).toEqual(["NVD responded 500 for CVE-2021-41773 (last check before it leaves the 3-day window)"]);
   });
 
   it("treats a CVE NVD hasn't analysed yet as pending, not an error", async () => {
@@ -319,11 +328,25 @@ describe("lookupCve", () => {
     ]);
   });
 
-  it("reports a network failure as an error", async () => {
+  it("reports a network failure as an error after one retry", async () => {
+    let calls = 0;
     nvdRoute = () => {
+      calls++;
       throw new Error("socket hang up");
     };
     expect(await lookupCve("CVE-2021-41773", undefined, noSleep)).toEqual({ status: "error", note: "NVD lookup for CVE-2021-41773 failed: socket hang up" });
+    expect(calls).toBe(2);
+  });
+
+  it("recovers when NVD times out once", async () => {
+    let calls = 0;
+    const ok = nvdRoute;
+    nvdRoute = (...args: Parameters<typeof ok>) => {
+      calls++;
+      if (calls === 1) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      return ok(...args);
+    };
+    expect((await lookupCve("CVE-2021-41773", undefined, noSleep)).status).not.toBe("error");
   });
 });
 
