@@ -55,6 +55,7 @@ Lookout is an active assessment, not passive observation. To find what an outsid
 - load pages from your websites, follow links on them (up to 50 pages, respecting your robots.txt) and read the files those pages link to
 - request a fixed list of well-known file locations, such as old backups and configuration files, to see whether any are public
 - connect to common network ports on your addresses to see which services answer, and identify the software behind them
+- ask each of your domain's name servers once for a full copy of its DNS records (a zone transfer), which a correctly set-up server refuses
 - connect to your website's secure (HTTPS) port many times, offering different encryption settings, to see which old or weak ones it still accepts
 - check for known misconfigurations and exposed admin pages
 - submit your login page five times with made-up details, to check that it slows down repeated attempts

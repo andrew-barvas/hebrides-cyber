@@ -25,6 +25,20 @@ import { parseNmapXml, type NmapPort } from "./nmap";
 import { PORT_RISK, type PortRisk } from "../../lib/scanners/portRisk";
 import type { CveIndex } from "../../lib/cveIndex";
 import { matchServiceCves, incompleteServiceChecks, SERVICE_EOL_CHECK, SERVICE_VERSION_UNKNOWN_CHECK, type ServiceCveOptions, type ServiceCveResult } from "./serviceCve";
+import type { Finding } from "../../lib/scanners";
+import { registrableDomain } from "../../lib/scanners/registrableDomain";
+import { NETWORK_SSH_WEAK, NETWORK_TLS_CERT, NETWORK_ZONE_TRANSFER } from "../../lib/scanners/remediationText";
+import {
+  edgeProvider,
+  runSshAudit,
+  runTlsx,
+  runZoneTransferCheck,
+  SSH_ALGORITHM_CHECK,
+  SSH_CVE_CHECK,
+  TLS_CERT_CHECK,
+  ZONE_TRANSFER_CHECK,
+  type ToolOutcome,
+} from "./exposureHelpers";
 
 const NAABU_TIMEOUT_MS = 180_000;
 const NMAP_TIMEOUT_MS = 120_000;
@@ -49,7 +63,11 @@ export type NetworkExposureResult =
       serviceCves: ServiceCveResult;
       /** checkId prefixes this run could not evaluate (see findingLifecycle.ts). */
       incompleteChecks: string[];
+      /** ssh-audit, tlsx and zone-transfer findings (exposureHelpers.ts). */
+      findings: Finding[];
     }
+  /** The host is a CDN or WAF edge, so its ports were not scanned (cdncheck). Never "clean". */
+  | { status: "not_applicable"; host: string; ports: []; note: string; findings: Finding[] }
   | { status: "not_configured"; host: string; ports: [] }
   | { status: "error"; host: string; ports: []; note: string };
 
@@ -104,6 +122,33 @@ export async function runNetworkExposure(targetUrl: string, options: NetworkExpo
     return { status: "error", host: targetUrl, ports: [], note: "Invalid URL" };
   }
 
+  // The zone-transfer check is about the domain's name servers, not this
+  // host's ports, so it runs whatever the port scan does.
+  const domain = registrableDomain(hostname);
+  const zonePromise: Promise<ToolOutcome<Finding[]>> = domain
+    ? runZoneTransferCheck(domain, NETWORK_ZONE_TRANSFER)
+    : Promise.resolve({ status: "error", note: "no registrable domain" });
+  const helperFindings: Finding[] = [];
+  const helperIncomplete: string[] = [];
+  const collect = (outcome: ToolOutcome<Finding[]>, prefixes: string[]) => {
+    if (outcome.status === "checked") helperFindings.push(...outcome.value);
+    else helperIncomplete.push(...prefixes);
+  };
+
+  // 0. A CDN or WAF edge: its ports are the provider's, so don't scan them.
+  // cdncheck absent or failing leaves the scan as it was before this gate.
+  const edge = await edgeProvider(hostname);
+  if (edge.status === "checked" && edge.value) {
+    collect(await zonePromise, [ZONE_TRANSFER_CHECK]);
+    return {
+      status: "not_applicable",
+      host: hostname,
+      ports: [],
+      note: `${hostname} is served through ${edge.value}, so its open ports belong to the provider and were not scanned. Scan the origin server's own address to check it.`,
+      findings: helperFindings,
+    };
+  }
+
   // 1. naabu top-1000 discovery.
   let openPorts: number[];
   try {
@@ -121,7 +166,15 @@ export async function runNetworkExposure(targetUrl: string, options: NetworkExpo
 
   // Nothing open is a genuine, evidenced result — not an error.
   if (openPorts.length === 0) {
-    return { status: "completed", host: hostname, ports: [], serviceCves: { status: "checked", services: [], indexedThrough: null }, incompleteChecks: [] };
+    collect(await zonePromise, [ZONE_TRANSFER_CHECK]);
+    return {
+      status: "completed",
+      host: hostname,
+      ports: [],
+      serviceCves: { status: "checked", services: [], indexedThrough: null },
+      incompleteChecks: helperIncomplete,
+      findings: helperFindings,
+    };
   }
 
   // 2. nmap -sV service/version detection on exactly the discovered ports.
@@ -160,5 +213,27 @@ export async function runNetworkExposure(targetUrl: string, options: NetworkExpo
   const incompleteChecks = incompleteServiceChecks(serviceCves);
   // No banners at all: every service check is unevaluated, not just the CVE one.
   if (nmapFailed) incompleteChecks.push(SERVICE_EOL_CHECK, SERVICE_VERSION_UNKNOWN_CHECK);
-  return { status: "completed", host: hostname, ports, serviceCves, incompleteChecks };
+
+  // 3. Per-service follow-ups on what nmap identified. Without nmap, nothing
+  // says which ports speak SSH or TLS, so both are unevaluated.
+  const sshPorts = nmapFailed ? [] : identified.filter((p) => /ssh/i.test(p.service)).map((p) => p.port);
+  const tlsPorts = nmapFailed ? [] : identified.filter((p) => p.port !== 443 && /ssl|https|tls|imaps|pop3s|smtps/i.test(p.service)).map((p) => p.port);
+  const [sshOutcomes, tlsOutcome, zoneOutcome] = await Promise.all([
+    Promise.all(sshPorts.map((port) => runSshAudit(hostname, port, NETWORK_SSH_WEAK))),
+    runTlsx(hostname, tlsPorts, NETWORK_TLS_CERT),
+    zonePromise,
+  ]);
+  for (const o of sshOutcomes) collect(o, [SSH_ALGORITHM_CHECK, SSH_CVE_CHECK]);
+  collect(tlsOutcome, [TLS_CERT_CHECK]);
+  collect(zoneOutcome, [ZONE_TRANSFER_CHECK]);
+  if (nmapFailed) helperIncomplete.push(SSH_ALGORITHM_CHECK, SSH_CVE_CHECK, TLS_CERT_CHECK);
+
+  return {
+    status: "completed",
+    host: hostname,
+    ports,
+    serviceCves,
+    incompleteChecks: [...new Set([...incompleteChecks, ...helperIncomplete])],
+    findings: helperFindings,
+  };
 }
