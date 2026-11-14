@@ -16,8 +16,11 @@ function makeBuilder(table: string) {
     select: () => builder,
     eq: () => builder,
     ilike: () => builder,
-    insert: () => next(),
+    is: () => builder,
+    insert: () => builder,
+    delete: () => builder,
     maybeSingle: next,
+    single: next,
     then: (resolve: (v: unknown) => void) => next().then(resolve),
   };
   return builder;
@@ -85,5 +88,27 @@ describe("POST /api/team/members (invite) — E-02 plan gate", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(201);
+  });
+
+  it("creates a pending invitation with a one-time link when the address has no account", async () => {
+    queues.teams = [{ data: { id: TEAM_ID, owner_id: OWNER_ID }, error: null }];
+    queues.subscriptions = [{ data: { plan: "agency", status: "active" }, error: null }];
+    queues.users = [
+      { data: { is_admin: false }, error: null }, // planGate's admin check
+      { data: null, error: null }, // no account for this address
+    ];
+    queues.team_invites = [
+      { data: null, error: null }, // clear any earlier pending invite
+      { data: { id: "inv-1", expires_at: "2026-11-28T00:00:00Z" }, error: null }, // the insert
+    ];
+
+    const { req, res } = mockReqRes("POST", { team_id: TEAM_ID, email: "New@Example.com", role: "auditor" });
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(201);
+    const body = JSON.parse(res._getData());
+    expect(body).toMatchObject({ invited: "pending", email: "new@example.com", role: "auditor", expiresAt: "2026-11-28T00:00:00Z" });
+    expect(body.inviteUrl).toMatch(/\/join\/[A-Za-z0-9_-]{43}$/);
+    expect(logAuditEventMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "team.invite_created" }));
   });
 });

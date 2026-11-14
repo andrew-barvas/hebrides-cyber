@@ -15,6 +15,7 @@ import { planGate } from "@/lib/planAccess";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
 import { respondInternalError } from "@/lib/apiError";
+import { inviteUrl, newInviteToken } from "@/lib/teamInvites";
 
 type TeamRole = "admin" | "developer" | "auditor" | "member";
 type TeamRow = { id: string; owner_id: string };
@@ -98,8 +99,30 @@ async function invite(req: NextApiRequest, res: NextApiResponse, callerId: strin
     .maybeSingle();
 
   if (!invitee) {
-    return res.status(404).json({
-      error: `No Hebrides Cyber account found for ${normalizedEmail}. They need to sign up first, then you can add them.`,
+    // No account yet: a pending invite with a one-time link (migration 074).
+    // Email isn't sent from here, so the inviter shares the link; a new
+    // invite to the same address replaces any earlier pending one.
+    const { token, hash } = newInviteToken();
+    await supabaseAdmin.from("team_invites").delete().eq("team_id", teamId).eq("email", normalizedEmail).is("accepted_at", null);
+    const { data: created, error: inviteError } = await supabaseAdmin
+      .from("team_invites")
+      .insert({ team_id: teamId, email: normalizedEmail, role: memberRole, token_hash: hash, invited_by: callerId })
+      .select("id, expires_at")
+      .single();
+    if (inviteError || !created) return respondInternalError(res, "team/members", inviteError ?? new Error("invite not created"));
+    await logAuditEvent(supabaseAdmin, {
+      actorId: callerId,
+      action: "team.invite_created",
+      resourceType: "team",
+      resourceId: teamId,
+      metadata: { email: normalizedEmail, role: memberRole },
+    });
+    return res.status(201).json({
+      invited: "pending",
+      email: normalizedEmail,
+      role: memberRole,
+      inviteUrl: inviteUrl(token),
+      expiresAt: (created as { expires_at: string }).expires_at,
     });
   }
   if (invitee.id === team.owner_id) {
