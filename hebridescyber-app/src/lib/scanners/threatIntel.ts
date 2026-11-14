@@ -31,6 +31,17 @@ const EXPLOITDB_IDS_PER_CVE = 5;
 export type ExploitDbIndex = Map<string, string[]>;
 let exploitDbCache: { at: number; index: ExploitDbIndex } | null = null;
 
+/**
+ * PoC-in-GitHub (nomi-sec, CC0): one JSON file per CVE that has public
+ * proof-of-concept code on GitHub. Only the repository's file list is read,
+ * in one GitHub API call (about 12,000 paths, under 3 MB); no file and no
+ * exploit code is downloaded. Cached 24 hours, like the Exploit-DB index.
+ */
+export const POC_IN_GITHUB_TREE_URL = "https://api.github.com/repos/nomi-sec/PoC-in-GitHub/git/trees/master?recursive=1";
+const POC_TIMEOUT_MS = 30_000;
+export type PocIndex = Set<string>;
+let pocCache: { at: number; index: PocIndex } | null = null;
+
 const KEV_TIMEOUT_MS = 15_000;
 const EPSS_TIMEOUT_MS = 8_000;
 /** EPSS accepts a comma-separated list; keep URLs well under 2k chars. */
@@ -177,6 +188,34 @@ function* csvRows(text: string): Generator<string[]> {
   }
 }
 
+/** Pure: CVE ids from the tree listing. Null when the listing was truncated or empty (not "no PoCs"). */
+export function parsePocTree(body: unknown): PocIndex | null {
+  const b = body as { truncated?: boolean; tree?: Array<{ path?: string; type?: string }> } | null;
+  if (!b || b.truncated !== false || !Array.isArray(b.tree)) return null;
+  const index: PocIndex = new Set();
+  for (const t of b.tree) {
+    const m = t.type === "blob" && typeof t.path === "string" ? /^\d{4}\/(CVE-\d{4}-\d{4,})\.json$/i.exec(t.path) : null;
+    if (m) index.add(m[1].toUpperCase());
+  }
+  return index.size > 0 ? index : null;
+}
+
+export async function loadPocIndex(now: number = Date.now()): Promise<PocIndex | null> {
+  if (pocCache && now - pocCache.at < EXPLOITDB_CACHE_MS) return pocCache.index;
+  try {
+    const res = await fetch(POC_IN_GITHUB_TREE_URL, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "HebridesCyberBot/1.0" },
+      signal: AbortSignal.timeout(POC_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const index = parsePocTree(await res.json());
+    if (index) pocCache = { at: now, index };
+    return index;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadExploitDb(now: number = Date.now()): Promise<ExploitDbIndex | null> {
   if (exploitDbCache && now - exploitDbCache.at < EXPLOITDB_CACHE_MS) return exploitDbCache.index;
   try {
@@ -214,8 +253,14 @@ async function loadEpss(cveIds: string[]): Promise<EpssIndex | null> {
  * indexes. A null index means that source was unavailable — its fields are
  * left out rather than guessed. With neither source, nothing is attached.
  */
-export function applyThreatIntel(findings: Finding[], kev: KevIndex | null, epss: EpssIndex | null, exploitDb: ExploitDbIndex | null = null): void {
-  if (!kev && !epss && !exploitDb) return;
+export function applyThreatIntel(
+  findings: Finding[],
+  kev: KevIndex | null,
+  epss: EpssIndex | null,
+  exploitDb: ExploitDbIndex | null = null,
+  poc: PocIndex | null = null
+): void {
+  if (!kev && !epss && !exploitDb && !poc) return;
   for (const finding of findings) {
     const cves = (finding.cveIds ?? []).map((c) => c.toUpperCase()).filter((c) => CVE_RE.test(c));
     if (cves.length === 0) continue;
@@ -240,11 +285,15 @@ export function applyThreatIntel(findings: Finding[], kev: KevIndex | null, epss
         intel.epssPercentile = best.percentile;
       }
     }
-    if (exploitDb) {
-      intel.publicExploit = { exploitDbIds: [...new Set(cves.flatMap((c) => exploitDb.get(c) ?? []))] };
+    // Each source's field is set only when that source loaded: absent means not checked.
+    if (exploitDb || poc) {
+      intel.publicExploit = {
+        ...(exploitDb ? { exploitDbIds: [...new Set(cves.flatMap((c) => exploitDb.get(c) ?? []))] } : {}),
+        ...(poc ? { githubPoc: cves.some((c) => poc.has(c)) } : {}),
+      };
     }
     // No source answered for this finding: we learned nothing.
-    if (!kev && intel.epss === undefined && !exploitDb) continue;
+    if (!kev && intel.epss === undefined && !exploitDb && !poc) continue;
     finding.threatIntel = intel;
   }
 }
@@ -256,12 +305,13 @@ export async function enrichFindingsWithThreatIntel(findings: Finding[], now: nu
     ),
   ];
   if (cves.length === 0) return;
-  const [kev, epss, exploitDb] = await Promise.all([loadKev(now), loadEpss(cves), loadExploitDb(now)]);
-  applyThreatIntel(findings, kev, epss, exploitDb);
+  const [kev, epss, exploitDb, poc] = await Promise.all([loadKev(now), loadEpss(cves), loadExploitDb(now), loadPocIndex(now)]);
+  applyThreatIntel(findings, kev, epss, exploitDb, poc);
 }
 
 /** Test hook: forget the cached KEV feed. */
 export function resetThreatIntelCache(): void {
   kevCache = null;
   exploitDbCache = null;
+  pocCache = null;
 }
