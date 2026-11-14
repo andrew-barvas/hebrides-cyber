@@ -62,6 +62,35 @@ stay as history.
   `OWNER-TODO.md`.** Record OT-51 before merging more of it. Exploit is not
   marketed until OT-13 is done.
 
+### Progress, 2026-11-14 (same day)
+
+Merged and deployed:
+
+| Task | PR | Notes |
+|---|---|---|
+| 1. CVE index sync | #219 | Writes capped at 2,000 rows. The stuck page held 61,129 rows in one write. A dispatched run is backfilling past 44,000 |
+| 2 to 4. Scan time limits, download retries, NVD timeouts | #220 | Real Lookout and full-profile timings still need an owned target in the queue (OT-11) |
+| 8. Estate drift | #226 | "What changed" card and `/api/estate/changes`. Cross-site deduplication already existed (`groupFindings`) |
+| 9. MTA-STS and TLS-RPT | none | Already built; listed in error |
+| 10. Outreach snapshots | #228 | `npm run outreach:snapshot`; never sends |
+| CSP Evaluator | #221 | |
+| Exploit-DB public-exploit signal | #223 | |
+| OpenSSF Scorecard | #225 | |
+| DefectDojo export | #222 | |
+| CISA SCuBA Entra checks | #227 | Four new `m365.*` checks; ScubaGear, Maester and ScubaGoggles aren't run, and `M365-POSTURE.md` says why |
+
+In progress:
+- **5. Always-on workers (#195):**
+  - The image build now passes after adding `rsync` for WhatWaf.
+  - The Container Apps job now gets `NVD_API_KEY`.
+  - Applying the Azure configuration is the owner's step.
+- **7. cdncheck, ssh-audit, tlsx and dnsx:** built inside `networkExposure` and waiting for #195 so their installs go in `scan-tools.sh`.
+- **Host screenshots:** not started. They need image storage and report rendering.
+- **6. Lookout checkout:** the profile lock and the checkout on `/pricing#lookout` are pushed to #199, which still waits for OT-33, OT-34, OT-35, OT-42 and OT-43.
+
+Found today:
+- **nuclei integration test:** it now hits its 120-second limit on master. It passed on 2026-11-09, and no code changed since. Likely cause: the public interactsh server, because the test doesn't set `DISABLE_OAST`. Not yet confirmed.
+
 ### Next dev tasks, in order
 
 1. **Fix the CVE index sync.** Write smaller batches, or raise the
