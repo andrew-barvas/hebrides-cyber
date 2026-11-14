@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   EPSS_API_URL,
+  EXPLOITDB_INDEX_URL,
   KEV_FEED_URL,
   applyThreatIntel,
   enrichFindingsWithThreatIntel,
   parseEpss,
+  parseExploitDbIndex,
   parseKev,
   resetThreatIntelCache,
 } from "./threatIntel";
@@ -146,5 +148,55 @@ describe("enrichFindingsWithThreatIntel", () => {
     const f = finding(["CVE-2020-11022"]);
     await expect(enrichFindingsWithThreatIntel([f])).resolves.toBeUndefined();
     expect(f.threatIntel).toBeUndefined();
+  });
+});
+
+const EDB_CSV = [
+  "id,file,description,date_published,author,type,platform,port,date_added,date_updated,verified,codes,tags",
+  '16929,exploits/a.rb,"Thing, with a comma ""and quotes""",2010-11-11,x,dos,aix,,2010-11-11,2011-03-06,1,CVE-2009-3699;OSVDB-58726,',
+  "50000,exploits/b.py,Other,2024-01-01,y,remote,linux,22,2024-01-01,2024-01-02,0,CVE-2024-6387,",
+  "50001,exploits/c.py,Same CVE,2024-01-03,y,remote,linux,22,2024-01-03,2024-01-03,0,cve-2024-6387;CVE-2024-6387,",
+  "bad,exploits/d.py,No id,2024-01-03,y,remote,linux,,2024-01-03,2024-01-03,0,CVE-2099-0001,",
+].join("\r\n");
+
+describe("Exploit-DB public-exploit signal", () => {
+  it("parses CVE ids out of the index's codes column, quote-aware, de-duplicated", () => {
+    const index = parseExploitDbIndex(EDB_CSV);
+    expect(index.get("CVE-2009-3699")).toEqual(["16929"]);
+    expect(index.get("CVE-2024-6387")).toEqual(["50000", "50001"]);
+    expect(index.has("CVE-2099-0001")).toBe(false);
+    expect(parseExploitDbIndex("not,a,known,header\n1,2,3,4").size).toBe(0);
+  });
+
+  it("marks checked-and-listed, checked-and-none, and leaves it absent when the index didn't load", () => {
+    const index = parseExploitDbIndex(EDB_CSV);
+    const listed = finding(["CVE-2024-6387"]);
+    const none = finding(["CVE-2020-11022"]);
+    applyThreatIntel([listed, none], null, null, index);
+    expect(listed.threatIntel?.publicExploit).toEqual({ exploitDbIds: ["50000", "50001"] });
+    expect(none.threatIntel?.publicExploit).toEqual({ exploitDbIds: [] });
+
+    const unknown = finding(["CVE-2024-6387"]);
+    applyThreatIntel([unknown], parseKev(KEV_BODY), null, null);
+    expect(unknown.threatIntel?.publicExploit).toBeUndefined();
+  });
+
+  it("loads the index once per day and never throws when it can't", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === EXPLOITDB_INDEX_URL) return new Response(EDB_CSV);
+      throw new Error("offline");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const f = finding(["CVE-2024-6387"]);
+    await enrichFindingsWithThreatIntel([f], 1_000);
+    expect(f.threatIntel?.publicExploit?.exploitDbIds).toEqual(["50000", "50001"]);
+    await enrichFindingsWithThreatIntel([finding(["CVE-2024-6387"])], 2_000);
+    expect(fetchMock.mock.calls.filter(([u]) => u === EXPLOITDB_INDEX_URL)).toHaveLength(1);
+
+    resetThreatIntelCache();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("down", { status: 503 })));
+    const g = finding(["CVE-2024-6387"]);
+    await expect(enrichFindingsWithThreatIntel([g])).resolves.toBeUndefined();
+    expect(g.threatIntel).toBeUndefined();
   });
 });
