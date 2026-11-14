@@ -22,6 +22,7 @@
 //     npx tsx src/scripts/cleanup-retention.ts
 
 import { createScriptSupabase } from "../lib/scriptSupabase";
+import { SCREENSHOT_CONTAINER, SCREENSHOT_RETENTION_DAYS } from "../lib/estateScreenshots";
 
 export const SCAN_RESULTS_RETENTION_DAYS = 365;
 export const CONTACT_ENQUIRIES_RETENTION_DAYS = 365;
@@ -67,6 +68,10 @@ async function main() {
   const blobResult = await cleanupOldReportBlobs(REPORT_PDF_RETENTION_DAYS);
   if (!blobResult.ok) hadError = true;
 
+  // Estate screenshots (src/lib/estateScreenshots.ts), same mechanism.
+  const shotResult = await cleanupOldReportBlobs(SCREENSHOT_RETENTION_DAYS, SCREENSHOT_CONTAINER);
+  if (!shotResult.ok) hadError = true;
+
   if (hadError) process.exit(1);
 }
 
@@ -79,7 +84,7 @@ async function main() {
  * exist yet, matching this codebase's convention of degrading gracefully on
  * an unset optional integration.
  */
-export async function cleanupOldReportBlobs(retentionDays: number): Promise<{ ok: boolean; deleted: number }> {
+export async function cleanupOldReportBlobs(retentionDays: number, containerName = "reports"): Promise<{ ok: boolean; deleted: number }> {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connectionString) {
     console.log("[retention] AZURE_STORAGE_CONNECTION_STRING not set — skipping PDF report cleanup.");
@@ -89,10 +94,10 @@ export async function cleanupOldReportBlobs(retentionDays: number): Promise<{ ok
   try {
     const { BlobServiceClient } = await import("@azure/storage-blob");
     const blobService = BlobServiceClient.fromConnectionString(connectionString);
-    const container = blobService.getContainerClient("reports");
+    const container = blobService.getContainerClient(containerName);
 
     if (!(await container.exists())) {
-      console.log('[retention] "reports" container does not exist yet — nothing to clean up.');
+      console.log(`[retention] "${containerName}" container does not exist yet — nothing to clean up.`);
       return { ok: true, deleted: 0 };
     }
 
@@ -107,10 +112,10 @@ export async function cleanupOldReportBlobs(retentionDays: number): Promise<{ ok
       }
     }
 
-    console.log(`[retention] deleted ${deleted} report PDF(s) older than ${retentionDays} days.`);
+    console.log(`[retention] deleted ${deleted} blob(s) from "${containerName}" older than ${retentionDays} days.`);
     return { ok: true, deleted };
   } catch (err) {
-    console.error("[retention] PDF report cleanup failed:", (err as Error).message);
+    console.error(`[retention] "${containerName}" cleanup failed:`, (err as Error).message);
     return { ok: false, deleted: 0 };
   }
 }
