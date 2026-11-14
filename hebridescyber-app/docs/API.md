@@ -177,7 +177,7 @@ becomes `[redacted]`, so you see which keys were exposed but not their values.
 It's omitted when the check never read the body, as for directory listings,
 which keep only the "Index of" heading in `matched`. Evidence is stored with
 the scan result and deleted with it, and is absent on scans from before
-2026-10-30. The CSV export puts it in one `evidence` column (last), as
+2026-10-30. The CSV export puts it in one `evidence` column, as
 `GET <url> → <status> (<type>); matched: …`.
 
 Each finding also carries `triage` — your current decision about it on this
@@ -209,14 +209,22 @@ cvss_vector, known_exploited, epss, compliance_refs`. `cve_ids` and
 `compliance_refs` are `;`-joined lists within a single cell.
 `known_exploited`/`epss` are blank when threat intel wasn't looked up,
 which is different from `false` (see `threat_intel` above).
-`triage_state, triage_reason, triage_expires_at` come last, blank when the
-finding isn't triaged; in JSON each finding has `triage` (`state`, `reason`,
+`triage_state, triage_reason, triage_expires_at` follow, blank when the
+finding isn't triaged, then `corroborated_by` and `evidence`. The last two
+columns are `attack_techniques` (`T1557 Adversary-in-the-Middle; …`) and
+`cwe_ids` (`CWE-298; …`), blank when the finding type has no curated mapping;
+scans stored before the mapping existed are mapped at export time. MITRE
+ATT&CK® is a registered trademark of The MITRE Corporation. in JSON each finding has `triage` (`state`, `reason`,
 `expiresAt`, `triagedAt`) or `null`. JSON returns
 `{ scan_id, target_url, findings }` with each finding's full stored shape
-(`checkId`, `cveIds`, `threatIntel`, `complianceRefs` and so on, camelCase
-as stored).
+(`checkId`, `cveIds`, `threatIntel`, `complianceRefs`, `exploitabilityAssessment`
+and so on, camelCase as stored). `exploitabilityAssessment` (`score`, `band`,
+`confidence`, `nonIntrusive`, `modelVersion`) is absent when the finding wasn't assessed, which
+doesn't mean it isn't exploitable.
 
 `format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
+
+`format=defectdojo` returns DefectDojo's Generic Findings Import JSON. In DefectDojo, import the file with the scan type "Generic Findings Import". Each finding's `unique_id_from_tool` is its stable check ID, so a re-import lines up with earlier ones. False positives and accepted risk come across as `false_p` and `risk_accepted` and are marked inactive; snoozed findings stay active.
 
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
@@ -280,6 +288,50 @@ CSV exports from both `/export` and `/compliance` prefix any cell that starts
 with `=`, `+`, `-`, `@`, a tab or a carriage return with `'`. Finding titles
 can quote text from the scanned site, and without the prefix a spreadsheet
 would run such a cell as a formula.
+
+### `GET /api/v1/scans/{id}/exploitability`
+
+How usable each assessed finding in the scan looks, based only on what the scan
+already stored. This endpoint sends nothing to your site. Pro plan and above;
+your own scans only. Someone else's scan answers `404`, and `503` means the
+analysis isn't available on this server yet.
+
+```json
+{
+  "scanId": "…",
+  "modelVersion": "exp-v1",
+  "notAssessed": 12,
+  "assessments": [
+    {
+      "id": "…",
+      "scanId": "…",
+      "checkId": "tls.weak-protocol:tls1.0",
+      "host": "example.com",
+      "score": 87,
+      "band": "likely",
+      "confidence": "medium",
+      "factors": [{ "id": "exposure", "weight": 0.2, "value": 0.7, "reason": "…", "evidenceRefs": [] }],
+      "conditions": [{ "id": "net.internet-reachable", "required": true, "state": "met", "basis": "evidence", "reason": "…", "evidenceRefs": [] }],
+      "hardRulesApplied": [],
+      "nonIntrusive": false,
+      "modelVersion": "exp-v1",
+      "catalogueVersion": "pc-…",
+      "superseded": false,
+      "createdAt": "…"
+    }
+  ]
+}
+```
+
+`band` is `reproduced`, `likely`, `plausible`, `theoretical` or
+`not_exploitable_as_observed`. The score doesn't change a finding's severity or
+the scan's score. A factor whose `value` is `null` had no evidence, which lowers
+`confidence` and doesn't count in the finding's favour. `nonIntrusive` is true
+when the scan sent no test payloads, as a Lookout review doesn't: that rating is
+assessed, and `band` is never `reproduced`. `notAssessed` counts the
+scan's findings with no current assessment: their type isn't rated yet, the scan
+predates the analysis, or you marked them a false positive. Not assessed doesn't
+mean safe.
 
 ### `GET /api/v1/scans/{id}/sbom`
 
@@ -743,3 +795,7 @@ to detect that case.
 
 Enforced per account. On `429`, back off for the seconds given in
 `Retry-After`/`retry_after_seconds` rather than retrying immediately.
+
+## `GET /api/estate/changes`
+
+Session-authenticated (the dashboard's own route, like `/api/findings`). `days` is 7, 30 or 90 (default 30). Answers what changed across every site you monitor in that window: `opened`, `fixed` and `openNow` finding counts by severity (critical, high, medium, low, total), `newHosts` (hostnames first seen in the window), the `hosts` with the most change, and up to ten `notableOpened` critical and high findings. Active false positives are left out; accepted and snoozed findings still count. A finding that was fixed and came back keeps its original first-seen date, so it appears in `openNow`, not `opened`. Before finding history exists the response is `{ "available": false }`.

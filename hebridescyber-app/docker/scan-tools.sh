@@ -108,7 +108,8 @@ step() {
 # fetch <url> <sha256> <dest>: download and verify, removing the file on a
 # mismatch so nothing unverified is ever unpacked.
 fetch() {
-  curl -fsSL "$1" -o "$3"
+  # Retries: one HTTP 504 failed a scheduled-scans shard on 2026-11-08.
+  curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 "$1" -o "$3"
   if ! echo "$2  $3" | sha256sum -c -; then
     rm -f "$3"
     return 1
@@ -125,11 +126,13 @@ install_apt() {
   # by itself spray anything. libpcap lets naabu use its privileged path; it
   # falls back to an unprivileged connect scan without raw sockets. ruby-dev
   # and build-essential build wpscan's native gems; bsdextrautils (hexdump),
-  # dnsutils and procps are testssl.sh's runtime dependencies.
+  # dnsutils and procps are testssl.sh's runtime dependencies. rsync is
+  # WhatWaf's: its install_helper.sh rsyncs the plugins into ~/.whatwaf, and
+  # without it the image build failed at the plugins check (#195, 2026-11-03).
   $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     nmap hydra python3 python3-pip python3-venv git curl ca-certificates unzip openssl \
     libpcap-dev ruby ruby-dev build-essential zlib1g-dev libcurl4-openssl-dev \
-    bsdextrautils dnsutils procps
+    bsdextrautils dnsutils procps rsync
 }
 
 install_commix() {

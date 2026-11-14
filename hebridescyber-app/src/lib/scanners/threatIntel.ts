@@ -17,6 +17,19 @@ import type { Finding } from "./index";
 
 export const KEV_FEED_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
 export const EPSS_API_URL = "https://api.first.org/data/v1/epss";
+/**
+ * Exploit-DB's public index (about 10 MB, one row per entry, CVE ids in
+ * `codes`). Only this CSV is read: no exploit file is downloaded or run. A
+ * listing means "public exploit code exists", which ranks a fix higher beside
+ * KEV and EPSS. Severity is never changed.
+ */
+export const EXPLOITDB_INDEX_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv";
+const EXPLOITDB_TIMEOUT_MS = 30_000;
+const EXPLOITDB_CACHE_MS = 24 * 60 * 60 * 1000;
+/** Ids kept per CVE; the count beyond this adds nothing for prioritising. */
+const EXPLOITDB_IDS_PER_CVE = 5;
+export type ExploitDbIndex = Map<string, string[]>;
+let exploitDbCache: { at: number; index: ExploitDbIndex } | null = null;
 
 const KEV_TIMEOUT_MS = 15_000;
 const EPSS_TIMEOUT_MS = 8_000;
@@ -107,6 +120,78 @@ export async function loadKev(now: number = Date.now()): Promise<KevIndex | null
   }
 }
 
+/**
+ * Pure: CVE id -> Exploit-DB ids from the index CSV. Reads only the header to
+ * find the `id` and `codes` columns, and splits rows with a quote-aware
+ * scanner (descriptions contain commas and quotes).
+ */
+export function parseExploitDbIndex(csv: string): ExploitDbIndex {
+  const index: ExploitDbIndex = new Map();
+  const rows = csvRows(csv);
+  const header = rows.next().value;
+  if (!header) return index;
+  const idCol = header.indexOf("id");
+  const codesCol = header.indexOf("codes");
+  if (idCol < 0 || codesCol < 0) return index;
+  for (const row of rows) {
+    const id = row[idCol];
+    if (!id || !/^\d+$/.test(id)) continue;
+    for (const code of (row[codesCol] ?? "").split(";")) {
+      const cve = code.trim().toUpperCase();
+      if (!CVE_RE.test(cve)) continue;
+      const ids = index.get(cve) ?? [];
+      if (ids.length < EXPLOITDB_IDS_PER_CVE && !ids.includes(id)) ids.push(id);
+      index.set(cve, ids);
+    }
+  }
+  return index;
+}
+
+function* csvRows(text: string): Generator<string[]> {
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field);
+      yield row;
+      row = [];
+      field = "";
+    } else field += ch;
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    yield row;
+  }
+}
+
+export async function loadExploitDb(now: number = Date.now()): Promise<ExploitDbIndex | null> {
+  if (exploitDbCache && now - exploitDbCache.at < EXPLOITDB_CACHE_MS) return exploitDbCache.index;
+  try {
+    const res = await fetch(EXPLOITDB_INDEX_URL, { signal: AbortSignal.timeout(EXPLOITDB_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const index = parseExploitDbIndex(await res.text());
+    // An empty parse means the file changed shape, not "no public exploits".
+    if (index.size === 0) return null;
+    exploitDbCache = { at: now, index };
+    return index;
+  } catch {
+    return null;
+  }
+}
+
 async function loadEpss(cveIds: string[]): Promise<EpssIndex | null> {
   const index: EpssIndex = new Map();
   try {
@@ -129,8 +214,8 @@ async function loadEpss(cveIds: string[]): Promise<EpssIndex | null> {
  * indexes. A null index means that source was unavailable — its fields are
  * left out rather than guessed. With neither source, nothing is attached.
  */
-export function applyThreatIntel(findings: Finding[], kev: KevIndex | null, epss: EpssIndex | null): void {
-  if (!kev && !epss) return;
+export function applyThreatIntel(findings: Finding[], kev: KevIndex | null, epss: EpssIndex | null, exploitDb: ExploitDbIndex | null = null): void {
+  if (!kev && !epss && !exploitDb) return;
   for (const finding of findings) {
     const cves = (finding.cveIds ?? []).map((c) => c.toUpperCase()).filter((c) => CVE_RE.test(c));
     if (cves.length === 0) continue;
@@ -155,8 +240,11 @@ export function applyThreatIntel(findings: Finding[], kev: KevIndex | null, epss
         intel.epssPercentile = best.percentile;
       }
     }
-    // KEV unavailable and no EPSS score either: we learned nothing.
-    if (!kev && intel.epss === undefined) continue;
+    if (exploitDb) {
+      intel.publicExploit = { exploitDbIds: [...new Set(cves.flatMap((c) => exploitDb.get(c) ?? []))] };
+    }
+    // No source answered for this finding: we learned nothing.
+    if (!kev && intel.epss === undefined && !exploitDb) continue;
     finding.threatIntel = intel;
   }
 }
@@ -168,11 +256,12 @@ export async function enrichFindingsWithThreatIntel(findings: Finding[], now: nu
     ),
   ];
   if (cves.length === 0) return;
-  const [kev, epss] = await Promise.all([loadKev(now), loadEpss(cves)]);
-  applyThreatIntel(findings, kev, epss);
+  const [kev, epss, exploitDb] = await Promise.all([loadKev(now), loadEpss(cves), loadExploitDb(now)]);
+  applyThreatIntel(findings, kev, epss, exploitDb);
 }
 
 /** Test hook: forget the cached KEV feed. */
 export function resetThreatIntelCache(): void {
   kevCache = null;
+  exploitDbCache = null;
 }

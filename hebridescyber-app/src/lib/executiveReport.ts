@@ -17,6 +17,10 @@
 //   ATT&CK technique an adversary could use against it (attackMap.ts), as
 //   IDs and links only, with MITRE's attribution. Scans stored before that
 //   field existed are mapped here from their checkId.
+// - Exploitability: "what to fix first, and why" for the findings the engine
+//   rated (src/lib/exploitability), on plans that include it. A non-intrusive
+//   scan's ratings read "assessed", never "reproduced". No rating means not
+//   assessed, and the section says so.
 // - Escaping: every value is HTML-escaped including quotes, and a logo is only
 //   used if it is an https URL (the report is rendered by a headless browser).
 import type { Finding } from "./scanners";
@@ -27,6 +31,7 @@ import { hostOf } from "./findingLifecycle";
 import { confirmedProof } from "./proofEvidence";
 import { ATTACK_ATTRIBUTION, getAttackRefs, getCweIds, getWhatToLog, type AttackRef } from "./scanners/attackMap";
 import { evidenceSummary, readEvidence } from "./findingEvidence";
+import { bandText, bandWording, confidenceText } from "./exploitability/labels";
 import { signedInCrawlStatus } from "./signedInCrawlStatus";
 
 export type ReportBranding = { logoUrl?: string; name?: string };
@@ -49,6 +54,8 @@ export type ExecutiveReportInput = {
   /** The stored `results` object, read only for per-check statuses. */
   results: Record<string, unknown> | null;
   triage: TriageIndex;
+  /** The owner's plan includes exploitability analysis. Default false: the section is left out. */
+  showExploitability?: boolean;
   branding?: ReportBranding;
   now?: Date;
 };
@@ -64,6 +71,7 @@ const SEVERITY_COLOUR: Record<Finding["severity"], string> = {
 const EFFORT_LABEL: Record<NonNullable<Finding["fixDifficulty"]>, string> = { trivial: "minutes", easy: "under an hour", moderate: "a few hours", hard: "days" };
 const NOT_RUN = new Set(["error", "not_configured", "partial"]);
 const TOP_N = 5;
+const EXPLOITABILITY_N = 10;
 const DETAIL_CHARS = 280;
 const FIX_CHARS = 420;
 
@@ -188,6 +196,24 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
   const disclaimer = branding ? COMPLIANCE_REPORT_DISCLAIMER.replace("Hebrides Cyber's external scan", "the external scan") : COMPLIANCE_REPORT_DISCLAIMER;
 
   const e = escapeHtml;
+  const rated = input.showExploitability
+    ? open
+        .filter((f) => f.exploitabilityAssessment)
+        .sort((a, b) => (b.exploitabilityAssessment?.score ?? 0) - (a.exploitabilityAssessment?.score ?? 0))
+    : [];
+  const anyNonIntrusive = rated.some((f) => f.exploitabilityAssessment?.nonIntrusive);
+  const exploitabilitySection = rated.length
+    ? `<h2>What to fix first, and why</h2>
+  <p>How usable each issue looks from what the scan observed. A rating doesn't change a finding's severity or the score.${anyNonIntrusive ? " This review sent no test payloads, so these ratings are assessed, not demonstrated." : ""} A finding with no rating here wasn't assessed, which doesn't mean it's safe.</p>
+  ${rated
+    .slice(0, EXPLOITABILITY_N)
+    .map((f) => {
+      const a = f.exploitabilityAssessment as NonNullable<Finding["exploitabilityAssessment"]>;
+      return `<p><strong>${e(f.title)}</strong>: ${e(bandText(a.band, a.nonIntrusive))} (${e(confidenceText(a.band, a.confidence))}). ${e(bandWording(a.band, a.nonIntrusive))}</p>`;
+    })
+    .join("")}
+  ${rated.length > EXPLOITABILITY_N ? `<p>${rated.length - EXPLOITABILITY_N} more rated finding${rated.length - EXPLOITABILITY_N === 1 ? "" : "s"} not shown.</p>` : ""}`
+    : "";
   const badge = (s: Finding["severity"]) => `<span class="sev" style="background:${SEVERITY_COLOUR[s]}">${e(s)}</span>`;
   const effort = (f: Finding) => (f.fixDifficulty ? e(EFFORT_LABEL[f.fixDifficulty]) : "—");
   const refIds = (f: Finding) => {
@@ -319,6 +345,7 @@ export function renderExecutiveReportHtml(input: ExecutiveReportInput): string {
 
   ${attackPathsHtml}
 
+  ${exploitabilitySection}
   <h2>Compliance snapshot</h2>
   <table><thead><tr><th>Framework</th><th>Controls with no issues found</th><th>With critical/high issues</th></tr></thead><tbody>${frameworkRows}</tbody></table>
   <p class="muted">${e(disclaimer)}</p>

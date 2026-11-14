@@ -32,6 +32,7 @@ name: On-Demand Scan
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  - to claim/run/write the job
 #   AZURE_OPENAI_*                            - optional, AI scan summary
 #   WPSCAN_API_TOKEN                          - optional, WordPress plugin CVE match
+#   NVD_API_KEY                               - optional, raises NVD's rate limit
 #   GOOGLE_SAFE_BROWSING_API_KEY              - optional, malware/phishing check
 #   HIBP_API_KEY                              - optional, breach exposure check
 #   RESEND_API_KEY                            - post-scan emails (alerts, scan complete)
@@ -45,6 +46,9 @@ on:
 jobs:
   work:
     runs-on: ubuntu-latest
+    # The longest on-demand run was 16 minutes (2026-10-22). Without a limit a
+    # hung job ran to GitHub's 6-hour default.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -101,6 +105,7 @@ jobs:
           CREDENTIALS_ENC_KEY: ${{ secrets.CREDENTIALS_ENC_KEY }}
           WORKER_ID: gha-ondemand-${{ github.run_id }}
           WPSCAN_API_TOKEN: ${{ secrets.WPSCAN_API_TOKEN }}
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
           HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
         run: npm run queue:run-worker
