@@ -50,6 +50,14 @@ KATANA_VERSION=v1.8.0
 KATANA_SHA256=cb027ae99d0757061b70c07a15c7a80f62c5a535ab52c4a329f80c4b0a7309d2
 NAABU_VERSION=v2.6.1
 NAABU_SHA256=018c4c9884dea971eda860435ede3021d1150732f34cfd245498c6726d8cab90
+# networkExposure.ts helpers (exposureHelpers.ts). cdncheck v1.4.0 (2026-11-01)
+# was under two weeks old when pinned, so the release before it.
+CDNCHECK_VERSION=v1.3.3
+CDNCHECK_SHA256=2e8819c8d09ab2f118b9a55e959f3f09165b2fd7882919702aad6447def2e144
+DNSX_VERSION=v1.3.1
+DNSX_SHA256=438b964653056dd51dcfe614b1a16f8bced3cc48a1d27bc07cc6fdf2ef2a9533
+TLSX_VERSION=v1.4.0
+TLSX_SHA256=05628cec246e292e2f9afc6e7bc5de95aaa0fbe78fd556d5ad220b9f4702d364
 FFUF_VERSION=2.3.0
 FFUF_SHA256=b2a3c725fcb9da175159682f54d6e9149f2905b00d84d155e7efc5d599975ceb
 GITLEAKS_VERSION=8.30.1
@@ -78,6 +86,7 @@ SQLMAP_VERSION=1.10.10
 ZIZMOR_VERSION=1.31.1
 BADSECRETS_VERSION=1.2.0
 ARJUN_VERSION=2.2.7
+SSH_AUDIT_VERSION=3.9.0
 # 3.8.28 is the newest wpscan that runs on Ruby 3.2 (ubuntu-latest) and 3.1
 # (Debian bookworm, the image): every 4.x release needs Ruby >= 3.3.
 WPSCAN_VERSION=3.8.28
@@ -179,6 +188,10 @@ install_httpx() { install_pd_zip httpx "$HTTPX_VERSION" "$HTTPX_SHA256" && httpx
 install_katana() { install_pd_zip katana "$KATANA_VERSION" "$KATANA_SHA256" && katana -version; }
 # networkExposure.ts: naabu top-1000 discovery, then nmap -sV on what's open.
 install_naabu() { install_pd_zip naabu "$NAABU_VERSION" "$NAABU_SHA256" && naabu -version; }
+# exposureHelpers.ts: CDN/WAF gate, certificate checks, zone-transfer check.
+install_cdncheck() { install_pd_zip cdncheck "$CDNCHECK_VERSION" "$CDNCHECK_SHA256" && cdncheck -version; }
+install_tlsx() { install_pd_zip tlsx "$TLSX_VERSION" "$TLSX_SHA256" && tlsx -version; }
+install_dnsx() { install_pd_zip dnsx "$DNSX_VERSION" "$DNSX_SHA256" && dnsx -version; }
 
 install_ffuf() {
   # Tier A offensive content discovery (contentDiscovery.ts) only — runs under
@@ -313,6 +326,9 @@ system() {
   step soft "httpx ${HTTPX_VERSION}" install_httpx
   step soft "katana ${KATANA_VERSION}" install_katana
   step soft "naabu ${NAABU_VERSION}" install_naabu
+  step soft "cdncheck ${CDNCHECK_VERSION}" install_cdncheck
+  step soft "tlsx ${TLSX_VERSION}" install_tlsx
+  step soft "dnsx ${DNSX_VERSION}" install_dnsx
   step soft "ffuf ${FFUF_VERSION}" install_ffuf
   step soft "gitleaks ${GITLEAKS_VERSION}" install_gitleaks
   step soft "testssl.sh ${TESTSSL_TAG}" install_testssl
@@ -337,6 +353,11 @@ install_sqlmap() {
 install_zizmor() {
   pip3 install --user --break-system-packages "zizmor==${ZIZMOR_VERSION}"
   "$HOME/.local/bin/zizmor" --version
+}
+
+install_ssh_audit() {
+  pip3 install --user --break-system-packages "ssh-audit==${SSH_AUDIT_VERSION}"
+  ssh-audit -h >/dev/null
 }
 
 install_arjun() {
@@ -384,6 +405,7 @@ user() {
   step hard "sqlmap ${SQLMAP_VERSION}" install_sqlmap
   step soft "zizmor ${ZIZMOR_VERSION}" install_zizmor
   step soft "arjun ${ARJUN_VERSION}" install_arjun
+  step soft "ssh-audit ${SSH_AUDIT_VERSION}" install_ssh_audit
   step soft "whatwaf ${WHATWAF_TAG}" install_whatwaf
   step soft "nuclei templates ${NUCLEI_TEMPLATES_VERSION}" install_nuclei_templates
   step soft "trivy vulnerability DB" install_trivy_db
@@ -392,7 +414,7 @@ user() {
 # --- verify ------------------------------------------------------------------
 
 # Every command a src/worker/tools/ or src/lib/scanners/ wrapper shells out to.
-TOOLS=(nmap hydra sqlmap commix dalfox nuclei subfinder httpx katana naabu ffuf gitleaks trivy
+TOOLS=(nmap hydra sqlmap commix dalfox nuclei subfinder httpx katana naabu cdncheck tlsx dnsx ssh-audit ffuf gitleaks trivy
   opengrep zizmor badsecrets whatwaf wpscan cmsmap gospider kr arjun prowler)
 
 verify() {
