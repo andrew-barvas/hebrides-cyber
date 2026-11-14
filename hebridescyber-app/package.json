@@ -51,6 +51,7 @@
     "@supabase/supabase-js": "^2.118.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csp_evaluator": "1.1.8",
     "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.66.0",
     "marked": "^13.0.2",
