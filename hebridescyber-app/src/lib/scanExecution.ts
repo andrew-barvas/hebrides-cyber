@@ -36,6 +36,7 @@ import { scanDockerBaseImage } from "./scanners/dockerBaseImage";
 import { scanTrivyImage, scanTrivyConfig } from "./scanners/trivyScan";
 import { runSast } from "../worker/tools/sast";
 import { runWorkflowSecurity } from "../worker/tools/workflowSecurity";
+import { runScorecard } from "../worker/tools/scorecard";
 import { checkAuthenticated, buildAuthenticatedFindings, resolveAuthCredential, type AuthCredential } from "./scanners/authenticatedCheck";
 import { runWhatWaf } from "../worker/tools/whatwaf";
 import { runWpScanCli } from "../worker/tools/wpscan";
@@ -209,6 +210,7 @@ async function runExtendedTools(
     trivyConfigResult,
     sastResult,
     workflowSecurityResult,
+    scorecardResult,
     authCheckResult,
     whatwafResult,
     wpscanResult,
@@ -330,6 +332,16 @@ async function runExtendedTools(
           findings: [] as Finding[],
           note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
         }),
+    // OpenSSF Scorecard's published results for a public connected repo
+    // (src/worker/tools/scorecard.ts); a private repo's name is never sent.
+    toolConfig.scorecard && githubRepo
+      ? runScorecard({ githubRepo })
+      : Promise.resolve({
+          status: "not_applicable" as const,
+          repo: githubRepo ?? "",
+          findings: [] as Finding[],
+          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+        }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
     // place that needs to know where the credential comes from.
@@ -438,6 +450,7 @@ async function runExtendedTools(
     trivyConfig: trivyConfigResult.status === "fulfilled" ? trivyConfigResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(trivyConfigResult.reason) },
     sast: sastResult.status === "fulfilled" ? sastResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(sastResult.reason) },
     workflowSecurity: workflowSecurityResult.status === "fulfilled" ? workflowSecurityResult.value : { status: "error", repo: githubRepo ?? "", findings: [], note: String(workflowSecurityResult.reason) },
+    scorecard: scorecardResult.status === "fulfilled" ? scorecardResult.value : { status: "error" as const, repo: githubRepo ?? "", findings: [], note: String(scorecardResult.reason) },
     authCheck: authCheckResult.status === "fulfilled" ? authCheckResult.value : { status: "error" as const, note: String(authCheckResult.reason) },
     whatwaf: whatwafResult.status === "fulfilled" ? whatwafResult.value : { status: "error" as const, note: String(whatwafResult.reason) },
     wpscan: wpscanResult.status === "fulfilled" ? wpscanResult.value : { status: "error" as const, findings: [], note: String(wpscanResult.reason) },
@@ -602,6 +615,9 @@ async function runExtendedTools(
   // workflowSecurity.ts (zizmor) already builds full Finding[] too.
   if (extended.workflowSecurity.status === "completed") {
     findings.push(...extended.workflowSecurity.findings);
+  }
+  if (extended.scorecard.status === "completed") {
+    findings.push(...extended.scorecard.findings);
   }
   if (extended.badsecrets.status === "completed") {
     findings.push(...extended.badsecrets.findings);
