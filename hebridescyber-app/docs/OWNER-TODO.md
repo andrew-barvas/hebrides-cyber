@@ -87,6 +87,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
 | OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟡 Medium | Open | 2026-11-14 | |
 | OT-57 | Custom SMTP for Supabase Auth, so sign-up and sign-in links aren't rate-limited | 🟠 High | Open | 2026-11-14 | |
+| OT-58 | Google Cloud project and OAuth app for Google Workspace posture checks | 🟢 Low | Open | 2026-11-14 | |
 
 ## Common steps
 
@@ -1109,6 +1110,21 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** sign up with a fresh address on the live site. The link arrives
   from `no-reply@hebridescyber.co.uk`, and Resend's log shows the send.
 - **Raised:** 2026-11-14 (`IMPROVEMENT-REVIEW-2026-11.md`, UX fix 6).
+
+### OT-58: Google Cloud app for Workspace checks 🟢
+- **What and why:** Google Workspace posture checks (designed in
+  `NEXT-BUILDS-DESIGN-2026-11.md`, task 10) need our own Google Cloud OAuth
+  app that a customer's super admin can authorise read-only. Only worth doing
+  once there are Workspace customers.
+- **How:** create a Google Cloud project, then an OAuth client (web
+  application) with redirect URI
+  `https://www.hebridescyber.co.uk/api/account/workspace-callback`. Configure
+  the consent screen with the read-only scopes in the design, and submit it
+  for Google's verification of sensitive scopes, which can take weeks. Then
+  set `GOOGLE_WORKSPACE_CLIENT_ID` and `GOOGLE_WORKSPACE_CLIENT_SECRET` in
+  Azure and GitHub.
+- **Verify:** the consent screen shows as verified in the Google Cloud console.
+- **Raised:** 2026-11-14.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08

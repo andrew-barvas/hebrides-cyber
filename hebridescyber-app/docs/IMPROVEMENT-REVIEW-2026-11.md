@@ -7,6 +7,23 @@ Written after the 2026-11-14 batch (PRs #219 to #230). It covers the next 10 dev
 - The UI review covered the public pages on a local production build, at desktop and phone widths.
 - The signed-in dashboard couldn't be loaded locally, so it was judged from the code.
 
+## Progress and corrections (same day)
+
+Three of these tasks turned out to be partly built already, which the review missed. Status:
+
+| Task | Status |
+|---|---|
+| 1. Free check on the homepage | #233 |
+| 2. Plan through sign-up to checkout | #234, which also fixes an open redirect in `/auth/callback` |
+| 3. "Check it's fixed" | Already built (`RetestFindingButton`) but hidden in the collapsed remediation. #235 surfaces it |
+| 4. Team accounts | **Already built** (migrations 007 and 025: roles, shared read access, team section). The gap was inviting someone without an account, fixed in #239 |
+| 5. Lookout report builder | Design in [`NEXT-BUILDS-DESIGN-2026-11.md`](NEXT-BUILDS-DESIGN-2026-11.md); owner decisions marked |
+| 6. Per-host screenshots | #230 captures the scanned page; the estate version is designed in the same file |
+| 7. Public profile and badge | #238, which also fixes the existing score badge, previously blocked from loading on other sites |
+| 8. Platform fix guides | #236 |
+| 9. PoC-in-GitHub | #237. It needs no nightly job or table: one API call lists every CVE |
+| 10. Google Workspace checks | Designed in the same file; needs OT-58 |
+
 ## Next 10 dev tasks
 
 1. **Make the free check the homepage's main action.**
