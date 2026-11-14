@@ -1,6 +1,7 @@
 // Main scanner orchestration. Imports all check modules and runs them in
 // parallel where possible. Exports the same public API surface as the old
 // single-file scanners.ts so run-scan/index.ts needs no import changes.
+import { applyPlatformGuides, mailProviderFromMx } from "./platformGuides";
 import { checkTls, type TlsResult } from "./tls";
 import type { FindingEvidence } from "../findingEvidence";
 import { checkHeaders, type HeadersResult } from "./headers";
@@ -1430,6 +1431,11 @@ export function summariseResults(results: ScanResults): { summary: string; findi
 
   const topTitles = findings.slice(0, 3).map((f) => f.title).join("; ");
   const summary = `Security scan of ${results.target_url}: ${topTitles}.`;
+  // Platform-specific steps on top of the generic remediation (platformGuides.ts).
+  applyPlatformGuides(findings, {
+    technologies: results.fingerprint?.status === "checked" ? results.fingerprint.technologies.map((t) => t.name) : [],
+    mailProvider: results.dns?.status === "checked" ? mailProviderFromMx(results.dns.mxHosts ?? []) : null,
+  });
   return { summary, findings };
 }
 
