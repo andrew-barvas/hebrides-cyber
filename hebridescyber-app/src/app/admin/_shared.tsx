@@ -121,7 +121,7 @@ export type AuditLog = {
   created_at: string;
 };
 
-export type Tab = "overview" | "customers" | "scans" | "queue" | "blog" | "audit" | "tools" | "gdpr" | "email" | "contacts";
+export type Tab = "overview" | "customers" | "scans" | "queue" | "blog" | "audit" | "tools" | "gdpr" | "email" | "contacts" | "lookout";
 
 export type ContactEnquiry = {
   id: string;

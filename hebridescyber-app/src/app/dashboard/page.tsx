@@ -21,6 +21,7 @@ import FleetOverview from "@/components/FleetOverview";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import EmergingThreatsPanel from "@/components/EmergingThreatsPanel";
 import FixFirstPanel from "@/components/FixFirstPanel";
+import LookoutReportsBanner from "@/components/LookoutReportsBanner";
 import EstateChangesPanel from "@/components/EstateChangesPanel";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
@@ -244,6 +245,8 @@ export default function DashboardPage() {
       {planIncludes(plan, "agency") && <PortfolioReportButton token={sessionToken} />}
 
       <FleetOverview />
+
+      <LookoutReportsBanner token={sessionToken} />
 
       <FixFirstPanel token={sessionToken} />
 
