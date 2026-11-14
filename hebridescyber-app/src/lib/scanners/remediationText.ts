@@ -3734,6 +3734,39 @@ anyone, handing over every record in the zone, including internal and test host 
 2. If your DNS is hosted (GoDaddy, Cloudflare, your registrar), ask them to disable
    public zone transfers.`;
 
+export const WORKSPACE_ADMINS_WITHOUT_2SV = `A Google Workspace super admin can sign in with a password alone. That one
+account controls every user, mailbox and file in the organisation.
+
+1. Ask each super admin to turn on 2-Step Verification now: myaccount.google.com
+   → Security → 2-Step Verification. A security key or passkey is best.
+2. Then enforce it for admins: Admin console → Security → Authentication →
+   2-Step Verification → select the admins' organisational unit or group →
+   Enforcement: On.`;
+
+export const WORKSPACE_2SV_NOT_ENFORCED = `2-Step Verification is optional in your Google Workspace, so a phished or
+reused password is enough to take over an account (CISA ScubaGoggles
+GWS.COMMONCONTROLS.1.1).
+
+1. Admin console → Security → Authentication → 2-Step Verification → tick
+   "Allow users to turn on 2-Step Verification".
+2. Give people a week to enrol (they'll get prompts), then set Enforcement to
+   On, with a short new-user enrolment period.
+3. Prefer security keys or passkeys; avoid text-message codes where you can.`;
+
+export const WORKSPACE_TOO_MANY_SUPER_ADMINS = `More super admins than you need. Each one is an account whose compromise
+hands over the whole Workspace.
+
+1. Admin console → Account → Admin roles → Super Admin → Admins.
+2. Keep two to four people with this role. Give everyone else a narrower
+   prebuilt role (User Management, Groups, Help Desk) for what they actually do.`;
+
+export const WORKSPACE_SINGLE_SUPER_ADMIN = `Only one super admin. If that account is lost, locked or its owner leaves,
+nobody can manage the Workspace, and Google's recovery process is slow.
+
+1. Admin console → Account → Admin roles → Super Admin → Assign users.
+2. Add a second trusted person, or a separate break-glass account with a
+   strong password and a security key kept somewhere safe.`;
+
 export const M365_SIGN_IN_LOGS_UNAVAILABLE = `Entra ID sign-in logs can't be read for this tenant. Microsoft only keeps
 them for tenants with Entra ID P1 or P2 (Business Premium, E3, E5), so
 there is no record to investigate a suspicious sign-in or a compromised
