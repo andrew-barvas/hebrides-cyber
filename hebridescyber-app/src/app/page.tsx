@@ -22,20 +22,41 @@ export default function HomePage() {
           <p className="mt-4 font-mono text-xs uppercase tracking-wide text-cybermuted">
             OWASP-aligned checks &middot; Powered by Azure &middot; UK-based, GDPR compliant
           </p>
-          <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row">
-            <Link
-              href="/contact"
+          {/* A plain GET form, so it works without JavaScript: /check runs the
+              check for ?url= on arrival (InstantCheck's initialUrl). */}
+          <form action="/check" method="get" className="mx-auto mt-10 flex max-w-xl flex-col gap-3 sm:flex-row">
+            <label htmlFor="hero-check-url" className="sr-only">
+              Your website address
+            </label>
+            <input
+              id="hero-check-url"
+              name="url"
+              type="text"
+              inputMode="url"
+              autoComplete="url"
+              required
+              maxLength={253}
+              placeholder="yourbusiness.co.uk"
+              className="flex-1 rounded-md border border-cyberborder bg-cyberbg px-4 py-3 text-base text-cybertext placeholder:text-cybermuted/70 focus-visible:border-neon focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40"
+            />
+            <button
+              type="submit"
               className="rounded-md bg-neon px-6 py-3 font-semibold text-cyberbg shadow-glow hover:opacity-90 transition-opacity"
             >
-              Book a free Security Score scan
+              Check my site free
+            </button>
+          </form>
+          <p className="mt-3 text-sm text-cybermuted">
+            Results in seconds, no account needed. Or{" "}
+            <Link href="/contact" className="font-semibold text-neon underline-offset-2 hover:underline">
+              book a free Security Score scan
+            </Link>{" "}
+            or{" "}
+            <Link href="/pricing" className="font-semibold text-neon underline-offset-2 hover:underline">
+              see services and pricing
             </Link>
-            <Link
-              href="/pricing"
-              className="rounded-md border border-cybertext/30 px-6 py-3 font-semibold text-cybertext hover:border-neon hover:text-neon transition-colors"
-            >
-              View services &amp; pricing
-            </Link>
-          </div>
+            .
+          </p>
         </div>
       </section>
 

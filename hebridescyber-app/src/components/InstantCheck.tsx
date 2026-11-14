@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,19 +14,22 @@ const SEVERITY_STYLE: Record<string, string> = {
   low: "bg-blue-100 text-blue-800",
 };
 
-export default function InstantCheck() {
-  const [url, setUrl] = useState("");
+/**
+ * `initialUrl` comes from /check?url=… (the homepage's check box submits
+ * there): the address is filled in and the check runs once, straight away.
+ */
+export default function InstantCheck({ initialUrl = "" }: { initialUrl?: string }) {
+  const [url, setUrl] = useState(initialUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InstantCheckResult | null>(null);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function run(target: string) {
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/instant-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const res = await fetch("/api/instant-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: target }) });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setError(body.error ?? "The check failed. Please try again.");
       else setResult(body as InstantCheckResult);
@@ -36,6 +39,21 @@ export default function InstantCheck() {
       setBusy(false);
     }
   }
+
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
+    await run(url);
+  }
+
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || !initialUrl.trim()) return;
+    autoRan.current = true;
+    void run(initialUrl);
+    // Runs once for the address the page was opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   return (
     <div>
