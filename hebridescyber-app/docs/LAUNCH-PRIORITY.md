@@ -1,5 +1,9 @@
 # Launch priority — what stands between this and a paid launch
 
+> **2026-11-14:** item 1 (payments) is done: Stripe reports OK in
+> `/api/health`. The current pre-launch checklist is in `NEXT-STEPS.md`,
+> "Status and plan — 2026-11-14". This file is kept for its reasoning.
+
 **Last checked against the code and production: 2026-10-18.** Scope: a UK
 SME launch with enterprise on-ramps. Companion to `docs/NEXT-STEPS.md`
 (session handoff) and `docs/ROADMAP.md` (exit criteria). This replaces an

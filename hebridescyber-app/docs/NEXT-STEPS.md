@@ -1,6 +1,6 @@
 # Next steps — session handoff
 
-**Last updated: 2026-10-22.** Read this first in any new session (local or
+**Last updated: 2026-11-14.** Read this first in any new session (local or
 cloud), after `CLAUDE.md` and `docs/SCANNER-CONVENTIONS.md`. It says where
 things stand, the rules that kept biting, the plan in order, and what only
 the owner can do.
@@ -8,6 +8,147 @@ the owner can do.
 To resume in a cloud session: open the repo `andrew-barvas/hebrides-cyber`,
 branch from `master`, and prompt *"Read hebridescyber-app/docs/NEXT-STEPS.md
 and implement plan item N."* Do one item per session.
+
+## Status and plan — 2026-11-14
+
+This section replaces the older handovers below as the current plan. They
+stay as history.
+
+### Where things stand
+
+- **Live and healthy.** `/api/health` reports Supabase, Stripe and the scan
+  queue as OK. Every page tested scored 100 for accessibility, best practices and SEO
+  in Lighthouse on 2026-11-06 (#208, #211, #214). Mobile performance is 97–99
+  and desktop is 100.
+- **Scans take about 3 minutes** for the one target in the daily queue. The
+  workflow takes 8–10 minutes, mostly installing tools. Lookout's `exposure`
+  profile and the `full` profile have not been timed on a real site.
+- **Nothing merged between 2026-11-06 and 2026-11-14.** Open PRs:
+  - #215, #216 and #217 are Dependabot updates.
+  - Exploit engine weeks 8 and 9 are #212 and #213.
+  - #199 is Lookout checkout.
+  - #195 is always-on workers.
+  - #192 is request validation.
+
+### Broken now
+
+| What | Evidence | Fix |
+|---|---|---|
+| CVE index sync fails every night | 9 failures from 2026-11-06 to 11-14: `replace_cve_batch failed: canceling statement due to statement timeout`. So #189's service CVE matching has little or no index to match against | Dev task 1 |
+| No email is sent | 2026-11-14 scan: SLA, scan-completion and attack-surface emails all "RESEND_API_KEY not configured" | Owner, OT-02 |
+| Automated tool-update PRs | 2026-11-10: "Authentication failed" pushing with `GH_PAT` | Owner, OT-49 |
+| Emerging-threat alerts go red | 2026-11-13: NVD lookups time out without a key | Owner, OT-17 (`NVD_API_KEY`); dev task 4 |
+| One scan shard failed on a download | 2026-11-08: a tool download returned HTTP 504 and failed the shard | Dev task 3 |
+
+### Products
+
+- **Scanner** (the main product): built and priced, with Stripe checkout
+  configured (no real purchase tested yet).
+  Blocked for launch on email (OT-02) and the pre-launch items below.
+- **Lookout** (managed exposure review): the page is live at `/lookout` but
+  not linked from the main navigation. The `exposure` profile, ATT&CK
+  mapping, deep TLS and document metadata are built. Waiting on:
+  - **Checkout:** #199, which needs the owner's OT-33, OT-34, OT-35, OT-42 and
+    OT-43 first.
+  - **Subdomain:** OT-56.
+  - **Pilot:** OT-45.
+
+  None of the shortlist tools ranked 2 to 10 in `LOOKOUT-TOOL-SHORTLIST.md` are
+  built yet.
+- **Exploit** (contracted testing): the `/exploit` page is noindex and
+  unlinked. The analysis engine's weeks 1 to 7 are merged; weeks 8 and 9 are
+  open as #212 and #213. **By `EXPLOITABILITY-ENGINE.md` §11, weeks 7 to 12 sit
+  behind OT-13 and the OT-51 go decision, and neither is recorded in
+  `OWNER-TODO.md`.** Record OT-51 before merging more of it. Exploit is not
+  marketed until OT-13 is done.
+
+### Next dev tasks, in order
+
+1. **Fix the CVE index sync.** Write smaller batches, or raise the
+   statement timeout for `replace_cve_batch` alone, and keep the resumable
+   backfill. Done when the nightly run is green and the index row count grows.
+2. **Scan time limits and real timings.** Add `timeout-minutes` to
+   `scheduled-scans.yml` and `on-demand-scan.yml`; neither has one, so a hung
+   job runs to GitHub's 6-hour limit. Then time the `exposure` and `full`
+   profiles once each against an owned target (OT-11).
+3. **Retry tool downloads.** Use `curl --retry` with backoff in the scan
+   workflows' install steps, so one 504 doesn't fail a shard.
+4. **Emerging threats tolerate NVD timeouts.** Retry, then report the CVE as
+   "pending" instead of failing the whole job.
+5. **Land always-on workers (#195).** Fix the `scan-tools.sh verify` failure
+   for whatwaf. This removes the wait for the next daily run.
+6. **Lookout launch code.** Once the owner items are done:
+   - Merge #199.
+   - Show the checkout on `/lookout`.
+   - Force Lookout plans onto the `exposure` profile.
+7. **Lookout tools in shortlist order.** cdncheck first, because it stops us
+   scanning a CDN's edge. Then dnsx, ssh-audit and tlsx.
+8. **Lookout estate deduplication and drift reporting.**
+9. **MTA-STS and TLS-RPT checks.** Both are passive DNS and HTTPS lookups that
+   nothing checks yet, so they fit `/check` and the email checks.
+10. **Outreach snapshot tool.** A passive check of a business's site and
+    email setup, written up as a one-page summary, sent only after a human
+    approves it. It never runs active tools against a site whose owner hasn't
+    verified it.
+
+Merge the Dependabot PRs (#215 to #217) once their CI passes.
+
+### Tool candidates (not yet built)
+
+All defensive, all checked against the code on 2026-11-14.
+
+| Tool | Product | Why |
+|---|---|---|
+| cdncheck, dnsx, ssh-audit, tlsx | Lookout, then Scanner | Shortlist ranks 2 to 5; small effort each |
+| PoC-in-GitHub and Exploit-DB CSV (data only) | Scanner, Lookout | "Public exploit code exists" next to KEV and EPSS. Offline data; nothing is downloaded or run |
+| CSP Evaluator (npm) | Scanner | Bypass-aware analysis of the CSP header, in process |
+| Playwright screenshots of web hosts | Lookout | The analyst sees forgotten sites at a glance |
+| Prowler `m365`, CISA ScubaGear, Maester | Lookout Assured | Microsoft 365 baselines to compare with our own `m365` checks; consented and read-only |
+| CISA ScubaGoggles | Lookout Assured | The same for Google Workspace, which some SMEs use instead of Microsoft 365 |
+| OpenSSF Scorecard | Scanner (CI/CD) | Repository security practices for customers who connect GitHub |
+| MTA-STS and TLS-RPT lookup (in house) | Scanner, `/check` | Missing from the email checks |
+| OpenVAS, Nikto | Lookout | Still unclaimed in `DEFENSIVE-ASSESSMENT-PLAN.md`; OpenVAS needs a host decision (OT-36) |
+| DefectDojo import format | Exploit, Agency | Lets customers load our findings into a tool they already use |
+
+### Pre-launch checklist
+
+**Dev:** tasks 1 to 4 above. Then test one real sign-in on the live site,
+because #211 changed when the header loads Supabase and e2e can't sign in.
+
+**Owner, must do before any marketing:**
+- **Email:** OT-02, so customers get scan emails. Its DKIM and SPF setup also
+  lets outreach email deliver.
+- **Security and monitoring:**
+  - OT-01: database password
+  - OT-05 and OT-28: encryption key
+  - OT-06: rate limiting
+  - OT-07: branch protection
+  - OT-08: Sentry
+  - OT-49: tool updates
+- **Legal and copy:**
+  - OT-14: copy check
+  - OT-50: tool licences, high priority
+  - OT-35: terms
+- **Operations:**
+  - OT-12: restore drill
+  - OT-27: status page
+  - OT-29: report retention
+- **One real purchase** of the cheapest plan, then refund it, to prove
+  checkout end to end.
+
+**Owner, before Lookout sells:** OT-33, OT-34, OT-42, OT-43, OT-44, OT-45 and
+OT-56.
+
+**Owner, before Exploit:** OT-13, OT-51 to OT-55.
+
+**Marketing setup:**
+- **Free profiles:** Google Business Profile, Bing Places and LinkedIn
+  company page.
+- **Search:** Search Console and Bing Webmaster.
+- **Pilots:** 3 to 5 pilot customers.
+
+`marketing/06`, `07`, `11` and `15` hold the campaign drafts. Their
+"Stripe blocked" notes are out of date.
 
 ## Session handover — 2026-10-22
 
