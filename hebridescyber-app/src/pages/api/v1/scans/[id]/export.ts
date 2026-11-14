@@ -1,6 +1,7 @@
-// GET /api/v1/scans/{id}/export?format=csv|json|sarif — bulk finding export for a
+// GET /api/v1/scans/{id}/export?format=csv|json|sarif|defectdojo — bulk finding export for a
 // single scan. `sarif` is the SARIF 2.1.0 log GitHub code scanning reads (see
-// lib/sarif.ts for how findings map to it). Sits alongside GET /api/v1/scans/{id} (the full report with
+// lib/sarif.ts for how findings map to it). `defectdojo` is DefectDojo's Generic
+// Findings Import JSON (lib/defectDojo.ts). Sits alongside GET /api/v1/scans/{id} (the full report with
 // New/Fixed diffing) rather than replacing it: this route is deliberately
 // flat and tabular — one row per finding, no diff status, no nested
 // objects beyond a couple of joined string columns — for someone piping
@@ -18,6 +19,7 @@ import { evidenceSummary, readEvidence } from "@/lib/findingEvidence";
 import { applyTriage, loadTriageIndexForTarget, type FindingTriage } from "@/lib/findingTriage";
 import { getAttackRefs, getCweIds } from "@/lib/scanners/attackMap";
 import { buildSarif } from "@/lib/sarif";
+import { buildDefectDojoReport } from "@/lib/defectDojo";
 
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
@@ -58,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const scanId = req.query.id as string;
   const requested = (req.query.format as string | undefined)?.toLowerCase();
-  const format = requested === "json" || requested === "sarif" ? requested : "csv";
+  const format = requested === "json" || requested === "sarif" || requested === "defectdojo" ? requested : "csv";
 
   const { data: scan } = await supabaseAdmin.from("scans").select("id, owner, target_url").eq("id", scanId).maybeSingle();
   if (!scan) return res.status(404).json({ error: "Scan not found" });
@@ -82,6 +84,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Content-Type", "application/sarif+json; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filenameSafeHost}-findings.sarif"`);
     return res.status(200).send(JSON.stringify(log));
+  }
+
+  if (format === "defectdojo") {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    // DefectDojo reads any file not ending in .csv as JSON.
+    res.setHeader("Content-Disposition", `attachment; filename="${filenameSafeHost}-defectdojo.json"`);
+    return res.status(200).send(JSON.stringify(buildDefectDojoReport({ targetUrl: scan.target_url, scanId, findings })));
   }
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
