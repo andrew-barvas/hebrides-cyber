@@ -254,6 +254,20 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("lookout_reports and lookout_report_items", () => {
+    it("are service-role-only: admins write and customers read through the API", async () => {
+      await asActor(db, service, async (c) => {
+        await c.query("insert into lookout_reports (customer, period_start, period_end) values ($1, current_date - 30, current_date)", [A]);
+      });
+      for (const table of ["lookout_reports", "lookout_report_items"]) {
+        expect(await count(asA, `select 1 from ${table}`)).toBe(0);
+        expect(await count(anon, `select 1 from ${table}`)).toBe(0);
+      }
+      const ins = "insert into lookout_reports (customer, period_start, period_end) values (gen_random_uuid(), current_date, current_date)";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("security_profiles", () => {
     it("is service-role-only: the owner manages it through the API, and nobody reads it directly", async () => {
       expect(await count(asA, "select 1 from security_profiles")).toBe(0);
