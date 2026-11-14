@@ -19,6 +19,8 @@ export type DnsResult =
       tlsRpt: TlsRptAnalysis;
       ipv6: boolean;
       mxCount: number;
+      /** MX host names (lowercase); absent on scans stored before 2026-11-14. */
+      mxHosts?: string[];
     }
   | { status: "error"; note: string };
 
@@ -604,6 +606,7 @@ export async function checkDns(targetUrl: string, options: CheckDnsOptions = {})
     const caa = analyseCaa(caaRecords.status === "fulfilled" ? caaRecords.value : []);
     const ipv6 = ipv6Records.status === "fulfilled" && ipv6Records.value.length > 0;
     const mxCount = mxRecords.status === "fulfilled" ? mxRecords.value.length : 0;
+    const mxHosts = mxRecords.status === "fulfilled" ? mxRecords.value.map((r) => r.exchange.toLowerCase()).slice(0, 10) : [];
     const dnssecResult = dnssec.status === "fulfilled" ? dnssec.value : { likelySigned: false, note: "DNSSEC check failed" };
 
     // Only meaningful for a domain that actually receives mail — see
@@ -618,7 +621,7 @@ export async function checkDns(targetUrl: string, options: CheckDnsOptions = {})
             { present: false, record: null, issues: [] } as TlsRptAnalysis,
           ];
 
-    return { status: "checked", spf, dkim, dmarc, caa, dnssec: dnssecResult, mtaSts, tlsRpt, ipv6, mxCount };
+    return { status: "checked", spf, dkim, dmarc, caa, dnssec: dnssecResult, mtaSts, tlsRpt, ipv6, mxCount, mxHosts };
   } catch (err) {
     return { status: "error", note: `DNS check failed: ${(err as Error).message}` };
   }
