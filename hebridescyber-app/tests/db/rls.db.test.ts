@@ -240,6 +240,20 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("team_invites", () => {
+    it("is service-role-only: invites are managed and accepted through the API", async () => {
+      await asActor(db, service, async (c) => {
+        const team = await c.query("select id from teams limit 1");
+        if (team.rows[0]) await c.query("insert into team_invites (team_id, email, token_hash) values ($1, 'sam@example.com', repeat('a', 64)) on conflict do nothing", [team.rows[0].id]);
+      });
+      expect(await count(asA, "select 1 from team_invites")).toBe(0);
+      expect(await count(anon, "select 1 from team_invites")).toBe(0);
+      const ins = "insert into team_invites (team_id, email, token_hash) values (gen_random_uuid(), 'x@example.com', repeat('b', 64))";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("security_profiles", () => {
     it("is service-role-only: the owner manages it through the API, and nobody reads it directly", async () => {
       expect(await count(asA, "select 1 from security_profiles")).toBe(0);
