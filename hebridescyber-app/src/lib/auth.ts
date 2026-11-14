@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { safeNextPath } from "./safeRedirect";
 import type { Session, User } from "@supabase/supabase-js";
 
 // Thin helpers around Supabase Auth, used by the dashboard pages.
@@ -75,8 +76,10 @@ export async function getUser(): Promise<User | null> {
 // populate the public.users profile row it creates automatically. Existing
 // users are unaffected (Supabase only applies this on the INSERT, not on a
 // returning user's sign-in).
-export async function signInWithMagicLink(email: string, metadata?: Record<string, string>) {
-  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+/** `next`: where the emailed link should land after sign-in (a path on this site; see safeRedirect.ts). */
+export async function signInWithMagicLink(email: string, metadata?: Record<string, string>, next?: string) {
+  const nextQuery = next && next !== "/dashboard" ? `?next=${encodeURIComponent(safeNextPath(next))}` : "";
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback${nextQuery}` : undefined;
   return supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, data: metadata } });
 }
 

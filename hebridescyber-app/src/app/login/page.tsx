@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
+import { safeNextPath } from "@/lib/safeRedirect";
 
 // Magic link is the primary sign-in flow. Password sign-in is available so
 // the seeded demo accounts (admin, basic/pro/agency/no-plan customers from
@@ -19,7 +20,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams?.get("redirect") ?? "/dashboard";
+  const redirectTo = safeNextPath(searchParams?.get("redirect"));
   const callbackError = searchParams?.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -52,7 +53,7 @@ function LoginForm() {
       return;
     }
 
-    const { error: signInError } = await signInWithMagicLink(email);
+    const { error: signInError } = await signInWithMagicLink(email, undefined, redirectTo);
     setSubmitting(false);
     if (signInError) {
       setError(signInError.message);
