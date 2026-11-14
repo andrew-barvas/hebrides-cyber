@@ -793,3 +793,7 @@ to detect that case.
 
 Enforced per account. On `429`, back off for the seconds given in
 `Retry-After`/`retry_after_seconds` rather than retrying immediately.
+
+## `GET /api/estate/changes`
+
+Session-authenticated (the dashboard's own route, like `/api/findings`). `days` is 7, 30 or 90 (default 30). Answers what changed across every site you monitor in that window: `opened`, `fixed` and `openNow` finding counts by severity (critical, high, medium, low, total), `newHosts` (hostnames first seen in the window), the `hosts` with the most change, and up to ten `notableOpened` critical and high findings. Active false positives are left out; accepted and snoozed findings still count. A finding that was fixed and came back keeps its original first-seen date, so it appears in `openNow`, not `opened`. Before finding history exists the response is `{ "available": false }`.

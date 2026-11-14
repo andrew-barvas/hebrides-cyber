@@ -21,6 +21,7 @@ import FleetOverview from "@/components/FleetOverview";
 import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import EmergingThreatsPanel from "@/components/EmergingThreatsPanel";
 import FixFirstPanel from "@/components/FixFirstPanel";
+import EstateChangesPanel from "@/components/EstateChangesPanel";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
 import { WafIndicator, CmsStatusPanel, TechStackPanel, SeverityBreakdown, OsintSummaryPanel } from "@/components/DashboardPanels";
@@ -245,6 +246,8 @@ export default function DashboardPage() {
       <FleetOverview />
 
       <FixFirstPanel token={sessionToken} />
+
+      <EstateChangesPanel token={sessionToken} />
 
       <EmergingThreatsPanel token={sessionToken} paidPlan={planIncludes(plan, "basic")} />
 
