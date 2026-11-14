@@ -200,7 +200,12 @@ export type Finding = {
      * nothing is downloaded or run). Set whenever the index loaded, so an
      * empty list means "checked, none listed"; absent means not checked.
      */
-    publicExploit?: { exploitDbIds: string[] };
+    publicExploit?: {
+      /** Exploit-DB ids naming one of cveIds; absent when the index didn't load. */
+      exploitDbIds?: string[];
+      /** PoC-in-GitHub lists public proof-of-concept code for one of cveIds; absent when its list didn't load. */
+      githubPoc?: boolean;
+    };
   };
   /**
    * The request/response that produced this finding, redacted and bounded at
