@@ -315,6 +315,23 @@ describe("GET /api/v1/scans/[id]/export", () => {
     expect(log.runs[0].results[0].ruleId).toBe("headers.csp");
   });
 
+  it("returns DefectDojo Generic Findings Import JSON for format=defectdojo", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = {
+      data: { results: { findings: [{ checkId: "headers.csp", severity: "high", title: "Missing CSP", detail: "No policy", remediation: "Add one" }] } },
+    };
+    const { req, res } = mockReqRes({ id: "scan-1", format: "defectdojo" });
+
+    await handler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(res.getHeader("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.getHeader("Content-Disposition")).toMatch(/-defectdojo\.json"?$/);
+    const report = JSON.parse(res._getData() as string);
+    expect(report.findings[0]).toMatchObject({ title: "Missing CSP", severity: "High", unique_id_from_tool: "headers.csp", active: true });
+  });
+
   it("sanitises the target URL into a filesystem-safe filename", async () => {
     authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "session" });
     supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://sub.example.com:8443/path?x=1" } };
