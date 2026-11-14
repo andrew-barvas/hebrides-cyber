@@ -799,3 +799,7 @@ Enforced per account. On `429`, back off for the seconds given in
 ## `GET /api/estate/changes`
 
 Session-authenticated (the dashboard's own route, like `/api/findings`). `days` is 7, 30 or 90 (default 30). Answers what changed across every site you monitor in that window: `opened`, `fixed` and `openNow` finding counts by severity (critical, high, medium, low, total), `newHosts` (hostnames first seen in the window), the `hosts` with the most change, and up to ten `notableOpened` critical and high findings. Active false positives are left out; accepted and snoozed findings still count. A finding that was fixed and came back keeps its original first-seen date, so it appears in `openNow`, not `opened`. Before finding history exists the response is `{ "available": false }`.
+
+## Lookout reports (`/api/lookout/reports`)
+
+Session-authenticated, the customer's own reports only. `GET /api/lookout/reports` lists published reports, newest first; drafts are never returned. `GET /api/lookout/reports/{id}` returns the report and its included items in priority order (another customer's report or a draft answers 404). `POST /api/lookout/reports/{id}` with `{ "action": "acknowledge" }` records "I've read this report" once; it does not accept any risk. Admins write reports through `/api/admin/lookout/reports` (admin panel, "Lookout reports" tab).
