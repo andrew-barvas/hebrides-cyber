@@ -33,6 +33,29 @@ describe("buildHeaderAnalysis", () => {
   });
 
   describe("CSP analysis", () => {
+    it("flags an allowlisted host known to serve JSONP or AngularJS (CSP Evaluator)", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self'; script-src 'self' https://ajax.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
+      );
+      expect(result.csp.grade).toBe("C");
+      expect(result.csp.issues).toEqual([
+        "https://ajax.googleapis.com in script-src is known to serve JSONP endpoints or old AngularJS that let an injected script run despite the policy",
+      ]);
+    });
+
+    it("stays quiet about allowlisted hosts when 'strict-dynamic' makes browsers ignore the allowlist", () => {
+      const result = buildHeaderAnalysis(
+        makeResponse({
+          "content-security-policy":
+            "default-src 'self'; script-src 'nonce-r4nd0m12' 'strict-dynamic' https://ajax.googleapis.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        })
+      );
+      expect(result.csp.grade).toBe("A");
+    });
+
     it("grades F and flags missing when there is no CSP header", () => {
       const result = buildHeaderAnalysis(makeResponse());
       expect(result.csp.present).toBe(false);
