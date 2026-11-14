@@ -45,11 +45,27 @@ export type PlaywrightResult =
        *  Optional: scans stored before this existed lack it, and a capture
        *  failure must not fail the page load. */
       cookies?: CapturedCookie[];
+      /**
+       * What the page looked like when it loaded: a small JPEG as a data URI,
+       * so an analyst (and the owner) sees a forgotten test site, a default
+       * server page or an exposed login at a glance. Stored with the scan and
+       * deleted with it. Optional: older scans lack it, and a capture failure
+       * or an image over SCREENSHOT_MAX_BYTES leaves it out.
+       */
+      screenshot?: string;
     }
   | { status: "error"; loadedOk: false; note: string };
 
 /** Bounds memory on a page that loads an absurd number of scripts. */
 export const MAX_RUNTIME_SCRIPTS = 500;
+/** Kept small on purpose: it lives in the scan's stored results. */
+export const SCREENSHOT_MAX_BYTES = 150_000;
+
+/** A JPEG buffer as a data URI, or undefined when it's missing or too big to store. */
+export function screenshotDataUri(jpeg: Buffer | null | undefined): string | undefined {
+  if (!jpeg || jpeg.length === 0 || jpeg.length > SCREENSHOT_MAX_BYTES) return undefined;
+  return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+}
 
 // Tag managers inject most of their scripts after the load event. Give the
 // page a short window to go quiet; one that never does (analytics polling)
@@ -112,6 +128,14 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
       .then((list) => list.map((c) => ({ name: c.name, domain: c.domain })))
       .catch(() => [] as CapturedCookie[]);
 
+    // Best-effort, like the cookie read: the viewport only (1280x720), low quality.
+    let screenshot: string | undefined;
+    try {
+      screenshot = screenshotDataUri(await page.screenshot({ type: "jpeg", quality: 45, timeout: 5_000 }));
+    } catch {
+      screenshot = undefined; // a failed capture must not fail the page load
+    }
+
     // The DOM read is best-effort: without it the inventory still has every
     // requested URL, just not which ones carry an integrity hash.
     const elements = await page
@@ -150,6 +174,7 @@ export async function checkPlaywrightPageLoad(targetUrl: string): Promise<Playwr
       redirected,
       scripts: { requested: [...scriptUrls], elements: elements.slice(0, MAX_RUNTIME_SCRIPTS) },
       cookies,
+      ...(screenshot ? { screenshot } : {}),
     };
   } catch (err) {
     return { status: "error", loadedOk: false, note: `Headless page load failed: ${(err as Error).message}` };

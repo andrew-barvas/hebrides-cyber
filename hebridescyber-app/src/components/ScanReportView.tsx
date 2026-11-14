@@ -1304,6 +1304,30 @@ export function ScriptInventorySection({ inventory }: { inventory: ScriptInvento
   );
 }
 
+/**
+ * What the headless browser saw when it loaded the page (playwright.ts's
+ * screenshot). Only a data:image/jpeg URI the scanner produced is rendered;
+ * anything else in the stored results is ignored. Owner's report only: the
+ * public share view never receives raw results.
+ */
+export function PageScreenshotSection({ screenshot, url }: { screenshot: unknown; url: string | undefined }) {
+  if (typeof screenshot !== "string" || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(screenshot)) return null;
+  return (
+    <Card className="print:break-inside-avoid">
+      <CardHeader>
+        <div className="min-w-0">
+          <CardTitle as="h2">what we saw</CardTitle>
+          <CardDescription className="mt-1">
+            The page as our browser loaded it{url ? ` (${url})` : ""}. If this isn&apos;t what you expect visitors to see, such as a default server page, an old test site or a login screen, look into it.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      {/* eslint-disable-next-line @next/next/no-img-element -- a stored data URI, not a remote image next/image could optimise */}
+      <img src={screenshot} alt={`Screenshot of ${url ?? "the scanned page"} when the scan loaded it`} className="w-full rounded-md border border-cyberborder" loading="lazy" />
+    </Card>
+  );
+}
+
 export function CheckRow({ label, pass, detail }: { label: string; pass: boolean | undefined; detail: string }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-cyberborder bg-cyberbg/50 p-3">
