@@ -3,7 +3,7 @@
 // and that a missing/failed browser is an "error", never an empty capture.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { chromium } from "playwright";
-import { checkPlaywrightPageLoad, MAX_RUNTIME_SCRIPTS } from "./playwright";
+import { checkPlaywrightPageLoad, MAX_RUNTIME_SCRIPTS, SCREENSHOT_MAX_BYTES, screenshotDataUri } from "./playwright";
 
 vi.mock("playwright", () => ({ chromium: { launch: vi.fn() } }));
 
@@ -38,6 +38,8 @@ type Scenario = {
   domXss?: "found" | "not-found" | Error;
   /** Cookies the browser context reports after load (cookieConsent.ts input). */
   cookies?: Array<{ name: string; domain: string }> | Error;
+  /** page.screenshot's result: a JPEG buffer, or a failure. Absent: no screenshot method at all. */
+  screenshot?: Buffer | Error;
 };
 
 function fakeBrowser(scenario: Scenario) {
@@ -64,6 +66,14 @@ function fakeBrowser(scenario: Scenario) {
       if (scenario.elements instanceof Error) throw scenario.elements;
       return scenario.elements ?? [];
     }),
+    ...(scenario.screenshot !== undefined
+      ? {
+          screenshot: vi.fn(async () => {
+            if (scenario.screenshot instanceof Error) throw scenario.screenshot;
+            return scenario.screenshot;
+          }),
+        }
+      : {}),
     context: () => ({
       cookies: async () => {
         if (scenario.cookies instanceof Error) throw scenario.cookies;
@@ -222,5 +232,24 @@ describe("browser failures", () => {
     const result = await checkPlaywrightPageLoad("https://www.example.com/");
     expect(result.status).toBe("error");
     expect(browser.close).toHaveBeenCalled();
+  });
+});
+
+describe("page screenshot", () => {
+  it("stores a small JPEG as a data URI", async () => {
+    fakeBrowser({ screenshot: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) });
+    const result = await checkPlaywrightPageLoad("https://www.example.com/");
+    if (result.status !== "checked") throw new Error(result.note);
+    expect(result.screenshot).toBe("data:image/jpeg;base64,/9j/2Q==");
+  });
+
+  it("leaves it out, without failing the load, when capture fails, is missing or is too big", async () => {
+    for (const screenshot of [new Error("capture failed"), undefined, Buffer.alloc(SCREENSHOT_MAX_BYTES + 1)]) {
+      fakeBrowser({ screenshot });
+      const result = await checkPlaywrightPageLoad("https://www.example.com/");
+      expect(result.status).toBe("checked");
+      if (result.status === "checked") expect(result.screenshot).toBeUndefined();
+    }
+    expect(screenshotDataUri(Buffer.alloc(0))).toBeUndefined();
   });
 });
