@@ -409,17 +409,17 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
 
   if (status === "idle") {
     return (
-      <button onClick={request} className="mt-3 ml-4 text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
+      <button onClick={request} className="mt-3 text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
         🎫 Create ticket
       </button>
     );
   }
   if (status === "loading") {
-    return <p className="mt-3 ml-4 text-xs text-cybermuted print:hidden">Creating ticket…</p>;
+    return <p className="mt-3 text-xs text-cybermuted print:hidden">Creating ticket…</p>;
   }
   if (status === "error") {
     return (
-      <div className="mt-3 ml-4 print:hidden">
+      <div className="mt-3 print:hidden">
         <p className="text-xs text-red-400">{error}</p>
         <button onClick={request} className="mt-1 text-xs font-medium text-neon hover:underline">
           Try again
@@ -432,7 +432,7 @@ function CreateTicketButton({ scanId, token, checkId }: { scanId: string; token:
       href={ticketUrl ?? "#"}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-3 ml-4 inline-block text-xs font-semibold text-neon hover:underline print:hidden"
+      className="mt-3 inline-block text-xs font-semibold text-neon hover:underline print:hidden"
     >
       🎫 Ticket created — view it ↗
     </a>
@@ -508,17 +508,17 @@ function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token
 
   if (state === "idle") {
     return (
-      <button onClick={retest} className="mt-3 ml-4 text-xs font-semibold text-neon hover:text-neon/80 print:hidden">
-        🔁 Recheck now
+      <button onClick={retest} className="mt-3 rounded-md border border-neon/40 px-2.5 py-1 text-xs font-semibold text-neon hover:bg-neon/10 print:hidden">
+        Check it&apos;s fixed
       </button>
     );
   }
   if (state === "checking") {
-    return <p className="mt-3 ml-4 text-xs text-cybermuted print:hidden">{message}</p>;
+    return <p className="mt-3 text-xs text-cybermuted print:hidden">{message}</p>;
   }
   if (state === "error") {
     return (
-      <div className="mt-3 ml-4 print:hidden">
+      <div className="mt-3 print:hidden">
         <p className="text-xs text-red-400">{message}</p>
         <button onClick={retest} className="mt-1 text-xs font-medium text-neon hover:underline">
           Try again
@@ -528,7 +528,7 @@ function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token
   }
   if (state === "fixed") {
     return (
-      <p className="mt-3 ml-4 text-xs font-semibold text-neon print:hidden">
+      <p className="mt-3 text-xs font-semibold text-neon print:hidden">
         ✓ Fixed — confirmed just now.{" "}
         {newScanId && (
           <a href={`/dashboard/scans/${newScanId}`} className="underline hover:no-underline">
@@ -540,7 +540,7 @@ function RetestFindingButton({ scanId, token, checkId }: { scanId: string; token
   }
   // still-present
   return (
-    <p className="mt-3 ml-4 text-xs text-cybertext/60 print:hidden">
+    <p className="mt-3 text-xs text-cybertext/60 print:hidden">
       Still present as of just now.{" "}
       {newScanId && (
         <a href={`/dashboard/scans/${newScanId}`} className="text-neon underline hover:no-underline">
@@ -760,10 +760,17 @@ export function FindingCard({
           {scanId && token && finding.checkId && hasTicketIntegration && (
             <CreateTicketButton scanId={scanId} token={token} checkId={finding.checkId} />
           )}
-          {scanId && token && finding.checkId && !isExtendedToolFinding(finding.checkId) && (
-            <RetestFindingButton scanId={scanId} token={token} checkId={finding.checkId} />
-          )}
         </details>
+      )}
+
+      {/* Out in the open, not inside the remediation details: the moment
+          someone has fixed something is when they look for this, and a
+          finding with no remediation text had no button at all. */}
+      {scanId && token && finding.checkId && !isExtendedToolFinding(finding.checkId) && (
+        <RetestFindingButton scanId={scanId} token={token} checkId={finding.checkId} />
+      )}
+      {scanId && token && finding.checkId && isExtendedToolFinding(finding.checkId) && (
+        <p className="mt-3 text-xs text-cybermuted print:hidden">Fixed this? Deep checks like this one are confirmed at the next scheduled scan.</p>
       )}
 
       {scanId && token && finding.checkId && onTriaged && !finding.triage && (

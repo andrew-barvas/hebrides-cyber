@@ -108,22 +108,32 @@ describe("FindingCard — RetestFindingButton (E-30)", () => {
 
   const retestable = finding({ checkId: "headers.missing", remediation: "Add the header." });
 
-  it("renders 'Recheck now' when scanId/token are present and the finding is retestable", () => {
+  it("renders 'Check it's fixed' when scanId/token are present and the finding is retestable", () => {
     render(<FindingCard finding={retestable} scanId="scan-1" token="tok" />);
     document.querySelector("details")!.setAttribute("open", "");
-    expect(screen.getByText("🔁 Recheck now")).toBeInTheDocument();
+    expect(screen.getByText("Check it's fixed")).toBeInTheDocument();
+  });
+
+  it("shows the button even when the finding has no remediation text, without opening anything", () => {
+    render(<FindingCard finding={finding({ checkId: "headers.missing" })} scanId="scan-1" token="tok" />);
+    expect(screen.getByRole("button", { name: "Check it's fixed" })).toBeInTheDocument();
+  });
+
+  it("explains when a deep-check finding is confirmed instead of offering a passive recheck", () => {
+    render(<FindingCard finding={finding({ checkId: "sqlmap.sqli:id" })} scanId="scan-1" token="tok" />);
+    expect(screen.getByText(/confirmed at the next scheduled scan/)).toBeInTheDocument();
   });
 
   it("does not render at all without scanId/token, even for a retestable finding", () => {
     render(<FindingCard finding={retestable} />);
-    expect(screen.queryByText("🔁 Recheck now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Check it's fixed")).not.toBeInTheDocument();
   });
 
   it("does not render for an extended-tool finding even when scanId/token are present", () => {
     const extendedFinding = finding({ checkId: "sqlmap.sqli:id", remediation: "Parameterise the query." });
     render(<FindingCard finding={extendedFinding} scanId="scan-1" token="tok" />);
     document.querySelector("details")!.setAttribute("open", "");
-    expect(screen.queryByText("🔁 Recheck now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Check it's fixed")).not.toBeInTheDocument();
   });
 
   it("reports 'Fixed' when the recheck scan completes and the checkId is gone", async () => {
@@ -133,7 +143,7 @@ describe("FindingCard — RetestFindingButton (E-30)", () => {
 
     render(<FindingCard finding={retestable} scanId="scan-1" token="tok" />);
     document.querySelector("details")!.setAttribute("open", "");
-    fireEvent.click(screen.getByText("🔁 Recheck now"));
+    fireEvent.click(screen.getByText("Check it's fixed"));
 
     await waitFor(() => expect(screen.getByText(/Fixed — confirmed just now/)).toBeInTheDocument());
 
@@ -152,7 +162,7 @@ describe("FindingCard — RetestFindingButton (E-30)", () => {
 
     render(<FindingCard finding={retestable} scanId="scan-1" token="tok" />);
     document.querySelector("details")!.setAttribute("open", "");
-    fireEvent.click(screen.getByText("🔁 Recheck now"));
+    fireEvent.click(screen.getByText("Check it's fixed"));
 
     await waitFor(() => expect(screen.getByText(/Still present as of just now/)).toBeInTheDocument());
   });
@@ -162,7 +172,7 @@ describe("FindingCard — RetestFindingButton (E-30)", () => {
 
     render(<FindingCard finding={retestable} scanId="scan-1" token="tok" />);
     document.querySelector("details")!.setAttribute("open", "");
-    fireEvent.click(screen.getByText("🔁 Recheck now"));
+    fireEvent.click(screen.getByText("Check it's fixed"));
 
     await waitFor(() => expect(screen.getByText("Rate limit exceeded")).toBeInTheDocument());
     expect(screen.getByText("Try again")).toBeInTheDocument();
