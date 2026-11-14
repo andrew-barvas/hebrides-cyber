@@ -37,6 +37,10 @@ import {
   M365_GUEST_ACCESS_OPEN,
   M365_GUEST_INVITES_OPEN,
   M365_USER_CONSENT_OPEN,
+  M365_USERS_CAN_REGISTER_APPS,
+  M365_PASSWORDS_EXPIRE,
+  M365_SYNCED_GLOBAL_ADMIN,
+  M365_WEAK_MFA_METHODS,
   M365_SIGN_IN_LOGS_UNAVAILABLE,
 } from "./remediationText";
 
@@ -69,12 +73,12 @@ export type ConditionalAccessPolicy = {
   grantControls?: { builtInControls?: string[]; authenticationStrength?: { id?: string } | null } | null;
 };
 
-export type DirectoryObject = { "@odata.type"?: string; id?: string; userPrincipalName?: string };
+export type DirectoryObject = { "@odata.type"?: string; id?: string; userPrincipalName?: string; onPremisesSyncEnabled?: boolean | null };
 
 export type AuthorizationPolicy = {
   guestUserRoleId?: string;
   allowInvitesFrom?: "none" | "adminsAndGuestInviters" | "adminsGuestInvitersAndAllMembers" | "everyone" | string;
-  defaultUserRolePermissions?: { permissionGrantPoliciesAssigned?: string[] };
+  defaultUserRolePermissions?: { permissionGrantPoliciesAssigned?: string[]; allowedToCreateApps?: boolean };
 };
 
 export type GraphUser = { id?: string; userPrincipalName?: string };
@@ -85,7 +89,8 @@ export type MessageRule = {
   isEnabled?: boolean;
   actions?: { forwardTo?: Recipient[]; forwardAsAttachmentTo?: Recipient[]; redirectTo?: Recipient[] };
 };
-export type Domain = { id?: string; isVerified?: boolean };
+export type Domain = { id?: string; isVerified?: boolean; authenticationType?: string; passwordValidityPeriodInDays?: number | null };
+export type AuthenticationMethodsPolicy = { authenticationMethodConfigurations?: Array<{ id?: string; state?: string }> };
 
 // ---- Results ---------------------------------------------------------------
 
@@ -98,7 +103,11 @@ export type M365CheckName =
   | "externalForwarding"
   | "guestAccess"
   | "userConsent"
-  | "signInLogs";
+  | "signInLogs"
+  | "appRegistration"
+  | "passwordExpiry"
+  | "syncedAdmins"
+  | "weakMfaMethods";
 
 export type M365CheckOutcome =
   | { check: M365CheckName; status: "checked"; findings: Finding[] }
@@ -392,6 +401,82 @@ export function checkUserConsent(auth: GraphResult<AuthorizationPolicy | { value
   ]);
 }
 
+// ---- CISA SCuBA Entra ID baseline gaps (MS.AAD.*) ------------------------------
+// Read with the permissions already consented (Policy.Read.All, Directory.Read.All).
+
+export function checkAppRegistration(auth: GraphResult<AuthorizationPolicy | { value?: AuthorizationPolicy[] }>): M365CheckOutcome {
+  if (!auth.ok) return failed("appRegistration", `authorization policy: ${explain(auth.error)}`);
+  const allowed = unwrapAuthorizationPolicy(auth.body)?.defaultUserRolePermissions?.allowedToCreateApps;
+  if (typeof allowed !== "boolean") return failed("appRegistration", "authorization policy missing allowedToCreateApps");
+  if (!allowed) return ok("appRegistration");
+  return ok("appRegistration", [
+    {
+      severity: "medium",
+      title: "Microsoft 365: any user can register applications",
+      detail: "Users can register applications is on, so anyone in the tenant can create an app registration and ask colleagues to consent to it.",
+      checkId: "m365.usersCanRegisterApps",
+      remediation: M365_USERS_CAN_REGISTER_APPS,
+    },
+  ]);
+}
+
+/** Graph's value for "never expires". */
+export const PASSWORD_NEVER_EXPIRES = 2147483647;
+
+export function checkPasswordExpiry(domains: GraphResult<{ items: Domain[]; truncated: boolean }>): M365CheckOutcome {
+  if (!domains.ok) return failed("passwordExpiry", `domains: ${explain(domains.error)}`);
+  // Federated domains take their password policy from the identity provider, not Entra.
+  const managed = domains.body.items.filter((d) => d.isVerified && d.authenticationType === "Managed");
+  const expiring = managed.filter((d) => typeof d.passwordValidityPeriodInDays === "number" && d.passwordValidityPeriodInDays < PASSWORD_NEVER_EXPIRES);
+  if (expiring.length === 0) return ok("passwordExpiry");
+  return ok("passwordExpiry", [
+    {
+      severity: "low",
+      title: "Microsoft 365: passwords are set to expire",
+      detail: `Passwords expire after ${expiring.map((d) => `${d.passwordValidityPeriodInDays} days on ${d.id}`).join(", ")}. Forced expiry leads to weaker, predictable passwords.`,
+      checkId: "m365.passwordsExpire",
+      remediation: M365_PASSWORDS_EXPIRE,
+    },
+  ]);
+}
+
+export function checkSyncedAdmins(members: GraphResult<{ items: DirectoryObject[]; truncated: boolean }>): M365CheckOutcome {
+  if (!members.ok) return failed("syncedAdmins", `global admin members: ${explain(members.error)}`);
+  const synced = members.body.items.filter((m) => m["@odata.type"] === "#microsoft.graph.user" && m.onPremisesSyncEnabled === true);
+  if (synced.length === 0) return ok("syncedAdmins");
+  const one = synced.length === 1;
+  return ok("syncedAdmins", [
+    {
+      severity: "medium",
+      title: `Microsoft 365: ${synced.length} Global Administrator${one ? " is" : "s are"} synced from on-premises`,
+      detail: `${synced.map((m) => m.userPrincipalName ?? m.id).join(", ")} ${one ? "is" : "are"} synchronised from on-premises Active Directory, so a compromise of the on-premises domain reaches Microsoft 365 too.`,
+      checkId: "m365.syncedGlobalAdmin",
+      remediation: M365_SYNCED_GLOBAL_ADMIN,
+    },
+  ]);
+}
+
+const WEAK_METHODS: Record<string, string> = { sms: "text message", voice: "voice call", email: "email one-time code" };
+
+export function checkWeakMfaMethods(policy: GraphResult<AuthenticationMethodsPolicy>): M365CheckOutcome {
+  if (!policy.ok) return failed("weakMfaMethods", `authentication methods policy: ${explain(policy.error)}`);
+  const configs = policy.body.authenticationMethodConfigurations;
+  if (!Array.isArray(configs)) return failed("weakMfaMethods", "authentication methods policy missing its configurations");
+  const enabled = configs
+    .filter((c) => c.state === "enabled" && typeof c.id === "string" && WEAK_METHODS[c.id.toLowerCase()])
+    .map((c) => WEAK_METHODS[(c.id as string).toLowerCase()]);
+  if (enabled.length === 0) return ok("weakMfaMethods");
+  return ok("weakMfaMethods", [
+    {
+      severity: "low",
+      title: "Microsoft 365: phishable sign-in methods are still allowed",
+      detail: `The authentication methods policy still enables ${enabled.join(", ")}.`,
+      checkId: "m365.weakMfaMethodsEnabled",
+      remediation: M365_WEAK_MFA_METHODS,
+    },
+  ]);
+}
+
 /** Sign-in logs exist only on P1/P2 tenants; Graph says so with this code. */
 export function signInLogsUnlicensed(e: GraphError): boolean {
   return e.status === 403 && /NonPremiumTenant|premium|licen[cs]e/i.test(`${e.code} ${e.message}`);
@@ -428,14 +513,15 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 
 /** Fetches what every check needs and runs them all. Exported for the tests, which pass a GraphClient over recorded JSON. */
 export async function runM365Checks(graph: GraphClient): Promise<M365CheckOutcome[]> {
-  const [sd, ca, admins, auth, signIns, domains, users] = await Promise.all([
+  const [sd, ca, admins, auth, signIns, domains, users, authMethods] = await Promise.all([
     graph.get<SecurityDefaultsPolicy>("/policies/identitySecurityDefaultsEnforcementPolicy"),
     graph.getAll<ConditionalAccessPolicy>("/identity/conditionalAccess/policies", 500),
-    graph.getAll<DirectoryObject>(`/directoryRoles(roleTemplateId='${GLOBAL_ADMIN_ROLE_TEMPLATE_ID}')/members?$select=id,userPrincipalName`, 100),
+    graph.getAll<DirectoryObject>(`/directoryRoles(roleTemplateId='${GLOBAL_ADMIN_ROLE_TEMPLATE_ID}')/members?$select=id,userPrincipalName,onPremisesSyncEnabled`, 100),
     graph.get<AuthorizationPolicy>("/policies/authorizationPolicy"),
     graph.get<{ value?: unknown[] }>("/auditLogs/signIns?$top=1"),
-    graph.getAll<Domain>("/domains?$select=id,isVerified", 500),
+    graph.getAll<Domain>("/domains?$select=id,isVerified,authenticationType,passwordValidityPeriodInDays", 500),
     graph.getAll<GraphUser>("/users?$select=id,userPrincipalName&$filter=accountEnabled eq true&$top=999", MAX_MAILBOXES),
+    graph.get<AuthenticationMethodsPolicy>("/policies/authenticationMethodsPolicy"),
   ]);
 
   const mailboxes: MailboxRules[] = users.ok
@@ -455,6 +541,10 @@ export async function runM365Checks(graph: GraphClient): Promise<M365CheckOutcom
     checkGuestAccess(auth),
     checkUserConsent(auth),
     checkSignInLogs(signIns),
+    checkAppRegistration(auth),
+    checkPasswordExpiry(domains),
+    checkSyncedAdmins(admins),
+    checkWeakMfaMethods(authMethods),
   ];
 }
 

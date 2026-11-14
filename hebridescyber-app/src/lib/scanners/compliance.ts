@@ -82,6 +82,11 @@ const CIS365_FORWARDING: ComplianceRef = { framework: "cis-m365", control: "Ensu
 const CIS365_GUEST_ACCESS: ComplianceRef = { framework: "cis-m365", control: "Ensure that guest user access is restricted" };
 const CIS365_GUEST_INVITES: ComplianceRef = { framework: "cis-m365", control: "Ensure guest user invitations are limited to the Guest Inviter role" };
 const CIS365_USER_CONSENT: ComplianceRef = { framework: "cis-m365", control: "Ensure user consent to apps accessing company data on their behalf is not allowed" };
+// Added 2026-11-14 with the CISA SCuBA gap checks; titles as CIS Microsoft 365 Foundations words them.
+const CIS365_APP_REGISTRATION: ComplianceRef = { framework: "cis-m365", control: "Ensure third party integrated applications are not allowed" };
+const CIS365_PASSWORD_EXPIRY: ComplianceRef = { framework: "cis-m365", control: "Ensure the 'Password expiration policy' is set to 'Set passwords to never expire (recommended)'" };
+const CIS365_CLOUD_ONLY_ADMINS: ComplianceRef = { framework: "cis-m365", control: "Ensure Administrative accounts are cloud-only" };
+const CIS365_WEAK_AUTH_METHODS: ComplianceRef = { framework: "cis-m365", control: "Ensure weak authentication methods are disabled" };
 
 const ISO_A8: ComplianceRef = { framework: "iso-27001", control: "A.8 – Asset Management" };
 const ISO_A9: ComplianceRef = { framework: "iso-27001", control: "A.9 – Access Control" };
@@ -454,6 +459,10 @@ const CURATED_MAP: Record<string, ComplianceRef[]> = {
   "m365.guestInvitesUnrestricted": [CE_ACCESS, CIS365_GUEST_INVITES, CIS_5, CIS_6, ISO_A9],
   "m365.userConsentUnrestricted": [CE_ACCESS, CE_SECURE_CONFIG, CIS365_USER_CONSENT, CIS_6, ISO_A9, NIS2_ART21],
   "m365.signInLogsUnavailable": [CIS_8, ISO_A12, NIS2_ART21],
+  "m365.usersCanRegisterApps": [CE_ACCESS, CE_SECURE_CONFIG, CIS365_APP_REGISTRATION, CIS_6, ISO_A9, NIS2_ART21],
+  "m365.passwordsExpire": [CE_ACCESS, CIS365_PASSWORD_EXPIRY, CIS_5, ISO_A9],
+  "m365.syncedGlobalAdmin": [CE_ACCESS, CIS365_CLOUD_ONLY_ADMINS, CIS_5, CIS_6, ISO_A9, NIS2_ART21],
+  "m365.weakMfaMethodsEnabled": [CE_ACCESS, CIS365_WEAK_AUTH_METHODS, CIS_6, ISO_A9, NIS2_ART21],
 
   // --- Strix AI pentest (Sprint 18) ---
   "strix.finding": [CE_SECURE_CONFIG, OWASP_A03, OWASP_A05, CIS_7, CIS_16, PCI_REQ6, ISO_A12, NIS2_ART21, DORA_ART9],
