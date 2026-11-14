@@ -63,7 +63,7 @@ describe("/api/security-profile", () => {
   it("publishes with a fresh slug, and publishing again keeps the existing one", async () => {
     const first = await call("POST", { body: { targetUrl: "https://Shop.Example/path" } });
     expect(first._getStatusCode()).toBe(201);
-    expect(state.inserted).toEqual([{ owner: "owner-1", target_host: "shop.example", slug: first._getJSONData().slug }]);
+    expect(state.inserted).toEqual([{ owner: "owner-1", target_host: "shop.example", slug: (first._getJSONData() as { slug: string }).slug }]);
     expect(logAuditEventMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "security_profile.published" }));
 
     state.existing = { slug: "existingslug1234" };
