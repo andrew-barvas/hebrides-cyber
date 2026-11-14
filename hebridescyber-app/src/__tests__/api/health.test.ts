@@ -12,7 +12,12 @@ vi.mock("@/lib/supabaseAdmin", () => ({
     from: (table: string) => ({
       select: () => ({
         limit: () => Promise.resolve(responses[`${table}.select`] ?? { data: [], error: null }),
-        eq: () => Promise.resolve(responses[`${table}.count`] ?? { count: 0, error: null }),
+        // The queue check: pending count plus the oldest pending row.
+        eq: () => ({
+          order: () => ({
+            limit: () => Promise.resolve(responses[`${table}.count`] ?? { data: [], count: 0, error: null }),
+          }),
+        }),
       }),
     }),
   },
@@ -33,7 +38,7 @@ type HealthBody = {
   checks: {
     supabase: { ok: boolean };
     stripe: { ok: boolean };
-    queue: { ok: boolean; depth: number | null };
+    queue: { ok: boolean; depth: number | null; oldestWaitSeconds: number | null; waitExceeded: boolean };
   };
 };
 
@@ -41,6 +46,7 @@ describe("GET /api/health", () => {
   beforeEach(() => {
     responses = {};
     balanceRetrieveMock.mockReset().mockResolvedValue({ available: [] });
+    vi.unstubAllEnvs();
   });
 
   it("answers HEAD with the same status as GET, so HEAD-only monitors work", async () => {
@@ -63,7 +69,7 @@ describe("GET /api/health", () => {
 
   it("returns 200 'ok' when every sub-check succeeds", async () => {
     responses["users.select"] = { data: [{ id: "u1" }], error: null };
-    responses["scan_jobs.count"] = { count: 3, error: null };
+    responses["scan_jobs.count"] = { data: [], count: 3, error: null };
 
     const { req, res } = mockReqRes();
     await handler(req, res);
@@ -73,7 +79,7 @@ describe("GET /api/health", () => {
     expect(body.status).toBe("ok");
     expect(body.checks.supabase.ok).toBe(true);
     expect(body.checks.stripe.ok).toBe(true);
-    expect(body.checks.queue).toEqual({ ok: true, depth: 3 });
+    expect(body.checks.queue).toEqual({ ok: true, depth: 3, oldestWaitSeconds: 0, waitExceeded: false });
   });
 
   it("returns 503 'degraded' when the Supabase check fails", async () => {
@@ -112,7 +118,7 @@ describe("GET /api/health", () => {
 
   it("reports queue depth as informational and doesn't fail health on a large backlog", async () => {
     responses["users.select"] = { data: [{ id: "u1" }], error: null };
-    responses["scan_jobs.count"] = { count: 5000, error: null };
+    responses["scan_jobs.count"] = { data: [], count: 5000, error: null };
 
     const { req, res } = mockReqRes();
     await handler(req, res);
@@ -129,6 +135,76 @@ describe("GET /api/health", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(503);
-    expect((res._getJSONData() as HealthBody).checks.queue).toEqual({ ok: false, depth: null });
+    expect((res._getJSONData() as HealthBody).checks.queue).toEqual({
+      ok: false,
+      depth: null,
+      oldestWaitSeconds: null,
+      waitExceeded: false,
+    });
+  });
+
+  describe("queue wait (oldest pending job)", () => {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000).toISOString();
+
+    beforeEach(() => {
+      responses["users.select"] = { data: [{ id: "u1" }], error: null };
+    });
+
+    it("reports the oldest pending job's wait in seconds", async () => {
+      responses["scan_jobs.count"] = { data: [{ created_at: hoursAgo(1) }], count: 4, error: null };
+
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+
+      const queue = (res._getJSONData() as HealthBody).checks.queue;
+      expect(queue.depth).toBe(4);
+      expect(queue.oldestWaitSeconds).toBeGreaterThanOrEqual(3599);
+      expect(queue.oldestWaitSeconds).toBeLessThanOrEqual(3601);
+      expect(queue.waitExceeded).toBe(false);
+    });
+
+    it("degrades health past two hours once SCAN_QUEUE_WAIT_ALERT=1 — the 503 is what pages on-call", async () => {
+      vi.stubEnv("SCAN_QUEUE_WAIT_ALERT", "1");
+      responses["scan_jobs.count"] = { data: [{ created_at: hoursAgo(3) }], count: 1, error: null };
+
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(503);
+      const body = res._getJSONData() as HealthBody;
+      expect(body.status).toBe("degraded");
+      expect(body.checks.queue.ok).toBe(true);
+      expect(body.checks.queue.waitExceeded).toBe(true);
+    });
+
+    it("stays healthy under two hours with the alert on", async () => {
+      vi.stubEnv("SCAN_QUEUE_WAIT_ALERT", "1");
+      responses["scan_jobs.count"] = { data: [{ created_at: hoursAgo(1.5) }], count: 1, error: null };
+
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+    });
+
+    it("only reports a long wait while the alert is off (the daily Actions fallback leaves jobs overnight)", async () => {
+      responses["scan_jobs.count"] = { data: [{ created_at: hoursAgo(20) }], count: 60, error: null };
+
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect((res._getJSONData() as HealthBody).checks.queue.waitExceeded).toBe(false);
+    });
+
+    it("fails the queue check on a created_at that doesn't parse rather than reading it as an empty queue", async () => {
+      responses["scan_jobs.count"] = { data: [{ created_at: "garbage" }], count: 1, error: null };
+
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+
+      expect(res._getStatusCode()).toBe(503);
+      expect((res._getJSONData() as HealthBody).checks.queue.ok).toBe(false);
+    });
   });
 });

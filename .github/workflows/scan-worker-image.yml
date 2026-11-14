@@ -1,0 +1,59 @@
+name: Scan worker image
+
+# Builds the Dockerfile's `scan-worker` stage, without pushing it, whenever the
+# image or its tool pins change. The build is the install check: with
+# SCAN_TOOLS_STRICT=1 every tool in docker/scan-tools.sh must download, match
+# its SHA-256 and run, and the stage's last step fails unless every tool is on
+# PATH. So a bad pin fails here, on the PR, rather than in
+# deploy-scan-worker.yml or a scheduled scan (CLAUDE.md rule 15).
+#
+# Then it starts the image's entrypoint for real with no Supabase settings and
+# checks it gets as far as the worker's own "SUPABASE_URL ... required" exit:
+# the entrypoint, tsx and the source tree are wired up.
+
+on:
+  pull_request:
+    paths:
+      - "hebridescyber-app/Dockerfile"
+      - "hebridescyber-app/docker/**"
+      - "hebridescyber-app/package-lock.json"
+      - ".github/workflows/scan-worker-image.yml"
+  push:
+    branches: [master]
+    paths:
+      - "hebridescyber-app/Dockerfile"
+      - "hebridescyber-app/docker/**"
+      - ".github/workflows/scan-worker-image.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan-worker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the scan-worker stage
+        working-directory: hebridescyber-app
+        run: docker build --target scan-worker --tag scan-worker:ci .
+
+      - name: Run the entrypoint without credentials
+        run: |
+          set +e
+          out=$(docker run --rm scan-worker:ci 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          if [ "$code" = "0" ]; then
+            echo "::error::the worker should refuse to start without SUPABASE_URL"
+            exit 1
+          fi
+          echo "$out" | grep -q "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required" \
+            || { echo "::error::the entrypoint did not reach the worker script"; exit 1; }
