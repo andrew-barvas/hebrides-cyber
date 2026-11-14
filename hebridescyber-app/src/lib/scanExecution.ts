@@ -83,6 +83,7 @@ import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runProwlerIam } from "../worker/tools/prowlerIam";
 import { runM365PostureChecks } from "./scanners/m365Posture";
+import { runWorkspacePostureChecks } from "./scanners/workspacePosture";
 import { runStrix } from "../worker/tools/strix";
 import { runCairn } from "../worker/tools/cairn";
 import { checkApiSpecInjection } from "./scanners/apiSpec";
@@ -1194,6 +1195,30 @@ export async function executeScan(
           }
         } catch {
           if (extended) (extended as Record<string, unknown>).m365 = { status: "error", note: "Microsoft 365 posture check failed" };
+        }
+      }
+
+      // Google Workspace posture (scanners/workspacePosture.ts), the same shape as
+      // Microsoft 365: keyed on the owner's connection, dark until OT-58.
+      if (toolConfig.workspace) {
+        try {
+          const ws = await runWorkspacePostureChecks(supabaseAdmin, ownerId);
+          if (extended) (extended as Record<string, unknown>).workspace = ws;
+          if (ws.status === "checked" || ws.status === "error") {
+            for (const finding of ws.findings) {
+              const refs = getComplianceRefs(finding.checkId);
+              if (refs.length > 0) finding.complianceRefs = refs;
+              const difficulty = getFixDifficulty(finding.checkId);
+              if (difficulty) {
+                finding.fixDifficulty = difficulty;
+                finding.estimatedFixMinutes = estimateFixMinutes(difficulty);
+              }
+            }
+            findings.push(...ws.findings);
+            for (const f of ws.findings) if (f.checkId) extendedCheckIds.add(f.checkId);
+          }
+        } catch {
+          if (extended) (extended as Record<string, unknown>).workspace = { status: "error", note: "Google Workspace posture check failed" };
         }
       }
     }
