@@ -2,6 +2,9 @@
 // Checks the full OWASP Secure Headers Project list, parses CSP for
 // dangerous directives, analyses cookie flags, and flags CORS wildcards
 // and information-disclosure headers.
+import { CspEvaluator } from "csp_evaluator/dist/evaluator.js";
+import { Severity, Type } from "csp_evaluator/dist/finding.js";
+import { CspParser } from "csp_evaluator/dist/parser.js";
 import { buildHttpEvidence, SECURITY_HEADERS, type FindingEvidence } from "../findingEvidence";
 
 export type HeadersResult =
@@ -130,6 +133,9 @@ function analyseCsp(value: string | null): CspAnalysis {
     if (effective.some((t) => t.toLowerCase() === "data:")) {
       serious.push(`'data:' scheme in ${effectiveName} can be abused to execute an attacker-controlled script`);
     }
+    for (const host of knownBypassHosts(value)) {
+      serious.push(`${host} in ${effectiveName} is known to serve JSONP endpoints or old AngularJS that let an injected script run despite the policy`);
+    }
   }
 
   // object-src: only flagged when explicitly declared as something other than
@@ -161,6 +167,24 @@ function analyseCsp(value: string | null): CspAnalysis {
   }
 
   return { present: true, value, issues: [...serious, ...gaps], grade };
+}
+
+/**
+ * Allowlisted script hosts that Google's CSP Evaluator (csp_evaluator, in
+ * process, no traffic) knows serve JSONP or AngularJS, which defeat an
+ * allowlist-based policy. Only its high-severity script findings: the
+ * medium "'self' can be problematic" note fires on almost every policy and
+ * says nothing about this one. A nonce or hash with 'strict-dynamic' makes
+ * browsers ignore the allowlist, and the evaluator already stays quiet then.
+ */
+function knownBypassHosts(policy: string): string[] {
+  try {
+    const findings = new CspEvaluator(new CspParser(policy).csp).evaluate();
+    const hosts = findings.filter((f) => f.type === Type.SCRIPT_ALLOWLIST_BYPASS && f.severity === Severity.HIGH).map((f) => f.value).filter((v): v is string => Boolean(v));
+    return [...new Set(hosts)];
+  } catch {
+    return []; // an unparseable policy is already graded by the checks above
+  }
 }
 
 // ---- Cookie analysis -------------------------------------------------------

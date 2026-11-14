@@ -7,19 +7,24 @@
 // Sub-checks: Supabase (a real query via the service role, not just "is the
 // client constructed"), Stripe (a real API call, not just "is the key
 // string non-empty" — matches E-07's own lesson: an unset/invalid key
-// should be visibly broken, not silently trusted), and scan_jobs queue
-// depth (informational — a large backlog isn't the same failure class as
-// "can't reach Supabase," so it never flips the overall status on its own,
-// only if the count query itself fails to run).
+// should be visibly broken, not silently trusted), and the scan_jobs queue:
+// depth plus the wait of the oldest pending job (src/lib/scanQueueWait.ts).
+// Depth is informational — a large backlog isn't the same failure class as
+// "can't reach Supabase," so it never flips the overall status on its own.
+// The wait does, once SCAN_QUEUE_WAIT_ALERT=1: a job pending for over two
+// hours means no worker is draining the queue, and the 503 is what pages the
+// owner (UptimeRobot, and uptime.yml's incident issue). The query failing to
+// run flips it too.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getStripe } from "@/lib/stripeClient";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { decideQueueWait, queueWaitAlertEnabled, queueWaitSeconds } from "@/lib/scanQueueWait";
 
 const HEALTH_RATE_LIMIT = { max: 120, windowSeconds: 60 * 60 };
 
 type CheckResult = { ok: boolean };
-type QueueCheckResult = CheckResult & { depth: number | null };
+type QueueCheckResult = CheckResult & { depth: number | null; oldestWaitSeconds: number | null; waitExceeded: boolean };
 
 async function checkSupabase(): Promise<CheckResult> {
   try {
@@ -39,16 +44,25 @@ async function checkStripe(): Promise<CheckResult> {
   }
 }
 
+const QUEUE_CHECK_FAILED: QueueCheckResult = { ok: false, depth: null, oldestWaitSeconds: null, waitExceeded: false };
+
 async function checkQueue(): Promise<QueueCheckResult> {
   try {
-    const { count, error } = await supabaseAdmin
+    // One round trip: the exact pending count, plus the oldest pending row.
+    const { data, count, error } = await supabaseAdmin
       .from("scan_jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending");
-    if (error) return { ok: false, depth: null };
-    return { ok: true, depth: count ?? 0 };
+      .select("created_at", { count: "exact" })
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (error) return QUEUE_CHECK_FAILED;
+    const oldest = (data as { created_at: string }[] | null)?.[0]?.created_at ?? null;
+    const waitSeconds = queueWaitSeconds(oldest, new Date());
+    if (waitSeconds === null) return QUEUE_CHECK_FAILED;
+    const wait = decideQueueWait(waitSeconds, { alertEnabled: queueWaitAlertEnabled() });
+    return { ok: true, depth: count ?? 0, ...wait };
   } catch {
-    return { ok: false, depth: null };
+    return QUEUE_CHECK_FAILED;
   }
 }
 
@@ -67,10 +81,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const [supabase, stripe, queue] = await Promise.all([checkSupabase(), checkStripe(), checkQueue()]);
 
-  // Queue depth is informational only — see module header. Only Supabase/
-  // Stripe reachability (and the queue *check itself* succeeding, as
-  // distinct from what depth it reports) determine overall health.
-  const healthy = supabase.ok && stripe.ok && queue.ok;
+  // Queue depth is informational only — see module header. Supabase/Stripe
+  // reachability, the queue check itself succeeding, and (when the alert is
+  // on) the oldest pending job's wait determine overall health.
+  const healthy = supabase.ok && stripe.ok && queue.ok && !queue.waitExceeded;
 
   return res.status(healthy ? 200 : 503).json({
     status: healthy ? "ok" : "degraded",

@@ -194,6 +194,12 @@ export type Finding = {
     epss?: number;
     /** That CVE's EPSS percentile (0–1) among all scored CVEs. */
     epssPercentile?: number;
+    /**
+     * Exploit-DB entries that name one of cveIds (its public index, data only:
+     * nothing is downloaded or run). Set whenever the index loaded, so an
+     * empty list means "checked, none listed"; absent means not checked.
+     */
+    publicExploit?: { exploitDbIds: string[] };
   };
   /**
    * The request/response that produced this finding, redacted and bounded at

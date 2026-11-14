@@ -57,6 +57,7 @@ export type ViewFinding = {
     ransomware?: boolean;
     epss?: number;
     epssPercentile?: number;
+    publicExploit?: { exploitDbIds: string[] };
   };
   /** Scanner metadata; only `proofOfExploit` is read here (see proofEvidence.ts). */
   metadata?: Record<string, unknown>;
@@ -663,6 +664,14 @@ export function FindingCard({
             title={`Listed in CISA's Known Exploited Vulnerabilities catalog: ${(finding.threatIntel.kevCveIds ?? []).join(", ")}${finding.threatIntel.ransomware ? " — known to be used in ransomware campaigns" : ""}`}
           >
             Actively exploited{finding.threatIntel.ransomware ? " · ransomware" : ""}
+          </span>
+        )}
+        {(finding.threatIntel?.publicExploit?.exploitDbIds.length ?? 0) > 0 && (
+          <span
+            className="rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning"
+            title={`Public exploit code is listed on Exploit-DB (${finding.threatIntel!.publicExploit!.exploitDbIds.map((id) => `EDB-${id}`).join(", ")}), so attackers don't need to write their own`}
+          >
+            Public exploit
           </span>
         )}
         {finding.threatIntel?.epss !== undefined && (
