@@ -92,7 +92,7 @@ variable "next_public_site_url" {
 # An unset one is left out, which the code reads as "not configured", exactly
 # as an empty GitHub secret is.
 variable "scan_worker_secrets" {
-  description = "Secret worker settings: RESEND_API_KEY, CREDENTIALS_ENC_KEY, SENTRY_DSN, AZURE_OPENAI_KEY, GITHUB_PAT, GITHUB_APP_PRIVATE_KEY, WPSCAN_API_TOKEN, GOOGLE_SAFE_BROWSING_API_KEY, HIBP_API_KEY, INTERACTSH_TOKEN, STRIX_LLM_API_KEY, PROWLER_AWS_ACCESS_KEY_ID, PROWLER_AWS_SECRET_ACCESS_KEY."
+  description = "Secret worker settings: RESEND_API_KEY, CREDENTIALS_ENC_KEY, SENTRY_DSN, AZURE_OPENAI_KEY, GITHUB_PAT, GITHUB_APP_PRIVATE_KEY, WPSCAN_API_TOKEN, GOOGLE_SAFE_BROWSING_API_KEY, HIBP_API_KEY, INTERACTSH_TOKEN, STRIX_LLM_API_KEY, PROWLER_AWS_ACCESS_KEY_ID, PROWLER_AWS_SECRET_ACCESS_KEY, NVD_API_KEY."
   type        = map(string)
   sensitive   = true
   default     = {}
