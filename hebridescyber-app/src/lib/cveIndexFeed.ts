@@ -260,6 +260,39 @@ export type CveSyncOptions = NvdClientOptions & {
   log?: (line: string) => void;
 };
 
+/**
+ * One replace_cve_batch call per NVD page timed out once the backfill reached
+ * older CVEs (stuck at index ~44,000 from 2026-11-06): a 2,000-CVE page can
+ * carry tens of thousands of criteria, more than one statement can insert
+ * within the database's statement timeout. Each write is capped by rows (a
+ * record plus its criteria) and by CVE count. A CVE is never split across
+ * writes, so the RPC still replaces each CVE atomically; one CVE larger than
+ * the cap goes in a write of its own.
+ */
+export const MAX_ROWS_PER_WRITE = 2_000;
+export const MAX_CVES_PER_WRITE = 250;
+
+export function chunkForWrite(
+  entries: CveIndexEntry[],
+  limits: { maxRows: number; maxCves: number } = { maxRows: MAX_ROWS_PER_WRITE, maxCves: MAX_CVES_PER_WRITE }
+): CveIndexEntry[][] {
+  const chunks: CveIndexEntry[][] = [];
+  let current: CveIndexEntry[] = [];
+  let rows = 0;
+  for (const entry of entries) {
+    const weight = 1 + (entry.rejected ? 0 : entry.matches.length);
+    if (current.length > 0 && (rows + weight > limits.maxRows || current.length >= limits.maxCves)) {
+      chunks.push(current);
+      current = [];
+      rows = 0;
+    }
+    current.push(entry);
+    rows += weight;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 /** Dedupe within a page: the same CVE twice would violate the primary key. */
 function dedupe(entries: CveIndexEntry[]): CveIndexEntry[] {
   const byId = new Map<string, CveIndexEntry>();
@@ -298,7 +331,7 @@ export async function syncCveIndex(writer: CveIndexWriter, options: CveSyncOptio
 
   const writePage = async (page: NvdPage) => {
     const entries = dedupe(page.cves.map(toIndexEntry).filter((e): e is CveIndexEntry => e !== null));
-    if (entries.length > 0) await writer.writeEntries(entries);
+    for (const chunk of chunkForWrite(entries)) await writer.writeEntries(chunk);
     summary.pages++;
     summary.cves += entries.length;
     for (const e of entries) {
