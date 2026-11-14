@@ -23,7 +23,7 @@ anything outside the code. Development work is not listed here; it goes in
 - Detailed walkthroughs already in `OWNER-SETUP.md` are linked, not copied.
 
 Raised dates are the first commit that recorded each item. Last reviewed:
-2026-10-27, with each item checked against the live site,
+2026-11-14 (OT-02, OT-03, OT-49, OT-56); full review 2026-10-27, with each item checked against the live site,
 `gh secret list` (names only) and workflow logs.
 
 ## Summary
@@ -32,7 +32,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 |---|---|---|---|---|---|
 | OT-01 | Rotate the Supabase database password | 🔴 Critical | Open | 2026-10-14 | |
 | OT-02 | Add `RESEND_API_KEY` (no scheduled email has been sent) | 🔴 Critical | Open | 2026-10-06 | |
-| OT-03 | Review and merge #107 (cookie settings, Sentry in the privacy policy) | 🔴 High | Open | 2026-10-26 | |
+| OT-03 | Review and merge #107 (cookie settings, Sentry in the privacy policy) | — | Done | 2026-10-26 | 2026-10-30 |
 | OT-04 | Decide on #110 (Tier A plan checks), closed unmerged | 🟠 High | Decision | 2026-10-27 | |
 | OT-05 | Confirm `CREDENTIALS_ENC_KEY` in Azure and encrypt stored secrets | 🟠 High | Check | 2026-10-14 | |
 | OT-28 | Decide whether to rotate `CREDENTIALS_ENC_KEY` (it was exposed as a plaintext variable) | 🟠 High | Decision | 2026-10-28 | |
@@ -85,6 +85,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
 | OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
 | OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
+| OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟡 Medium | Open | 2026-11-14 | |
 
 ## Common steps
 
@@ -152,8 +153,13 @@ you confirm.
   DNS checks should still pass SPF and DMARC afterwards.
 - **Raised:** 2026-10-06 (`NEXT-STEPS.md` plan item 7: "the scan workers never
   had `RESEND_API_KEY`"). Confirmed missing on 2026-10-27.
+- **Still missing 2026-11-14:** not in `gh secret list`, and that morning's
+  scheduled scan logged three failed emails (SLA alert, scan completion,
+  attack-surface change) with "RESEND_API_KEY not configured".
 
-### OT-03: Review and merge #107 🔴
+### OT-03: Review and merge #107 ✅
+**Done 2026-10-30:** #107 was merged, and the live footer shows "Cookie settings" (checked 2026-11-14).
+
 - **What and why:** `NEXT_PUBLIC_GA_MEASUREMENT_ID` was set on 2026-10-24, so
   every deploy now builds Google Analytics in (it loads only after a visitor
   accepts the banner). #107 adds the footer "Cookie settings" control the
@@ -978,6 +984,9 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   opens show their checks running, with no "GH_PAT is not set" warning in
   the run. `gh api repos/andrew-barvas/hebrides-cyber/automated-security-fixes`
   reports `"enabled": true`.
+- **2026-11-10:** `GH_PAT` is set, but "Scanner tool updates" failed with
+  "Authentication failed" on push, so the token has expired or lacks
+  Contents, Pull requests and Workflows write. Create a new one.
 - **Raised:** 2026-11-01.
 
 ### OT-50: Scanner tool licences 🟠
@@ -1066,6 +1075,22 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** the insurer's written confirmation and the approved contract on
   file.
 - **Raised:** 2026-11-02.
+
+### OT-56: DNS for the Lookout subdomain 🟡
+- **What and why:** the Lookout page is built and the app already routes
+  `lookout.hebridescyber.co.uk` to it (`src/lib/productSites.ts`), but the
+  name doesn't resolve (checked 2026-11-14). Until it does, Lookout is only
+  reachable at `www.hebridescyber.co.uk/lookout`. Do **not** add `exploit`
+  until OT-13 and OT-51 are done.
+- **How:**
+  1. GoDaddy DNS: add a CNAME `lookout` pointing at the Static Web App's
+     default hostname (Azure portal → the Static Web App → Overview).
+  2. Azure portal → the Static Web App → Custom domains → Add →
+     `lookout.hebridescyber.co.uk`. Let Azure validate it and issue the
+     certificate.
+- **Verify:** `curl -I https://lookout.hebridescyber.co.uk/` returns 200, and
+  `https://lookout.hebridescyber.co.uk/login` returns 308 to `www`.
+- **Raised:** 2026-11-14 (`PRODUCT-SITES.md` "Owner steps", never added here).
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08

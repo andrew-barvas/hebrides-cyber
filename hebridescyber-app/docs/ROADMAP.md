@@ -33,6 +33,11 @@ looks like, that one states what to actually work on next.
 
 ## Stage 0 — where we actually are
 
+> **2026-11-14:** this snapshot is out of date. Stripe is live (`/api/health`
+> reports `stripe: ok`), migrations run to 072, and email is now the top
+> blocker (OT-02). The current status, dev order and pre-launch checklist are
+> in `NEXT-STEPS.md`, "Status and plan — 2026-11-14".
+
 *Reconciled 2026-10-15 against the code and `docs/NEXT-STEPS.md` (the live
 "what shipped" ledger). The earlier version of this section had drifted —
 it still cited "914 tests", "Stripe broken" and a "20 enterprise gaps closed"
