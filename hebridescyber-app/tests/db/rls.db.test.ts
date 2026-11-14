@@ -268,6 +268,18 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("workspace_connections", () => {
+    it("is service-role-only: it holds a sealed refresh token no browser may read", async () => {
+      await asActor(db, service, async (c) => {
+        await c.query("insert into workspace_connections (owner, refresh_token) values ($1, 'enc:v1:test') on conflict (owner) do nothing", [A]);
+      });
+      expect(await count(asA, "select 1 from workspace_connections")).toBe(0);
+      expect(await count(anon, "select 1 from workspace_connections")).toBe(0);
+      const ins = "insert into workspace_connections (owner, refresh_token) values (gen_random_uuid(), 'x')";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("security_profiles", () => {
     it("is service-role-only: the owner manages it through the API, and nobody reads it directly", async () => {
       expect(await count(asA, "select 1 from security_profiles")).toBe(0);

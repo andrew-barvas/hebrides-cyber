@@ -289,7 +289,11 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "m365.passwordsExpire": "easy",
   "m365.syncedGlobalAdmin": "moderate", // new cloud-only accounts, then move the role
   "m365.weakMfaMethodsEnabled": "moderate", // users must register a stronger method first
-  "m365.userConsentUnrestricted": "easy", // plus the admin-consent workflow and a review of granted apps
+  "m365.userConsentUnrestricted": "easy",
+  "workspace.adminsWithout2sv": "easy",
+  "workspace.2svNotEnforced": "moderate", // users need an enrolment window first
+  "workspace.tooManySuperAdmins": "easy",
+  "workspace.singleSuperAdmin": "easy", // plus the admin-consent workflow and a review of granted apps
   "m365.signInLogsUnavailable": "moderate", // a licence change (Entra ID P1)
 
   // --- Business logic (passive) ---

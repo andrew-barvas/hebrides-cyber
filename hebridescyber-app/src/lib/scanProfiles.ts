@@ -40,6 +40,7 @@ export type ExtendedToolName =
   | "jwtAnalysis"
   | "cloudPosture"
   | "m365"
+  | "workspace"
   | "httpx"
   | "contentDiscovery"
   | "credentialSpray"
@@ -88,6 +89,7 @@ export const EXTENDED_TOOL_NAMES: readonly ExtendedToolName[] = [
   "jwtAnalysis",
   "cloudPosture",
   "m365",
+  "workspace",
   "httpx",
   "contentDiscovery",
   "credentialSpray",
@@ -165,6 +167,7 @@ export type ScanProfile = "safe" | "full" | "api" | "cms" | "osint" | "exposure"
 export const EXPOSURE_TOOLS: ReadonlySet<ExtendedToolName> = new Set<ExtendedToolName>([
   "httpx",
   "m365",
+  "workspace",
   "networkExposure",
   "nmap",
   "nuclei",
@@ -214,6 +217,7 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
     cloudPosture: true,
     prowler: true,
     m365: true,
+    workspace: true,
     httpx: true,
     katana: true,
   },
