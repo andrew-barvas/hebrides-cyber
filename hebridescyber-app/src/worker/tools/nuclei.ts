@@ -50,7 +50,12 @@ import { randomUUID } from "node:crypto";
 
 const execFileAsync = execTool;
 
-const NUCLEI_TIMEOUT_MS = 120_000; // 120 seconds
+// Raised from 120s on 2026-11-14. The integration run against the local test
+// app took 98s with out-of-band (interactsh) checks off and was killed at 120s
+// with them on, so every scheduled scan's nuclei run was likely ending in a
+// timeout error. 300s gives the default configuration room; the worker's job
+// limit (scheduled-scans.yml, 120 minutes) is far above it.
+export const NUCLEI_TIMEOUT_MS = 300_000;
 
 // Deliberately excludes pure analytics/marketing/CDN/WAF detections
 // (Google Analytics, Hotjar, Cloudflare, Akamai, Vercel, Squarespace, …) —

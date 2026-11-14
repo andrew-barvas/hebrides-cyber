@@ -7,7 +7,7 @@
 // stdin open, so nuclei waited for input until it was killed at the timeout,
 // on every scan, with no results (see src/lib/execTool.ts).
 import { describe, it, expect } from "vitest";
-import { runNuclei } from "./nuclei";
+import { NUCLEI_TIMEOUT_MS, runNuclei } from "./nuclei";
 
 const base = process.env.TEST_APP_URL ?? "http://127.0.0.1:8099";
 
@@ -15,9 +15,9 @@ describe.skipIf(process.env.RUN_TOOL_INTEGRATION !== "1")("nuclei against the lo
   it("finishes the scan instead of being killed at the timeout", async () => {
     const result = await runNuclei(`${base}/`, []);
     // `status: "completed"` IS the regression signal: a stdin-hung nuclei is
-    // SIGTERM'd at NUCLEI_TIMEOUT_MS (120s) and returns an error, never
+    // SIGTERM'd at NUCLEI_TIMEOUT_MS and returns an error, never
     // "completed". A tight wall-clock bound on top of this only adds CI flake
     // (a legitimately slow-but-finished run once clocked 110.06s), so it's gone.
     expect(result).toMatchObject({ status: "completed" });
-  }, 200_000);
+  }, NUCLEI_TIMEOUT_MS + 30_000);
 });
