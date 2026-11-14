@@ -125,7 +125,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
 
     const body = res._getData() as string;
     const lines = body.split("\r\n");
-    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids");
+    expect(lines[0]).toBe("severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids,exploitdb_ids");
     // Embedded quote/comma must be CSV-escaped (doubled quotes, wrapped in quotes).
     expect(lines[1]).toContain('"Finding with a ""quote"", and a comma"');
     expect(lines[1]).toContain("CVE-2024-1; CVE-2024-2");
@@ -235,7 +235,7 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids"]);
+    expect((res._getData() as string).split("\r\n")).toEqual(["severity,title,detail,check_id,cve_ids,cvss_score,cvss_vector,known_exploited,epss,compliance_refs,triage_state,triage_reason,triage_expires_at,corroborated_by,evidence,attack_techniques,cwe_ids,exploitdb_ids"]);
   });
 
   it("puts a finding's evidence in one CSV column and leaves it blank when there is none", async () => {
@@ -292,8 +292,8 @@ describe("GET /api/v1/scans/[id]/export", () => {
     await handler(req, res);
 
     const lines = (res._getData() as string).split("\r\n");
-    expect(lines[1]).toMatch(/,T1557 [^,]+,CWE-298$/);
-    expect(lines[2].endsWith(",T1190 Exploit Public-Facing Application,CWE-1")).toBe(true);
+    expect(lines[1]).toMatch(/,T1557 [^,]+,CWE-298,$/);
+    expect(lines[2].endsWith(",T1190 Exploit Public-Facing Application,CWE-1,")).toBe(true);
   });
 
   it("returns a SARIF 2.1.0 log for format=sarif, with triage applied", async () => {
