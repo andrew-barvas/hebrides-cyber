@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   EPSS_API_URL,
   EXPLOITDB_INDEX_URL,
+  POC_IN_GITHUB_TREE_URL,
+  parsePocTree,
   KEV_FEED_URL,
   applyThreatIntel,
   enrichFindingsWithThreatIntel,
@@ -197,6 +199,56 @@ describe("Exploit-DB public-exploit signal", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("down", { status: 503 })));
     const g = finding(["CVE-2024-6387"]);
     await expect(enrichFindingsWithThreatIntel([g])).resolves.toBeUndefined();
+    expect(g.threatIntel).toBeUndefined();
+  });
+});
+
+describe("PoC-in-GitHub public-exploit signal", () => {
+  const TREE = {
+    truncated: false,
+    tree: [
+      { path: "2024", type: "tree" },
+      { path: "2024/CVE-2024-6387.json", type: "blob" },
+      { path: "2021/CVE-2021-44228.json", type: "blob" },
+      { path: "README.md", type: "blob" },
+    ],
+  };
+
+  it("reads CVE ids from the repository's file list, and refuses a truncated or empty one", () => {
+    expect([...parsePocTree(TREE)!].sort()).toEqual(["CVE-2021-44228", "CVE-2024-6387"]);
+    expect(parsePocTree({ ...TREE, truncated: true })).toBeNull();
+    expect(parsePocTree({ truncated: false, tree: [] })).toBeNull();
+    expect(parsePocTree(null)).toBeNull();
+  });
+
+  it("sets githubPoc only when the list loaded, alongside Exploit-DB", () => {
+    const poc = parsePocTree(TREE);
+    const listed = finding(["CVE-2024-6387"]);
+    const none = finding(["CVE-2020-11022"]);
+    applyThreatIntel([listed, none], null, null, null, poc);
+    expect(listed.threatIntel?.publicExploit).toEqual({ githubPoc: true });
+    expect(none.threatIntel?.publicExploit).toEqual({ githubPoc: false });
+    const both = finding(["CVE-2024-6387"]);
+    applyThreatIntel([both], null, null, parseExploitDbIndex(EDB_CSV), poc);
+    expect(both.threatIntel?.publicExploit).toEqual({ exploitDbIds: ["50000", "50001"], githubPoc: true });
+  });
+
+  it("fetches the list once per day and never throws when GitHub is unavailable", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === POC_IN_GITHUB_TREE_URL) return new Response(JSON.stringify(TREE));
+      throw new Error("offline");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const f = finding(["CVE-2021-44228"]);
+    await enrichFindingsWithThreatIntel([f], 1_000);
+    expect(f.threatIntel?.publicExploit?.githubPoc).toBe(true);
+    await enrichFindingsWithThreatIntel([finding(["CVE-2021-44228"])], 2_000);
+    expect(fetchMock.mock.calls.filter(([u]) => u === POC_IN_GITHUB_TREE_URL)).toHaveLength(1);
+
+    resetThreatIntelCache();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("rate limited", { status: 403 })));
+    const g = finding(["CVE-2021-44228"]);
+    await enrichFindingsWithThreatIntel([g]);
     expect(g.threatIntel).toBeUndefined();
   });
 });

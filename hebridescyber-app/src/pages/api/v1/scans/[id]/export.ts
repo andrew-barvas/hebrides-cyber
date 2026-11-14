@@ -24,7 +24,7 @@ import { buildDefectDojoReport } from "@/lib/defectDojo";
 function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null }>): string {
   const header = [
     "severity", "title", "detail", "check_id", "cve_ids", "cvss_score", "cvss_vector", "known_exploited", "epss", "compliance_refs",
-    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence", "attack_techniques", "cwe_ids", "exploitdb_ids",
+    "triage_state", "triage_reason", "triage_expires_at", "corroborated_by", "evidence", "attack_techniques", "cwe_ids", "exploitdb_ids", "github_poc",
   ];
   const rows = findings.map((f) => [
     f.severity,
@@ -49,7 +49,9 @@ function findingsToCsv(findings: Array<Finding & { triage: FindingTriage | null 
     (f.attackRefs ?? getAttackRefs(f.checkId)).map((r) => `${r.id} ${r.name}`).join("; "),
     (f.cwe ?? getCweIds(f.checkId)).join("; "),
     // Blank = not checked; "none" = the Exploit-DB index loaded and listed nothing.
-    f.threatIntel?.publicExploit ? (f.threatIntel.publicExploit.exploitDbIds.map((id) => `EDB-${id}`).join("; ") || "none") : "",
+    f.threatIntel?.publicExploit?.exploitDbIds ? (f.threatIntel.publicExploit.exploitDbIds.map((id) => `EDB-${id}`).join("; ") || "none") : "",
+    // Blank = not checked; true/false = the PoC-in-GitHub list loaded.
+    typeof f.threatIntel?.publicExploit?.githubPoc === "boolean" ? String(f.threatIntel.publicExploit.githubPoc) : "",
   ]);
   return [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\r\n");
 }
