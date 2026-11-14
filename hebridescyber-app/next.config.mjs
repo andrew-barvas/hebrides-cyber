@@ -62,6 +62,14 @@ const nextConfig = {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
       { source: "/api/:path*", headers: [{ key: "Content-Security-Policy", value: API_CSP }] },
+      // Both badges are meant to be embedded on customers' own sites: the score
+      // badge (src/pages/api/badge) and the security-profile badge
+      // (src/pages/api/profile-badge). Under the catch-all's same-origin value,
+      // browsers refused to load the score badge on any other site. Listed
+      // after the catch-all so this value wins for these paths; everything
+      // else stays same-origin.
+      { source: "/api/badge/:path*", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
+      { source: "/api/profile-badge/:path*", headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },
     ];
   },
   // Deployed as Azure Static Web Apps "hybrid" mode (managed Functions) by
