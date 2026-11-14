@@ -3664,6 +3664,46 @@ doesn't need MFA again.
 3. Review Enterprise applications for apps already granted access that
    nobody recognises, and remove them.`;
 
+export const M365_USERS_CAN_REGISTER_APPS = `Any user can register an application in your tenant. A registered app can
+then ask other users to consent to it, and it is a common way to set up a
+consent-phishing app from inside the organisation (CISA SCuBA MS.AAD.5.1).
+
+1. Entra admin center → Identity → Users → User settings → "Users can register
+   applications" → No.
+2. Give the Application Developer role to the few people who need to register
+   apps.`;
+
+export const M365_PASSWORDS_EXPIRE = `Passwords on your Microsoft 365 domain are set to expire. Forced expiry
+makes people choose weaker, predictable passwords (Summer2026!, Autumn2026!)
+and doesn't stop an attacker who already has one. The NCSC and CISA (SCuBA
+MS.AAD.6.1) both advise against it once MFA is in place.
+
+1. Microsoft 365 admin center → Settings → Org settings → Security & privacy →
+   Password expiration policy → tick "Set passwords to never expire".
+2. Make sure MFA is enforced for everyone first, so a leaked password alone
+   isn't enough.`;
+
+export const M365_SYNCED_GLOBAL_ADMIN = `At least one Global Administrator is synchronised from on-premises Active
+Directory. Anyone who takes over your on-premises domain can then reset that
+account and take over Microsoft 365 as well (CISA SCuBA MS.AAD.7.3).
+
+1. Create a cloud-only admin account for each person who needs the role
+   (an @yourtenant.onmicrosoft.com address is fine), with MFA.
+2. Assign Global Administrator to the cloud-only accounts and remove it from
+   the synchronised ones.
+3. Keep at least two cloud-only Global Administrators, one of them a
+   break-glass account.`;
+
+export const M365_WEAK_MFA_METHODS = `Text-message, voice-call or email one-time codes are still allowed as sign-in
+methods. They can be intercepted or phished far more easily than the
+Microsoft Authenticator app or a passkey (CISA SCuBA MS.AAD.3.5).
+
+1. Entra admin center → Protection → Authentication methods → Policies.
+2. Make sure everyone has registered Microsoft Authenticator or a passkey
+   first (Authentication methods → User registration details).
+3. Then set SMS, Voice call and Email OTP to disabled, or limit them to a
+   small group that has no alternative.`;
+
 export const M365_SIGN_IN_LOGS_UNAVAILABLE = `Entra ID sign-in logs can't be read for this tenant. Microsoft only keeps
 them for tenants with Entra ID P1 or P2 (Business Premium, E3, E5), so
 there is no record to investigate a suspicious sign-in or a compromised

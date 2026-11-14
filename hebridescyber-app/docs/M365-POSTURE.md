@@ -89,6 +89,10 @@ any of the five.
 | `m365.guestInvitesUnrestricted` | `allowInvitesFrom` is `everyone` | medium | same |
 | `m365.userConsentUnrestricted` | users can consent to any app (`microsoft-user-default-legacy`) | high | same |
 | `m365.signInLogsUnavailable` | Microsoft refuses sign-in logs for want of Entra ID P1/P2 | medium | `/auditLogs/signIns?$top=1` |
+| `m365.usersCanRegisterApps` | `allowedToCreateApps` is true in the authorization policy (SCuBA MS.AAD.5.1) | medium | `/policies/authorizationPolicy` |
+| `m365.passwordsExpire` | a verified, managed (not federated) domain's `passwordValidityPeriodInDays` is below Graph's never-expires value (SCuBA MS.AAD.6.1) | low | `/domains` |
+| `m365.syncedGlobalAdmin` | a Global Administrator user has `onPremisesSyncEnabled` true (SCuBA MS.AAD.7.3) | medium | the Global Administrator members read |
+| `m365.weakMfaMethodsEnabled` | SMS, voice call or email one-time codes are enabled in the authentication methods policy (SCuBA MS.AAD.3.5) | low | `/policies/authenticationMethodsPolicy` |
 
 Report-only CA policies (`enabledForReportingButNotEnforced`) don't count.
 CA reads refused for licensing (no Entra ID P1) count as "no policies". Any
@@ -129,6 +133,35 @@ a follow-up.
 One more limit: findings are per tenant, but scans are per target, so an
 owner with several sites sees the same `m365.*` findings on each, as with
 `cloudPosture`.
+
+## CISA SCuBA baseline comparison (2026-11-14)
+
+CISA's Secure Cloud Business Applications (SCuBA) project publishes Microsoft 365 and Google Workspace baselines, with three open-source assessors: **ScubaGear** (Microsoft 365, Windows PowerShell 5.1 only), **Maester** (Microsoft 365, PowerShell with Pester; it ships the SCuBA Entra tests among others) and **ScubaGoggles** (Google Workspace, Python).
+
+**We don't run them directly.** ScubaGear needs a Windows host, and all three need far broader tenant permissions than this read-only app requests: Exchange Online, SharePoint, Teams and Defender roles, or for ScubaGoggles a Google Workspace service account with domain-wide delegation. They also produce their own reports rather than findings we can track and close. Instead, the SCuBA Entra ID controls that the app's existing permissions can read are implemented as `m365.*` checks:
+
+| SCuBA control (Entra ID) | Covered by |
+|---|---|
+| MS.AAD.1.1 legacy authentication blocked | `m365.legacyAuthAllowed` |
+| MS.AAD.3.1/3.2 MFA for all users | `m365.mfaNotEnforcedAllUsers`, `m365.noSecurityBaseline` |
+| MS.AAD.3.5 SMS, voice and email OTP disabled | `m365.weakMfaMethodsEnabled` (new) |
+| MS.AAD.3.6 phishing-resistant MFA for privileged roles | partly: `m365.mfaNotEnforcedAdmins` checks MFA, not its strength |
+| MS.AAD.5.1 only admins register applications | `m365.usersCanRegisterApps` (new) |
+| MS.AAD.5.2 only admins consent to applications | `m365.userConsentUnrestricted` (we also accept the CIS "verified publishers, low risk" setting) |
+| MS.AAD.6.1 passwords never expire | `m365.passwordsExpire` (new) |
+| MS.AAD.7.1 two to eight Global Administrators | `m365.tooManyGlobalAdmins`, `m365.singleGlobalAdmin` (we use the stricter CIS limit of four) |
+| MS.AAD.7.3 privileged users are cloud-only | `m365.syncedGlobalAdmin` (new; Global Administrator only) |
+| MS.AAD.8.1/8.2 guest access and invites limited | `m365.guestAccessUnrestricted`, `m365.guestInvitesUnrestricted` |
+
+**Not covered, and why:**
+- **MS.AAD.2.x** (block high-risk users and sign-ins): needs Entra ID P2, which few small businesses have. A finding would mostly tell them to buy a licence.
+- **MS.AAD.7.4 to 7.9** (PIM): needs P2 and `RoleManagement.Read.Directory`.
+- **MS.AAD.4.1** (logs sent to a central SOC): a US federal requirement.
+- **The Exchange, Defender, SharePoint and Teams baselines:** need the Exchange Online admin API, the follow-up noted above.
+
+The mapping was written from the published SCuBA Entra ID baseline as of this date. Re-check the control numbers when CISA publishes a new baseline version.
+
+**Google Workspace:** nothing is checked yet. ScubaGoggles is the reference if Workspace customers appear. It would need its own consent flow (a Workspace service account with read-only admin scopes), the same shape as this Microsoft one.
 
 ## Configuration
 
