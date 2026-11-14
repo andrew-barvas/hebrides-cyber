@@ -16,6 +16,8 @@ import {
   type CveSyncState,
   type CveIndexEntry,
   type FetchLike,
+  chunkForWrite,
+  MAX_ROWS_PER_WRITE,
 } from "./cveIndexFeed";
 
 // Trimmed from NVD's CVE API 2.0 record for CVE-2024-6387: its OpenSSH
@@ -309,6 +311,47 @@ describe("syncCveIndex", () => {
     await expect(
       syncCveIndex(w2, { now: NOW, fetchImpl: vi.fn<FetchLike>().mockResolvedValue(new Response("", { status: 400 })), sleep: async () => {} })
     ).rejects.toThrow("HTTP 400");
+  });
+});
+
+describe("chunkForWrite", () => {
+  const entry = (n: number, criteria: number): CveIndexEntry => ({
+    cve_id: `CVE-2024-${String(n).padStart(5, "0")}`,
+    rejected: false,
+    record: { cve_id: `CVE-2024-${String(n).padStart(5, "0")}`, cvss_score: null, cvss_version: null, cvss_vector: null, summary: null, published_at: null, last_modified_at: "2024-01-01T00:00:00Z", vuln_status: null },
+    matches: Array.from({ length: criteria }, () => ({ part: "a", vendor: "v", product: "p", exact_version: "1", any_update: false, start_including: null, start_excluding: null, end_including: null, end_excluding: null, conditional: false, criteria: "cpe:2.3:a:v:p:1" })),
+  });
+
+  it("keeps a small page in one write", () => {
+    expect(chunkForWrite([entry(1, 3), entry(2, 3)])).toHaveLength(1);
+    expect(chunkForWrite([])).toEqual([]);
+  });
+
+  it("splits on rows (a record plus its criteria) without splitting a CVE", () => {
+    const chunks = chunkForWrite([entry(1, 4), entry(2, 4), entry(3, 4)], { maxRows: 10, maxCves: 100 });
+    expect(chunks.map((c) => c.map((e) => e.cve_id))).toEqual([["CVE-2024-00001", "CVE-2024-00002"], ["CVE-2024-00003"]]);
+  });
+
+  it("splits on CVE count, and gives an oversized CVE a write of its own", () => {
+    expect(chunkForWrite([entry(1, 0), entry(2, 0), entry(3, 0)], { maxRows: 100, maxCves: 2 }).map((c) => c.length)).toEqual([2, 1]);
+    const big = chunkForWrite([entry(1, 1), entry(2, 50), entry(3, 1)], { maxRows: 10, maxCves: 100 });
+    expect(big.map((c) => c.map((e) => e.cve_id))).toEqual([["CVE-2024-00001"], ["CVE-2024-00002"], ["CVE-2024-00003"]]);
+  });
+
+  it("counts a rejected CVE as one row", () => {
+    const rejected = (n: number): CveIndexEntry => ({ cve_id: `CVE-2024-${n}0000`, rejected: true });
+    expect(chunkForWrite([rejected(1), rejected(2), rejected(3)], { maxRows: 2, maxCves: 100 }).map((c) => c.length)).toEqual([2, 1]);
+  });
+
+  it("is what syncCveIndex uses: a heavy page becomes several writes, each CVE whole", async () => {
+    const { writer, written } = memoryWriter(null);
+    // REGRESSHION carries 6 criteria, so 400 of them is 2,800 rows: over one write's cap.
+    const cves = Array.from({ length: 400 }, (_, i) => cve(i + 1));
+    const fetchImpl = vi.fn<FetchLike>().mockResolvedValueOnce(pageResponse(0, 400, cves));
+    await syncCveIndex(writer, { now: NOW, fetchImpl, sleep: async () => {} });
+    expect(written.length).toBeGreaterThan(1);
+    expect(written.flat()).toHaveLength(400);
+    for (const chunk of written) expect(chunk.reduce((n, e) => n + 1 + (e.rejected ? 0 : e.matches.length), 0)).toBeLessThanOrEqual(MAX_ROWS_PER_WRITE);
   });
 });
 

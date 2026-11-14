@@ -3664,6 +3664,76 @@ doesn't need MFA again.
 3. Review Enterprise applications for apps already granted access that
    nobody recognises, and remove them.`;
 
+export const M365_USERS_CAN_REGISTER_APPS = `Any user can register an application in your tenant. A registered app can
+then ask other users to consent to it, and it is a common way to set up a
+consent-phishing app from inside the organisation (CISA SCuBA MS.AAD.5.1).
+
+1. Entra admin center → Identity → Users → User settings → "Users can register
+   applications" → No.
+2. Give the Application Developer role to the few people who need to register
+   apps.`;
+
+export const M365_PASSWORDS_EXPIRE = `Passwords on your Microsoft 365 domain are set to expire. Forced expiry
+makes people choose weaker, predictable passwords (Summer2026!, Autumn2026!)
+and doesn't stop an attacker who already has one. The NCSC and CISA (SCuBA
+MS.AAD.6.1) both advise against it once MFA is in place.
+
+1. Microsoft 365 admin center → Settings → Org settings → Security & privacy →
+   Password expiration policy → tick "Set passwords to never expire".
+2. Make sure MFA is enforced for everyone first, so a leaked password alone
+   isn't enough.`;
+
+export const M365_SYNCED_GLOBAL_ADMIN = `At least one Global Administrator is synchronised from on-premises Active
+Directory. Anyone who takes over your on-premises domain can then reset that
+account and take over Microsoft 365 as well (CISA SCuBA MS.AAD.7.3).
+
+1. Create a cloud-only admin account for each person who needs the role
+   (an @yourtenant.onmicrosoft.com address is fine), with MFA.
+2. Assign Global Administrator to the cloud-only accounts and remove it from
+   the synchronised ones.
+3. Keep at least two cloud-only Global Administrators, one of them a
+   break-glass account.`;
+
+export const M365_WEAK_MFA_METHODS = `Text-message, voice-call or email one-time codes are still allowed as sign-in
+methods. They can be intercepted or phished far more easily than the
+Microsoft Authenticator app or a passkey (CISA SCuBA MS.AAD.3.5).
+
+1. Entra admin center → Protection → Authentication methods → Policies.
+2. Make sure everyone has registered Microsoft Authenticator or a passkey
+   first (Authentication methods → User registration details).
+3. Then set SMS, Voice call and Email OTP to disabled, or limit them to a
+   small group that has no alternative.`;
+
+export const NETWORK_SSH_WEAK = `The SSH server still offers algorithms that are broken or close to it, or
+its version has known vulnerabilities.
+
+1. Update the SSH server package (on Ubuntu or Debian, apt upgrade openssh-server).
+2. In /etc/ssh/sshd_config, limit KexAlgorithms, Ciphers, MACs and HostKeyAlgorithms
+   to modern ones (curve25519-sha256, chacha20-poly1305@openssh.com, aes256-gcm@openssh.com,
+   hmac-sha2-512-etm@openssh.com, ssh-ed25519). ssh-audit's own hardening guides list
+   exact lines per distribution.
+3. Restart sshd, keep your current session open, and check you can still log in.
+4. Better still, don't expose SSH to the internet at all: allow it only from your
+   office or VPN address.`;
+
+export const NETWORK_TLS_CERT = `The certificate on this port is expired, self-signed, issued for another
+name, revoked or not trusted. Mail clients, apps and browsers either warn or, if they're
+set to ignore warnings, can be intercepted.
+
+1. Find which service listens on this port (mail, an admin panel, a VPN).
+2. Give it a certificate from a public authority for the name people connect to
+   (Let's Encrypt is free and renews automatically).
+3. If the service shouldn't be public, close the port instead.`;
+
+export const NETWORK_ZONE_TRANSFER = `A name server for this domain answers zone-transfer (AXFR) requests from
+anyone, handing over every record in the zone, including internal and test host names.
+
+1. On each authoritative name server, allow zone transfers only to your secondary
+   name servers' addresses (BIND: allow-transfer { <secondary IPs>; }; Windows DNS:
+   Zone Transfers tab → Only to the following servers).
+2. If your DNS is hosted (GoDaddy, Cloudflare, your registrar), ask them to disable
+   public zone transfers.`;
+
 export const M365_SIGN_IN_LOGS_UNAVAILABLE = `Entra ID sign-in logs can't be read for this tenant. Microsoft only keeps
 them for tenants with Entra ID P1 or P2 (Business Premium, E3, E5), so
 there is no record to investigate a suspicious sign-in or a compromised

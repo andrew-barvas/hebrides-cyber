@@ -264,6 +264,10 @@ describe("mappings", () => {
     "m365.guestInvitesUnrestricted",
     "m365.userConsentUnrestricted",
     "m365.signInLogsUnavailable",
+    "m365.usersCanRegisterApps",
+    "m365.passwordsExpire",
+    "m365.syncedGlobalAdmin",
+    "m365.weakMfaMethodsEnabled",
   ];
 
   it("gives every m365 checkId compliance refs and a fix difficulty", () => {
@@ -304,7 +308,9 @@ function fakeGraph(routes: Record<string, Route>) {
   return { impl: impl as unknown as typeof fetch, calls };
 }
 
-const ADMINS_PATH = `/directoryRoles(roleTemplateId='${GLOBAL_ADMIN_ROLE_TEMPLATE_ID}')/members?$select=id,userPrincipalName`;
+const ADMINS_PATH = `/directoryRoles(roleTemplateId='${GLOBAL_ADMIN_ROLE_TEMPLATE_ID}')/members?$select=id,userPrincipalName,onPremisesSyncEnabled`;
+const DOMAINS_PATH = "/domains?$select=id,isVerified,authenticationType,passwordValidityPeriodInDays";
+const AUTH_METHODS_PATH = "/policies/authenticationMethodsPolicy";
 const USERS_PATH = "/users?$select=id,userPrincipalName&$filter=accountEnabled eq true&$top=999";
 
 function weakTenant(): Record<string, Route> {
@@ -313,7 +319,7 @@ function weakTenant(): Record<string, Route> {
     "/identity/conditionalAccess/policies": { body: { value: [] } },
     [ADMINS_PATH]: {
       body: {
-        value: [1, 2, 3, 4, 5, 6].map((n) => ({ "@odata.type": "#microsoft.graph.user", id: `a${n}`, userPrincipalName: `admin${n}@contoso.test` })),
+        value: [1, 2, 3, 4, 5, 6].map((n) => ({ "@odata.type": "#microsoft.graph.user", id: `a${n}`, userPrincipalName: `admin${n}@contoso.test`, onPremisesSyncEnabled: n === 1 })),
       },
     },
     "/policies/authorizationPolicy": {
@@ -321,11 +327,14 @@ function weakTenant(): Record<string, Route> {
         id: "authorizationPolicy",
         allowInvitesFrom: "everyone",
         guestUserRoleId: GUEST_ROLE_SAME_AS_MEMBER,
-        defaultUserRolePermissions: { permissionGrantPoliciesAssigned: ["ManagePermissionGrantsForSelf.microsoft-user-default-legacy"] },
+        defaultUserRolePermissions: { permissionGrantPoliciesAssigned: ["ManagePermissionGrantsForSelf.microsoft-user-default-legacy"], allowedToCreateApps: true },
       },
     },
     "/auditLogs/signIns?$top=1": { status: 403, body: { error: { code: "Authentication_RequestFromNonPremiumTenantOrB2CTenant", message: "Tenant is not a B2C tenant and doesn't have premium license" } } },
-    "/domains?$select=id,isVerified": { body: { value: [{ id: "contoso.test", isVerified: true }] } },
+    [DOMAINS_PATH]: { body: { value: [{ id: "contoso.test", isVerified: true, authenticationType: "Managed", passwordValidityPeriodInDays: 90 }] } },
+    [AUTH_METHODS_PATH]: {
+      body: { authenticationMethodConfigurations: [{ id: "Sms", state: "enabled" }, { id: "Voice", state: "disabled" }, { id: "Email", state: "enabled" }, { id: "Fido2", state: "enabled" }] },
+    },
     [USERS_PATH]: {
       body: { value: [{ id: "u1", userPrincipalName: "ally@contoso.test" }], "@odata.nextLink": `${GRAPH_BASE}/users?page=2` },
     },
@@ -355,6 +364,10 @@ describe("runM365Checks over a fake Graph", () => {
         "m365.signInLogsUnavailable",
         "m365.tooManyGlobalAdmins",
         "m365.userConsentUnrestricted",
+        "m365.usersCanRegisterApps",
+        "m365.passwordsExpire",
+        "m365.syncedGlobalAdmin",
+        "m365.weakMfaMethodsEnabled",
       ].sort()
     );
     expect(calls.some((c) => c.includes("page=2"))).toBe(true);
@@ -367,8 +380,10 @@ describe("runM365Checks over a fake Graph", () => {
     routes["/policies/identitySecurityDefaultsEnforcementPolicy"] = { body: { isEnabled: true } };
     routes[ADMINS_PATH] = { body: { value: [1, 2].map((n) => ({ "@odata.type": "#microsoft.graph.user", id: `a${n}` })) } };
     routes["/policies/authorizationPolicy"] = {
-      body: { allowInvitesFrom: "adminsAndGuestInviters", guestUserRoleId: "2af84b1e-32c8-42b7-82bc-daa82404023b", defaultUserRolePermissions: { permissionGrantPoliciesAssigned: [] } },
+      body: { allowInvitesFrom: "adminsAndGuestInviters", guestUserRoleId: "2af84b1e-32c8-42b7-82bc-daa82404023b", defaultUserRolePermissions: { permissionGrantPoliciesAssigned: [], allowedToCreateApps: false } },
     };
+    routes[DOMAINS_PATH] = { body: { value: [{ id: "contoso.test", isVerified: true, authenticationType: "Managed", passwordValidityPeriodInDays: 2147483647 }, { id: "fed.test", isVerified: true, authenticationType: "Federated", passwordValidityPeriodInDays: 90 }] } };
+    routes[AUTH_METHODS_PATH] = { body: { authenticationMethodConfigurations: [{ id: "Sms", state: "disabled" }, { id: "Fido2", state: "enabled" }] } };
     routes["/auditLogs/signIns?$top=1"] = { body: { value: [{ id: "s1" }] } };
     routes["/users/u1/mailFolders/inbox/messageRules"] = { body: { value: [] } };
     const { impl } = fakeGraph(routes);

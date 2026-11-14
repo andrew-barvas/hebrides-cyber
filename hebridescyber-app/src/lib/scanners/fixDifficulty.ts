@@ -285,6 +285,10 @@ const FIX_DIFFICULTY_MAP: Record<string, FixDifficulty> = {
   "m365.externalForwarding": "moderate", // remove the rule, then establish whether the mailbox was compromised
   "m365.guestAccessUnrestricted": "trivial",
   "m365.guestInvitesUnrestricted": "trivial",
+  "m365.usersCanRegisterApps": "easy",
+  "m365.passwordsExpire": "easy",
+  "m365.syncedGlobalAdmin": "moderate", // new cloud-only accounts, then move the role
+  "m365.weakMfaMethodsEnabled": "moderate", // users must register a stronger method first
   "m365.userConsentUnrestricted": "easy", // plus the admin-consent workflow and a review of granted apps
   "m365.signInLogsUnavailable": "moderate", // a licence change (Entra ID P1)
 

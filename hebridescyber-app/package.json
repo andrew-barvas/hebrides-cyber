@@ -38,6 +38,7 @@
     "reports:send": "tsx src/scripts/send-scheduled-reports.ts",
     "uptime:sync": "tsx src/scripts/sync-uptime-monitors.ts",
     "threats:check": "tsx src/scripts/check-emerging-threats.ts",
+    "outreach:snapshot": "tsx src/scripts/outreach-snapshot.ts",
     "easm:discover": "tsx src/scripts/run-easm-discovery.ts",
     "cve:sync": "tsx src/scripts/sync-cve-index.ts",
     "docs:diagrams": "tsx src/scripts/render-diagrams.ts"
@@ -51,6 +52,7 @@
     "@supabase/supabase-js": "^2.118.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csp_evaluator": "1.1.8",
     "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.66.0",
     "marked": "^13.0.2",
