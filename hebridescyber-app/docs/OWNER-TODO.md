@@ -86,6 +86,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
 | OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
 | OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟡 Medium | Open | 2026-11-14 | |
+| OT-57 | Custom SMTP for Supabase Auth, so sign-up and sign-in links aren't rate-limited | 🟠 High | Open | 2026-11-14 | |
 
 ## Common steps
 
@@ -1091,6 +1092,23 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **Verify:** `curl -I https://lookout.hebridescyber.co.uk/` returns 200, and
   `https://lookout.hebridescyber.co.uk/login` returns 308 to `www`.
 - **Raised:** 2026-11-14 (`PRODUCT-SITES.md` "Owner steps", never added here).
+
+### OT-57: Custom SMTP for Supabase Auth 🟠
+- **What and why:** sign-up and sign-in use one-time email links sent by
+  Supabase Auth, not Resend. Supabase's built-in email service is meant for
+  testing and is heavily rate-limited (typically a few messages an hour), so a
+  launch or outreach day could leave new customers waiting for a link that
+  never arrives.
+- **How:**
+  1. Do OT-02 first. The same Resend account and verified domain work here.
+  2. Supabase dashboard → Authentication → Emails → SMTP Settings → enable
+     custom SMTP: host `smtp.resend.com`, port 465, username `resend`, the
+     Resend API key as the password, sender `no-reply@hebridescyber.co.uk`.
+  3. Raise the auth email rate limit under Authentication → Rate Limits to
+     suit (for example 30 an hour).
+- **Verify:** sign up with a fresh address on the live site. The link arrives
+  from `no-reply@hebridescyber.co.uk`, and Resend's log shows the send.
+- **Raised:** 2026-11-14 (`IMPROVEMENT-REVIEW-2026-11.md`, UX fix 6).
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08

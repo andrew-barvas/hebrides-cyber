@@ -93,6 +93,8 @@ Still open:
 Found today:
 - **nuclei integration test:** it now hits its 120-second limit on master. It passed on 2026-11-09, and no code changed since. Likely cause: the public interactsh server, because the test doesn't set `DISABLE_OAST`. Not yet confirmed.
 
+**Next batch (written after these landed):** the next 10 dev tasks, five ideas per product, platform lessons and UX fixes are in [`IMPROVEMENT-REVIEW-2026-11.md`](IMPROVEMENT-REVIEW-2026-11.md). The list below is the plan this batch worked through.
+
 ### Next dev tasks, in order
 
 1. **Fix the CVE index sync.** Write smaller batches, or raise the
