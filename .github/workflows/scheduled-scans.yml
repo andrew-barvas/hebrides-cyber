@@ -243,6 +243,8 @@ jobs:
           # Optional: raises NVD's rate limit for softwareCveDb.ts; a
           # rate-limited lookup reports the check as not run.
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          # Estate screenshots (src/lib/estateScreenshots.ts); skipped when unset.
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
           HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
           # Strix AI pentest agent (Sprint 18) — needs an LLM API key to run.

@@ -11,6 +11,7 @@ import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, Cr
 import { viewTriageFrom } from "@/components/FindingTriage";
 import type { TriageRecord } from "@/lib/findingTriage";
 import ShareLinks from "@/components/ShareLinks";
+import EstateScreenshots from "@/components/EstateScreenshots";
 import SecurityProfileToggle from "@/components/SecurityProfileToggle";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import FixWizard from "@/components/FixWizard";
@@ -772,6 +773,7 @@ export default function ScanDetailPage() {
 
           {/* Third-party script inventory (PCI DSS 6.4.3) */}
           <ScriptInventorySection inventory={result.results?.scriptInventory} />
+          {sessionToken && <EstateScreenshots scanId={result.scan_id} token={sessionToken} />}
           <PageScreenshotSection
             screenshot={result.results?.playwright?.screenshot}
             url={result.results?.playwright?.finalUrl}
