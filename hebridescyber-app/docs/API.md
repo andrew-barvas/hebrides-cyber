@@ -224,6 +224,8 @@ doesn't mean it isn't exploitable.
 
 `format=sarif` returns a SARIF 2.1.0 log (`application/sarif+json`) for GitHub code scanning or any tool that reads SARIF. Each check is a rule and each finding a result, with a stable `partialFingerprints` value so a tool can tell new from existing results across scans. Findings from code, workflow, secret and dependency scans carry a file and line (secret values are never included); everything else is located at the scanned URL. Findings you triaged as false positives are left out, and accepted or snoozed ones are marked suppressed. Output is capped at 5,000 results, with the number omitted recorded in the run properties. To upload from CI, see `/docs/ci`.
 
+`format=defectdojo` returns DefectDojo's Generic Findings Import JSON. In DefectDojo, import the file with the scan type "Generic Findings Import". Each finding's `unique_id_from_tool` is its stable check ID, so a re-import lines up with earlier ones. False positives and accepted risk come across as `false_p` and `risk_accepted` and are marked inactive; snoozed findings stay active.
+
 `compliance_refs` — see `src/lib/scanners/compliance.ts` — maps a finding to
 Cyber Essentials, OWASP Top 10, and/or CIS Controls v8 where genuinely
 applicable. Deliberately not exhaustive: a finding with no compliance refs
