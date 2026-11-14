@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink } from "@/lib/auth";
+import { safeNextPath } from "@/lib/safeRedirect";
 
 // Explicit "create an account" entry point. Mechanically this is the same
 // magic-link call as /login (Supabase's signInWithOtp creates a new
@@ -22,7 +23,7 @@ export default function SignupPage() {
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams?.get("redirect") ?? "/dashboard";
+  const redirectTo = safeNextPath(searchParams?.get("redirect"));
   const [email, setEmail] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [sent, setSent] = useState(false);
@@ -42,7 +43,8 @@ function SignupForm() {
 
     const { error: signUpError } = await signInWithMagicLink(
       email,
-      companyName.trim() ? { company_name: companyName.trim() } : undefined
+      companyName.trim() ? { company_name: companyName.trim() } : undefined,
+      redirectTo
     );
     setSubmitting(false);
     if (signUpError) {

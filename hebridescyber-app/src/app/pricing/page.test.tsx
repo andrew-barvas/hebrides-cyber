@@ -3,13 +3,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-const { getSessionMock, searchParams } = vi.hoisted(() => ({
+const { getSessionMock, searchParams, pushMock } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
   searchParams: { value: new URLSearchParams() },
+  pushMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getSession: getSessionMock }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams.value }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams.value, useRouter: () => ({ push: pushMock }) }));
 
 import PricingPage from "./page";
 
@@ -19,6 +20,7 @@ describe("pricing page checkout", () => {
   beforeEach(() => {
     getSessionMock.mockReset().mockResolvedValue({ access_token: "t" });
     searchParams.value = new URLSearchParams();
+    pushMock.mockReset();
   });
 
   afterEach(() => {
@@ -42,11 +44,29 @@ describe("pricing page checkout", () => {
     expect(screen.queryByRole("link", { name: "Contact us" })).toBeNull();
   });
 
-  it("asks a signed-out visitor to sign in first", async () => {
+  it("takes a signed-out visitor through sign-up and back to this plan's checkout", async () => {
     getSessionMock.mockResolvedValue(null);
     render(<PricingPage />);
     fireEvent.click(subscribeButtons()[0]);
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Sign in first/));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith(`/signup?redirect=${encodeURIComponent("/pricing?checkout=basic")}`));
+  });
+
+  it("starts the chosen plan's checkout on return from sign-up, once", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "We couldn't start checkout." }), { status: 502 }));
+    vi.stubGlobal("fetch", fetchMock);
+    searchParams.value = new URLSearchParams("checkout=pro");
+    render(<PricingPage />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ plan: "pro" });
+  });
+
+  it("ignores an unknown plan in ?checkout=", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    searchParams.value = new URLSearchParams("checkout=tier_a");
+    render(<PricingPage />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("sells only the self-serve plans, and nothing from the unavailable offensive tier", () => {

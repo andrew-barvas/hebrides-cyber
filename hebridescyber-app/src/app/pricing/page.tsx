@@ -6,9 +6,9 @@
 // One-off audit "buttons" stay as a mailto/contact link since those are
 // scoped, invoiced engagements, not self-serve subscriptions.
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSession } from "@/lib/auth";
 
 class CheckoutError extends Error {
@@ -19,6 +19,27 @@ class CheckoutError extends Error {
 
 // Stripe sends a customer who backs out of checkout to /pricing?checkout=cancelled.
 // Read in its own component, under Suspense, so the page still renders statically.
+type CheckoutPlan = "basic" | "pro" | "agency";
+const CHECKOUT_PLANS: readonly CheckoutPlan[] = ["basic", "pro", "agency"];
+
+/**
+ * Back from sign-up with ?checkout=<plan> (subscribe() sent a signed-out
+ * visitor there): start that plan's checkout once, if they are now signed in.
+ */
+function ResumeCheckout({ onResume }: { onResume: (plan: CheckoutPlan) => void }) {
+  const params = useSearchParams();
+  const done = useRef(false);
+  useEffect(() => {
+    const plan = params?.get("checkout");
+    if (done.current || !plan || !(CHECKOUT_PLANS as readonly string[]).includes(plan)) return;
+    done.current = true;
+    void getSession().then((session) => {
+      if (session) onResume(plan as CheckoutPlan);
+    });
+  }, [params, onResume]);
+  return null;
+}
+
 function CheckoutCancelledNotice() {
   const params = useSearchParams();
   if (params?.get("checkout") !== "cancelled") return null;
@@ -93,13 +114,16 @@ export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
-  async function subscribe(plan: "basic" | "pro" | "agency") {
+  const router = useRouter();
+
+  async function subscribe(plan: CheckoutPlan) {
     setError(null);
     setLoadingPlan(plan);
     try {
       const session = await getSession();
       if (!session) {
-        setError({ message: "Sign in first, then come back to subscribe." });
+        // Create an account (or sign in) and come straight back to this plan's checkout.
+        router.push(`/signup?redirect=${encodeURIComponent(`/pricing?checkout=${plan}`)}`);
         return;
       }
       const res = await fetch("/api/stripe/create-checkout-session", {
@@ -167,6 +191,7 @@ export default function PricingPage() {
         </h2>
         <Suspense fallback={null}>
           <CheckoutCancelledNotice />
+          <ResumeCheckout onResume={subscribe} />
         </Suspense>
         {error && (
           <p role="alert" className="mb-5 text-sm text-red-400">
@@ -243,7 +268,7 @@ export default function PricingPage() {
           <Link href="/signup" className="text-neon hover:underline">
             create an account
           </Link>
-          , then come back to subscribe.
+          . Choosing a plan while signed out takes you through creating an account and straight back to checkout.
         </p>
       </div>
     </div>
