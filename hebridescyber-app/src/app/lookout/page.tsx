@@ -244,6 +244,7 @@ export default function LookoutPage() {
                 <Tick>download the documents and images those pages link to, and read the hidden details stored in them</Tick>
                 <Tick>request a fixed list of well-known file locations, such as old backups and configuration files, to see whether any are public</Tick>
                 <Tick>connect to common network ports on your addresses to see which services answer, and identify the software behind them</Tick>
+                <Tick>ask each of your domain&apos;s name servers once for a full copy of its DNS records (a zone transfer), which a correctly set-up server refuses</Tick>
                 <Tick>connect to your secure (TLS) services many times, offering old protocol versions and weak encryption settings and running the standard tests for well-known TLS flaws, to see what they still accept</Tick>
                 <Tick>check for known misconfigurations and exposed admin pages</Tick>
                 <Tick>submit your login page five times with made-up details, to check that it slows down repeated attempts</Tick>

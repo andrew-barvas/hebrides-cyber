@@ -3704,6 +3704,36 @@ Microsoft Authenticator app or a passkey (CISA SCuBA MS.AAD.3.5).
 3. Then set SMS, Voice call and Email OTP to disabled, or limit them to a
    small group that has no alternative.`;
 
+export const NETWORK_SSH_WEAK = `The SSH server still offers algorithms that are broken or close to it, or
+its version has known vulnerabilities.
+
+1. Update the SSH server package (on Ubuntu or Debian, apt upgrade openssh-server).
+2. In /etc/ssh/sshd_config, limit KexAlgorithms, Ciphers, MACs and HostKeyAlgorithms
+   to modern ones (curve25519-sha256, chacha20-poly1305@openssh.com, aes256-gcm@openssh.com,
+   hmac-sha2-512-etm@openssh.com, ssh-ed25519). ssh-audit's own hardening guides list
+   exact lines per distribution.
+3. Restart sshd, keep your current session open, and check you can still log in.
+4. Better still, don't expose SSH to the internet at all: allow it only from your
+   office or VPN address.`;
+
+export const NETWORK_TLS_CERT = `The certificate on this port is expired, self-signed, issued for another
+name, revoked or not trusted. Mail clients, apps and browsers either warn or, if they're
+set to ignore warnings, can be intercepted.
+
+1. Find which service listens on this port (mail, an admin panel, a VPN).
+2. Give it a certificate from a public authority for the name people connect to
+   (Let's Encrypt is free and renews automatically).
+3. If the service shouldn't be public, close the port instead.`;
+
+export const NETWORK_ZONE_TRANSFER = `A name server for this domain answers zone-transfer (AXFR) requests from
+anyone, handing over every record in the zone, including internal and test host names.
+
+1. On each authoritative name server, allow zone transfers only to your secondary
+   name servers' addresses (BIND: allow-transfer { <secondary IPs>; }; Windows DNS:
+   Zone Transfers tab → Only to the following servers).
+2. If your DNS is hosted (GoDaddy, Cloudflare, your registrar), ask them to disable
+   public zone transfers.`;
+
 export const M365_SIGN_IN_LOGS_UNAVAILABLE = `Entra ID sign-in logs can't be read for this tenant. Microsoft only keeps
 them for tenants with Entra ID P1 or P2 (Business Premium, E3, E5), so
 there is no record to investigate a suspicious sign-in or a compromised

@@ -2,7 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // networkExposure.ts shells out via execTool (promisified execFile with stdin
 // closed), so mock the same two modules every other tool wrapper's test mocks.
-const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }));
+// execFileMock routes by command: naabu and nmap answer from toolMock's queue,
+// the exposureHelpers tools (cdncheck, dnsx, ssh-audit, tlsx) from helperMock,
+// which defaults to "installed, found nothing".
+const { execFileMock, toolMock, helperMock } = vi.hoisted(() => {
+  const toolMock = vi.fn();
+  const helperMock = vi.fn();
+  const execFileMock = vi.fn((...args: unknown[]) => {
+    const [cmd, ...rest] = args as [string, ...unknown[]];
+    return ["cdncheck", "dnsx", "ssh-audit", "tlsx"].includes(cmd) ? helperMock(cmd, ...rest) : toolMock(cmd, ...rest);
+  });
+  return { execFileMock, toolMock, helperMock };
+});
 vi.mock("node:child_process", () => ({
   execFile: (...args: unknown[]) => execFileMock(...args),
   default: { execFile: (...args: unknown[]) => execFileMock(...args) },
@@ -34,7 +45,12 @@ const NMAP_XML = `<?xml version="1.0"?>
 <port protocol="tcp" portid="6379"><state state="open"/><service name="redis"/></port>
 </ports></host></nmaprun>`;
 
-beforeEach(() => execFileMock.mockReset());
+beforeEach(() => {
+  toolMock.mockReset();
+  helperMock.mockReset();
+  // Installed, and found nothing (no CDN, no zone transfer, no SSH or TLS problem).
+  helperMock.mockResolvedValue({ stdout: "", stderr: "" });
+});
 
 describe("parseNaabuJson", () => {
   it("extracts unique, sorted ports from the JSON lines", () => {
@@ -73,7 +89,7 @@ describe("classifyPort", () => {
 
 describe("runNetworkExposure", () => {
   it("runs naabu then nmap and classifies every discovered port", async () => {
-    execFileMock
+    toolMock
       .mockResolvedValueOnce({ stdout: NAABU_JSON, stderr: "" }) // naabu
       .mockResolvedValueOnce({ stdout: NMAP_XML, stderr: "" }); // nmap
     const result = await runNetworkExposure("https://example.com");
@@ -84,12 +100,12 @@ describe("runNetworkExposure", () => {
     // parseNmapXml joins product + version ("MySQL" + "8.0.35").
     expect(result.ports.find((p) => p.port === 3306)?.version).toBe("MySQL 8.0.35");
     // First invocation is naabu with the host and top-ports.
-    expect(execFileMock.mock.calls[0][0]).toBe("naabu");
-    expect(execFileMock.mock.calls[1][0]).toBe("nmap");
+    expect(toolMock.mock.calls[0][0]).toBe("naabu");
+    expect(toolMock.mock.calls[1][0]).toBe("nmap");
   });
 
   it("matches identified services against the CVE index, reaching NVD's current vendor name", async () => {
-    execFileMock
+    toolMock
       .mockResolvedValueOnce({ stdout: NAABU_JSON, stderr: "" })
       .mockResolvedValueOnce({ stdout: NMAP_XML, stderr: "" });
     const cveIndex = createCveIndex(
@@ -126,7 +142,7 @@ describe("runNetworkExposure", () => {
   });
 
   it("leaves every service check unevaluated when no CVE index is given", async () => {
-    execFileMock
+    toolMock
       .mockResolvedValueOnce({ stdout: NAABU_JSON, stderr: "" })
       .mockResolvedValueOnce({ stdout: NMAP_XML, stderr: "" });
     const result = await runNetworkExposure("https://example.com", { fetchEol: async () => null });
@@ -137,20 +153,20 @@ describe("runNetworkExposure", () => {
 
   it("reports not_configured when naabu is missing (ENOENT), never a clean result", async () => {
     const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
-    execFileMock.mockRejectedValueOnce(enoent);
+    toolMock.mockRejectedValueOnce(enoent);
     const result = await runNetworkExposure("https://example.com");
     expect(result.status).toBe("not_configured");
     expect(result.ports).toEqual([]);
   });
 
   it("reports an error (not clean) when naabu fails for another reason", async () => {
-    execFileMock.mockRejectedValueOnce(new Error("boom"));
+    toolMock.mockRejectedValueOnce(new Error("boom"));
     const result = await runNetworkExposure("https://example.com");
     expect(result.status).toBe("error");
   });
 
   it("treats no open ports as a genuine completed result", async () => {
-    execFileMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
+    toolMock.mockResolvedValueOnce({ stdout: "", stderr: "" });
     const result = await runNetworkExposure("https://example.com");
     expect(result.status).toBe("completed");
     if (result.status !== "completed") return;
@@ -159,7 +175,7 @@ describe("runNetworkExposure", () => {
   });
 
   it("falls back to the discovered ports with no service when nmap fails", async () => {
-    execFileMock
+    toolMock
       .mockResolvedValueOnce({ stdout: '{"port":6379}', stderr: "" }) // naabu
       .mockRejectedValueOnce(Object.assign(new Error("nmap gone"), { code: "ENOENT" })); // nmap
     const result = await runNetworkExposure("https://example.com");
@@ -173,11 +189,15 @@ describe("runNetworkExposure", () => {
       "network-exposure.service-cve",
       "network-exposure.service-eol",
       "network-exposure.service-version-unknown",
+      // Without nmap nothing says which ports speak SSH or TLS.
+      "network-exposure.ssh-weak-algorithm",
+      "network-exposure.ssh-cve",
+      "network-exposure.tls-cert",
     ]);
   });
 
   it("carries through a naabu port nmap reports closed on its own connect", async () => {
-    execFileMock
+    toolMock
       .mockResolvedValueOnce({ stdout: '{"port":3306}\n{"port":6379}', stderr: "" }) // naabu found two
       .mockResolvedValueOnce({ stdout: `<?xml version="1.0"?><nmaprun><host><ports><port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port></ports></host></nmaprun>`, stderr: "" });
     const result = await runNetworkExposure("https://example.com");
@@ -189,5 +209,58 @@ describe("runNetworkExposure", () => {
   it("rejects an invalid URL", async () => {
     const result = await runNetworkExposure("not a url");
     expect(result.status).toBe("error");
+  });
+});
+
+describe("runNetworkExposure with the exposure helpers", () => {
+  it("doesn't port-scan a CDN or WAF edge, and says so instead of reporting it clean", async () => {
+    helperMock.mockImplementation(async (cmd: string) =>
+      cmd === "cdncheck" ? { stdout: '{"input":"example.com","ip":"104.16.1.1","cdn":true,"cdn_name":"cloudflare"}\n', stderr: "" } : { stdout: "", stderr: "" }
+    );
+    const result = await runNetworkExposure("https://example.com");
+    expect(result.status).toBe("not_applicable");
+    if (result.status !== "not_applicable") return;
+    expect(result.note).toContain("cloudflare");
+    expect(toolMock).not.toHaveBeenCalled();
+  });
+
+  it("audits SSH ports, checks non-443 TLS certificates and reports an open zone transfer", async () => {
+    helperMock.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === "dnsx") return { stdout: '{"host":"example.com","axfr":{"host":"example.com","chain":[{"resolver":["ns1.example.com:53"],"all":["a","b","c"]}]}}\n', stderr: "" };
+      if (cmd === "tlsx") return { stdout: `{"host":"example.com","port":"8443","probe_status":true,"self_signed":true,"subject_cn":"localhost"}\n`, stderr: "" };
+      if (cmd === "ssh-audit") {
+        expect(args).toContain("22");
+        const report = { banner: { software: "OpenSSH_7.4" }, kex: [{ algorithm: "diffie-hellman-group1-sha1", notes: { fail: ["using small 1024-bit modulus"] } }], cves: [{ name: "CVE-2018-15473", cvssv2: 5.3, description: "enumerate usernames" }] };
+        throw Object.assign(new Error("exit 2"), { code: 2, stdout: JSON.stringify(report) });
+      }
+      return { stdout: "", stderr: "" };
+    });
+    toolMock
+      .mockResolvedValueOnce({ stdout: '{"port":22}\n{"port":8443}', stderr: "" })
+      .mockResolvedValueOnce({
+        stdout: `<?xml version="1.0"?><nmaprun><host><ports><port protocol="tcp" portid="22"><state state="open"/><service name="ssh" product="OpenSSH" version="7.4"/></port><port protocol="tcp" portid="8443"><state state="open"/><service name="https-alt" tunnel="ssl"/></port></ports></host></nmaprun>`,
+        stderr: "",
+      });
+    const result = await runNetworkExposure("https://example.com");
+    expect(result.status).toBe("completed");
+    if (result.status !== "completed") return;
+    expect(result.findings.map((f) => f.checkId).sort()).toEqual(
+      ["network-exposure.ssh-cve:22:CVE-2018-15473", "network-exposure.ssh-weak-algorithm:22", "network-exposure.tls-cert:8443", "network-exposure.zone-transfer:example.com"].sort()
+    );
+    expect(result.incompleteChecks.some((c) => c.startsWith("network-exposure.ssh") || c.startsWith("network-exposure.tls") || c.includes("zone"))).toBe(false);
+  });
+
+  it("marks a helper's checks unevaluated when it isn't installed or fails", async () => {
+    helperMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "ssh-audit") throw Object.assign(new Error("not installed"), { code: "ENOENT" });
+      if (cmd === "dnsx") throw new Error("boom");
+      return { stdout: "", stderr: "" };
+    });
+    toolMock
+      .mockResolvedValueOnce({ stdout: '{"port":22}', stderr: "" })
+      .mockResolvedValueOnce({ stdout: `<?xml version="1.0"?><nmaprun><host><ports><port protocol="tcp" portid="22"><state state="open"/><service name="ssh"/></port></ports></host></nmaprun>`, stderr: "" });
+    const result = await runNetworkExposure("https://example.com");
+    if (result.status !== "completed") throw new Error(result.status);
+    expect(result.incompleteChecks).toEqual(expect.arrayContaining(["network-exposure.ssh-weak-algorithm", "network-exposure.ssh-cve", "network-exposure.zone-transfer"]));
   });
 });

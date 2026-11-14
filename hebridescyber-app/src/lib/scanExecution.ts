@@ -573,6 +573,11 @@ async function runExtendedTools(
     // lifecycle leaves last scan's service-cve findings as they were.
     findings.push(...buildServiceCveFindings(extended.networkExposure.serviceCves));
   }
+  // ssh-audit, tlsx and zone-transfer findings (exposureHelpers.ts). A CDN-fronted
+  // host still gets its zone-transfer result.
+  if (extended.networkExposure.status === "completed" || extended.networkExposure.status === "not_applicable") {
+    findings.push(...extended.networkExposure.findings);
+  }
 
   // subdomains.ts (Subfinder) and deepTls.ts (testssl.sh) already emit
   // fully-formed Finding[] with their own checkId namespaces, same as ZAP.
