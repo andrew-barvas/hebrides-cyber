@@ -84,8 +84,8 @@ stay as history.
 7. **Lookout tools in shortlist order.** cdncheck first, because it stops us
    scanning a CDN's edge. Then dnsx, ssh-audit and tlsx.
 8. **Lookout estate deduplication and drift reporting.**
-9. **MTA-STS and TLS-RPT checks.** Both are passive DNS and HTTPS lookups that
-   nothing checks yet, so they fit `/check` and the email checks.
+9. ~~MTA-STS and TLS-RPT checks~~: already built (`dns.ts` `checkMtaSts` and
+   `checkTlsRpt`, also run by `/check`). Listed here in error on 2026-11-14.
 10. **Outreach snapshot tool.** A passive check of a business's site and
     email setup, written up as a one-page summary, sent only after a human
     approves it. It never runs active tools against a site whose owner hasn't
@@ -106,7 +106,6 @@ All defensive, all checked against the code on 2026-11-14.
 | Prowler `m365`, CISA ScubaGear, Maester | Lookout Assured | Microsoft 365 baselines to compare with our own `m365` checks; consented and read-only |
 | CISA ScubaGoggles | Lookout Assured | The same for Google Workspace, which some SMEs use instead of Microsoft 365 |
 | OpenSSF Scorecard | Scanner (CI/CD) | Repository security practices for customers who connect GitHub |
-| MTA-STS and TLS-RPT lookup (in house) | Scanner, `/check` | Missing from the email checks |
 | OpenVAS, Nikto | Lookout | Still unclaimed in `DEFENSIVE-ASSESSMENT-PLAN.md`; OpenVAS needs a host decision (OT-36) |
 | DefectDojo import format | Exploit, Agency | Lets customers load our findings into a tool they already use |
 
