@@ -59,6 +59,7 @@ import { resolveToolConfig, isNonIntrusiveProfile, EXTENDED_TOOL_NAMES, type Sca
 import { parseDisabledTools, applyKillSwitch, type KillSwitchRow } from "./toolKillSwitch";
 import { getCmsType } from "./scanners/fingerprint";
 import { syncAssetInventory } from "./assetInventory";
+import { runEstateScreenshots } from "./estateScreenshots";
 import { sendAttackSurfaceAlerts, monitoredDomain } from "./attackSurfaceMonitor";
 import { runEasmDiscovery } from "./easmDiscovery";
 import { sendLookalikeDomainAlerts } from "./lookalikeDomainMonitor";
@@ -1314,6 +1315,15 @@ export async function executeScan(
     // errors internally (see its header), so this can never flip a
     // completed scan back to failed.
     await syncAssetInventory(supabaseAdmin, ownerId, targetUrl, results, extended);
+
+    // Estate screenshots of the live hosts httpx found (estateScreenshots.ts).
+    // Best-effort, post-completion, never touches findings or the score.
+    const httpx = extended?.httpx as { status?: string; results?: HttpProbeRecord[] } | undefined;
+    if (httpx?.status === "completed" && Array.isArray(httpx.results)) {
+      const shots = await runEstateScreenshots(ownerId, scanId, targetUrl, httpx.results).catch((err) => ({ status: "error" as const, note: (err as Error).message }));
+      if (shots.status === "error") console.warn(`[estate-screenshots] ${shots.note}`);
+      else if (shots.status === "completed" && (shots.captured.length > 0 || shots.failed > 0)) console.log(`[estate-screenshots] ${shots.captured.length} captured, ${shots.failed} failed`);
+    }
 
     // EASM: independently-sourced subdomain discovery (crt.sh), beyond what
     // this scan's own recon/subdomain enumeration found. Also swallows its
