@@ -79,14 +79,16 @@ Merged and deployed:
 | DefectDojo export | #222 | |
 | CISA SCuBA Entra checks | #227 | Four new `m365.*` checks; ScubaGear, Maester and ScubaGoggles aren't run, and `M365-POSTURE.md` says why |
 
-In progress:
+Also merged later the same day:
 - **5. Always-on workers (#195):**
-  - The image build now passes after adding `rsync` for WhatWaf.
-  - The Container Apps job now gets `NVD_API_KEY`.
-  - Applying the Azure configuration is the owner's step.
-- **7. cdncheck, ssh-audit, tlsx and dnsx:** built inside `networkExposure` and waiting for #195 so their installs go in `scan-tools.sh`.
-- **Host screenshots:** not started. They need image storage and report rendering.
-- **6. Lookout checkout:** the profile lock and the checkout on `/pricing#lookout` are pushed to #199, which still waits for OT-33, OT-34, OT-35, OT-42 and OT-43.
+  - Merged after the image build was fixed (`rsync` for WhatWaf) and the Container Apps job was given `NVD_API_KEY`.
+  - Applying the Azure configuration (`azure/terraform/scan-workers.tf`) is the owner's step. Until then, scans run in GitHub Actions as before, now installed through `docker/scan-tools.sh`.
+- **7. cdncheck, ssh-audit, tlsx and dnsx (#229):** built inside `networkExposure`; the image build verifies all four install.
+
+Still open:
+- **Host screenshots.**
+- **Real Lookout and full-profile timings:** need an owned target in the queue (OT-11).
+- **6. Lookout checkout (#199):** waits for OT-33, OT-34, OT-35, OT-42 and OT-43.
 
 Found today:
 - **nuclei integration test:** it now hits its 120-second limit on master. It passed on 2026-11-09, and no code changed since. Likely cause: the public interactsh server, because the test doesn't set `DISABLE_OAST`. Not yet confirmed.
