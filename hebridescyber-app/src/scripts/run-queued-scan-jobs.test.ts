@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { decideScanConfig } from "./run-queued-scan-jobs";
 import { enablesOffensiveTools } from "../lib/scanProfiles";
+import { profileAllowedForPlan } from "../lib/planAccess";
 
 describe("decideScanConfig", () => {
   it("an explicit per-job override wins outright, even over a target's own profile", () => {
@@ -109,5 +110,17 @@ describe("decideScanConfig + the offensive-tools gate", () => {
       );
       expect(enablesOffensiveTools(config.profile, config.toolOverrides), profile).toBe(false);
     }
+  });
+});
+
+describe("decideScanConfig + the Lookout profile lock", () => {
+  it("a Lookout customer's target storing 'full' runs as 'exposure'", () => {
+    const config = decideScanConfig({ scan_id: null, scan_profile: null }, { scan_profile: "full", scan_bundle_id: null }, null);
+    expect(profileAllowedForPlan(config.profile, { plan: "lookout_assured", status: "active" }, false)).toBe("exposure");
+  });
+
+  it("a Lookout customer's on-demand scan stays 'safe'", () => {
+    const config = decideScanConfig({ scan_id: "scan-1", scan_profile: null }, { scan_profile: "full", scan_bundle_id: null }, null);
+    expect(profileAllowedForPlan(config.profile, { plan: "lookout_essentials", status: "active" }, false)).toBe("safe");
   });
 });

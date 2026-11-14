@@ -23,7 +23,7 @@ import { createScriptSupabase } from "../lib/scriptSupabase";
 import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
-import { hasTierAAccess } from "../lib/planAccess";
+import { hasTierAAccess, profileAllowedForPlan } from "../lib/planAccess";
 import { hasActiveOffensiveAuthorization } from "../lib/offensiveAuthorization";
 import { logAuditEvent } from "../lib/audit";
 import { enablesOffensiveTools } from "../lib/scanProfiles";
@@ -267,6 +267,35 @@ async function runOne(
         resourceId: job.id,
         metadata: { target_url: job.target_url, profile: requestedProfile },
       });
+    }
+  }
+
+  // Lookout plans run at most the `exposure` profile, whatever is stored on
+  // the target or the job (profileAllowedForPlan). If the plan can't be read,
+  // fall back to `safe`, which runs no extended tools at all.
+  {
+    const [subRes, userRes] = await Promise.all([
+      supabaseAdmin.from("subscriptions").select("plan, status").eq("owner", job.owner).maybeSingle(),
+      supabaseAdmin.from("users").select("is_admin").eq("id", job.owner).maybeSingle(),
+    ]);
+    const requestedProfile = scanConfig.profile;
+    if (subRes.error || userRes.error) {
+      console.warn(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} plan could not be read; running "safe" instead of "${requestedProfile}"`);
+      scanConfig = { profile: "safe" };
+    } else {
+      const allowed = profileAllowedForPlan(requestedProfile, subRes.data, Boolean((userRes.data as { is_admin?: boolean } | null)?.is_admin));
+      if (allowed !== requestedProfile) {
+        console.warn(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} Lookout plan: profile "${requestedProfile}" lowered to "${allowed}"`);
+        await logAuditEvent(supabaseAdmin, {
+          actorId: job.owner,
+          action: "lookout_scan.profile_lowered",
+          resourceType: "scan_job",
+          resourceId: job.id,
+          metadata: { target_url: job.target_url, requested: requestedProfile, ran: allowed },
+        });
+        // Drops toolOverrides with the profile, as the offensive gate does.
+        scanConfig = { profile: allowed };
+      }
     }
   }
 

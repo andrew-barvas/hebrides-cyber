@@ -337,7 +337,7 @@ export default function LookoutPage() {
                   ))}
                 </ul>
                 <div className="mt-6">
-                  <CtaLink href={mainSiteUrl("/contact")}>Book a call</CtaLink>
+                  <CtaLink href={mainSiteUrl("/pricing#lookout")}>Choose {plan.name}</CtaLink>
                 </div>
               </div>
             ))}

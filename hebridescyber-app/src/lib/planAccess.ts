@@ -46,6 +46,20 @@ export function isLookoutPlan(plan: string | null | undefined): boolean {
 
 type SubscriptionRow = { plan?: string | null; status?: string | null } | null | undefined;
 
+/**
+ * Pure: the scan profile a job may actually run for this owner. Lookout is
+ * sold as a review that sends only `exposure`-profile traffic (terms §2 and
+ * the traffic disclosure, OT-43), but its plans satisfy the Pro tier, so
+ * without this a Lookout customer's stored profile could ask for `full`.
+ * Only ever lowers: `safe` and `exposure` pass through (a bundle over
+ * `exposure` can only switch tools off), anything else becomes `exposure`.
+ * Admins and scanner plans are unaffected.
+ */
+export function profileAllowedForPlan<P extends string>(profile: P, sub: SubscriptionRow, isAdmin: boolean): P | "exposure" {
+  if (isAdmin || !sub || sub.status !== "active" || !isLookoutPlan(sub.plan)) return profile;
+  return profile === "safe" || profile === "exposure" ? profile : "exposure";
+}
+
 // Each tier's set of satisfying `plan` values, highest-inclusive-downward. A
 // plan satisfies a required tier when it appears in that tier's set.
 const PLANS_FOR_TIER: Record<PlanTier, readonly SubscriptionPlan[]> = {
