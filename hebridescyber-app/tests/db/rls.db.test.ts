@@ -128,6 +128,7 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into custom_nuclei_templates (owner, template_id, name, severity, yaml) values ($1, $2, 'n', 'low', 'y')", [o, `chk-${h.replace(/[^a-z0-9]/g, "-")}`]);
       await q("insert into uptime_integrations (owner, provider, api_key) values ($1, 'uptimerobot', 'enc:k')", [o]);
       await q("insert into m365_tenants (owner, tenant_id) values ($1, gen_random_uuid())", [o]);
+      await q("insert into security_profiles (owner, target_host, slug) values ($1, $2, $3)", [o, h, o.replace(/-/g, "").slice(0, 20)]);
       await q("insert into exploitability_assessments (owner, scan_id, host, check_id, score, band, confidence, factors, conditions, model_version, catalogue_version) values ($1, $2, $3, 'c.1', 50, 'plausible', 'low', '[]', '[]', 'exp-v1', 'pc-test')", [o, o === A ? SCAN_A : SCAN_B, h]);
       const eng = o === A ? ENG_A : ENG_B;
       await q("insert into engagements (id, owner, reference, created_by) values ($1, $2, 'ref-1', $2)", [eng, o]);
@@ -236,6 +237,17 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
       expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
       expect(await count(service, "select 1 from tool_kill_switches")).toBeGreaterThan(0);
+    });
+  });
+
+  describe("security_profiles", () => {
+    it("is service-role-only: the owner manages it through the API, and nobody reads it directly", async () => {
+      expect(await count(asA, "select 1 from security_profiles")).toBe(0);
+      expect(await count(anon, "select 1 from security_profiles")).toBe(0);
+      expect(await count(service, "select 1 from security_profiles")).toBeGreaterThan(0);
+      const ins = "insert into security_profiles (owner, target_host, slug) values (gen_random_uuid(), 'x.example', 'abcdefghijkl')";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
     });
   });
 

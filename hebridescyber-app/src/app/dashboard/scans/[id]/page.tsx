@@ -11,6 +11,7 @@ import { SEVERITY_META, ScoreGauge, FindingCard, CheckRow, ComplianceSummary, Cr
 import { viewTriageFrom } from "@/components/FindingTriage";
 import type { TriageRecord } from "@/lib/findingTriage";
 import ShareLinks from "@/components/ShareLinks";
+import SecurityProfileToggle from "@/components/SecurityProfileToggle";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import FixWizard from "@/components/FixWizard";
 import CeReadinessPanel from "@/components/CeReadinessPanel";
@@ -863,6 +864,7 @@ export default function ScanDetailPage() {
 
           {/* Share this report */}
           {sessionToken && <ShareLinks scanId={result.scan_id} token={sessionToken} />}
+          {sessionToken && result.results?.target_url && <SecurityProfileToggle targetUrl={result.results.target_url} token={sessionToken} />}
 
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
