@@ -13,6 +13,7 @@ import CloudCredentialsConfig from "@/components/CloudCredentialsConfig";
 import ConnectRepo from "@/components/ConnectRepo";
 import LockedFeature from "@/components/LockedFeature";
 import M365Config from "@/components/M365Config";
+import WorkspaceConfig from "@/components/WorkspaceConfig";
 import { planIncludes } from "@/lib/planAccess";
 import NotificationPrefsSection from "@/components/NotificationPrefsSection";
 import OncallIntegrationConfig from "@/components/OncallIntegrationConfig";
@@ -115,7 +116,10 @@ export default function IntegrationsPage() {
           />
         )}
         {planIncludes(plan, "pro") ? (
-          <M365Config />
+          <>
+            <M365Config />
+            <WorkspaceConfig />
+          </>
         ) : (
           <LockedFeature
             title="microsoft 365 posture"

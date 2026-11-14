@@ -19,6 +19,7 @@ export const STRING_SECRET_TARGETS: ReadonlyArray<{ table: string; fields: reado
   },
   { table: "target_auth_credentials", fields: ["cookie_value", "basic_password", "totp_secret"] },
   { table: "uptime_integrations", fields: ["api_key"] },
+  { table: "workspace_connections", fields: ["refresh_token"] },
 ];
 
 const PAGE_SIZE = 500;
