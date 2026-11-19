@@ -9,7 +9,7 @@ competitive framing behind these, see `docs/COMPETITIVE-ANALYSIS.md` §9/§11.
 
 ## 1. Tourism operator — B&B with a booking site
 
-**Profile**: A small B&B on Lewis with a WordPress booking site, processing
+**Profile**: A small B&B in the Highlands with a WordPress booking site, processing
 card payments through a third-party widget. No technical staff; the owner's
 nephew built the site. Annual revenue under £100k.
 
@@ -39,7 +39,7 @@ on security findings without hiring a consultant.
 
 ## 2. Local trades business — electrician with a WordPress site
 
-**Profile**: An electrician in Stornoway whose web agency built a WordPress
+**Profile**: An electrician in a small town whose web agency built a WordPress
 site with a contact form and portfolio. The agency manages hosting but
 doesn't proactively check security.
 
@@ -156,7 +156,7 @@ assessment that provides a snapshot, not ongoing monitoring.
 
 ## 6. Island charity or church — free tier
 
-**Profile**: A church in Point, Lewis, with a simple informational website
+**Profile**: A rural church with a simple informational website
 managed by a volunteer. No budget for security tooling. No technical
 knowledge.
 

@@ -19,7 +19,7 @@ const result = {
   findings: [{ severity: "medium", title: "No DMARC record", detail: "Anyone can send email that looks like it came from this domain." }],
   checkedAt: "2026-11-14T10:00:00Z",
 };
-const sender = { name: "Andrew", business: "Hebrides Cyber", postalAddress: "Stornoway, Isle of Lewis", replyTo: "hello@hebridescyber.co.uk" };
+const sender = { name: "Andrew", business: "Hebrides Cyber", postalAddress: "Inverness, Scotland", replyTo: "hello@hebridescyber.co.uk" };
 
 describe("prospect parsing and PECR eligibility", () => {
   it("parses quoted fields and normalises company types and emails", () => {
@@ -66,7 +66,7 @@ describe("snapshot and draft", () => {
     expect(subject).toBe("Harbour Cafe Ltd: one thing on your website worth fixing");
     expect(body).toContain("no DMARC record");
     expect(body).toContain("Hebrides Cyber");
-    expect(body).toContain("Stornoway, Isle of Lewis");
+    expect(body).toContain("Inverness, Scotland");
     expect(body).toContain('reply "stop" to hello@hebridescyber.co.uk');
   });
 

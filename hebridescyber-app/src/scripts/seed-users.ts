@@ -41,8 +41,8 @@ const users: SeedUser[] = [
   // account from plan gating everywhere (planAccess.ts), so the plan value is
   // belt-and-braces for anything that reads the subscription row directly.
   { email: "admin@hebridescyber.co.uk", isAdmin: true, plan: "tier_a", companyName: "Hebrides Cyber (staff)" },
-  { email: "no-plan-customer@example.com", isAdmin: false, plan: "none", companyName: "Lewis Crafts Co." },
-  { email: "basic-customer@example.com", isAdmin: false, plan: "basic", companyName: "Stornoway Guesthouse" },
+  { email: "no-plan-customer@example.com", isAdmin: false, plan: "none", companyName: "Highland Crafts Co." },
+  { email: "basic-customer@example.com", isAdmin: false, plan: "basic", companyName: "Harbour Guesthouse" },
   { email: "pro-customer@example.com", isAdmin: false, plan: "pro", companyName: "Outer Hebrides SaaS Ltd" },
   { email: "agency-customer@example.com", isAdmin: false, plan: "agency", companyName: "Harris Digital Agency" },
 ];

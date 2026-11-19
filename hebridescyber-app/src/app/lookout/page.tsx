@@ -350,7 +350,7 @@ export default function LookoutPage() {
         <section aria-labelledby="why-heading" className="pb-16">
           <SectionHeading id="why-heading" overline="why us" title="Why choose Hebrides Cyber" />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <FeatureCard title="Local and accountable">You get a named engineer from the Isle of Lewis, not a ticket queue. We answer to the businesses we live and work alongside.</FeatureCard>
+            <FeatureCard title="Local and accountable">You get a named engineer, not a ticket queue. We answer to the businesses we live and work alongside.</FeatureCard>
             <FeatureCard title="Engineers who explain">We are software engineers. We write reports for the owner first and the IT person second, so you can act on them the same day.</FeatureCard>
             <FeatureCard title="Thorough, never exploitative">We test what is visible from the internet and tell you exactly what our checks send. We never try to break in, and we only check domains you have verified.</FeatureCard>
             <FeatureCard title="Clear, fixed pricing">One monthly, quarterly or annual price per plan, published on this page. No surprise call-out fees for anything included.</FeatureCard>

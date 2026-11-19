@@ -17,7 +17,7 @@ export default function HomePage() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-cybertext/80">
             Automated scanning. Real expertise. Clear fixes. Know your attack
-            surface and stay ahead of threats — from the Isle of Lewis.
+            surface and stay ahead of threats — from Scotland.
           </p>
           <p className="mt-4 font-mono text-xs uppercase tracking-wide text-cybermuted">
             OWASP-aligned checks &middot; Powered by Azure &middot; UK-based, GDPR compliant
@@ -160,7 +160,7 @@ const testimonials = [
   {
     quote:
       "The Security Score scan flagged a missing HSTS header and an outdated plugin within minutes — both fixed the same afternoon. Straightforward and no jargon.",
-    role: "Owner, tourism operator — Isle of Lewis",
+    role: "Owner, tourism operator — Scotland",
   },
   {
     quote:

@@ -24,9 +24,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Hebrides Cyber — Security Scanning & Penetration Testing, Stornoway, Scotland",
+  title: "Hebrides Cyber — Security Scanning & Penetration Testing, Scotland",
   description:
-    "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in Stornoway, Isle of Lewis, Scotland.",
+    "Automated security scanning, penetration testing, and CI/CD hardening for small businesses and SaaS teams. Based in Scotland, serving the UK.",
   alternates: {
     types: {
       "application/rss+xml": `${SITE_URL}/feed.xml`,
@@ -82,7 +82,7 @@ const ThemeScript = ({ nonce }: { nonce?: string }) => (
 );
 
 // LocalBusiness structured data — no equivalent existed before this. Local
-// competitors (see docs/COMPETITIVE-ANALYSIS.md's Stornoway-based-competitor
+// competitors (see docs/COMPETITIVE-ANALYSIS.md's local-competitor
 // note) already establish location trust through years of backlinks/case
 // studies; structured data is one of the few levers a brand-new site has to
 // signal the same "genuinely local" fact to search engines from day one.
@@ -99,8 +99,7 @@ function LocalBusinessJsonLd() {
     url: SITE_URL,
     address: {
       "@type": "PostalAddress",
-      addressLocality: "Stornoway",
-      addressRegion: "Isle of Lewis",
+      addressRegion: "Scotland",
       addressCountry: "GB",
     },
     areaServed: ["GB", "Scotland", "Outer Hebrides"],
