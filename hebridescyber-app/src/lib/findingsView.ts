@@ -24,6 +24,7 @@ import { csvCell } from "./csv";
 import type { FindingExploitability } from "./exploitability/types";
 import { hasProAccess } from "./planAccess";
 import { isMissingSchemaError } from "./dbErrors";
+import { assignmentKey, buildAssignmentIndex, loadAssignees, loadAssignments } from "./findingAssignments";
 import { buildTriageIndex, loadTriageForOwner, TRIAGE_STATES, type TriageIndex, type TriageState } from "./findingTriage";
 import { hostOf } from "./findingLifecycle";
 import { hasSlaAccess } from "./slaAlerts";
@@ -69,6 +70,8 @@ export type FindingRow = {
   /** The scan this finding was last seen in, for linking to its report. */
   scanId: string | null;
   triage: FindingRowTriage | null;
+  /** Who it's assigned to (migration 078); absent or null = nobody. */
+  assignee?: { id: string; email: string | null } | null;
   /** Null = not assessed, or not on a Pro-and-up plan — never "not exploitable". */
   exploitabilityAssessment: FindingExploitability | null;
 };
@@ -177,6 +180,8 @@ export type FindingFilters = {
   triage: TriageFilter;
   sla: SlaState | null;
   minAgeDays: number | null;
+  /** "unassigned", or an assignee's user id. */
+  assignee?: string | null;
 };
 
 export const DEFAULT_FILTERS: FindingFilters = {
@@ -199,6 +204,8 @@ export function applyFilters(rows: FindingRow[], f: FindingFilters): FindingRow[
     if (f.category && r.category !== f.category) return false;
     if (f.sla && r.slaState !== f.sla) return false;
     if (f.minAgeDays !== null && r.ageDays < f.minAgeDays) return false;
+    if (f.assignee === "unassigned" && r.assignee) return false;
+    if (f.assignee && f.assignee !== "unassigned" && r.assignee?.id !== f.assignee) return false;
     switch (f.triage) {
       case "open":
         return r.triage === null;
@@ -223,6 +230,12 @@ function first(query: RawQuery, name: string): string | undefined {
 function positiveInt(value: string | undefined, max: number): number | null {
   if (value === undefined || !/^\d+$/.test(value)) return null;
   return Math.min(Number(value), max);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parseAssigneeFilter(value: string | undefined): string | null {
+  if (value === "unassigned") return value;
+  return value && UUID.test(value) ? value.toLowerCase() : null;
 }
 
 export type FindingsQuery = {
@@ -257,6 +270,7 @@ export function parseFindingsQuery(query: RawQuery): FindingsQuery {
       triage: TRIAGE_FILTERS.includes(triage as TriageFilter) ? (triage as TriageFilter) : "open",
       sla: sla === "breached" || sla === "due_soon" || sla === "on_track" ? sla : null,
       minAgeDays: positiveInt(first(query, "minAgeDays"), 3650),
+      ...(parseAssigneeFilter(first(query, "assignee")) ? { assignee: parseAssigneeFilter(first(query, "assignee")) } : {}),
     },
     sort: first(query, "sort") === "priority" ? "priority" : "severity",
     // A ranked list is a list of rows, so priority defaults to them.
@@ -520,7 +534,7 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
     data: { available, triageAvailable: false, slaEnabled: false, detailComplete: true, truncated: false, rows: [], detailByHost: new Map() },
   });
 
-  const [open, triage, slaAccess, exploitabilityAccess] = await Promise.all([
+  const [open, triage, slaAccess, exploitabilityAccess, assignments, assignees] = await Promise.all([
     supabaseAdmin
       .from("finding_lifecycle")
       .select(LIFECYCLE_SELECT)
@@ -531,6 +545,8 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
     loadTriageForOwner(supabaseAdmin, ownerId),
     hasSlaAccess(supabaseAdmin, ownerId).catch(() => false),
     hasProAccess(supabaseAdmin, ownerId).catch(() => false),
+    loadAssignments(supabaseAdmin, ownerId),
+    loadAssignees(supabaseAdmin, ownerId),
   ]);
 
   if (open.error) {
@@ -538,6 +554,8 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
     return { ok: false, error: "Could not load findings" };
   }
   if (triage.error) return { ok: false, error: "Could not load findings" };
+  // A failed assignment read shows nobody as assigned rather than failing the list.
+  const assignmentIndex = !assignments.error && assignees.ok ? buildAssignmentIndex(assignments.rows, assignees.assignees) : new Map();
 
   const all = (open.data ?? []) as LifecycleOpenRow[];
   const truncated = all.length > MAX_OPEN_ROWS;
@@ -554,7 +572,10 @@ export async function loadFindingsView(supabaseAdmin: SupabaseClient, ownerId: s
   }
 
   const detail = await loadLatestDetail(supabaseAdmin, ownerId, new Set(lifecycle.map((r) => r.target_host.toLowerCase())));
-  const rows = buildFindingRows(lifecycle, detail ?? new Map(), buildTriageIndex(triage.rows, now), policy, now, exploitabilityAccess);
+  const rows = buildFindingRows(lifecycle, detail ?? new Map(), buildTriageIndex(triage.rows, now), policy, now, exploitabilityAccess).map((r) => {
+    const who = assignmentIndex.get(assignmentKey(r.host, r.checkId));
+    return { ...r, assignee: who ? { id: who.id, email: who.email } : null };
+  });
   return {
     ok: true,
     data: {

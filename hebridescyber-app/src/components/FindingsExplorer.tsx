@@ -60,9 +60,14 @@ type Filters = {
   triage: string;
   sla: string;
   minAgeDays: string;
+  /** "" = anyone, "unassigned", or a user id (migration 078). */
+  assignee: string;
 };
 
-const DEFAULT_FILTERS: Filters = { site: "", severity: "", kev: false, epssMin: "", category: "", triage: "open", sla: "", minAgeDays: "" };
+const DEFAULT_FILTERS: Filters = { site: "", severity: "", kev: false, epssMin: "", category: "", triage: "open", sla: "", minAgeDays: "", assignee: "" };
+
+type Assignee = { id: string; email: string | null; role: string };
+const assigneeLabel = (a: Assignee) => `${a.email ?? "Unknown user"}${a.role === "owner" ? " (you)" : ""}`;
 
 const SEVERITY_OPTIONS: ReadonlyArray<{ value: "" | FindingSeverity; label: string }> = [
   { value: "", label: "Any severity" },
@@ -106,6 +111,7 @@ function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "cs
   p.set("triage", filters.triage);
   if (filters.sla) p.set("sla", filters.sla);
   if (filters.minAgeDays) p.set("minAgeDays", filters.minAgeDays);
+  if (filters.assignee) p.set("assignee", filters.assignee);
   if (view === "priority") p.set("sort", "priority");
   if (format) {
     p.set("format", format);
@@ -210,6 +216,9 @@ function FindingLine({
           {row.triage && (
             <span className="rounded-sm border border-neon/30 px-1.5 py-0.5 text-[11px] text-neon">{TRIAGE_STATE_LABELS[row.triage.state]}</span>
           )}
+          {row.assignee && (
+            <span className="rounded-sm border border-cyberborder px-1.5 py-0.5 text-[11px] text-cybertext/80">Assigned to {row.assignee.email ?? "a team member"}</span>
+          )}
         </div>
         <p className="break-all text-xs text-cybermuted">
           {showTitle && <>{row.host} · </>}
@@ -301,14 +310,20 @@ function BulkBar({
   status,
   onApply,
   onClear,
+  assignees,
+  onAssign,
 }: {
   count: number;
   disabled: boolean;
   status: BulkStatus;
   onApply: (choice: BulkChoice, reason: string, snoozeDays: number) => void;
   onClear: () => void;
+  /** Empty when assigning isn't available on this server. */
+  assignees: Assignee[];
+  onAssign: (assigneeId: string | null) => void;
 }) {
   const id = useId();
+  const [assignTo, setAssignTo] = useState("");
   const [choice, setChoice] = useState<BulkChoice | null>(null);
   const [reason, setReason] = useState("");
   const [days, setDays] = useState<number>(SNOOZE_PRESET_DAYS[1]);
@@ -339,6 +354,31 @@ function BulkBar({
           Clear selection
         </Button>
       </div>
+      {assignees.length > 0 && (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (assignTo) onAssign(assignTo === "unassign" ? null : assignTo);
+          }}
+        >
+          <div className="min-w-56 space-y-1.5">
+            <Label htmlFor={`${id}-assign`}>Assign to</Label>
+            <select id={`${id}-assign`} className={SELECT_CLASS} value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
+              <option value="">Choose a person…</option>
+              {assignees.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {assigneeLabel(a)}
+                </option>
+              ))}
+              <option value="unassign">Nobody (unassign)</option>
+            </select>
+          </div>
+          <Button type="submit" size="sm" variant="secondary" disabled={!assignTo || saving}>
+            {assignTo === "unassign" ? "Unassign" : "Assign"}
+          </Button>
+        </form>
+      )}
       {disabled && <p className="text-xs text-cybermuted">Triage isn&apos;t enabled on this server yet.</p>}
       {choice && !disabled && (
         <form
@@ -400,6 +440,19 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
   const [bulk, setBulk] = useState<BulkStatus>({ kind: "idle" });
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+
+  // Who findings can be assigned to (the owner and their team). Empty when
+  // the server hasn't got migration 078, which hides the controls.
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/findings/assign", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { available?: boolean; assignees?: Assignee[] } | null) => {
+        if (body?.available && Array.isArray(body.assignees)) setAssignees(body.assignees);
+      })
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -477,6 +530,35 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
     }
   }
 
+  async function applyAssign(assigneeId: string | null) {
+    if (!token) return;
+    const rows = [...selected].map((k) => byKey.get(k)).filter((r): r is FindingRow => Boolean(r));
+    setBulk({ kind: "saving" });
+    try {
+      for (let i = 0; i < rows.length; i += TRIAGE_BULK_MAX) {
+        const chunk = rows.slice(i, i + TRIAGE_BULK_MAX);
+        const res = await fetch("/api/findings/assign", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ items: chunk.map((r) => ({ targetHost: r.host, checkId: r.checkId })), titles: chunk.map((r) => r.title), assigneeId }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error ?? "Could not assign the findings");
+      }
+      const who = assigneeId ? assignees.find((a) => a.id === assigneeId) : null;
+      setSelected(new Set());
+      setBulk({
+        kind: "done",
+        message: who
+          ? `${rows.length} finding${rows.length === 1 ? "" : "s"} assigned to ${who.email ?? "a team member"}.`
+          : `${rows.length} finding${rows.length === 1 ? "" : "s"} unassigned.`,
+      });
+      setReloads((n) => n + 1);
+    } catch (err) {
+      setBulk({ kind: "error", message: (err as Error).message });
+    }
+  }
+
   async function exportCsv() {
     if (!token) return;
     setExportError(null);
@@ -548,6 +630,14 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
               { value: "90", label: "90+ days" },
             ]}
           />
+          {assignees.length > 0 && (
+            <FilterSelect
+              label="Assigned to"
+              value={filters.assignee}
+              onChange={(v) => updateFilter("assignee", v)}
+              options={[{ value: "", label: "Anyone" }, { value: "unassigned", label: "Nobody" }, ...assignees.map((a) => ({ value: a.id, label: assigneeLabel(a) }))]}
+            />
+          )}
           {data?.slaEnabled && (
             <FilterSelect
               label="SLA"
@@ -696,6 +786,8 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
         status={bulk}
         onApply={applyBulk}
         onClear={() => setSelected(new Set())}
+        assignees={assignees}
+        onAssign={applyAssign}
       />
     </div>
   );
