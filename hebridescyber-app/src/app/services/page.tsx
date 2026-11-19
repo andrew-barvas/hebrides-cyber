@@ -1,4 +1,10 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Services | Hebrides Cyber",
+  description: "Security scanning, managed exposure reviews, compliance help and incident response for UK small businesses.",
+};
 
 // Each service has a primary description, a bullet list of what's included,
 // and optional metadata (typical delivery time, who it's for).
