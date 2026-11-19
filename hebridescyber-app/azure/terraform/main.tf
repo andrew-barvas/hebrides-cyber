@@ -106,6 +106,14 @@ resource "azurerm_resource_group" "main" {
 #   CKV2_AZURE_1  - customer-managed key encryption: needs a Key Vault +
 #                  access-policy wiring disproportionate to transient report
 #                  PDFs; Microsoft-managed keys (the default) are accepted
+#   AVD-AZU-0012  - (Trivy) network rules default action "Deny": the account
+#                  is written by the Static Web App's managed functions and
+#                  by GitHub-hosted runners (report PDFs, estate screenshots,
+#                  retention cleanup), none of which has a fixed outbound IP
+#                  or a VNet path, so an IP allowlist would break uploads.
+#                  Same dependency as CKV2_AZURE_2; access is still limited
+#                  to the connection string, with no public containers.
+#trivy:ignore:AVD-AZU-0012
 resource "azurerm_storage_account" "main" {
   name                             = "hebridescyberstorage" # TODO: must be globally unique, lowercase, no dashes
   resource_group_name              = azurerm_resource_group.main.name

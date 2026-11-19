@@ -8,6 +8,7 @@
 // Callers are responsible for everything BEFORE this: creating the `scans`
 // row, verifying ownership, and the SSRF check (validateNoSsrf). This
 // function assumes all of that already happened.
+import { pickRepoForTarget, type RepoConnectionRow } from "./repoTargets";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runAllChecks, summariseResults, scoreFromFindings, generateAiSummary, enrichFindingsWithCvss, enrichFindingsWithThreatIntel, type Finding } from "./scanners";
 import { buildScanReport, findPreviousFindings, type ScanReport } from "./scanReport";
@@ -275,7 +276,7 @@ async function runExtendedTools(
           status: "not_configured" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     toolConfig.dependencyManifest && githubRepo
       ? scanDependencyManifest({ githubRepo })
@@ -283,7 +284,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     toolConfig.dockerBaseImage && githubRepo
       ? scanDockerBaseImage({ githubRepo })
@@ -291,7 +292,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // Fills the real-installed-package-CVE gap dockerBaseImage.ts's own
     // header comment explicitly declines to fill (text-only tag checks,
@@ -302,7 +303,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // IaC misconfiguration scanning (Terraform/Kubernetes/Dockerfile) — no
     // existing scanner covers this at all.
@@ -312,7 +313,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // Static code analysis — Opengrep engine with our own rule pack
     // (sast-rules/; see src/worker/tools/sast.ts for the licensing reason).
@@ -322,7 +323,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // GitHub Actions workflow security — zizmor, a real third-party tool
     // (see src/worker/tools/workflowSecurity.ts).
@@ -332,7 +333,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // OpenSSF Scorecard's published results for a public connected repo
     // (src/worker/tools/scorecard.ts); a private repo's name is never sent.
@@ -342,7 +343,7 @@ async function runExtendedTools(
           status: "not_applicable" as const,
           repo: githubRepo ?? "",
           findings: [] as Finding[],
-          note: githubRepo ? "Disabled by scan profile." : "No repository connected.",
+          note: githubRepo ? "Disabled by scan profile." : "No repository linked to this site.",
         }),
     // Sprint 3, first slice — same "pure function over an explicit input"
     // shape as the GitHub-backed checks above, so this call site is the only
@@ -1034,17 +1035,15 @@ export async function executeScan(
     // on-demand scan), rather than doing them unconditionally and letting
     // per-tool gating alone decide nothing runs.
     if (profile !== "safe") {
-      // An owner can connect several repos (unique on owner + repo), and a
-      // bare .maybeSingle() errors on more than one row — which used to turn
-      // every repo-backed check off for anyone who connected a second repo.
-      // Most recently connected wins until targets map to repos (backlog).
-      const { data: repoConnection } = await supabaseAdmin
+      // Only the repository linked to THIS site (migration 077,
+      // repoTargets.ts). Using the newest connection whatever the site put
+      // one repo's findings on every site the owner monitors.
+      const { data: repoRows } = await supabaseAdmin
         .from("repo_connections")
-        .select("github_repo")
-        .eq("owner", ownerId)
-        .order("connected_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .select("github_repo, target_host, connected_at")
+        .eq("owner", ownerId);
+      const linkedRepo = pickRepoForTarget((repoRows ?? []) as RepoConnectionRow[], targetUrl);
+      const repoConnection = linkedRepo ? { github_repo: linkedRepo } : null;
 
       // target_auth_credentials is keyed by monitored_target_id, not
       // (owner, target_url) directly — a non-"safe" profile only ever

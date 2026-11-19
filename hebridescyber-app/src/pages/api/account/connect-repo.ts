@@ -25,9 +25,13 @@ import { planGate } from "@/lib/planAccess";
 import { resolveGithubAuth } from "@/lib/githubApp";
 import { parseBody } from "@/lib/validate";
 import { respondInternalError } from "@/lib/apiError";
+import { repoTargetHost, sameSite } from "@/lib/repoTargets";
 
 const bodySchema = z.object({
   githubRepo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "githubRepo must look like 'owner/repo'"),
+  // The monitored site this repository belongs to (migration 077). Required
+  // to connect; repo checks only ever run on scans of this site.
+  targetUrl: z.string().min(1).max(500).optional(),
 });
 
 const githubApi = "https://api.github.com";
@@ -54,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const parsed = parseBody(bodySchema, req.body, res);
   if (!parsed) return;
-  const { githubRepo } = parsed;
+  const { githubRepo, targetUrl } = parsed;
 
   if (req.method === "DELETE") {
     const { error } = await supabaseAdmin
@@ -72,6 +76,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // gate for all of dependencyManifest.ts/secretScan.ts/dockerBaseImage.ts,
   // not just dependency scanning specifically — was enforced nowhere. Only
   // gates the connection (POST); DELETE stays available regardless of plan.
+  const targetHost = targetUrl ? repoTargetHost(targetUrl) : null;
+  if (!targetHost) return res.status(400).json({ error: "Choose which of your monitored sites this repository belongs to." });
+  const { data: targets, error: targetsError } = await supabaseAdmin.from("monitored_targets").select("target_url").eq("owner", caller.ownerId);
+  if (targetsError) return respondInternalError(res, "account/connect-repo", targetsError);
+  const site = (targets ?? []).map((t) => repoTargetHost((t as { target_url: string }).target_url)).find((h) => sameSite(h, targetHost));
+  if (!site) return res.status(400).json({ error: "That site isn't one of your monitored sites. Add it under Assets first." });
+
   const gate = await planGate(supabaseAdmin, caller.ownerId, "pro");
   if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
   if (gate === "denied") {
@@ -114,8 +125,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // repo (e.g. after the bot was re-added) never errors on a duplicate row.
   const { error } = await supabaseAdmin
     .from("repo_connections")
-    .upsert({ owner: caller.ownerId, github_repo: githubRepo }, { onConflict: "owner,github_repo" });
+    .upsert({ owner: caller.ownerId, github_repo: githubRepo, target_host: site }, { onConflict: "owner,github_repo" });
 
   if (error) return respondInternalError(res, "account/connect-repo", error);
-  return res.status(200).json({ ok: true, githubRepo });
+  return res.status(200).json({ ok: true, githubRepo, targetHost: site });
 }
