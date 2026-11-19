@@ -22,6 +22,7 @@ import { TICKET_PROVIDERS } from "@/lib/ticketProviderList";
 import { checkBreakdown } from "@/lib/checkBreakdown";
 import { fetchExecutiveReport } from "@/lib/executiveReportClient";
 import { signedInCrawlStatus } from "@/lib/signedInCrawlStatus";
+import { pickRepoForTarget, type RepoConnectionRow } from "@/lib/repoTargets";
 import type { DnsResult, ExposureResult, HeadersResult, ScriptInventoryResult, TlsResult } from "@/lib/scanners";
 
 type Finding = ViewFinding;
@@ -572,14 +573,11 @@ export default function ScanDetailPage() {
     if (!result) return;
     supabase
       .from("repo_connections")
-      .select("github_repo")
-      // Same repo the scan used (scanExecution.ts): newest connection wins.
-      // A bare .maybeSingle() failed outright with two connected repos.
-      .order("connected_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .select("github_repo, target_host, connected_at")
+      // Same repo the scan used (scanExecution.ts): the one linked to this
+      // scan's site (repoTargets.ts), never another site's repository.
       .then(
-        ({ data }) => setConnectedRepo((data as { github_repo: string } | null)?.github_repo ?? null),
+        ({ data }) => setConnectedRepo(pickRepoForTarget((data ?? []) as RepoConnectionRow[], result.results?.target_url ?? "")),
         () => {},
       );
   }, [result]);
