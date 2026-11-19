@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 const LAST_UPDATED = "27 August 2026";
 const CONTACT_EMAIL = "hello@hebridescyber.co.uk";
 const COMPANY = "Hebrides Cyber";
-const COMPANY_LOCATION = "Isle of Lewis, Scotland, UK";
+const COMPANY_LOCATION = "Scotland, UK";
 
 export default function TermsPage() {
   return (

@@ -96,7 +96,7 @@ export default function Footer() {
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-mono">
             <span aria-hidden="true" className="text-neon">$</span>{" "}
-            &copy; {new Date().getFullYear()} Hebrides Cyber — Isle of Lewis
+            &copy; {new Date().getFullYear()} Hebrides Cyber — Scotland
           </p>
           <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
             {legalLinks.map(({ href, label }) => (

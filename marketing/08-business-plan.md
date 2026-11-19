@@ -1,7 +1,7 @@
 # Hebrides Cyber — Business Plan
 
 ## Executive Summary
-Hebrides Cyber provides developer-grade security audits and a recurring Security Score product for small businesses, agencies, and SaaS teams. Based in the Isle of Lewis, it combines automated scanning, AI summarisation, and manual testing to deliver actionable remediation. Revenue streams: one-off audits, monthly subscriptions, and white-label services for agencies.
+Hebrides Cyber provides developer-grade security audits and a recurring Security Score product for small businesses, agencies, and SaaS teams. Based in Scotland, it combines automated scanning, AI summarisation, and manual testing to deliver actionable remediation. Revenue streams: one-off audits, monthly subscriptions, and white-label services for agencies.
 
 ## Problem
 Small businesses and many agencies lack affordable, actionable security services. Existing offerings are either too expensive (enterprise firms) or too shallow (automated scanners without human review).

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Book a Free Security Score Scan | Hebrides Cyber",
   description:
-    "Tell us about your site or app and we'll run a free Security Score scan with clear, prioritised fixes. Based in Stornoway, Isle of Lewis, serving the UK.",
+    "Tell us about your site or app and we'll run a free Security Score scan with clear, prioritised fixes. Based in Scotland, serving the UK.",
   alternates: { canonical: "/contact" },
 };
 
