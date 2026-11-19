@@ -105,19 +105,23 @@ export default function CookieConsent() {
     // Deliberately a fixed light surface in both themes, so it needs an
     // explicit text colour — without it the buttons inherit the body colour,
     // which is white in dark mode and vanishes against the white banner.
-    <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-white p-4 text-sm text-slatedark shadow-lg sm:flex-row">
+    // One slim row on phones (IMPROVEMENT-REVIEW-2026-11.md UX fix 7), so it
+    // doesn't cover the bottom of the page until it's dismissed.
+    <div className="fixed inset-x-0 bottom-0 z-50 flex flex-row items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2 text-xs text-slatedark shadow-lg sm:gap-3 sm:p-4 sm:text-sm">
       <p className="text-slatedark/80">
-        We use analytics cookies to understand site usage. See our{" "}
+        <span className="hidden sm:inline">We use analytics cookies to understand site usage. See our </span>
+        <span className="sm:hidden">Analytics cookies. </span>
         <a href="/privacy" className="underline">
-          privacy policy
+          <span className="hidden sm:inline">privacy policy</span>
+          <span className="sm:hidden">Privacy</span>
         </a>
-        .
+        <span className="hidden sm:inline">.</span>
       </p>
       <div className="flex shrink-0 gap-2">
-        <button onClick={() => choose("declined")} className="rounded-md border border-slate-300 px-4 py-2 font-medium hover:bg-slate-50">
+        <button onClick={() => choose("declined")} className="rounded-md border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50 sm:px-4 sm:py-2">
           Decline
         </button>
-        <button onClick={() => choose("accepted")} className="rounded-md bg-atlantic px-4 py-2 font-medium text-white hover:opacity-90">
+        <button onClick={() => choose("accepted")} className="rounded-md bg-atlantic px-3 py-1.5 font-medium text-white hover:opacity-90 sm:px-4 sm:py-2">
           Accept
         </button>
       </div>

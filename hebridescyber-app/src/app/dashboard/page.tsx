@@ -381,7 +381,7 @@ export default function DashboardPage() {
           title={flags.hasScanned ? "Your first scan is on its way" : "No completed scans yet"}
           description={
             flags.hasScanned
-              ? "Once a scan finishes, your score, findings and trends appear here."
+              ? "A first scan usually takes about 3 to 5 minutes, including a short wait for a scanner to pick it up; larger sites take longer. When it finishes, your score, findings and trends appear here."
               : "Verify a domain you own and run a scan — your score, findings and trends will appear here."
           }
           action={

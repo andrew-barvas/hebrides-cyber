@@ -13,7 +13,7 @@ export default function HomePage() {
             <span className="text-cybertext/60">&gt;</span> security-first
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold sm:text-5xl">
-            Professional security for SaaS teams and growing businesses
+            Professional security for UK small businesses
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-cybertext/80">
             Automated scanning. Real expertise. Clear fixes. Know your attack
