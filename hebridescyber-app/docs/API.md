@@ -506,6 +506,23 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/triage \
 Only false positives leave future scores. Every change is audited
 (`finding.triaged` / `finding.untriaged`). A bulk request is all-or-nothing.
 
+### `GET /PUT /api/findings/assign`
+
+Assign findings to yourself or a member of your team. Like triage, a finding
+is named by site and `check_id`, so the assignment holds across scans.
+`GET` lists the people you can assign to (you first, then your team).
+
+```bash
+curl -X PUT https://www.hebridescyber.co.uk/api/findings/assign \r
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \r
+  -d '{"items":[{"targetHost":"shop.example.com","checkId":"headers.csp-absent"}],"assigneeId":"<user id from GET>"}'
+```
+
+- `items`: 1–200 findings. `assigneeId`: a user id from `GET`, or `null` to unassign.
+- Anyone other than you gets one email listing what was assigned to them.
+- `GET /api/findings` rows carry `assignee` (`{ id, email }` or `null`), and
+  `?assignee=unassigned` or `?assignee=<user id>` filters by it.
+
 ### `GET /api/portfolio-report`
 
 Agency plan. Every site the account monitors in one client-ready report:

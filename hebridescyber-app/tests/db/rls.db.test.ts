@@ -268,6 +268,18 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("finding_assignments", () => {
+    it("is service-role-only: read and written through /api/findings/assign", async () => {
+      await asActor(db, service, async (c) => {
+        await c.query("insert into finding_assignments (owner, target_host, check_id, assignee) values ($1, 'a.example', 'headers.hsts', $1) on conflict do nothing", [A]);
+      });
+      expect(await count(asA, "select 1 from finding_assignments")).toBe(0);
+      expect(await count(anon, "select 1 from finding_assignments")).toBe(0);
+      const ins = "insert into finding_assignments (owner, target_host, check_id, assignee) values (gen_random_uuid(), 'x', 'y', gen_random_uuid())";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("workspace_connections", () => {
     it("is service-role-only: it holds a sealed refresh token no browser may read", async () => {
       await asActor(db, service, async (c) => {
