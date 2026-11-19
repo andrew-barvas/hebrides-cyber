@@ -222,6 +222,45 @@ describe("FindingsExplorer", () => {
     expect(screen.getByText("Triage isn't enabled on this server yet.")).toBeInTheDocument();
   });
 
+  it("assigns selected findings to a team member, and filters by assignee", async () => {
+    const assignees = [
+      { id: "owner-id", email: "owner@example.com", role: "owner" },
+      { id: "dev-id", email: "dev@example.com", role: "developer" },
+    ];
+    fetchMock.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url === "/api/findings/assign") return init?.method === "PUT" ? json(200, { count: 2 }) : json(200, { available: true, assignees });
+      if (url.startsWith("/api/findings/triage")) return json(200, {});
+      return json(200, listBody());
+    });
+    render(<FindingsExplorer token="tok" />);
+    await screen.findByText("Missing HSTS");
+    fireEvent.change(await screen.findByLabelText("Assigned to"), { target: { value: "unassigned" } });
+    await waitFor(() => expect(lastList()).toContain("assignee=unassigned"));
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all 2 findings for Missing HSTS" }));
+    const assign = screen.getByRole("button", { name: "Assign" });
+    expect(assign).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Assign to"), { target: { value: "dev-id" } });
+    fireEvent.click(assign);
+
+    expect(await screen.findByText("2 findings assigned to dev@example.com.")).toBeInTheDocument();
+    const put = fetchMock.mock.calls.find((c) => c[0] === "/api/findings/assign" && (c[1] as { method?: string } | undefined)?.method === "PUT");
+    expect(JSON.parse((put?.[1] as { body: string }).body)).toEqual({
+      items: [
+        { targetHost: "a.example", checkId: "headers.hsts" },
+        { targetHost: "b.example", checkId: "headers.hsts" },
+      ],
+      titles: ["Missing HSTS", "Missing HSTS"],
+      assigneeId: "dev-id",
+    });
+  });
+
+  it("shows who a finding is assigned to", async () => {
+    listBody = () => body({ view: "rows", rows: [row({ assignee: { id: "dev-id", email: "dev@example.com" } })] });
+    render(<FindingsExplorer token="tok" initialView="rows" />);
+    expect(await screen.findByText("Assigned to dev@example.com")).toBeInTheDocument();
+  });
+
   it("selects and deselects single findings, and a group's box reflects partial selection", async () => {
     render(<FindingsExplorer token="tok" />);
     const toggle = await screen.findByRole("button", { name: /2 findings for Missing HSTS/ });
