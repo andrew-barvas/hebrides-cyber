@@ -115,7 +115,7 @@ Today `/trust` exists but has no certification behind it.
    - This is the owner's step: custom SMTP for Supabase Auth (OT-57).
    - Consider adding Google sign-in, which `auth.ts` already supports.
 7. **Cookie banner on phones** covers the bottom of the page until dismissed. Make it a slimmer bar on small screens.
-8. **Dashboard (from the code):** add an estimated time to the "first scan running" state, and bulk triage plus "assign to" on the Findings Explorer once roles exist.
+8. **Dashboard (from the code):** add an estimated time to the "first scan running" state, and bulk triage plus "assign to" on the Findings Explorer once roles exist. *Done: the time estimate in #247; bulk triage already existed (`PUT /api/findings/triage`); "assign to" with migration 078.*
 
 ## Sources
 
