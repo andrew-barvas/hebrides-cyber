@@ -4,6 +4,7 @@
 //
 //   GET → { available, assignees: [{ id, email, role }] }: the owner, then
 //         team members — the only people a finding can be assigned to
+//         (?account=<owner id> for a team member reading the owner's list)
 //   PUT { items: [{ targetHost, checkId }, ...up to 200], assigneeId }
 //       assigneeId null unassigns. An assignee who isn't the owner or a
 //       current team member is a 400. Someone other than the caller gets one
@@ -20,6 +21,7 @@ import { escapeHtml, sendEmail } from "@/lib/email";
 import { normaliseTriageHost } from "@/lib/findingTriage";
 import { ASSIGN_BULK_MAX, loadAssignees } from "@/lib/findingAssignments";
 import { parseBody } from "@/lib/validate";
+import { callerCanView } from "@/lib/teamAccess";
 
 const MIGRATION_PENDING = "Assigning findings isn't enabled on this server yet.";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.hebridescyber.co.uk";
@@ -38,7 +40,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "GET" && req.method !== "PUT") return res.status(405).json({ error: "Method not allowed" });
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
-  const ownerId = caller.ownerId;
+  let ownerId = caller.ownerId;
+  // GET ?account=<owner id>: a team member reading who can be assigned on the
+  // owner's account, to label its findings. Writing stays with the owner.
+  const account = req.method === "GET" && typeof req.query.account === "string" ? req.query.account.trim().toLowerCase() : "";
+  if (account && account !== ownerId) {
+    if (caller.via !== "session" || !(await callerCanView(supabaseAdmin, caller.ownerId, account))) return res.status(404).json({ error: "No such account on your teams." });
+    ownerId = account;
+  }
 
   const people = await loadAssignees(supabaseAdmin, ownerId);
   if (!people.ok) return respondInternalError(res, "findings/assign", new Error("could not load assignees"));
@@ -99,7 +108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await sendEmail({
       to: assignee.email,
       subject: `${unique.length} security finding${unique.length === 1 ? "" : "s"} assigned to you`,
-      html: `<p>You've been asked to look at ${unique.length === 1 ? "this finding" : "these findings"} on Hebrides Cyber:</p><ul>${lines.join("")}</ul>${more}<p><a href="${SITE_URL}/dashboard">Open Hebrides Cyber</a></p>`,
+      html: `<p>You've been asked to look at ${unique.length === 1 ? "this finding" : "these findings"} on Hebrides Cyber:</p><ul>${lines.join("")}</ul>${more}<p><a href="${SITE_URL}/dashboard/findings?account=${ownerId}&amp;assignee=me">See what's assigned to you</a></p>`,
     }).catch(() => undefined);
   }
 

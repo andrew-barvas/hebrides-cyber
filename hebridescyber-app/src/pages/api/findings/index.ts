@@ -7,6 +7,9 @@
 //   &triage=open|triaged|all|accepted_risk|false_positive|snoozed (default open)
 //   &sla=breached|due_soon|on_track &minAgeDays=30 &page=1 &pageSize=50
 //   &format=csv  — the whole filtered list as a download (no paging)
+//   &assignee=unassigned|me|<user id>  — who it's assigned to (migration 078)
+//   &account=<owner id>  — a team member reading that owner's findings,
+//                 read-only (session only; GET /api/findings/accounts lists them)
 //   &sort=priority  — the estate "fix this first" rank (estatePriority.ts):
 //                 open, untriaged, non-info findings only, most urgent first,
 //                 each row carrying `priority` { rank, score, factors, reason }.
@@ -17,6 +20,7 @@
 // nothing is triaged and `triageAvailable` is false.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { callerCanView } from "@/lib/teamAccess";
 import { buildHostSignals, loadTargetContexts, rankFindings, type PrioritisedFinding } from "@/lib/estatePriority";
 import {
   applyFilters,
@@ -36,12 +40,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Unauthorized" });
 
-  return respondWithFindings(req, res, caller.ownerId);
+  // ?account=<ownerId>: a team member reading the owner's findings, read-only
+  // (teamAccess.ts). Session only — an API key reads its own account.
+  const account = typeof req.query.account === "string" ? req.query.account.trim().toLowerCase() : "";
+  let ownerId = caller.ownerId;
+  if (account && account !== caller.ownerId) {
+    if (caller.via !== "session") return res.status(403).json({ error: "Another account's findings can only be read from a logged-in session." });
+    if (!UUID.test(account)) return res.status(400).json({ error: "account: must be an account id" });
+    if (!(await callerCanView(supabaseAdmin, caller.ownerId, account))) return res.status(404).json({ error: "No such account on your teams." });
+    ownerId = account;
+  }
+  if (req.query.assignee === "me") req.query.assignee = caller.ownerId;
+
+  return respondWithFindings(req, res, ownerId, { readOnly: ownerId !== caller.ownerId });
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The list itself, for an already-authenticated owner — shared with
  *  GET /api/v1/findings so the two paths can't drift. */
-export async function respondWithFindings(req: NextApiRequest, res: NextApiResponse, ownerId: string) {
+export async function respondWithFindings(req: NextApiRequest, res: NextApiResponse, ownerId: string, opts: { readOnly?: boolean } = {}) {
   const query = parseFindingsQuery(req.query);
   const [loaded, targets] = await Promise.all([
     loadFindingsView(supabaseAdmin, ownerId),
@@ -66,6 +84,8 @@ export async function respondWithFindings(req: NextApiRequest, res: NextApiRespo
 
   const common = {
     available: data.available,
+    // A team member viewing the owner's account: no triage or assignment.
+    readOnly: opts.readOnly === true,
     triageAvailable: data.triageAvailable,
     slaEnabled: data.slaEnabled,
     detailComplete: data.detailComplete,
