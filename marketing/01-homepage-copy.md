@@ -5,7 +5,7 @@
 
 **Hebrides Cyber — Developer-grade security for small businesses and SaaS teams**
 
-Find vulnerabilities before attackers do. Automated monthly checks, clear developer fixes, and hands-on penetration testing — from the Isle of Lewis.
+Find vulnerabilities before attackers do. Automated monthly checks, clear developer fixes, and hands-on penetration testing — from Scotland.
 
 **Primary CTA:** Book a free Security Score scan
 **Secondary CTA:** View services & pricing

@@ -28,7 +28,7 @@ is the highest-priority legal gap identified in the readiness audit.
 
 ### 1. Who we are and acceptance of these terms
 
-Hebrides Cyber ("we", "us", "our") is based in the Isle of Lewis,
+Hebrides Cyber ("we", "us", "our") is based in Scotland,
 Scotland, UK. `[PLACEHOLDER: registered company name/number if
 incorporated, and VAT registration status — see README.md's operational
 checklist, both still unconfirmed as of this draft]`.
@@ -178,7 +178,7 @@ Privacy Policy.
 
 ### 14. Contact
 
-Hebrides Cyber, Isle of Lewis, Scotland, UK — hello@hebridescyber.co.uk
+Hebrides Cyber, Scotland, UK — hello@hebridescyber.co.uk
 (matching `/privacy`'s `CONTACT_EMAIL` constant; used as-is on the live page).
 
 ---

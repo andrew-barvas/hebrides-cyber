@@ -94,7 +94,7 @@ Each plan includes a fixed amount of engineer time; larger estates are quoted se
 ## Why choose us
 
 **Local and accountable**
-You get a named engineer from the Isle of Lewis, not a ticket queue. We answer to the businesses we live and work alongside.
+You get a named engineer, not a ticket queue. We answer to the businesses we live and work alongside.
 
 **Engineers who explain**
 We are software engineers. We write reports for the owner first and the IT person second, so you can act on them the same day.

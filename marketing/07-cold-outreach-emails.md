@@ -6,7 +6,7 @@
 
 Hi [Name],
 
-I'm Andrew from Hebrides Cyber on the Isle of Lewis. I run developer-grade security audits for small businesses and local organisations.
+I'm Andrew from Hebrides Cyber in Scotland. I run developer-grade security audits for small businesses and local organisations.
 
 I can run a free Security Score scan for [Business Name]. It takes 15 minutes to set up and returns a one-page report with the top issues and fixes.
 

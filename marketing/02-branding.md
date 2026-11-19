@@ -4,7 +4,7 @@
 Hebrides Cyber — hebridescyber.co.uk
 
 ## Tagline
-Developer-grade security from the Isle of Lewis
+Developer-grade security from Scotland
 
 ## Tone & voice
 - Professional, direct, technical but accessible to non-technical owners.

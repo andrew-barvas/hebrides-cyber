@@ -68,9 +68,9 @@ a minor omission, given the location match:
 
 | Competitor | Positioning |
 |---|---|
-| **Closed Door Security** (`cdsec.co.uk`) | Founded in Stornoway — same town as Hebrides Cyber. 15+ years, 1070+ assessments, 320+ clients, CREST-certified, three global offices, NHS/UK-banking/manufacturing client base. Manual/enterprise-assurance pentesting + a PTaaS platform (real-time findings dashboard, on-demand retest booking, live remediation validation loop), not automated SME self-serve scanning — a genuinely different category from the head-on list above, not a rescoring of it. |
+| **Closed Door Security** (`cdsec.co.uk`) | A local, established competitor. 15+ years, 1070+ assessments, 320+ clients, CREST-certified, three global offices, NHS/UK-banking/manufacturing client base. Manual/enterprise-assurance pentesting + a PTaaS platform (real-time findings dashboard, on-demand retest booking, live remediation validation loop), not automated SME self-serve scanning — a genuinely different category from the head-on list above, not a rescoring of it. |
 
-This is **not** a company to out-rank on generic "cyber security Stornoway"
+This is **not** a company to out-rank on generic local "cyber security"
 search terms as a brand-new entrant — 15 years of backlinks, case studies,
 and CREST credibility win that outright. The differentiated lane is the one
 already established in §9: automated, affordable, SME/compliance-triggered

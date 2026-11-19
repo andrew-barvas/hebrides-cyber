@@ -14,7 +14,7 @@ a pull request that applies the fix.
 ## Who it's for
 Small businesses with a compliance trigger (Cyber Essentials, procurement),
 developers who want a CI security gate, and agencies monitoring multiple sites.
-Built and run from the Isle of Lewis.
+Built and run from Scotland.
 
 ## System at a glance
 
