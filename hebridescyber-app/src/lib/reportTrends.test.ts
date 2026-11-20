@@ -91,6 +91,20 @@ describe("loadScoreHistory", () => {
     expect(history).toEqual(new Map([["shop.example.com", [{ at: "2026-10-10T00:00:00Z", score: 70 }]]]));
   });
 
+  it("ignores scans whose address can't be parsed, and counts every host when nothing is monitored", async () => {
+    const history = await loadScoreHistory(
+      db({
+        monitored_targets: { data: [], error: null },
+        scans: { data: [{ id: "s1", target_url: "http://[bad", created_at: "2026-10-10T00:00:00Z" }, { id: "s2", target_url: "other.example.com", created_at: "2026-10-11T00:00:00Z" }], error: null },
+        scan_results: { data: [{ scan_id: "s1", score: 50 }, { scan_id: "s2", score: 60 }], error: null },
+      }),
+      "o",
+      new Date("2026-09-01T00:00:00Z"),
+      new Date("2026-11-01T00:00:00Z")
+    );
+    expect(history).toEqual(new Map([["other.example.com", [{ at: "2026-10-11T00:00:00Z", score: 60 }]]]));
+  });
+
   it("is null on a read failure, and loadReportTrends then reports no trend", async () => {
     const broken = db({ scans: { data: null, error: { message: "boom" } } });
     expect(await loadScoreHistory(broken, "o", new Date(), new Date())).toBeNull();
