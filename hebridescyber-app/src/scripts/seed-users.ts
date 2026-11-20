@@ -19,7 +19,13 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const seedPassword = process.env.SEED_USER_PASSWORD ?? "HebridesDev123!";
+// No default: a password written in this file is public to anyone who can read
+// the repo, and these become real, signed-in accounts (one of them an admin).
+const seedPassword = process.env.SEED_USER_PASSWORD ?? "";
+if (seedPassword.length < 12) {
+  console.error("Set SEED_USER_PASSWORD (at least 12 characters) before running this script. There is deliberately no default.");
+  process.exit(1);
+}
 
 if (!supabaseUrl || !serviceRoleKey) {
   console.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required — see .env.example.");
@@ -155,9 +161,7 @@ async function main() {
     console.log(`✓ ${user.email} (${user.isAdmin ? "admin" : user.plan}) — id ${id}`);
   }
 
-  console.log("\nDone. Sign in at /login with any of the emails above and this password:");
-  console.log(`  ${seedPassword}`);
-  console.log("\n(Set SEED_USER_PASSWORD in your env before running this script to use a different one.)");
+  console.log("\nDone. Sign in at /login with any of the emails above and the SEED_USER_PASSWORD you set.");
 }
 
 main().catch((err) => {
