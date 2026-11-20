@@ -6,10 +6,19 @@ import FindingsExplorer from "@/components/FindingsExplorer";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
 
-// ?sort=priority (the dashboard's "fix this first" link) opens on the ranked list.
+// ?sort=priority (the dashboard's "fix this first" link) opens on the ranked
+// list; ?account=<owner id>&assignee=me (the assignment email's link) opens a
+// team's findings filtered to what's assigned to you.
 function Explorer({ token }: { token: string | null }) {
   const params = useSearchParams();
-  return <FindingsExplorer token={token} initialView={params?.get("sort") === "priority" ? "priority" : "grouped"} />;
+  return (
+    <FindingsExplorer
+      token={token}
+      initialView={params?.get("sort") === "priority" ? "priority" : "grouped"}
+      initialAccount={params?.get("account") ?? ""}
+      initialAssignee={params?.get("assignee") ?? ""}
+    />
+  );
 }
 
 export default function FindingsPage() {
