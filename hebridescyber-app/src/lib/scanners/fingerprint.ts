@@ -152,7 +152,14 @@ const PATTERNS: Pattern[] = [
   { name: "Square", category: "Payments", html: /squareup\.com\/js/i },
 ];
 
-// Known-outdated versions that carry significant CVEs.
+// Known-outdated versions that carry significant CVEs. A hand-kept, major-only
+// cut-off: endOfLife.ts answers the same question from live, dated data and
+// its finding stands in for this one wherever it reaches a verdict, and
+// softwareCveDb.ts looks up CVEs for end-of-life versions this table misses
+// (audit 2026-11 M4). Still the fallback for what endoflife.date can't place,
+// so review it: fingerprint.test.ts fails once KNOWN_RISKY_REVIEWED is more
+// than six months old.
+export const KNOWN_RISKY_REVIEWED = "2026-11-20";
 type KnownRisky = { name: string; maxSafeMajor: number; reason: string };
 const KNOWN_RISKY: KnownRisky[] = [
   { name: "jQuery", maxSafeMajor: 3, reason: "jQuery < 3.x has multiple XSS and prototype-pollution CVEs" },
