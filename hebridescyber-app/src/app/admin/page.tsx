@@ -24,6 +24,7 @@ const CustomersTab = dynamic(() => import("./_tabs/CustomersTab"), { loading: ()
 const ScansTab = dynamic(() => import("./_tabs/ScansTab"), { loading: () => <TabLoading /> });
 const QueueTab = dynamic(() => import("./_tabs/QueueTab"), { loading: () => <TabLoading /> });
 const LookoutReportsTab = dynamic(() => import("./_tabs/LookoutReportsTab"), { loading: () => <TabLoading /> });
+const EngagementsTab = dynamic(() => import("./_tabs/EngagementsTab"), { loading: () => <TabLoading /> });
 const BlogTab = dynamic(() => import("./_tabs/BlogTab"), { loading: () => <TabLoading /> });
 const AuditTab = dynamic(() => import("./_tabs/AuditTab"), { loading: () => <TabLoading /> });
 const ToolsTab = dynamic(() => import("./_tabs/ToolsTab"), { loading: () => <TabLoading /> });
@@ -121,6 +122,7 @@ export default function AdminPage() {
     { key: "email",     label: "Email" },
     { key: "contacts",  label: "Contacts" },
     { key: "lookout",   label: "Lookout reports" },
+    { key: "engagements", label: "Engagements" },
   ];
 
   return (
@@ -165,6 +167,7 @@ export default function AdminPage() {
             {activeTab === "scans"     && <ScansTab     token={token} />}
             {activeTab === "queue"     && <QueueTab     token={token} />}
             {activeTab === "lookout"   && <LookoutReportsTab token={token} />}
+            {activeTab === "engagements" && <EngagementsTab token={token} />}
             {activeTab === "blog"      && <BlogTab      token={token} />}
             {activeTab === "audit"     && <AuditTab     token={token} />}
             {activeTab === "tools"     && <ToolsTab     token={token} />}

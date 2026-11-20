@@ -121,7 +121,7 @@ export type AuditLog = {
   created_at: string;
 };
 
-export type Tab = "overview" | "customers" | "scans" | "queue" | "blog" | "audit" | "tools" | "gdpr" | "email" | "contacts" | "lookout";
+export type Tab = "overview" | "customers" | "scans" | "queue" | "blog" | "audit" | "tools" | "gdpr" | "email" | "contacts" | "lookout" | "engagements";
 
 export type ContactEnquiry = {
   id: string;
@@ -166,14 +166,25 @@ export function reltime(ts: string | number) {
   return `${Math.round(diff / 86_400_000)}d ago`;
 }
 
+/** A refused admin API call. `body` keeps the route's machine-readable fields (a refusal's `reason`, say). */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly body: Record<string, unknown>) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiFetch<T>(path: string, token: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(opts?.headers ?? {}) },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error ?? `HTTP ${res.status}`);
+    // A proxy can answer with no body, a non-JSON page or JSON that isn't an object (`null`).
+    const parsed: unknown = await res.json().catch(() => null);
+    const body = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    const message = typeof body.error === "string" && body.error ? body.error : res.statusText || `HTTP ${res.status}`;
+    throw new ApiError(message, res.status, body);
   }
   return res.json() as Promise<T>;
 }

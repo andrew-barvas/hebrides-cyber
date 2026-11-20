@@ -326,6 +326,24 @@ export async function listOwnerEngagements(admin: SupabaseClient, owner: string)
   return { status: "ok", data: (data ?? []) as EngagementSummary[] };
 }
 
+export type AdminEngagementSummary = EngagementSummary & Pick<EngagementRow, "owner" | "scan_profile">;
+
+export const ADMIN_LIST_LIMIT = 200;
+
+/**
+ * Every account's engagements for the admin console, newest first, or one account's
+ * when `owner` is given. At most ADMIN_LIST_LIMIT; `truncated` says older ones were
+ * left out (one extra row is read to tell), so the console never implies a list is whole.
+ */
+export async function listAllEngagements(admin: SupabaseClient, owner: string | null): Promise<EngagementResult<{ engagements: AdminEngagementSummary[]; truncated: boolean }>> {
+  let query = admin.from("engagements").select("id, owner, reference, customer_name, state, scan_profile, window_start, window_end, expires_at, created_at, aborted_at, closed_at");
+  if (owner) query = query.eq("owner", owner);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(ADMIN_LIST_LIMIT + 1);
+  if (error) return failure(error);
+  const rows = (data ?? []) as AdminEngagementSummary[];
+  return { status: "ok", data: { engagements: rows.slice(0, ADMIN_LIST_LIMIT), truncated: rows.length > ADMIN_LIST_LIMIT } };
+}
+
 export type ScopeHostView = {
   host: string;
   included: boolean;
