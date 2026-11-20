@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { checkSoftwareCveDb, checkWordPressCoreCves, checkNvdCpeVulnerabilities } from "./softwareCveDb";
+import { checkSoftwareCveDb, checkWordPressCoreCves, checkNvdCpeVulnerabilities, softwareCveCandidates } from "./softwareCveDb";
 import type { RiskyTech } from "./fingerprint";
 
 function risky(overrides: Partial<RiskyTech>): RiskyTech {
@@ -244,5 +244,41 @@ describe("softwareCveDb", () => {
 
       delete process.env.WPSCAN_API_TOKEN;
     });
+  });
+});
+
+describe("softwareCveCandidates (audit 2026-11 M4)", () => {
+  const eolItem = (tech: string, label: string, version: string, state: "unsupported" | "approaching", eolDate: string | null = "2025-12-31") =>
+    state === "unsupported"
+      ? { tech, label, product: tech.toLowerCase(), kind: "platform" as const, version, packagedBy: null, state, cycle: version.split(".").slice(0, 2).join("."), eolDate, daysOverdue: 30 }
+      : { tech, label, product: tech.toLowerCase(), kind: "platform" as const, version, packagedBy: null, state, cycle: version.split(".").slice(0, 2).join("."), eolDate: "2027-01-31", daysLeft: 60 };
+  const hand: RiskyTech[] = [{ name: "WordPress", version: "5.9", reason: "WordPress < 6.x is out of active security support" }];
+
+  it("adds an end-of-life PHP or Apache version the hand-set table misses", () => {
+    const out = softwareCveCandidates(hand, {
+      status: "checked",
+      evaluated: ["PHP", "Apache"],
+      items: [eolItem("PHP", "PHP", "8.1.2", "unsupported"), eolItem("Apache", "Apache HTTP Server", "2.2.34", "unsupported", null)],
+    });
+    expect(out).toEqual([
+      hand[0],
+      { name: "PHP", version: "8.1.2", reason: "PHP 8.1 reached its end of life on 2025-12-31 and no longer gets security fixes." },
+      { name: "Apache", version: "2.2.34", reason: "Apache HTTP Server 2.2 reached its end of life and no longer gets security fixes." },
+    ]);
+  });
+
+  it("ignores versions still in support, families it can't look up, and ones already listed", () => {
+    const out = softwareCveCandidates([...hand, { name: "PHP", version: "7.4.3", reason: "PHP < 8.0 is end-of-life" }], {
+      status: "checked",
+      evaluated: ["PHP", "Nginx", "jQuery"],
+      items: [eolItem("PHP", "PHP", "7.4.3", "unsupported"), eolItem("Nginx", "nginx", "1.18.0", "unsupported"), eolItem("Apache", "Apache HTTP Server", "2.4.58", "approaching")],
+    });
+    expect(out.map((r) => `${r.name} ${r.version}`)).toEqual(["WordPress 5.9", "PHP 7.4.3"]);
+  });
+
+  it("falls back to the hand-set list when the end-of-life check didn't run", () => {
+    expect(softwareCveCandidates(hand, null)).toEqual(hand);
+    expect(softwareCveCandidates(hand, { status: "error", note: "endoflife.date down" })).toEqual(hand);
+    expect(softwareCveCandidates([], { status: "not_applicable", note: "nothing versioned" })).toEqual([]);
   });
 });

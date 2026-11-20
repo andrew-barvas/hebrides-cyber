@@ -18,7 +18,7 @@ import { checkSafeBrowsing, type SafeBrowsingResult } from "./safeBrowsing";
 import { checkWaybackDiscovery, type WaybackDiscoveryResult } from "./waybackDiscovery";
 import { checkHibp, hibpBreachSeverity, type HibpResult } from "./hibp";
 import { checkWpVulnDb, wpVulnSeverity, type WpVulnDbResult } from "./wpvdb";
-import { checkSoftwareCveDb, type SoftwareCveDbResult } from "./softwareCveDb";
+import { checkSoftwareCveDb, softwareCveCandidates, type SoftwareCveDbResult } from "./softwareCveDb";
 import { checkBusinessLogic, type BusinessLogicResult } from "./businessLogic";
 import { checkApiSpecPassive, type ApiSpecResult } from "./apiSpec";
 import { checkTakeover, type TakeoverResult } from "./takeover";
@@ -366,10 +366,12 @@ export async function runAllChecks(
   );
 
   // Depends on fingerprint's riskySoftware detection (WordPress core, PHP,
-  // Apache), so it can't join the Promise.allSettled batch above either —
-  // same "enrichment runs after its input resolves" pattern as wpVulnDb.
+  // Apache) and on end-of-life verdicts, which add versions the hand-set
+  // table misses (PHP 8.1, Apache 2.2), so it can't join the
+  // Promise.allSettled batch above either — same "enrichment runs after its
+  // input resolves" pattern as wpVulnDb.
   const softwareCveDb = await checkSoftwareCveDb(
-    fingerprint.status === "checked" ? fingerprint.riskySoftware : []
+    softwareCveCandidates(fingerprint.status === "checked" ? fingerprint.riskySoftware : [], await endOfLifePending)
   );
 
   // Both need recon's Certificate Transparency subdomains as their candidate
