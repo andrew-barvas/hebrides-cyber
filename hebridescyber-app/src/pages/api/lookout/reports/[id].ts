@@ -12,6 +12,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
 import { canTransition, type ReportStatus } from "@/lib/lookoutReports";
 import { loadReportLookalikes } from "@/lib/lookoutLookalikes";
+import { loadReportBreaches } from "@/lib/lookoutBreaches";
 
 const ackSchema = z.object({ action: z.literal("acknowledge") });
 
@@ -52,8 +53,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .limit(1)
       .maybeSingle();
     const r = report as { period_start: string; period_end: string };
-    const lookalikes = await loadReportLookalikes(supabaseAdmin, caller.ownerId, r.period_start, r.period_end);
-    return res.status(200).json({ report: publicReport, items: items ?? [], galleryScanId: (scan as { id: string } | null)?.id ?? null, lookalikes });
+    const [lookalikes, breaches] = await Promise.all([
+      loadReportLookalikes(supabaseAdmin, caller.ownerId, r.period_start, r.period_end),
+      loadReportBreaches(supabaseAdmin, caller.ownerId, r.period_end),
+    ]);
+    return res.status(200).json({ report: publicReport, items: items ?? [], galleryScanId: (scan as { id: string } | null)?.id ?? null, lookalikes, breaches });
   }
 
   if (req.method === "POST") {
