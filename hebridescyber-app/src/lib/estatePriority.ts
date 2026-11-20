@@ -31,10 +31,17 @@ import { hostOf } from "./findingLifecycle";
 import { compareFindings, loadFindingsView, type FindingRow, type HostDetail } from "./findingsView";
 import { findingPenalty } from "./scanners/riskScore";
 import { CRITICALITIES, ENVIRONMENTS, type Criticality, type Environment } from "./targetCriticality";
+import { normaliseToolKey } from "./findingLifecycle";
+import { isScanProfile, resolveToolConfig, type ScanProfile } from "./scanProfiles";
 
 export { CRITICALITIES, ENVIRONMENTS, type Criticality, type Environment };
 
-export type TargetContext = { criticality: Criticality; environment: Environment | null };
+export type TargetContext = {
+  criticality: Criticality;
+  environment: Environment | null;
+  /** The site's current scan profile(s); absent when unknown, which hides nothing. */
+  profiles?: ScanProfile[];
+};
 
 export const DEFAULT_TARGET_CONTEXT: TargetContext = { criticality: "normal", environment: null };
 
@@ -202,6 +209,10 @@ export function rankFindings(
 ): PrioritisedFinding[] {
   const scored = rows
     .filter((r) => r.triage === null)
+    // A finding from a tool the site's current profile no longer runs can
+    // never be re-checked, so it would sit at the top forever and promise
+    // the customer a check the service doesn't make (audit 2026-11 M6).
+    .filter((r) => recheckedByCurrentProfile(r.source, targets.get(r.host)?.profiles))
     .map((row) => ({ row, ...scoreFinding(row, targets.get(row.host) ?? DEFAULT_TARGET_CONTEXT, signals.get(row.host)) }))
     .filter((s) => s.base > 0);
   scored.sort((a, b) => b.score - a.score || compareFindings(a.row, b.row));
@@ -255,8 +266,24 @@ function asEnvironment(value: unknown): Environment | null {
 
 /** Pure: monitored_targets rows to per-host context. Two rows for one host
  *  (http and https) take the higher criticality. */
+/**
+ * Pure: would a scan of a site on these profiles re-check a finding from
+ * `source`? Base findings, findings of unknown origin and sites whose profile
+ * is unknown always count as re-checked: this only hides what is certainly
+ * stale.
+ */
+export function recheckedByCurrentProfile(source: string | null | undefined, profiles: readonly ScanProfile[] | undefined): boolean {
+  if (!source || source === "base" || source === "extended" || !profiles || profiles.length === 0) return true;
+  return profiles.some((profile) => {
+    const tools = resolveToolConfig(profile);
+    return (Object.keys(tools) as Array<keyof typeof tools>).some((name) => tools[name] && normaliseToolKey(name) === source);
+  });
+}
+
+const asProfile = (value: unknown): ScanProfile | null => (isScanProfile(value) ? value : null);
+
 export function buildTargetContexts(
-  rows: Array<{ target_url: string; criticality?: unknown; environment?: unknown }>
+  rows: Array<{ target_url: string; criticality?: unknown; environment?: unknown; scan_profile?: unknown }>
 ): Map<string, TargetContext> {
   const order: Record<Criticality, number> = { low: 0, normal: 1, high: 2 };
   const contexts = new Map<string, TargetContext>();
@@ -265,8 +292,13 @@ export function buildTargetContexts(
     if (!host) continue;
     const next: TargetContext = { criticality: asCriticality(r.criticality), environment: asEnvironment(r.environment) };
     const prev = contexts.get(host);
+    const profile = asProfile(r.scan_profile);
+    const profiles = [...(prev?.profiles ?? []), ...(profile && !prev?.profiles?.includes(profile) ? [profile] : [])];
+    const withProfiles = (c: TargetContext): TargetContext => (profiles.length ? { ...c, profiles } : c);
     if (!prev || order[next.criticality] > order[prev.criticality]) {
-      contexts.set(host, { criticality: next.criticality, environment: next.environment ?? prev?.environment ?? null });
+      contexts.set(host, withProfiles({ criticality: next.criticality, environment: next.environment ?? prev?.environment ?? null }));
+    } else {
+      contexts.set(host, withProfiles(prev));
     }
   }
   return contexts;
@@ -285,7 +317,7 @@ export type TargetContextResult = {
 export async function loadTargetContexts(supabaseAdmin: SupabaseClient, ownerId: string): Promise<TargetContextResult> {
   const { data, error } = await supabaseAdmin
     .from("monitored_targets")
-    .select("target_url, criticality, environment")
+    .select("target_url, criticality, environment, scan_profile")
     .eq("owner", ownerId);
   if (error) {
     if (isMissingSchemaError(error)) return { available: false, complete: true, contexts: new Map() };

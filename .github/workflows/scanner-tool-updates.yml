@@ -152,10 +152,34 @@ jobs:
 
   report-errors:
     # Runs after the bumps that could be made, so one failed lookup never blocks the others.
+    # Also runs when an update job failed (a push or PR step), which used to
+    # raise nothing at all (audit 2026-11 H4): pins silently went stale.
     needs: [check, update]
-    if: always() && needs.check.outputs.errors == 'true'
+    if: always() && (needs.check.outputs.errors == 'true' || needs.update.result == 'failure')
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOOKUP_ERRORS: ${{ needs.check.outputs.errors }}
+          UPDATE_RESULT: ${{ needs.update.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Scanner tool auto-update needs attention"
+          reasons=""
+          if [ "$LOOKUP_ERRORS" = "true" ]; then reasons="${reasons}- At least one tool could not be checked; its pin was left unchanged."$'\n'; fi
+          if [ "$UPDATE_RESULT" = "failure" ]; then reasons="${reasons}- At least one update job failed to push its branch or open its PR, so that bump was not proposed. If the log says the push token cannot reach the repository, GH_PAT needs renewing (docs/OWNER-TODO.md OT-49)."$'\n'; fi
+          body="$(printf 'The weekly scanner-tool update run did not finish cleanly.\n\n%s\nRun: %s\n' "$reasons" "$RUN_URL")"
+          gh label create tool-update --repo "$GITHUB_REPOSITORY" --color 1d76db --description "Scanner tool version bump" --force > /dev/null
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label tool-update --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label tool-update --body "$body"
+          fi
       - run: |
-          echo "::error::At least one tool could not be checked (see the check job's summary). Its pin was left unchanged."
+          echo "::error::The scanner-tool update run did not finish cleanly (lookup errors: ${{ needs.check.outputs.errors }}, update jobs: ${{ needs.update.result }}). See the tracking issue."
           exit 1

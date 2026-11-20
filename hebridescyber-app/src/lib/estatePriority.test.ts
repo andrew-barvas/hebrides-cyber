@@ -9,6 +9,7 @@ import {
   explainFactors,
   loadTargetContexts,
   rankFindings,
+  recheckedByCurrentProfile,
   scoreFinding,
   exploitabilityMultiplier,
   type HostSignals,
@@ -210,7 +211,7 @@ describe("loadTargetContexts", () => {
   it("reads the caller's own targets", async () => {
     const c = client({ data: [{ target_url: "https://a.example", criticality: "high", environment: null }], error: null });
     const r = await loadTargetContexts(c.client, "o1");
-    expect(c.select).toHaveBeenCalledWith("target_url, criticality, environment");
+    expect(c.select).toHaveBeenCalledWith("target_url, criticality, environment, scan_profile");
     expect(c.eq).toHaveBeenCalledWith("owner", "o1");
     expect(r).toMatchObject({ available: true, complete: true });
     expect(r.contexts.get("a.example")?.criticality).toBe("high");
@@ -254,5 +255,38 @@ describe("exploitabilityMultiplier", () => {
   it("adds no factor when the rating leaves the finding where it was", () => {
     const r = scoreFinding(row({ exploitabilityAssessment: rating(50) }), DEFAULT_TARGET_CONTEXT, undefined);
     expect(labels(r)).not.toContain("exploitability");
+  });
+});
+
+describe("findings from tools the site's current profile no longer runs (audit M6)", () => {
+  it("only certainly-stale findings count as not re-checked", () => {
+    expect(recheckedByCurrentProfile("sqlmap", ["exposure"])).toBe(false);
+    expect(recheckedByCurrentProfile("sqlmap", ["api"])).toBe(true);
+    expect(recheckedByCurrentProfile("zap", ["exposure"])).toBe(true);
+    expect(recheckedByCurrentProfile("base", ["exposure"])).toBe(true);
+    expect(recheckedByCurrentProfile("extended", ["exposure"])).toBe(true);
+    expect(recheckedByCurrentProfile(undefined, ["exposure"])).toBe(true);
+    expect(recheckedByCurrentProfile("sqlmap", undefined)).toBe(true);
+    expect(recheckedByCurrentProfile("sqlmap", ["exposure", "api"])).toBe(true);
+  });
+
+  it("leaves them out of the ranking, so they never top the fix-first list or a Lookout report", () => {
+    const stale = row({ key: "a.example sqlmap.injection", checkId: "sqlmap.injection", checkBase: "sqlmap.injection", category: "sqlmap", severity: "critical", title: "SQL injection", source: "sqlmap" });
+    const current = row({ source: "base" });
+    const targets = buildTargetContexts([{ target_url: "https://a.example", scan_profile: "exposure" }]);
+    expect(targets.get("a.example")?.profiles).toEqual(["exposure"]);
+    expect(rankFindings([stale, current], targets, new Map()).map((r) => r.key)).toEqual(["a.example headers.hsts"]);
+    // With no profile on record nothing is hidden.
+    expect(rankFindings([stale, current], new Map(), new Map()).map((r) => r.key)).toEqual(["a.example sqlmap.injection", "a.example headers.hsts"]);
+  });
+
+  it("keeps every profile when one site has several targets, and ignores unknown values", () => {
+    const t = buildTargetContexts([
+      { target_url: "https://a.example", scan_profile: "exposure", criticality: "high" },
+      { target_url: "https://a.example/app", scan_profile: "full" },
+      { target_url: "https://b.example", scan_profile: "nonsense" },
+    ]);
+    expect(t.get("a.example")).toMatchObject({ criticality: "high", profiles: ["exposure", "full"] });
+    expect(t.get("b.example")?.profiles).toBeUndefined();
   });
 });
