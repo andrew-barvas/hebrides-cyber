@@ -15,6 +15,7 @@ import EstateScreenshots from "@/components/EstateScreenshots";
 import SecurityProfileToggle from "@/components/SecurityProfileToggle";
 import { FixPlanShare } from "@/components/FixPlanShare";
 import { ScoreBenchmark } from "@/components/ScoreBenchmark";
+import { TrustDocumentsManager } from "@/components/TrustDocumentsManager";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { ScorePlanner } from "@/components/ScorePlanner";
 import FixWizard from "@/components/FixWizard";
@@ -887,6 +888,7 @@ export default function ScanDetailPage() {
           {sessionToken && result.results?.target_url && hostOfUrl(result.results.target_url) && (
             <FixPlanShare scanId={result.scan_id} host={hostOfUrl(result.results.target_url) as string} token={sessionToken} findings={taggedOrdered} />
           )}
+          {sessionToken && result.results?.target_url && <TrustDocumentsManager targetUrl={result.results.target_url} token={sessionToken} />}
 
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">
