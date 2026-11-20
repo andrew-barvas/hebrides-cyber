@@ -9,6 +9,7 @@
 // more (wording to be checked under OT-35), and cadence (OT-42) is left to
 // the analyst for now.
 import { loadReportLookalikes, lookalikeSummarySentence } from "./lookoutLookalikes";
+import { breachSummarySentence, loadReportBreaches } from "./lookoutBreaches";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PrioritisedFinding } from "./estatePriority";
 import { buildHostSignals, loadTargetContexts, rankFindings } from "./estatePriority";
@@ -56,13 +57,14 @@ export function canTransition(from: ReportStatus, to: ReportStatus, actor: "admi
 export async function loadDraftInputs(supabaseAdmin: SupabaseClient, customer: string, periodDays: 7 | 30 | 90): Promise<{ items: DraftItem[]; summary: string }> {
   const end = new Date();
   const start = new Date(end.getTime() - periodDays * 24 * 60 * 60 * 1000);
-  const [view, targets, drift, lookalikes] = await Promise.all([
+  const [view, targets, drift, lookalikes, breaches] = await Promise.all([
     loadFindingsView(supabaseAdmin, customer),
     loadTargetContexts(supabaseAdmin, customer),
     loadEstateDrift(supabaseAdmin, customer, periodDays),
     loadReportLookalikes(supabaseAdmin, customer, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)),
+    loadReportBreaches(supabaseAdmin, customer, end.toISOString().slice(0, 10)),
   ]);
   const ranked = view.ok ? rankFindings(view.data.rows, targets.contexts, buildHostSignals(view.data.detailByHost)) : [];
-  const summary = [draftSummary(drift.ok && drift.available ? drift.drift : null), lookalikeSummarySentence(lookalikes)].filter(Boolean).join(" ");
+  const summary = [draftSummary(drift.ok && drift.available ? drift.drift : null), lookalikeSummarySentence(lookalikes), breachSummarySentence(breaches)].filter(Boolean).join(" ");
   return { items: draftItemsFromRanking(ranked), summary };
 }
