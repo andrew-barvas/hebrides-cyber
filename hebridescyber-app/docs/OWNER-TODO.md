@@ -90,7 +90,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-58 | Google Cloud project and OAuth app for Google Workspace posture checks | 🟢 Low | Open | 2026-11-14 | |
 | OT-59 | Phishing awareness: solicitor (DPA, terms, privacy policy) and insurer sign-off before any live campaign | 🟡 Medium | Decision | 2026-11-19 | |
 | OT-60 | Phishing awareness: dedicated sending domains and an email provider whose terms allow simulations | 🟢 Low | Decision | 2026-11-19 | |
-| OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
+| OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
 | OT-62 | Replace the Resend API key (shown in a screenshot) and delete `RESEND_API_KEY_OLD` | 🟠 High | Open | 2026-11-20 | |
 
 ## Common steps
