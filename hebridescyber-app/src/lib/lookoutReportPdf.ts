@@ -7,6 +7,7 @@ import { escapeHtml, REPORT_MUTED, REPORT_TEXT } from "./executiveReport";
 import { isScreenshotFileName, SCREENSHOT_CONTAINER } from "./estateScreenshots";
 import type { ReportStatus } from "./lookoutReports";
 import type { ReportLookalikes } from "./lookoutLookalikes";
+import type { ReportBreaches } from "./lookoutBreaches";
 
 export const GALLERY_MAX = 12;
 const GALLERY_SCANS = 5;
@@ -22,7 +23,7 @@ export type LookoutPdfReport = {
 };
 export type LookoutPdfItem = { host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string | null };
 export type GalleryImage = { host: string; dataUri: string };
-export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; lookalikes?: ReportLookalikes; now?: Date };
+export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; lookalikes?: ReportLookalikes; breaches?: ReportBreaches; now?: Date };
 
 const SEVERITY_COLOUR: Record<string, string> = { critical: "#7f1d1d", high: "#b91c1c", medium: "#b45309", low: "#1d4ed8", info: "#475569" };
 const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: "Your IT supplier", hosting_provider: "Your hosting provider", unknown: "To be agreed" };
@@ -72,6 +73,23 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
         ? `<h2>Lookalike domains</h2><p class="muted">No new lookalike domains of yours were spotted this period${lookalikes.totalKnown ? ` (${lookalikes.totalKnown} known from before)` : ""}.</p>`
         : "";
 
+  const breachHtml = input.breaches?.available
+    ? `<h2>Email addresses in known data breaches</h2>
+       <p class="muted">From the Have I Been Pwned breach database. Anyone listed should change that password (and anywhere it was reused) and turn on multi-factor sign-in. We never see or store the addresses themselves.</p>
+       ${input.breaches.sites
+         .map((s) =>
+           s.status === "not_verified"
+             ? `<p><b>${e(s.host)}</b>: <span class="muted">not enabled yet. The domain needs verifying with Have I Been Pwned; your engineer can arrange this.</span></p>`
+             : s.breaches.length === 0
+               ? `<p><b>${e(s.host)}</b>: no addresses found in known breaches.</p>`
+               : `<p><b>${e(s.host)}</b>: ${s.affectedAliasCount} address${s.affectedAliasCount === 1 ? "" : "es"} found.</p>
+                  <table><thead><tr><th>Breach</th><th>When</th><th>Addresses</th><th>What leaked</th></tr></thead><tbody>${s.breaches
+                    .map((b) => `<tr><td>${e(b.title)}</td><td>${e(b.breachDate ?? "")}</td><td>${b.affectedAliasCount}</td><td>${e(b.dataClasses.slice(0, 5).join(", "))}</td></tr>`)
+                    .join("")}</tbody></table>`
+         )
+         .join("")}`
+    : "";
+
   const state =
     report.status === "draft"
       ? '<div class="draft">DRAFT — not yet published to the customer</div>'
@@ -111,6 +129,8 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
   ${rows || '<p class="muted">Nothing needs fixing from this period.</p>'}
 
   ${lookalikeHtml}
+
+  ${breachHtml}
 
   ${galleryHtml}
 
