@@ -9,10 +9,11 @@ import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { parseBody } from "@/lib/validate";
+import { SUBSCRIPTION_PLANS } from "@/lib/planAccess";
 
 const patchSchema = z.object({
   ownerId: z.string().uuid(),
-  plan: z.enum(["basic", "pro", "agency", "tier_a"]),
+  plan: z.enum(SUBSCRIPTION_PLANS),
   status: z.enum(["inactive", "active", "past_due", "cancelled"]),
   reason: z.string().trim().min(1, "reason is required").max(500),
 });

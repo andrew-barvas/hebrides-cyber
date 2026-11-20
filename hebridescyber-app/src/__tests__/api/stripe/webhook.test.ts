@@ -231,6 +231,36 @@ describe("POST /api/stripe/webhook", () => {
       vi.unstubAllGlobals();
     });
 
+    it.each(["lookout_essentials", "lookout_assured"] as const)("activates a %s checkout and sends the Lookout welcome, not the scanner one", async (plan) => {
+      constructEventMock.mockReturnValue(
+        stripeEvent("evt_lk", "checkout.session.completed", {
+          client_reference_id: "owner-1",
+          metadata: { plan, period: "quarterly" },
+          subscription: "sub_lk",
+          customer: "cus_lk",
+        })
+      );
+      subscriptionsRetrieveMock.mockResolvedValue({ current_period_end: 1_700_000_000 });
+      queues.audit_logs = [{ data: null }];
+      queues.users = [{}, { data: { email: "owner@example.com", onboarding_email_sent: false } }];
+      process.env.SENDGRID_API_KEY = "SG.test";
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { req, res } = mockReqRes();
+      await callHandler(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(upsertedSubscriptions[0]).toMatchObject({ plan, status: "active", source: "stripe" });
+      const body = String(fetchMock.mock.calls[0][1].body);
+      expect(body).toContain(plan === "lookout_essentials" ? "Lookout Essentials Plan" : "Lookout Assured Plan");
+      expect(body).toContain("not a penetration test");
+      expect(body).not.toContain("within the next 24 hours");
+      expect(insertedAuditLogs[0]).toMatchObject({ metadata: { plan, period: "quarterly" } });
+
+      vi.unstubAllGlobals();
+    });
+
     it("does not send a duplicate welcome email when onboarding_email_sent is already true", async () => {
       constructEventMock.mockReturnValue(
         stripeEvent("evt_4", "checkout.session.completed", { client_reference_id: "owner-1", metadata: { plan: "basic" } })

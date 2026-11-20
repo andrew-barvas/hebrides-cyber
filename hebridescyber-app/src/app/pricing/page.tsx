@@ -10,6 +10,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import LookoutCheckout from "@/components/LookoutCheckout";
 
 class CheckoutError extends Error {
   constructor(message: string, readonly code?: string) {
@@ -277,6 +278,21 @@ export default function PricingPage() {
           </Link>
           . Choosing a plan while signed out takes you through creating an account and straight back to checkout.
         </p>
+
+        {/* Lookout, the managed exposure review. Its checkout lives here on the
+            main site, not on /lookout: the lookout subdomain redirects every
+            other path (the checkout API included) and carries no sign-in
+            session, so /lookout's plan buttons link here instead. */}
+        <section id="lookout" aria-labelledby="lookout-heading" className="mt-16 scroll-mt-16">
+          <h2 id="lookout-heading" className="mb-2 font-mono text-xs uppercase tracking-widest text-cybertext/70">
+            Lookout — managed exposure review
+          </h2>
+          <p className="mb-6 text-sm text-cybermuted">
+            The same checks across your whole estate, reviewed by an engineer, with a written report and review calls.{" "}
+            <Link href="/lookout">What Lookout includes</Link>
+          </p>
+          <LookoutCheckout />
+        </section>
       </div>
     </div>
   );
