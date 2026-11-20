@@ -43,7 +43,14 @@ function cvssFloor(cvss: number): number {
   return 0;
 }
 
-export function findingPenalty(finding: Finding): number {
+/** What a penalty is computed from. Structural, so the score planner (scorePlanner.ts) can price findings read back from storage, not only fresh `Finding`s. */
+export type PenaltyInput = {
+  severity: Finding["severity"];
+  cvssScore?: number;
+  threatIntel?: { knownExploited?: boolean; ransomware?: boolean; epss?: number };
+};
+
+export function findingPenalty(finding: PenaltyInput): number {
   const base = SEVERITY_PENALTY[finding.severity];
   if (base === 0) return 0;
 

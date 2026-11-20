@@ -14,6 +14,7 @@ import ShareLinks from "@/components/ShareLinks";
 import EstateScreenshots from "@/components/EstateScreenshots";
 import SecurityProfileToggle from "@/components/SecurityProfileToggle";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
+import { ScorePlanner } from "@/components/ScorePlanner";
 import FixWizard from "@/components/FixWizard";
 import CeReadinessPanel from "@/components/CeReadinessPanel";
 import { assessCeReadiness } from "@/lib/cyberEssentialsReadiness";
@@ -749,6 +750,9 @@ export default function ScanDetailPage() {
 
           {/* Executive summary */}
           {result.score !== null && <ExecutiveSummary findings={taggedOrdered} score={result.score} />}
+
+          {/* Score planner: what fixing these would do to the rating */}
+          {result.score !== null && <ScorePlanner findings={taggedOrdered} score={result.score} />}
 
           {/* Compliance mapping */}
           <ComplianceSummary findings={realOrdered} />

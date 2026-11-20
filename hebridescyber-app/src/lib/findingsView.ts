@@ -91,7 +91,8 @@ export type ScanFinding = {
   exploitabilityAssessment?: FindingExploitability;
 };
 
-export type HostDetail = { scanId: string; findings: ScanFinding[] };
+/** `score` is that scan's stored score (null when it has none); the weekly email's rating line reads it. */
+export type HostDetail = { scanId: string; findings: ScanFinding[]; score?: number | null };
 
 export function checkBaseOf(checkId: string): string {
   return checkId.split(":")[0];
@@ -513,18 +514,21 @@ async function loadLatestDetail(
   const ids = [...latest.values()];
   const { data: results, error: resultsError } = await supabaseAdmin
     .from("scan_results")
-    .select("scan_id, findings:results->findings")
+    .select("scan_id, score, findings:results->findings")
     .in("scan_id", ids);
   if (resultsError) return null;
 
-  const byScan = new Map<string, ScanFinding[]>();
-  for (const r of (results ?? []) as Array<{ scan_id: string; findings: unknown }>) {
-    byScan.set(r.scan_id, Array.isArray(r.findings) ? (r.findings as ScanFinding[]) : []);
+  const byScan = new Map<string, { findings: ScanFinding[]; score: number | null }>();
+  for (const r of (results ?? []) as Array<{ scan_id: string; score?: unknown; findings: unknown }>) {
+    byScan.set(r.scan_id, {
+      findings: Array.isArray(r.findings) ? (r.findings as ScanFinding[]) : [],
+      score: typeof r.score === "number" && Number.isFinite(r.score) ? r.score : null,
+    });
   }
   const detail = new Map<string, HostDetail>();
   for (const [host, scanId] of latest) {
-    const findings = byScan.get(scanId);
-    if (findings) detail.set(host, { scanId, findings });
+    const result = byScan.get(scanId);
+    if (result) detail.set(host, { scanId, findings: result.findings, score: result.score });
   }
   return detail;
 }
