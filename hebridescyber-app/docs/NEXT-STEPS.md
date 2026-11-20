@@ -69,6 +69,12 @@ Full summaries are in [`PRODUCTS.md`](PRODUCTS.md).
 - **Exploit:** not launched and not to be marketed. `/exploit` is noindex and
   unlinked. Offensive authorizations now expire within 30 days (#280).
   Waiting on OT-13 and OT-51 to OT-55; engagement work is in draft PRs.
+- **Device patch-audit agent (P1-5):** built in a draft PR: a Go agent
+  (`agent/`), `POST /api/agent/inventory`, migration 086, hourly matching
+  (OSV, the CPE index, endoflife.date) and Cyber Essentials → Devices, gated
+  to Pro for now. Binaries are unsigned. Owner items: a code-signing
+  certificate, the Apple Developer Program for notarisation, and whether it
+  ships in Lookout or as a Cyber Essentials add-on (private OWNER-TODO).
 - **Phishing awareness:** design only
   ([`PHISHING-AWARENESS-DESIGN.md`](PHISHING-AWARENESS-DESIGN.md), #251);
   owner items OT-59 to OT-61.

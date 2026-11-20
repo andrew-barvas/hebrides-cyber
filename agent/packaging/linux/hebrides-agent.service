@@ -1,0 +1,15 @@
+[Unit]
+Description=HebridesCyber device patch-audit report
+Documentation=https://github.com/andrew-barvas/hebrides-cyber/tree/master/agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hebrides-agent report
+# Read-only inventory: no writes outside its own config, no new privileges.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ReadOnlyPaths=/etc/hebrides-agent

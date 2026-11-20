@@ -1,0 +1,5 @@
+package-id: us.zoom.pkg.videomeeting
+version: 5.17.11.31580
+volume: /
+location: Applications
+install-time: 1712745600

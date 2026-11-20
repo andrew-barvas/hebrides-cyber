@@ -1,0 +1,30 @@
+{
+  "SPApplicationsDataType" : [
+    {
+      "_name" : "Google Chrome",
+      "arch_kind" : "arch_arm_i64",
+      "lastModified" : "2024-04-10T08:12:44Z",
+      "obtained_from" : "identified_developer",
+      "path" : "/Applications/Google Chrome.app",
+      "signed_by" : [
+        "Developer ID Application: Google LLC (EQHXZ8M8AV)",
+        "Developer ID Certification Authority",
+        "Apple Root CA"
+      ],
+      "version" : "123.0.6312.122"
+    },
+    {
+      "_name" : "Safari",
+      "arch_kind" : "arch_arm_i64",
+      "lastModified" : "2024-03-21T05:01:02Z",
+      "obtained_from" : "apple",
+      "path" : "/Applications/Safari.app",
+      "version" : "17.4.1"
+    },
+    {
+      "_name" : "Unversioned Helper",
+      "obtained_from" : "unknown",
+      "path" : "/Applications/Helper.app"
+    }
+  ]
+}

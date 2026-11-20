@@ -159,7 +159,7 @@ function eolDateOf(entry: EolEntry): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function verdictFor(entry: EolEntry, now: Date): EolVerdict {
+export function verdictFor(entry: EolEntry, now: Date): EolVerdict {
   const cycle = String(entry.cycle);
   if (entry.eol === true) return { state: "unsupported", cycle, eolDate: null, daysOverdue: null };
   const date = eolDateOf(entry);

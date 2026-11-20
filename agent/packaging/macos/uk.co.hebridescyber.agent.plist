@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>uk.co.hebridescyber.agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/hebrides-agent</string>
+    <string>report</string>
+  </array>
+  <!-- Daily at 10:00, and at load (catches machines that were asleep). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>10</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/hebrides-agent.log</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/hebrides-agent.log</string>
+</dict>
+</plist>

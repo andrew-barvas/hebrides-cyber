@@ -1,0 +1,10 @@
+Software Update Tool
+
+Finding available software
+Software Update found the following new or updated software:
+* Label: macOS Sonoma 14.5-23F79
+	Title: macOS Sonoma 14.5, Version: 14.5, Size: 6857158KiB, Recommended: YES, Action: restart, 
+* Label: Safari17.5SonomaAuto-17.5
+	Title: Safari, Version: 17.5, Size: 155614KiB, Recommended: YES, 
+* Label: Command Line Tools for Xcode-15.3
+	Title: Command Line Tools for Xcode, Version: 15.3, Size: 751503KiB, Recommended: NO, 

@@ -1,0 +1,4 @@
+com.apple.pkg.MobileAssets
+com.apple.pkg.CLTools_Executables
+us.zoom.pkg.videomeeting
+com.microsoft.teams2
