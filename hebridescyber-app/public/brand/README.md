@@ -18,3 +18,11 @@ Hebrides Cyber logo + icon, derived from `public/favicon.svg` / `src/app/icon.sv
 | Deep green | `#067A5B` | accent / wordmark on light surfaces (better contrast than neon) |
 
 PNGs are rendered from the SVGs; re-render with the SVG as source if you change them.
+
+## Social media images
+
+`social/` holds the profile picture and banners for LinkedIn, X, YouTube and
+Google Business, and `share-1200x630.png`, the link preview for every page
+(wired into `src/app/layout.tsx`). They're rendered from the mark and palette
+above by `npx tsx src/scripts/render-social-images.ts`; edit the copy there
+and re-run.

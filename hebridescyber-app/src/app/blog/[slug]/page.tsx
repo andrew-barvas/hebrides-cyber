@@ -56,14 +56,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: post.title,
       description,
-      images: post.og_image ? [{ url: post.og_image }] : [],
+      // No post image: the site's own share image rather than none.
+      images: [{ url: post.og_image ?? "/brand/social/share-1200x630.png" }],
       type: "article",
     },
     twitter: {
-      card: post.og_image ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title: post.title,
       description,
-      images: post.og_image ? [post.og_image] : [],
+      images: [post.og_image ?? "/brand/social/share-1200x630.png"],
     },
   };
 }
