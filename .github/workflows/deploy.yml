@@ -260,6 +260,10 @@ jobs:
           # Env vars are passed here so Oryx's build has the Supabase keys
           # needed for generateStaticParams() at build time.
         env:
+          # Azure Static Web Apps supports Node up to 22 (learn.microsoft.com
+          # static-web-apps/languages-runtimes, checked 2026-11-20), so the site
+          # and this workflow's check job stay on 22 while every other workflow
+          # and the Docker images run Node 24. Move when SWA lists node:24.
           NODE_VERSION: '22'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

@@ -5,12 +5,12 @@
 # from source without this file). Keep both paths working independently;
 # see CLAUDE.md's Deployment section for why SWA is still the default.
 
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -36,7 +36,7 @@ RUN npm run build
 # fallback path); SCAN_TOOLS_STRICT=1 fails the build on any missing tool.
 # BuildKit only builds the stages a target needs, so building the web app
 # (the default, last stage below) never builds this one.
-FROM node:22-slim AS scan-worker
+FROM node:24-slim AS scan-worker
 WORKDIR /app
 ENV SCAN_TOOLS_STRICT=1
 # Shared location so the non-root user can launch the browser installed as root.
@@ -63,7 +63,7 @@ CMD ["bash", "docker/scan-worker-entrypoint.sh"]
 
 # The web app. Keep this the LAST stage: deploy-containerapp.yml builds the
 # default target.
-FROM node:22-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
