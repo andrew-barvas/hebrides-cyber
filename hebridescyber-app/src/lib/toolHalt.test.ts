@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { execTool } from "./execTool";
-import { HaltController, ToolHaltedError, assertNotHalted, currentHalt, runWithHalt } from "./toolHalt";
+import { HaltController, KILL_GRACE_MS, ToolHaltedError, assertNotHalted, currentHalt, runWithHalt } from "./toolHalt";
 
 // Real child processes (node itself), so the kill path is exercised for real.
 const NODE = process.execPath;
@@ -75,5 +75,60 @@ describe("HaltController with execTool", () => {
     controller.halt("first");
     controller.halt("second");
     expect(controller.reason).toBe("first");
+  });
+});
+
+describe("HaltController kill path (fake processes)", () => {
+  type FakeChild = import("node:events").EventEmitter & { kill: ReturnType<typeof vi.fn>; exitCode: number | null; signalCode: string | null };
+  const fake = async (): Promise<FakeChild> => {
+    const { EventEmitter } = await import("node:events");
+    return Object.assign(new EventEmitter(), { kill: vi.fn(), exitCode: null, signalCode: null }) as FakeChild;
+  };
+
+  it("forces a tool that ignores SIGTERM after the grace period, and leaves one that exited alone", async () => {
+    vi.useFakeTimers();
+    try {
+      const stubborn = await fake();
+      const polite = await fake();
+      const controller = new HaltController();
+      controller.register(stubborn as never);
+      controller.register(polite as never);
+      controller.halt("stop");
+      expect(stubborn.kill).toHaveBeenCalledWith("SIGTERM");
+      polite.exitCode = 0;
+      vi.advanceTimersByTime(KILL_GRACE_MS);
+      expect(stubborn.kill).toHaveBeenLastCalledWith("SIGKILL");
+      expect(polite.kill).not.toHaveBeenCalledWith("SIGKILL");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("kills a process registered after the halt straight away, and survives a kill that throws", async () => {
+    vi.useFakeTimers();
+    try {
+      const late = await fake();
+      late.kill.mockImplementation(() => {
+        throw new Error("ESRCH");
+      });
+      const controller = new HaltController();
+      controller.halt("stop");
+      expect(() => controller.register(late as never)).not.toThrow();
+      expect(late.kill).toHaveBeenCalledWith("SIGTERM");
+      expect(controller.running).toBe(0);
+      expect(() => vi.advanceTimersByTime(KILL_GRACE_MS)).not.toThrow();
+      expect(late.kill).toHaveBeenLastCalledWith("SIGKILL");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forgets a process that fails to start", async () => {
+    const broken = await fake();
+    const controller = new HaltController();
+    controller.register(broken as never);
+    expect(controller.running).toBe(1);
+    broken.emit("error", new Error("ENOENT"));
+    expect(controller.running).toBe(0);
   });
 });

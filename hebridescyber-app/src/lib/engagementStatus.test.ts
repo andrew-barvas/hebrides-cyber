@@ -68,3 +68,9 @@ describe("authorisationExpiryFor and authorisationEndsBeforeWindow", () => {
     expect(AUTHORISATION_MAX_DAYS).toBe(MAX_AUTHORIZATION_DAYS);
   });
 });
+
+describe("formatWhen defaults", () => {
+  it("formats in en-GB when no locale is given", () => {
+    expect(formatWhen("2026-12-01T09:00:00Z", undefined, "UTC")).toBe("1 Dec 2026, 09:00");
+  });
+});

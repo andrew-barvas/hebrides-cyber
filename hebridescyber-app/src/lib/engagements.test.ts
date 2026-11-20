@@ -6,6 +6,7 @@ vi.mock("./ownership", () => ({ isDomainVerified: verified }));
 vi.mock("./audit", () => ({ logAuditEvent: audit }));
 
 import {
+  accountExists,
   abortEngagement,
   applyScopeChanges,
   checkAuthorizationLink,
@@ -346,5 +347,22 @@ describe("loadEngagementView", () => {
       t[table] = [{ error: { code: "XX000" } }] as never;
       expect((await loadEngagementView(fakeAdmin(t).admin, engagementRow, NOW)).status, table).toBe("error");
     }
+  });
+});
+
+describe("accountExists", () => {
+  it("answers yes, no, or a failure", async () => {
+    expect(await accountExists(fakeAdmin({ users: [{ data: { id: "u1" } }] }).admin, "u1")).toEqual({ status: "ok", data: true });
+    expect(await accountExists(fakeAdmin({ users: [{ data: null }] }).admin, "u1")).toEqual({ status: "ok", data: false });
+    expect((await accountExists(fakeAdmin({ users: [{ error: { code: "XX000" } }] }).admin, "u1")).status).toBe("error");
+  });
+});
+
+describe("applyScopeChanges removals", () => {
+  it("refuses a malformed host to remove, and audits the refusal", async () => {
+    const { admin } = fakeAdmin({});
+    const result = await applyScopeChanges(admin, ENGAGEMENT, "admin-1", { add: [], remove: ["https://a.test/path"] });
+    expect(result).toEqual({ status: "ok", data: { added: [], removed: [], refused: [{ host: "https://a.test/path", reason: "invalid_host" }] } });
+    expect(audit.mock.calls[0][1]).toMatchObject({ action: "engagement_scope.refused", metadata: { reason: "invalid_host" } });
   });
 });

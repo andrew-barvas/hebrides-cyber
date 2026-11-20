@@ -5,8 +5,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const { audit } = vi.hoisted(() => ({ audit: vi.fn() }));
+const { audit, evaluate } = vi.hoisted(() => ({ audit: vi.fn(), evaluate: vi.fn() }));
 vi.mock("./audit", () => ({ logAuditEvent: audit }));
+vi.mock("./offensiveGate", async (original) => ({ ...(await original<typeof import("./offensiveGate")>()), evaluateOffensiveGate: evaluate }));
 
 import { execTool } from "./execTool";
 import type { OffensiveGateDecision } from "./offensiveGate";
@@ -30,6 +31,7 @@ async function fakeScan(stored: string[]) {
 
 beforeEach(() => {
   audit.mockReset();
+  evaluate.mockReset();
 });
 
 describe("runOffensiveScan", () => {
@@ -63,5 +65,14 @@ describe("runOffensiveScan", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(check.mock.calls.length).toBe(calls);
     expect(audit).not.toHaveBeenCalled();
+  });
+});
+
+describe("runOffensiveScan default check", () => {
+  it("asks the real gate for this job's owner and target when no check is given", async () => {
+    evaluate.mockResolvedValue(ALLOWED);
+    const result = await runOffensiveScan(admin, job, "scan-1", "eng-1", () => new Promise((r) => setTimeout(() => r("done"), 250)), { intervalMs: 50 });
+    expect(result).toBe("done");
+    expect(evaluate).toHaveBeenCalledWith(admin, "owner-1", "https://shop.example.com");
   });
 });
