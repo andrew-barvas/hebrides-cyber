@@ -242,6 +242,8 @@ export interface CveIndexWriter {
   writeEntries(entries: CveIndexEntry[]): Promise<void>;
   writeState(patch: Partial<CveSyncState> & { last_run_at: string; last_error: string | null }): Promise<void>;
   countRecords(): Promise<number>;
+  /** A buffering writer (cveIndexObjects.ts) persists everything written so far. */
+  flush?(): Promise<void>;
 }
 
 export type CveSyncSummary = {
@@ -349,6 +351,7 @@ export async function syncCveIndex(writer: CveIndexWriter, options: CveSyncOptio
         if (summary.pages >= maxPages) {
           log(`Backfill paused at index ${index}; the next run resumes there.`);
           await writer.writeState({ backfill_next_index: index, last_run_at: runAt, last_error: null });
+          await writer.flush?.();
           return summary;
         }
         if (summary.pages > 0) await sleep(pause);

@@ -15,8 +15,6 @@ on:
     # 06:15 UTC daily.
     - cron: "15 6 * * *"
   workflow_dispatch: {}
-  push:
-    branches: [claude/db-size]
 
 permissions:
   contents: read
