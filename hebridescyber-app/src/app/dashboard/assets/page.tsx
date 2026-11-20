@@ -5,6 +5,7 @@ import DmarcReports from "@/components/DmarcReports";
 import DomainVerification from "@/components/DomainVerification";
 import EstateMap from "@/components/EstateMap";
 import LockedFeature from "@/components/LockedFeature";
+import LookalikeDomains from "@/components/LookalikeDomains";
 import MonitoredTargets from "@/components/MonitoredTargets";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { CardDescription, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,18 @@ export default function AssetsPage() {
           </CardDescription>
         </div>
         <AssetInventory />
+      </section>
+
+      {/* Lookalike domains (migration 053) with what to do about each; the
+          lookalike alert email links to this anchor. */}
+      <section id="lookalikes" aria-labelledby="lookalikes-heading" className="scroll-mt-6 space-y-3">
+        <div>
+          <CardTitle id="lookalikes-heading">lookalike domains</CardTitle>
+          <CardDescription className="mt-1">
+            Registered domains one character away from yours, with a certificate already issued: a common setup for phishing your staff or customers. Open one for what to do.
+          </CardDescription>
+        </div>
+        <LookalikeDomains />
       </section>
 
       {/* DMARC aggregate reports (E-66) — the half of NCSC Mail Check a DNS
