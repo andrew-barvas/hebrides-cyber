@@ -65,14 +65,40 @@ export async function azureObjectStore(connectionString: string, container: stri
   };
 }
 
-/** The configured store for the CVE index (see the header). */
+/**
+ * Retries a failed get or put (a network blip, a 5xx, a dropped connection)
+ * with exponential back-off. A missing object is an answer, not a failure, so
+ * get() returning null is never retried. The first nightly sync after the move
+ * to object storage died on one "fetch failed" among ~1,300 downloads.
+ */
+export function withRetries(store: ObjectStore, opts: { attempts?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> } = {}): ObjectStore {
+  const attempts = opts.attempts ?? 4;
+  const base = opts.baseDelayMs ?? 500;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const run = async <T>(fn: () => Promise<T>): Promise<T> => {
+    for (let i = 1; ; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i >= attempts) throw err;
+        await sleep(base * 2 ** (i - 1));
+      }
+    }
+  };
+  return {
+    get: (key) => run(() => store.get(key)),
+    put: (key, data, contentType) => run(() => store.put(key, data, contentType)),
+  };
+}
+
+/** The configured store for the CVE index (see the header), with retries. */
 export async function cveIndexObjectStore(supabaseAdmin: SupabaseClient, env: Record<string, string | undefined> = process.env): Promise<ObjectStore> {
   if (env.CVE_INDEX_STORE === "azure") {
     const conn = env.AZURE_STORAGE_CONNECTION_STRING;
     if (!conn) throw new Error("CVE_INDEX_STORE=azure but AZURE_STORAGE_CONNECTION_STRING is not set");
-    return azureObjectStore(conn);
+    return withRetries(await azureObjectStore(conn));
   }
-  return supabaseObjectStore(supabaseAdmin);
+  return withRetries(supabaseObjectStore(supabaseAdmin));
 }
 
 /** For tests and local runs. */
