@@ -98,7 +98,7 @@ describe("GET /api/v1/scans/[id]/plan", () => {
     ownScan();
     const r = req({ id: "scan-1" });
     await handler(r.req, r.res);
-    const body = r.res._getJSONData();
+    const body = r.res._getJSONData() as { plan: { fixes: Array<{ checkId: string }>; reachable: boolean }; target: unknown; ifFixed: unknown };
     expect(body).toMatchObject({ score: 48, rating: "At risk", estimate: true, target: { rating: "Needs attention", minScore: 50 }, candidates: 3 });
     expect(body.plan.fixes.map((f: { checkId: string }) => f.checkId)).toEqual(["crit"]);
     expect(body.plan).toMatchObject({ reachable: true, projected: 78, projectedRating: "Good" });
@@ -109,7 +109,7 @@ describe("GET /api/v1/scans/[id]/plan", () => {
     triageStates.set("crit", "accepted");
     const r = req({ id: "scan-1", target: "strong", fixed: "med,unknown" });
     await handler(r.req, r.res);
-    const body = r.res._getJSONData();
+    const body = r.res._getJSONData() as { plan: { fixes: Array<{ checkId: string }>; reachable: boolean }; target: unknown; ifFixed: unknown };
     expect(body.target).toEqual({ rating: "Strong", minScore: 90 });
     expect(body.plan.fixes.map((f: { checkId: string }) => f.checkId)).toEqual(["high", "med"]);
     expect(body.plan.reachable).toBe(false);
