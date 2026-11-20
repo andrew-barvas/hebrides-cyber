@@ -96,6 +96,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-64 | Get Hebrides Cyber its own Cyber Essentials certification before Lookout ads | 🟡 Medium | Open | 2026-11-20 | |
 | OT-65 | Decide on "how you compare" benchmarks; if yes, add the privacy-notice line and set `SCORE_BENCHMARK_ENABLED` | 🟢 Low | Decision | 2026-11-20 | |
 | OT-66 | Decide whether a domain Microsoft has verified for a connected tenant counts as verified ownership for scanning | 🟢 Low | Decision | 2026-11-20 | |
+| OT-67 | Profile documents (PR #283): privacy-policy line for requesters' details, terms wording for hosted documents, and a retention period for old requests | 🟢 Low | Decision | 2026-11-20 | |
 
 ## Common steps
 
@@ -1255,6 +1256,20 @@ CNAMEs to `proud-stone-04a76350f.7.azurestaticapps.net`, so
   decision, so it is yours.
 - **How:** decide yes or no. If yes, a session adds it with an audit entry
   and the tenant ID recorded as the evidence.
+- **Raised:** 2026-11-20.
+
+### OT-67: Profile documents: privacy, terms and retention 🟢
+- **What and why:** PR #283 lets a customer put PDFs on their public
+  security profile and lets visitors request on-request ones. We then store
+  a requester's name, email, company and reason and show them to the
+  document's owner, and we host files the customer chose to upload.
+- **How:** before merging #283 (or before announcing it): add a
+  privacy-policy line (what a requester gives us, that the owner sees it,
+  how long we keep it); add a terms line that the customer is responsible
+  for what they upload and we don't check its contents; pick a retention
+  period for decided requests (for example 12 months), which a session can
+  then add to `cleanup-retention.ts`. Folds naturally into the OT-35
+  solicitor brief.
 - **Raised:** 2026-11-20.
 
 ### OT-68: Pay for GitHub Actions minutes, or make the repo public again 🟠
