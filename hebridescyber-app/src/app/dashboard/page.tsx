@@ -22,6 +22,7 @@ import PartnerPortalPanel from "@/components/PartnerPortalPanel";
 import EmergingThreatsPanel from "@/components/EmergingThreatsPanel";
 import FixFirstPanel from "@/components/FixFirstPanel";
 import LookoutReportsBanner from "@/components/LookoutReportsBanner";
+import RepoLinkBanner from "@/components/RepoLinkBanner";
 import EstateChangesPanel from "@/components/EstateChangesPanel";
 import { useSessionToken } from "@/lib/useSessionToken";
 import { FindingCard, buildFindingsView, type ViewFinding, type FindingsFilter } from "@/components/ScanReportView";
@@ -148,7 +149,7 @@ function CheckoutBanner() {
 }
 
 export default function DashboardPage() {
-  const { plan, planStatus, slackWebhookUrl, teamsWebhookUrl } = useAppSession();
+  const { plan, planStatus, slackWebhookUrl, teamsWebhookUrl, userId } = useAppSession();
   const billing = useBillingPortal();
   const sessionToken = useSessionToken();
 
@@ -247,6 +248,7 @@ export default function DashboardPage() {
       <FleetOverview />
 
       <LookoutReportsBanner token={sessionToken} />
+      <RepoLinkBanner ownerId={userId} />
 
       <FixFirstPanel token={sessionToken} />
 
