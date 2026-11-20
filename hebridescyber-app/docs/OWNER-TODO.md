@@ -88,6 +88,9 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟡 Medium | Open | 2026-11-14 | |
 | OT-57 | Custom SMTP for Supabase Auth, so sign-up and sign-in links aren't rate-limited | 🟠 High | Open | 2026-11-14 | |
 | OT-58 | Google Cloud project and OAuth app for Google Workspace posture checks | 🟢 Low | Open | 2026-11-14 | |
+| OT-59 | Phishing awareness: solicitor (DPA, terms, privacy policy) and insurer sign-off before any live campaign | 🟡 Medium | Decision | 2026-11-19 | |
+| OT-60 | Phishing awareness: dedicated sending domains and an email provider whose terms allow simulations | 🟢 Low | Decision | 2026-11-19 | |
+| OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
 
 ## Common steps
 
@@ -1125,6 +1128,36 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   Azure and GitHub.
 - **Verify:** the consent screen shows as verified in the Google Cloud console.
 - **Raised:** 2026-11-14.
+
+### OT-59: Phishing awareness legal and insurance sign-off 🟡
+- **What and why:** simulated phishing (designed in
+  `PHISHING-AWARENESS-DESIGN.md`) is a social-engineering service run against
+  a customer's own staff. Before any live campaign: a data processing
+  agreement (we process the employer's staff data), terms and privacy policy
+  wording, and confirmation that professional indemnity cover includes it.
+  Natural to do alongside OT-13 and OT-35.
+- **How:** give the solicitor and insurer sections 3 and 7 of the design.
+- **Verify:** signed-off wording in the terms; insurer confirmation in writing.
+- **Raised:** 2026-11-19.
+
+### OT-60: Phishing awareness sending domains and email provider 🟢
+- **What and why:** simulations must never send from hebridescyber.co.uk or
+  the transactional email domain, and many email providers' acceptable use
+  policies forbid simulated phishing.
+- **How:** register two neutral domains; check Resend's terms (or pick a
+  provider that explicitly allows phishing simulations); set up SPF, DKIM and
+  DMARC on them.
+- **Verify:** the provider's terms allow it in writing; DNS records pass.
+- **Raised:** 2026-11-19.
+
+### OT-61: Phishing awareness course licence and pricing 🟢
+- **What and why:** the design uses the NCSC's free staff e-learning as the
+  core course; its licence and how completion can be tracked need checking.
+  Pricing and packaging (in Lookout, a per-user add-on, or both) is a
+  decision (design §8, D9).
+- **How:** read the NCSC e-learning terms; choose packaging and a price.
+- **Verify:** licence terms recorded in the design; prices agreed.
+- **Raised:** 2026-11-19.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
