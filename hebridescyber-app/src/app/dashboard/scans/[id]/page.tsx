@@ -13,6 +13,7 @@ import type { TriageRecord } from "@/lib/findingTriage";
 import ShareLinks from "@/components/ShareLinks";
 import EstateScreenshots from "@/components/EstateScreenshots";
 import SecurityProfileToggle from "@/components/SecurityProfileToggle";
+import { FixPlanShare } from "@/components/FixPlanShare";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { ScorePlanner } from "@/components/ScorePlanner";
 import FixWizard from "@/components/FixWizard";
@@ -48,6 +49,14 @@ function formatElapsed(ms: number): string {
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function hostOfUrl(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 function ScanProgressPanel({ scanId, onComplete }: { scanId: string; onComplete: () => void }) {
@@ -869,6 +878,9 @@ export default function ScanDetailPage() {
           {/* Share this report */}
           {sessionToken && <ShareLinks scanId={result.scan_id} token={sessionToken} />}
           {sessionToken && result.results?.target_url && <SecurityProfileToggle targetUrl={result.results.target_url} token={sessionToken} />}
+          {sessionToken && result.results?.target_url && hostOfUrl(result.results.target_url) && (
+            <FixPlanShare scanId={result.scan_id} host={hostOfUrl(result.results.target_url) as string} token={sessionToken} findings={taggedOrdered} />
+          )}
 
           {/* Score badge embed */}
           <div className="no-print rounded-xl border border-cyberborder bg-cyberpanel p-5">

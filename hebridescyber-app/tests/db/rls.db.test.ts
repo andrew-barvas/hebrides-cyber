@@ -263,6 +263,22 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("fix_plans and fix_plan_items", () => {
+    it("are service-role-only: owners manage plans and link holders read them through the API", async () => {
+      await asActor(db, service, async (c) => {
+        const plan = await c.query("insert into fix_plans (owner, target_host, token_hash, expires_at) values ($1, 'a.example', repeat('c', 64), now() + interval '30 days') returning id", [A]);
+        await c.query("insert into fix_plan_items (plan_id, check_id, position, severity, title) values ($1, 'headers.hsts', 1, 'medium', 'Missing HSTS')", [plan.rows[0].id]);
+      });
+      for (const table of ["fix_plans", "fix_plan_items"]) {
+        expect(await count(asA, `select 1 from ${table}`)).toBe(0);
+        expect(await count(anon, `select 1 from ${table}`)).toBe(0);
+      }
+      const ins = "insert into fix_plans (owner, target_host, token_hash, expires_at) values (gen_random_uuid(), 'x', repeat('d', 64), now() + interval '1 day')";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("finding_assignments", () => {
     it("is service-role-only: read and written through /api/findings/assign", async () => {
       await asActor(db, service, async (c) => {
