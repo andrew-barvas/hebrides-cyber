@@ -247,6 +247,13 @@ export default function PricingPage() {
           ))}
         </div>
 
+        <p className="mt-4 text-sm text-cybertext/70" id="what-counts">
+          <span className="font-semibold text-cybertext">What counts as a monitored site?</span> One web address you add, such as{" "}
+          <span className="font-mono">shop.example.com</span>. Subdomains we find under it are watched for new hostnames, takeover risks
+          and expiring certificates without using up a site; add one as its own site when you want it fully scanned. Your dashboard shows
+          how many sites you&apos;ve used.
+        </p>
+
         <p className="mt-4 text-xs text-cybertext/50">
           By subscribing you agree to our{" "}
           <Link href="/terms" className="text-neon hover:underline">
