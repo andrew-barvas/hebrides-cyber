@@ -5,7 +5,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSession } from "@/lib/auth";
 import { uptimeStatusLabel, type UptimeLabel } from "@/lib/uptimeLabels";
 import { normaliseMonitorUrl, type UptimeStatus } from "@/lib/uptimeProvider";
-import { CRITICALITIES, ENVIRONMENTS, type Criticality, type Environment } from "@/lib/targetCriticality";
+import { CRITICALITIES, ENVIRONMENTS, type Criticality, type Environment } from "@/lib/targetCriticality";
+import { MONITORED_TARGETS_CHANGED } from "./TenantDomainSuggestions";
 
 type Target = { id: string; target_url: string; created_at: string; scan_profile: string };
 type AuthStatus = { auth_type: "cookie" | "basic" };
@@ -107,6 +108,10 @@ export default function MonitoredTargets() {
   useEffect(() => {
     load();
     loadUptimeBadges().then(setUptime);
+    // TenantDomainSuggestions adds sites from elsewhere on the Assets page.
+    const reload = () => void load();
+    window.addEventListener(MONITORED_TARGETS_CHANGED, reload);
+    return () => window.removeEventListener(MONITORED_TARGETS_CHANGED, reload);
   }, []);
 
   async function addTarget(e: React.FormEvent) {
