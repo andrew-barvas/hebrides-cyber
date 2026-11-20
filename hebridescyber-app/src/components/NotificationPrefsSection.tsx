@@ -11,6 +11,7 @@ export default function NotificationPrefsSection() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [emailEnabled, setEmailEnabled] = useState(true);
+  const [weeklyFix, setWeeklyFix] = useState(true);
   const [scoreThreshold, setScoreThreshold] = useState<number | null>(null);
   const [severityMin, setSeverityMin] = useState<Severity | null>(null);
 
@@ -24,6 +25,7 @@ export default function NotificationPrefsSection() {
       if (res.ok) {
         const data = await res.json();
         setEmailEnabled(data.notify_email ?? true);
+        setWeeklyFix(data.notify_weekly_fix ?? true);
         setScoreThreshold(data.notify_score_threshold ?? null);
         setSeverityMin(data.notify_severity_min ?? null);
       }
@@ -47,6 +49,7 @@ export default function NotificationPrefsSection() {
         },
         body: JSON.stringify({
           notify_email: emailEnabled,
+          notify_weekly_fix: weeklyFix,
           notify_score_threshold: scoreThreshold,
           notify_severity_min: severityMin,
         }),
@@ -85,6 +88,18 @@ export default function NotificationPrefsSection() {
           />
           <span className="text-sm text-cybertext/80">
             Send email on scan completion
+          </span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={weeklyFix}
+            onChange={(e) => setWeeklyFix(e.target.checked)}
+            className="h-4 w-4 rounded-sm border-cyberborder bg-cyberbg text-neon focus:ring-neon"
+          />
+          <span className="text-sm text-cybertext/80">
+            Weekly &ldquo;one thing to fix&rdquo; email (Mondays: your most urgent issue and how to fix it)
           </span>
         </label>
 
