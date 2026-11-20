@@ -524,12 +524,20 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/assign \r
   `?assignee=unassigned`, `?assignee=me` or `?assignee=<user id>` filters by it.
 - **Team members:** from a logged-in session, `GET /api/findings?account=<owner id>`
   reads a team owner's findings, read-only (`readOnly: true`, no triage or
-  assignment). `GET /api/findings/accounts` lists the accounts you can read.
+  assignment). `GET /api/findings/accounts` lists the accounts you can read
+  (your own first, then each team's owner; with an API key, only your own).
+  `GET /api/findings/assign?account=<owner id>`
+  returns the owner's assignee list so filters can show names; assigning stays
+  with the owner. An API key always reads its own account. Not on the team:
+  `404`; malformed id: `400`.
   The assignment email links to `/dashboard/findings?account=<owner id>&assignee=me`.
+- Writes are audited as `finding.assigned` / `finding.unassigned`. Anyone
+  outside your account as `assigneeId`: `400`. Before migration 078, `PUT`
+  answers `503` and `GET` returns `available: false`.
 
 ### `GET /api/account/evidence-pack`
 
-Pro and above. A PDF (`security-evidence-pack-<date>.pdf`) for a Cyber Essentials application, an insurance proposal or a supplier questionnaire: the sites checked, common insurance questions (MFA on email, SPF/DKIM/DMARC, exposed remote access, patching, encryption, breached accounts, anti-malware, admin rights, backups, training, incident response) each answered as *Evidenced*, *Gap found*, *Self-declared* (your Cyber Essentials self-assessment) or *Your records*, Cyber Essentials readiness per control, and what to fix first. Rate-limited; `?format=html` returns the HTML.
+Pro and above; session or API key. A PDF (`security-evidence-pack-<date>.pdf`) for a Cyber Essentials application, an insurance proposal or a supplier questionnaire: the sites checked, common insurance questions (MFA on email, SPF/DKIM/DMARC, exposed remote access, patching, encryption, breached accounts, anti-malware, admin rights, backups, training, incident response) each answered as *Evidenced*, *Gap found*, *Self-declared* (your Cyber Essentials self-assessment) or *Your records*, Cyber Essentials readiness per control, and what to fix first. With no scan behind an answer, it is never marked *Evidenced*. Rate-limited; `?format=html` returns the HTML. `403` below Pro.
 
 ### `GET /api/portfolio-report`
 
@@ -833,3 +841,45 @@ Every known host for your account, grouped by registrable domain: `web` (the new
 ## Lookout reports (`/api/lookout/reports`)
 
 Session-authenticated, the customer's own reports only. `GET /api/lookout/reports` lists published reports, newest first; drafts are never returned. `GET /api/lookout/reports/{id}` returns the report and its included items in priority order (another customer's report or a draft answers 404). `POST /api/lookout/reports/{id}` with `{ "action": "acknowledge" }` records "I've read this report" once; it does not accept any risk. Admins write reports through `/api/admin/lookout/reports` (admin panel, "Lookout reports" tab). `GET /api/lookout/report-pdf?id={id}` downloads the report as a dated PDF (`lookout-report-<period end>.pdf`) with the estate gallery, up to 12 screenshots from the latest scan by the period's end; it is rate-limited because each call renders in Chromium. The report's `GET` also returns `galleryScanId`, the scan those screenshots come from. It also returns `lookalikes` (`available`, `newInPeriod` with each lookalike domain, the domain it imitates, how it differs and when our weekly sweep spotted it, and `totalKnown`); the PDF and new drafts' summaries include the same. It also returns `breaches` (`available`, and per site either `checked` with the breach count and each breach's name, date, address count and data types, or `not_verified`); the section is left out while `HIBP_API_KEY` isn't set, and individual addresses are never stored or shown. Admins preview any report, drafts marked DRAFT, at `/api/admin/lookout/report-pdf?id={id}`.
+
+**Admin report routes** (admin session only):
+
+- `GET /api/admin/lookout/reports?customer=<email or user id>` lists up to 100 reports, newest first; each row carries `customer_email`.
+- `POST /api/admin/lookout/reports { "customer", "period_days" }` creates a draft prefilled from the customer's estate ranking and the period's drift. `customer` is the customer's **sign-up email** (exact, case-insensitive match) or **user id**. Unknown email: `404` ("No account uses …"); neither an email nor an id: `400`; more than one account matches: use the user id.
+- `GET /api/admin/lookout/reports/{id}` returns the report and items. `PATCH` takes `summary`, `items` (`id`, `included`, `priority`, `analyst_note`, `business_impact`, `fix_owner`) and `status` (`published` or `draft`). A published report can go back to draft until the customer acknowledges it; after that it is frozen.
+- `GET /api/admin/lookout/report-pdf?id={id}` previews any report as PDF, drafts included and marked DRAFT.
+
+## Dashboard account routes
+
+These routes back the dashboard. `connect-repo` and `offensive-authorization` take a logged-in session only (`403` with an API key); `notification-prefs` accepts either.
+
+### `POST /DELETE /api/account/connect-repo`
+
+Connects a GitHub repository for the code checks (secrets, dependencies, Dockerfile, infrastructure-as-code, code scanning) and links it to one of your sites.
+
+```json
+{ "githubRepo": "owner/repo", "targetUrl": "https://www.example.com" }
+```
+
+- `targetUrl` is **required** on `POST` and must be one of your monitored sites (`400` "Choose which of your monitored sites…" when missing, `400` "That site isn't one of your monitored sites…" when it isn't). www and the bare domain count as the same site.
+- Pro and above for `POST` (`403` below). `DELETE { "githubRepo" }` works on any plan.
+- Before saving, the route checks that our GitHub App or token can reach the repository (`400` with the reason, `502` if GitHub is unreachable, `503` if no GitHub access is configured).
+- Returns `{ ok: true, githubRepo, targetHost }`.
+- Only the repository linked to the site being scanned is used. A repository with no linked site is never scanned; the dashboard shows a banner and the Integrations page offers a Link control.
+
+### `POST /DELETE /api/account/offensive-authorization`
+
+Tier A only. Records or revokes the per-site authorization that the opt-in `offensive` scan profile needs.
+
+```json
+{ "targetUrl": "https://www.example.com", "acknowledge": true, "scope": "optional text", "expiresAt": "2026-12-15T00:00:00Z" }
+```
+
+- `targetUrl` must be one of your monitored sites (`404` otherwise). `acknowledge` must be literally `true`.
+- `expiresAt` is **required**: an ISO 8601 date-time in the future and at most 30 days away. Otherwise `400` with the reason ("an expiry date is required", "the expiry can be at most 30 days away", and so on). The response returns the stored expiry: `{ ok: true, host, expiresAt }`.
+- `DELETE { "targetUrl" }` revokes it on any plan.
+- Being authorised is not enough on its own: the scan worker still requires Tier A, an unexpired and unrevoked authorization, and a verified domain, and otherwise runs the scan under `safe` and records the refusal.
+
+### `GET /PATCH /api/account/notification-prefs`
+
+Reads or updates email preferences on your subscription: `notify_email`, `notify_score_threshold` (0–100 or `null`), `notify_severity_min` (`info`…`critical` or `null`) and `notify_weekly_fix` (the weekly "one thing to fix" email, default `true`). `PATCH` takes any subset.
