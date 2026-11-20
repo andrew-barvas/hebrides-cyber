@@ -16,9 +16,10 @@ flowchart TB
     end
 
     subgraph Data[Supabase]
-        PG[(Postgres + RLS<br/>56 migrations)]:::store
-        AUTH[Supabase Auth<br/>magic link + password + TOTP MFA]:::store
-        STG[(Supabase + Azure Blob<br/>report PDFs, images)]:::store
+        PG[(Postgres + RLS<br/>82 migrations, about 17 MB)]:::store
+        AUTH[Supabase Auth<br/>magic link + password + TOTP MFA<br/>Google OAuth hidden until OT-63]:::store
+        STG[(Supabase + Azure Blob<br/>report PDFs, images, host screenshots)]:::store
+        OBJ[(Supabase Storage bucket cve-index<br/>CPE to CVE index, migration 081)]:::store
     end
 
     subgraph Queue[Job queue - Postgres, no Redis]
@@ -28,8 +29,9 @@ flowchart TB
     subgraph Workers[GitHub Actions runners - NOT Azure]
         direction TB
         WON[on-demand-scan.yml<br/>passive only]:::worker
-        WSCHED[scheduled-scans.yml<br/>installs nmap/nuclei/sqlmap/ZAP...]:::worker
+        WSCHED[scheduled-scans.yml<br/>installs nmap/nuclei/sqlmap/ZAP...<br/>work job pinned to ubuntu-24.04]:::worker
         EXE[[executeScan - single scan implementation<br/>src/lib/scanExecution.ts]]:::worker
+        CRON[cve-index-sync, weekly-fix-email,<br/>db-size-guard and other scheduled scripts]:::worker
     end
 
     Browser -->|anon key, RLS| Pages
@@ -45,4 +47,7 @@ flowchart TB
     WON --> EXE
     WSCHED --> EXE
     EXE -->|service-role writes results| PG
+    EXE -->|service CVE lookups| OBJ
+    CRON --> PG
+    CRON -->|nightly index refresh| OBJ
     EXE -->|post-scan notifiers| Browser

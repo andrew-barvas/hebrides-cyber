@@ -16,9 +16,10 @@ instead.
 `marketing/`, `action/`, and the primary `.github/workflows/` (including
 `deploy.yml` and `scheduled-scans.yml`) live at the **git root**
 (`hebrides-cyber/`), one level *above* this app (`hebridescyber-app/`),
-which has its own `package.json`, this `docs/` folder, and a second,
-unrelated `.github/workflows/on-demand-scan.yml`. GitHub only executes
-workflows from the repo-root `.github/workflows/`. If something "isn't
+which has its own `package.json` and this `docs/` folder. Every workflow,
+including `on-demand-scan.yml`, is in the repo-root `.github/workflows/`
+(listed in [`WORKFLOWS.md`](WORKFLOWS.md)); GitHub only executes workflows
+from there. If something "isn't
 there," check the other root before concluding it's missing — this has
 caused a real mistake before (see the frozen engineering log's 16 Aug
 entry).
@@ -29,6 +30,9 @@ entry).
 |---|---|
 | ...get this running locally, deploy it, or set GitHub Secrets | [`../README.md`](../README.md) |
 | ...understand what the product does, who it's for, and see user stories | [`USER-GUIDE.md`](USER-GUIDE.md) |
+| ...get an executive summary and the detail of each product (Scanner, Lookout, Exploit) and what each is waiting on | [`PRODUCTS.md`](PRODUCTS.md) |
+| ...see what changed since 2026-11-18, in plain English, by product | [`CHANGELOG-2026-11.md`](CHANGELOG-2026-11.md) |
+| ...know what every GitHub Actions workflow does, its schedule, secrets, and what a failure means | [`WORKFLOWS.md`](WORKFLOWS.md) |
 | ...see the high-level system picture / data flow | [`architecture.md`](architecture.md) |
 | ...see architecture / workflow / data-model **diagrams** (Mermaid, renderable to SVG/PNG) | [`diagrams/`](diagrams/README.md) |
 | ...see the data model, ER diagram and RLS/tenant-isolation tiers | [`DATA-MODEL.md`](DATA-MODEL.md) |

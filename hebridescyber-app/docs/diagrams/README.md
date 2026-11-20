@@ -22,12 +22,14 @@ aspirational box as if it shipped. Where this disagrees with marketing copy,
 | Scan lifecycle | `flow-scan-profile-gating.mmd` | Profile resolution + Tier A offensive authorisation gate |
 | Scan lifecycle | `state-scan-job.mmd` | `scan_jobs` state machine (pending→…→completed/failed/stale) |
 | Scan lifecycle | `flow-finding-lifecycle.mmd` | New/Fixed diff, triage, SLA, ticket dedupe/auto-close |
+| Scan lifecycle | `flow-cve-index.mmd` | CPE to CVE index in object storage (Supabase Storage `cve-index`, Azure Blob optional): nightly sync and scan-time lookups |
+| Lookout | `flow-lookout-report.mmd` | Lookout report: analyst draft, publish, customer page, PDF with estate gallery, acknowledgement |
 | Data model | `er-core.mmd` | Entity-relationship of the core tables |
 | Data model | `er-rls-tiers.mmd` | RLS / tenant-isolation tiers + credential-at-rest findings |
 | Auth & tenancy | `flow-auth.mmd` | Login, magic link/password/OAuth, MFA step-up (+ sign-up/reset gaps) |
 | Auth & tenancy | `map-plan-gating.mmd` | Plan tiers, nesting, and the feature-gating map |
 | Deploy & CI | `deploy-topology.mmd` | Azure SWA hybrid + GitHub Actions workers + Supabase; alt Container Apps |
-| Deploy & CI | `cicd-pipeline.mmd` | Quality gates + the 17 workflows + supply-chain gap |
+| Deploy & CI | `cicd-pipeline.mmd` | Quality gates + the workflows as they were when drawn (17) + supply-chain gap; the current list of 32 is `../WORKFLOWS.md` |
 
 ## Regenerate exports
 

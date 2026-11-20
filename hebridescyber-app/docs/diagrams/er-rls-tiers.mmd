@@ -13,13 +13,14 @@ flowchart TB
         B[scan_results, scan_jobs, finding_lifecycle,<br/>finding_triage, asset_inventory, dns_snapshots,<br/>emerging_threat_alerts, lookalike_domains,<br/>ticket_links, deletion_requests]:::t2
     end
     subgraph T3[Tier 3 - validate-before-save, service-role write]
-        C[ticket_integrations, oncall, siem_integrations,<br/>cloud_credentials, target_auth_credentials]:::t3
+        C[ticket_integrations, oncall, siem_integrations,<br/>cloud_credentials, target_auth_credentials,<br/>uptime_integrations, workspace_connections]:::t3
     end
     subgraph T4[Tier 4 - no client policy at all]
-        D[audit_logs, contact_enquiries, report_shares<br/>no public SELECT - token-match route only]:::t4
+        D[audit_logs, contact_enquiries, report_shares<br/>no public SELECT - token-match route only,<br/>finding_assignments, lookout_reports, lookout_report_items]:::t4
     end
 
-    NOTE1["Secrets at rest: Tier-3 tokens, keys and cookies are PLAINTEXT.<br/>cloud_credentials column is named credentials_encrypted but is NOT encrypted - FINDING S-1"]:::t4
+    NOTE1["Secrets at rest: Tier-3 secrets are sealed with AES-256-GCM on write;<br/>legacy plaintext rows are rewritten by encrypt-stored-secrets.yml. S-1/S-2 fixed in code"]:::t3
+    NOTE3["CVE index tables from 069 dropped in 081;<br/>the index is objects in the Supabase Storage bucket cve-index"]:::t2
     NOTE2["Hardened in migrations: 017 blocks is_admin self-grant;<br/>024 blocks self-set plan; 047 fixes recursive policies.<br/>Verified by tests/db/rls.db.test.ts on real Postgres."]:::t1
 
     C -.-> NOTE1

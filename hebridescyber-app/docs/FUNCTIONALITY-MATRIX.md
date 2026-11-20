@@ -165,7 +165,15 @@ required) · **key-or-session** (either credential) · **admin**
 |---|---|---|---|
 | `keys.ts` | session only | max 20 keys | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision if that's meant to change (`docs/ENHANCEMENTS.md` E-02) |
 | `webhooks.ts` | session only | max 20 | ✅ **intentional, not a gap** — `docs/USER-GUIDE.md` §3.5 explicitly documents outbound webhooks as "for anyone building their own integration," unlike Slack/Teams alerts (Pro/Agency) on the same page |
-| `account/connect-repo.ts` | session only | Pro/Agency (POST only) | ✅ **server** — `planGate(…, "pro")` (active subscription only, admins exempt); DELETE stays available regardless of plan |
+| `account/connect-repo.ts` | session only | Pro/Agency (POST only) | ✅ **server** — `planGate(…, "pro")` (active subscription only, admins exempt); DELETE stays available regardless of plan. Since #248 POST requires `targetUrl`, one of the owner's monitored sites, stored as `repo_connections.target_host`; only that site's scans use the repository |
+| `account/offensive-authorization.ts` | session only | Tier A (POST only) | ✅ **server** — `planGate(…, "tier_a")`; `expiresAt` required, future and at most 30 days away (#280, `authorizationExpiryProblem`); target must be a monitored site. DELETE (revoke) on any plan. The worker gate in `run-queued-scan-jobs.ts` stays authoritative |
+| `account/notification-prefs.ts` | key-or-session | — | n/a — reads/writes the caller's `notify_*` columns, including `notify_weekly_fix` (#255) |
+| `account/evidence-pack.ts` | key-or-session | Pro and above | ✅ **server** — `planGate(…, "pro")`, rate-limited; PDF never stored (#264) |
+| `findings/assign.ts` | key-or-session | — | n/a — caller's own account; assignee must be the owner or a team member (400 otherwise); `?account=` read for team members (session only) (#249, #250) |
+| `findings/accounts.ts` | key-or-session | — | n/a — session lists own account plus each team owner's; an API key gets only its own (#250) |
+| `findings/index.ts` `?account=` | session only | — | ✅ **server** — `callerCanView` (team membership); read-only, 404 off-team (#250) |
+| `estate/map.ts` | key-or-session | — | n/a — caller's own data, no plan gate (#265) |
+| `lookout/reports/*`, `lookout/report-pdf.ts` | session only | — (Lookout is sold by hand; no Lookout plan in code yet) | ✅ **server** — customer's own published reports only, 404 otherwise; PDF rate-limited (#252) |
 | `account/ticket-integration.ts` | session only | — | ❌ no plan gate — not advertised as tier-specific anywhere; not gated by this pass, needs an explicit product decision |
 | `account/target-auth.ts` | session only | Agency (POST only) | ✅ **server** — `planGate(…, "agency")` → 403; DELETE stays available regardless of plan |
 | `account/branding-logo.ts` | session only | Agency | ✅ **server** — `subscription?.plan !== "agency"` → 403 |
@@ -183,7 +191,9 @@ required) · **key-or-session** (either credential) · **admin**
 
 `admin/overview.ts`, `customers.ts`, `scans.ts`, `queue.ts`, `metrics.ts`,
 `audit.ts`, `contacts.ts`, `blog.ts`, `blog/[slug].ts`,
-`blog/upload-image.ts`. All now call the shared `requireAdmin()` —
+`blog/upload-image.ts`, `lookout/reports/index.ts` and `lookout/reports/[id].ts`
+(drafting and publishing Lookout reports; `customer` accepts an email or
+user id since #256), `lookout/report-pdf.ts` (draft previews, #252). All now call the shared `requireAdmin()` —
 `overview.ts`/`contacts.ts` previously hand-rolled their own check, fixed
 (`docs/ENHANCEMENTS.md` E-08, 2026-08-28).
 
@@ -252,7 +262,16 @@ fails the build only on newly-introduced findings.
 | Extended team roles (developer, auditor) | `TeamSection.tsx`, `team/members.ts` | Agency (team creation) | ✅ server for team creation; roles themselves are ungated once in a team (E-45) |
 | Two-factor auth (TOTP) | `TwoFactor.tsx`, `auth.ts` MFA functions | — | ❌ no plan gate (not advertised either — see §7) |
 | API keys / webhooks / share links / CSV-JSON export / CI Action | `ApiKeys.tsx`, `Webhooks.tsx`, `ShareLinks.tsx` | — | ❌ **no plan gate at all** — available on free tier |
-| Repo connection (dependency/secret/Docker scanning) | `ConnectRepo.tsx` | Pro ("dependency monitoring", advertised) | ❌ **none** — connection itself is ungated; consumption is path-gated (see §3), not plan-gated |
+| Repo connection (dependency/secret/Docker scanning) | `ConnectRepo.tsx` | Pro ("dependency monitoring", advertised) | ✅ **server** for connecting (`connect-repo.ts` POST, Pro and up); consumption is path-gated (see §3). Each repository is linked to one monitored site (site picker, #248) and used only for that site's scans; unlinked ones show a Link control and are never scanned |
+| Unlinked-repository prompt | `RepoLinkBanner.tsx` on `/dashboard`; `repo-link-reminders.yml` + `repoLinkReminder.ts` | — | n/a — banner renders only while a repository is unlinked; the email is sent by a manually run workflow (dry run by default), once per connection (`link_reminder_sent_at`, migration 080) (#267) |
+| Assign findings to a person | `FindingsExplorer.tsx` "Assign to" in the bulk bar, "Assigned to" filter and badge; `findings/assign.ts` | — | n/a — not plan-gated; assignees are the owner and team members (team creation is Agency). Needs migration 078; hidden before it (#249) |
+| Team members read the owner's findings | `FindingsExplorer.tsx` Account switcher, `findings/accounts.ts`, `findings?account=` | — (needs a team, which is Agency to create) | ✅ server — read-only, membership checked by `callerCanView`; filter defaults to "Me" (#250) |
+| Estate map | `EstateMap.tsx` on `/dashboard/assets`, `estate/map.ts` | — | n/a — not gated; reads stored data only (#265) |
+| Security evidence pack (insurers, questionnaires, Cyber Essentials) | `EvidencePackButton.tsx` on `/dashboard/cyber-essentials`, `account/evidence-pack.ts` | Pro and above | ✅ server — `planGate(…, "pro")` (#264) |
+| Weekly "one thing to fix" email | `weeklyFixEmail.ts`, `send-weekly-fix-email.ts`, `weekly-fix-email.yml` (Mon 08:00 UTC); switch in `NotificationPrefsSection.tsx` | Any active subscription | ✅ server — active subscribers only, opt-out via `notify_weekly_fix` (migration 079), skipped if sent in the last 6 days or nothing worth fixing (#255) |
+| Lookout reports (customer side) | `/dashboard/lookout`, `/dashboard/lookout/[id]` (Download PDF, estate gallery, lookalike domains, breached accounts) | — (sold by hand; checkout #199 waits on OT-33/34/35/42/43) | ✅ server — own published reports only. Breached-accounts section dark until `HIBP_API_KEY` (OT-17); gallery empty without Azure Blob (#252, #253, #258) |
+| Lookout reports (analyst side) | Admin panel "Lookout reports" tab (`LookoutReportsTab.tsx`): customer by email or id, draft, edit items, publish, "Preview PDF" | admin | ✅ server — `requireAdmin()` (#242, #252, #256) |
+| Continue with Google sign-in | `GoogleSignInButton.tsx` on `/login` and `/signup` | — | Hidden unless the `NEXT_PUBLIC_GOOGLE_SIGNIN` repository variable is `true`; waits on OT-63 (#273) |
 | Jira/Linear ticketing + auto-close | `TicketIntegration.tsx` | — | ❌ no plan gate |
 | ServiceNow ticketing | `src/lib/ticketProviders.ts` | — | ❌ no plan gate — same contract as Jira/Linear |
 | GitHub Issues ticketing | `src/lib/ticketProviders.ts` | — | ❌ no plan gate — same contract as Jira/Linear |
@@ -351,6 +370,8 @@ for the full decision record.
 | Azure Blob Storage | Report hosting (optional), image/logo upload (**required**, 503 if unset) | PDF falls back to raw bytes; upload 503s |
 | Playwright/Chromium | Page-health check, PDF rendering | Required for those two features specifically |
 | Slack, MS Teams, Jira, Linear, GitHub App/PAT, Azure OpenAI, Upstash Redis, WPScan, Safe Browsing, HIBP, Resend, Google Analytics | Various (see rows above / `docs/architecture.md`) | All degrade gracefully to `not_configured`/disabled — **except** Upstash, which fails **open** (allows the request) when unreachable, silently removing the only cost control on the two rate-limited routes |
-| Shodan InternetDB, OSV.dev, crt.sh, Cloudflare DoH, Wayback/CDX, endoflife.date, CISA KEV/NVD/security RSS | Free, keyless, no config | Any failure degrades to a clean empty result, never an error |
+| Shodan InternetDB, OSV.dev, crt.sh, Cloudflare DoH, Wayback/CDX, endoflife.date, CISA KEV/NVD/security RSS | Free, keyless, no config | Where a failure could close earlier findings, the module reports `error` or `partial` instead of a clean result (rule 7): crt.sh (`ctLookupFailed`), OSV dependency lookups, endoflife.date and, since #259, Wayback/CDX (`partial`). See `SCANNER-INVENTORY.md` A(b) for each source |
+| Supabase Storage bucket `cve-index` (or Azure Blob with `CVE_INDEX_STORE=azure`) | Service CVE matching's local CPE → CVE index (#268) | Lookups answer `error` when the index is missing, half-built or more than 7 days stale |
+| Google OAuth (Supabase provider) | "Continue with Google" | Button hidden while `NEXT_PUBLIC_GOOGLE_SIGNIN` is unset (OT-63) |
 
 **Plan gates (2026-10-06).** Every server-side gate goes through `src/lib/planAccess.ts` (`planGate`, `hasProAccess`, `hasAgencyAccess`; `slaAlerts.ts`'s `hasSlaAccess` delegates to it): only an **active** subscription grants a tier, admins are exempt, Agency includes Pro, and a failed lookup is a 500, never an upgrade prompt. Before this, seven routes read `plan` alone, and the Stripe webhook marks a lapsed or cancelled subscription `past_due`/`cancelled` without changing `plan`, so cancelled accounts kept paid features (and white-labelled reports). Still ungated by design, pending an owner decision because no page sells them per tier: AI fix, API keys, share links, ticketing.

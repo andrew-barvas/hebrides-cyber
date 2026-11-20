@@ -1,6 +1,6 @@
 # Next steps — session handoff
 
-**Last updated: 2026-11-14.** Read this first in any new session (local or
+**Last updated: 2026-11-20.** Read this first in any new session (local or
 cloud), after `CLAUDE.md` and `docs/SCANNER-CONVENTIONS.md`. It says where
 things stand, the rules that kept biting, the plan in order, and what only
 the owner can do.
@@ -9,10 +9,81 @@ To resume in a cloud session: open the repo `andrew-barvas/hebrides-cyber`,
 branch from `master`, and prompt *"Read hebridescyber-app/docs/NEXT-STEPS.md
 and implement plan item N."* Do one item per session.
 
-## Status and plan — 2026-11-14
+## Status and plan — 2026-11-20
 
 This section replaces the older handovers below as the current plan. They
-stay as history.
+stay as history, including the 2026-11-14 plan straight after this section.
+Product summaries: [`PRODUCTS.md`](PRODUCTS.md). Every change since
+2026-11-18, in plain English: [`CHANGELOG-2026-11.md`](CHANGELOG-2026-11.md).
+Every workflow and what its failure means: [`WORKFLOWS.md`](WORKFLOWS.md).
+
+### Where things stand
+
+- **24 PRs merged from 2026-11-18 to 2026-11-20** (#246 to #280, plus the
+  Dependabot updates #215 and #244; all listed in the changelog). They finished the "next 10" batch from
+  [`IMPROVEMENT-REVIEW-2026-11.md`](IMPROVEMENT-REVIEW-2026-11.md): finding
+  assignment and the team view, the Lookout PDF and gallery, lookalikes and
+  breached accounts in Lookout reports, the weekly fix email, the audit fixes,
+  the evidence pack, the estate map and repository-link reminders.
+- **Database back under the Free plan limit.** It was 629 MB against 500 MB on
+  2026-11-20; the CVE index (612 MB) moved to the Supabase Storage bucket
+  `cve-index` and migration 081 dropped its tables (#268). The daily DB size
+  guard emails from 70% and fails from 85%; a manual run on 2026-11-20 passed.
+- **Email works.** OT-02 is done (Resend domain verified, a live contact-form
+  email delivered).
+- **Scheduled scans: fix merged, not yet confirmed.** Scheduled runs on
+  2026-11-17, 18 and 19 failed. #277 pins the scan job to `ubuntu-24.04`
+  because prowler refuses Python 3.14 on `ubuntu-latest`. No scheduled run has
+  finished since the pin.
+- **Open PRs (all drafts except #245):** Exploit engagement work #260, #261,
+  #263, #266 and engine weeks 8–9 (#212, #213); Lookout checkout #199 and a
+  sample report #279; score planner #269, alert options #271, pricing copy
+  #272, lookalike response steps #274, M365 site suggestions #275, report
+  trends #276, shared fix plans #278, benchmarks #281, profile documents #283
+  and #284; request validation #192; Dependabot #245.
+
+### Broken or unconfirmed now
+
+| What | Evidence | Fix |
+|---|---|---|
+| Scheduled scans | Failed 2026-11-17 to 19; prowler needs Python below 3.14 | #277 merged; confirm the next scheduled run is green |
+| Scanner tool-update PRs | `GH_PAT` push fails; since #259 a failed push opens one "needs attention" issue | Owner, OT-49 |
+| Emerging-threat alerts go red on NVD timeouts | 2026-11-13 | Owner, OT-17 (`NVD_API_KEY`) |
+| Sign-up and sign-in links rate-limited | Supabase's built-in SMTP | Owner, OT-57 |
+| Repositories connected before #248 aren't scanned | Unlinked repositories are skipped by design | Owners link them (banner, Integrations); run **Repo Link Reminders** once, dry run first. The hebridescyber.co.uk account must link `andrew-barvas/hebrides-cyber` to www.hebridescyber.co.uk |
+| Stale comment | `cve-index-sync.yml`'s header still says the index is migration 069's tables | Workflow comment only; fix with the next change to that file |
+
+### Products
+
+Full summaries are in [`PRODUCTS.md`](PRODUCTS.md).
+
+- **Scanner:** live and priced (Basic £20, Pro £35, Agency £75 a month; Tier A
+  by quote). Stripe checkout is configured; no real purchase tested yet. New
+  this week: assignment and team view, estate map, evidence pack (Pro), weekly
+  fix email, repository-to-site linking, Google sign-in (hidden until OT-63).
+- **Lookout:** `/lookout` is live (Essentials £149 and Assured £299 a month)
+  and sold by hand. The analyst report builder, customer report page, dated
+  PDF with estate gallery, lookalike domains and breached accounts (dark until
+  `HIBP_API_KEY`, OT-17) are built. Waiting on OT-33, OT-34, OT-35, OT-42 and
+  OT-43 (checkout, #199), OT-45 (pilot) and OT-56 (subdomain, forwarding done).
+- **Exploit:** not launched and not to be marketed. `/exploit` is noindex and
+  unlinked. Offensive authorizations now expire within 30 days (#280).
+  Waiting on OT-13 and OT-51 to OT-55; engagement work is in draft PRs.
+- **Phishing awareness:** design only
+  ([`PHISHING-AWARENESS-DESIGN.md`](PHISHING-AWARENESS-DESIGN.md), #251);
+  owner items OT-59 to OT-61.
+
+### Next
+
+1. Confirm the first scheduled scan after #277 completes, and that the DB size
+   guard's next scheduled run reports about 17 MB.
+2. Run **Repo Link Reminders** (dry run, then for real) and link this repo's
+   own connection.
+3. Review the open draft PRs in the order the owner chooses; the Exploit ones
+   stay unmerged until OT-13 and OT-51.
+4. Owner items: see the private OWNER-TODO (`PRIVATE-DOCS.md`).
+
+## Status and plan — 2026-11-14 (superseded by the section above)
 
 ### Where things stand
 
@@ -147,31 +218,8 @@ All defensive, all checked against the code on 2026-11-14.
 **Dev:** tasks 1 to 4 above. Then test one real sign-in on the live site,
 because #211 changed when the header loads Supabase and e2e can't sign in.
 
-**Owner, must do before any marketing:**
-- **Email:** OT-02, so customers get scan emails. Its DKIM and SPF setup also
-  lets outreach email deliver.
-- **Security and monitoring:**
-  - OT-01: database password
-  - OT-05 and OT-28: encryption key
-  - OT-06: rate limiting
-  - OT-07: branch protection
-  - OT-08: Sentry
-  - OT-49: tool updates
-- **Legal and copy:**
-  - OT-14: copy check
-  - OT-50: tool licences, high priority
-  - OT-35: terms
-- **Operations:**
-  - OT-12: restore drill
-  - OT-27: status page
-  - OT-29: report retention
-- **One real purchase** of the cheapest plan, then refund it, to prove
-  checkout end to end.
-
-**Owner, before Lookout sells:** OT-33, OT-34, OT-42, OT-43, OT-44, OT-45 and
-OT-56.
-
-**Owner, before Exploit:** OT-13, OT-51 to OT-55.
+**Owner items** (before marketing, before Lookout sells, before Exploit) are
+tracked in the private OWNER-TODO; see `PRIVATE-DOCS.md`.
 
 **Marketing setup:**
 - **Free profiles:** Google Business Profile, Bing Places and LinkedIn
@@ -449,7 +497,7 @@ In order of impact:
 1. **Stripe price IDs (E-07)**: paid sign-up is impossible until `STRIPE_PRICE_*` are set; `/api/health` stays "degraded".
 2. **Sentry DSN (E-03)**: failed scans are invisible in production without it.
 3. **Restore drill (E-13 / LIVE-4)**: restore a backup into a scratch Supabase project and record the result in `BACKUP-RESTORE.md`; consider Supabase Pro for point-in-time recovery.
-4. **Deploy secrets**: `DATABASE_URL` is set and the one-time `baseline_up_to=047` run is done — migrations now auto-apply on every deploy (see the migrations note at the top). `SITE_URL` is set (bare domain), and since 2026-10-27 the post-deploy health check follows the redirect to `www`, so it checks real health. (The `DATABASE_URL` password was pasted into a chat during setup on 2026-10-14 — rotate it in Supabase and re-save the secret.)
+4. **Deploy secrets**: `DATABASE_URL` is set and the one-time `baseline_up_to=047` run is done — migrations now auto-apply on every deploy (see the migrations note at the top). `SITE_URL` is set (bare domain), and since 2026-10-27 the post-deploy health check follows the redirect to `www`, so it checks real health.
 5. **Publish the GitHub Action** from a public repository (this repo is private, so customers cannot `uses:` it); until then the CI templates in item 2 are the supported route.
 6. **Domains**: register `hebridescyber.com` defensively; optionally a `security@hebridescyber.co.uk` alias for `security.txt`.
 7. **ToS solicitor review** (BETA-B1).

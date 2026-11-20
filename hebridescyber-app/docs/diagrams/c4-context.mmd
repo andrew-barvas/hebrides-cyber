@@ -14,15 +14,16 @@ flowchart TB
         U4([Operator / admin]):::person
     end
 
-    HC[["Hebrides Cyber<br/>Automated web-security scanning SaaS<br/>(single Next.js surface)"]]:::system
+    HC[["Hebrides Cyber<br/>Scanner SaaS + Lookout managed review<br/>(single Next.js surface)"]]:::system
 
     U1 & U2 & U3 & U4 --> HC
 
     subgraph Platform_services[Platform services]
-        SB[(Supabase<br/>Postgres + Auth + Storage, RLS)]:::ext
-        AZ[Azure Static Web Apps<br/>+ Blob Storage]:::ext
+        SB[(Supabase<br/>Postgres + Auth + Storage, RLS<br/>Storage bucket cve-index)]:::ext
+        AZ[Azure Static Web Apps<br/>+ Blob Storage: report PDFs, host screenshots]:::ext
         GH[GitHub Actions runners<br/>+ GitHub App/PAT]:::ext
-        ST[Stripe<br/>billing - NOT configured in prod]:::ext
+        ST[Stripe<br/>Scanner checkout configured, no real purchase tested]:::ext
+        GO[Google OAuth - opt, hidden until OT-63]:::ext
     end
 
     subgraph Delivery[Notifications & workflow - opt]
@@ -44,6 +45,7 @@ flowchart TB
     HC --> AZ
     HC --> GH
     HC --> ST
+    HC --> GO
     HC --> NO
     HC --> AI
     HC --> OB
