@@ -35,6 +35,7 @@
     "account:deletion-reminders": "tsx src/scripts/check-deletion-requests.ts",
     "secrets:encrypt-existing": "tsx src/scripts/encrypt-existing-secrets.ts",
     "digest:monthly": "tsx src/scripts/send-monthly-digest.ts",
+    "email:weekly-fix": "tsx src/scripts/send-weekly-fix-email.ts",
     "reports:send": "tsx src/scripts/send-scheduled-reports.ts",
     "uptime:sync": "tsx src/scripts/sync-uptime-monitors.ts",
     "threats:check": "tsx src/scripts/check-emerging-threats.ts",
