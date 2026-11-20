@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
@@ -75,7 +75,8 @@ jobs:
     needs: enqueue
     # Ubuntu 24.04, not ubuntu-latest: the 26.04 image (Nov 2026) ships Python 3.14,
     # which prowler 5.x refuses, so docker/scan-tools.sh's hard prowler install failed
-    # every scheduled run from 2026-11-19. Move up once prowler supports 3.14.
+    # every scheduled run from 2026-11-19. Move up once prowler supports 3.14
+    # (checked 2026-11-20: prowler 5.51.0 on PyPI still requires <3.14).
     runs-on: ubuntu-24.04
     # Install (~5 min) + the worker's 25-minute claim budget + a full-profile scan
     # still running at that point (its tool timeouts sum to about an hour). Without
@@ -94,7 +95,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
@@ -275,7 +276,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: hebridescyber-app/package-lock.json
       - name: Install dependencies
