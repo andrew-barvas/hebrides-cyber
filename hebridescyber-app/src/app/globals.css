@@ -133,6 +133,36 @@
   --c-warning: 251 191 36; /* amber-400 */
 }
 
+/* Print palette — what "Download PDF" (window.print() on the scan report)
+   puts on paper, in either theme.
+
+   Paper is white and browsers drop background colours by default, so the dark
+   theme's white text landed on a white page; Chrome then "rescues" too-light
+   text by greying it, which is why exported reports came out pale grey. Light
+   mode's slate text was readable but no better than mid-grey once the alpha
+   steps applied. So print gets its own tokens: white surfaces, near-black text,
+   darker secondary text, and the light-mode accent and semantic colours, which
+   all clear 4.5:1 on white. Same specificity as :root/.dark, so it wins by
+   coming later. The alpha-step floor for print is further down, after the
+   screen parity rules it has to beat. tests/e2e/report-print-auth.spec.ts
+   guards it. */
+@media print {
+  :root,
+  .dark {
+    --c-bg: 255 255 255;
+    --c-panel: 255 255 255;
+    --c-border: 203 213 225; /* slate-300 */
+    --c-text: 15 23 42; /* slate-900 */
+    --c-neon: 6 122 91;
+    --c-glow: 0;
+    --c-glow-sm: 0;
+    --c-grid-alpha: 0;
+    --c-muted: 51 65 85; /* slate-700 */
+    --c-danger: 185 28 28;
+    --c-warning: 180 83 9;
+  }
+}
+
 @layer base {
   body {
     @apply bg-cyberbg text-cybertext;
@@ -233,6 +263,65 @@
 :root:not(.dark) .text-amber-400,
 :root:not(.dark) .text-amber-400\/80 {
   color: rgb(180 83 9);
+}
+
+/* Print contrast floor (see the print palette above).
+
+   The alpha steps fade the near-black print text to mid-grey, so on paper
+   the label steps (/20–/50) print at 0.9 and the body-text steps solid: still
+   near-black (13:1 on white), with a little hierarchy left. The -400 severity colours
+   take the light-mode -700 swap in both themes. !important because the screen
+   parity rules above use :root:not(.dark) (0,3,0) and this has to beat them in
+   either theme; it is print-only, so the screen never sees it. */
+@media print {
+  .text-cybertext\/20,
+  .text-cybertext\/30,
+  .text-cybertext\/40,
+  .text-cybertext\/50 {
+    color: rgb(var(--c-text) / 0.9) !important;
+  }
+  .text-cybertext\/60,
+  .text-cybertext\/70,
+  .text-cybertext\/75,
+  .text-cybertext\/80,
+  .text-cybertext\/90 {
+    color: rgb(var(--c-text)) !important;
+  }
+  .text-cybermuted\/60,
+  .text-cybermuted\/70 {
+    color: rgb(var(--c-muted)) !important;
+  }
+  .text-neon\/20,
+  .text-neon\/30,
+  .text-neon\/40,
+  .text-neon\/50,
+  .text-neon\/60,
+  .text-neon\/70,
+  .text-neon\/80 {
+    color: rgb(var(--c-neon)) !important;
+  }
+  .text-red-400,
+  .text-red-400\/70,
+  .text-red-400\/80 {
+    color: rgb(185 28 28) !important;
+  }
+  .text-orange-400 {
+    color: rgb(194 65 12) !important;
+  }
+  .text-yellow-400 {
+    color: rgb(161 98 7) !important;
+  }
+  .text-blue-400 {
+    color: rgb(29 78 216) !important;
+  }
+  .text-amber-400,
+  .text-amber-400\/80 {
+    color: rgb(180 83 9) !important;
+  }
+  .text-emerald-400,
+  .text-emerald-400\/70 {
+    color: rgb(4 120 87) !important;
+  }
 }
 
 /* Faint circuit-board grid on hero sections — pure CSS, no image asset. */
