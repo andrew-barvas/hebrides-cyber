@@ -7,7 +7,8 @@ import type { Finding } from "./scanners";
 import type { ReportBranding } from "./executiveReport";
 import { hostOf } from "./findingLifecycle";
 import { buildTriageIndex, loadTriageForOwner } from "./findingTriage";
-import type { PortfolioInput, PortfolioSiteInput } from "./portfolioReport";
+import { TREND_DAYS, type PortfolioInput, type PortfolioSiteInput } from "./portfolioReport";
+import { loadScoreHistory } from "./reportTrends";
 
 /** Recent completed scans looked at to find each site's latest. */
 const SCAN_LOOKBACK = 500;
@@ -47,10 +48,17 @@ export async function loadPortfolioInput(db: SupabaseClient, ownerId: string, no
     }
   }
 
+  // The trend is an enhancement: a failed read leaves the change column blank.
+  const history = await loadScoreHistory(db, ownerId, new Date(now.getTime() - TREND_DAYS * 24 * 60 * 60 * 1000), now).catch(() => null);
+
   const siteInputs: PortfolioSiteInput[] = [...sites.entries()].map(([host, targetUrl]) => {
     const scan = latest.get(host);
     const result = scan ? results.get(scan.id) : undefined;
-    return { targetUrl, scan: scan && result ? { id: scan.id, completedAt: scan.created_at, score: result.score, findings: result.findings } : null };
+    return {
+      targetUrl,
+      scan: scan && result ? { id: scan.id, completedAt: scan.created_at, score: result.score, findings: result.findings } : null,
+      ...(history?.get(host)?.length ? { history: history.get(host) } : {}),
+    };
   });
 
   const brand = sub.data as { brand_logo_url?: string | null; brand_name?: string | null } | null;
