@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
-import FindingsExplorer from "./FindingsExplorer";
+import FindingsExplorer, { formatFirstSeen } from "./FindingsExplorer";
 import { buildFacets, groupFindings, type FindingRow } from "@/lib/findingsView";
 
 const row = (over: Partial<FindingRow> = {}): FindingRow => ({
@@ -94,7 +94,7 @@ describe("FindingsExplorer", () => {
     expect(lastList()).toContain("view=rows");
     expect(screen.getByText("Reason: waiting on registrar")).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Open findings" })).getByText("Snoozed")).toBeInTheDocument();
-    expect(screen.getByText(/open 1 day ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^first seen \d{1,2} [A-Za-z]{3,4} \d{4}, open 1 day$/)).toBeInTheDocument();
     expect(screen.getByText(/SLA breached/)).toBeInTheDocument();
     expect(screen.getByText("4 findings")).toBeInTheDocument();
   });
@@ -458,5 +458,12 @@ describe("FindingsExplorer", () => {
     const filters = screen.getByRole("region", { name: "Filters" });
     expect(within(filters).getByRole("group", { name: "Group findings" })).toBeInTheDocument();
     expect(within(filters).getByRole("button", { name: "Grouped by check" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("formatFirstSeen", () => {
+  it("shows a UK date, and the raw value when it isn't a date", () => {
+    expect(formatFirstSeen("2026-11-03T23:30:00Z")).toBe("3 Nov 2026");
+    expect(formatFirstSeen("not a date")).toBe("not a date");
   });
 });
