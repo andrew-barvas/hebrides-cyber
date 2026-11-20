@@ -265,11 +265,16 @@ payments". The rules that break things silently:
 Tier A unlocks the opt-in **`offensive` profile** — the only one enabling
 `OFFENSIVE_ONLY_TOOLS` (`contentDiscovery`, `credentialSpray`, `strix`,
 `cairn`). Being on Tier A is necessary but not sufficient:
-`run-queued-scan-jobs.ts` is the authoritative gate — an `offensive` job runs
+`run-queued-scan-jobs.ts` is the authoritative gate, deciding through
+`evaluateOffensiveGate` (`src/lib/offensiveGate.ts`) — an `offensive` job runs
 only when the owner is on Tier A **and** has a current
 `offensive_scan_authorizations` row for the target **and** the domain is
-verified. Otherwise it is downgraded to `safe` and audited
-(`offensive_scan.refused`). This reverses the default "no destructive payloads"
+verified **and**, when that row is linked to an engagement (Exploit, P-07), the
+target is inside the engagement's signed scope, window, testing windows and
+expiry (`checkScope`, "active"). `OFFENSIVE_REQUIRE_ENGAGEMENT=1` makes an
+engagement mandatory for every offensive run. Otherwise it is downgraded to
+`safe` and audited (`offensive_scan.refused`, plus `engagement_scope.refused`
+on the engagement). This reverses the default "no destructive payloads"
 posture for Tier A only, per-scan and per-target. **Owner action before
 enabling the destructive tools: customer contracts/ToS must authorise real
 attack traffic.**

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { authHostFromUrl, authorizationExpiryProblem, isAuthorizationCurrent, hasActiveOffensiveAuthorization, recordOffensiveAuthorization } from "./offensiveAuthorization";
+import { authHostFromUrl, authorizationExpiryProblem, isAuthorizationCurrent, hasActiveOffensiveAuthorization, loadCurrentOffensiveAuthorization, recordOffensiveAuthorization } from "./offensiveAuthorization";
 
 describe("authHostFromUrl", () => {
   it("lowercases the hostname and rejects a non-URL", () => {
@@ -76,5 +76,25 @@ describe("recordOffensiveAuthorization", () => {
     const r = await recordOffensiveAuthorization(client, { owner: "o", authorizedBy: "o", targetUrl: "https://a.example.com", scope: "s" }, new Date("2026-11-20T00:00:00Z"));
     expect(r).toEqual({ ok: false, reason: "invalid_expiry" });
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadCurrentOffensiveAuthorization", () => {
+  const now = new Date("2026-10-07T12:00:00Z");
+  const url = "https://example.com";
+
+  it("returns the engagement a current row was signed for, or null for a legacy row", async () => {
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: { revoked_at: null, expires_at: null, engagement_id: "eng-1" } }), "o", url, now)).toEqual({ engagementId: "eng-1" });
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: { revoked_at: null, expires_at: null, engagement_id: null } }), "o", url, now)).toEqual({ engagementId: null });
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: { revoked_at: null, expires_at: null } }), "o", url, now)).toEqual({ engagementId: null });
+  });
+
+  it("is null for no row, an expired row, a read error, a throw and an invalid URL", async () => {
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: null }), "o", url, now)).toBeNull();
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: { revoked_at: null, expires_at: "2026-01-01T00:00:00Z", engagement_id: "eng-1" } }), "o", url, now)).toBeNull();
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: null, error: { message: "boom" } }), "o", url, now)).toBeNull();
+    const throwing = { from: () => { throw new Error("boom"); } } as unknown as SupabaseClient;
+    expect(await loadCurrentOffensiveAuthorization(throwing, "o", url, now)).toBeNull();
+    expect(await loadCurrentOffensiveAuthorization(readClient({ data: null }), "o", "not a url", now)).toBeNull();
   });
 });

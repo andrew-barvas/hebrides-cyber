@@ -49,6 +49,37 @@ export function isAuthorizationCurrent(row: Pick<OffensiveAuthorizationRow, "rev
 }
 
 /**
+ * The owner's current authorization for offensive scanning of this target, with
+ * the engagement it was signed for (null for a legacy Tier A row), or null when
+ * there is none. Never throws: a failed read is "none", so the worker refuses.
+ */
+export async function loadCurrentOffensiveAuthorization(
+  supabaseAdmin: SupabaseClient,
+  owner: string,
+  targetUrl: string,
+  now: Date = new Date(),
+): Promise<{ engagementId: string | null } | null> {
+  const host = authHostFromUrl(targetUrl);
+  if (!host) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("offensive_scan_authorizations")
+      .select("revoked_at, expires_at, engagement_id")
+      .eq("owner", owner)
+      .eq("target_host", host)
+      .is("revoked_at", null)
+      .order("authorized_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as Pick<OffensiveAuthorizationRow, "revoked_at" | "expires_at"> & { engagement_id?: string | null };
+    return isAuthorizationCurrent(row, now) ? { engagementId: row.engagement_id ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Does the owner have a current authorization for offensive scanning of this
  * target? Never throws — any read failure (including the table not existing
  * before migration 051) is treated as "not authorized", so the worker refuses

@@ -23,9 +23,7 @@ import { createScriptSupabase } from "../lib/scriptSupabase";
 import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
-import { hasTierAAccess } from "../lib/planAccess";
-import { hasActiveOffensiveAuthorization } from "../lib/offensiveAuthorization";
-import { logAuditEvent } from "../lib/audit";
+import { auditOffensiveGate, describeRefusal, evaluateOffensiveGate } from "../lib/offensiveGate";
 import { enablesOffensiveTools } from "../lib/scanProfiles";
 import type { ScanProfile, ExtendedToolName } from "../lib/scanProfiles";
 
@@ -229,12 +227,14 @@ async function runOne(
   // Authoritative gate for any configuration that would run the offensive-only
   // tools (brute-force / real attack). The UI and the DB CHECK constraint let
   // the value be stored, but nothing until here decides whether it may actually
-  // RUN. It runs only when the owner is on Tier A AND has a current per-scan
-  // authorization for this target (offensive_scan_authorizations) — the
-  // domain-ownership check above already ran. If either is missing we downgrade
-  // to a passive "safe" scan rather than failing the job, and record why. This
-  // is the only place the offensive suite is unlocked; a comment used to be the
-  // sole "gate".
+  // RUN. evaluateOffensiveGate (src/lib/offensiveGate.ts) decides: the owner on
+  // Tier A AND a current per-target authorization (offensive_scan_authorizations)
+  // AND, when that authorization was signed for an engagement, the target inside
+  // the engagement's signed scope, window, testing windows and expiry, with the
+  // engagement allowing the offensive profile. The domain-ownership check above
+  // already ran. If anything is missing we downgrade to a passive "safe" scan
+  // rather than failing the job, and record why. This is the only place the
+  // offensive suite is unlocked; a comment used to be the sole "gate".
   //
   // The condition asks enablesOffensiveTools() rather than comparing the
   // profile to "offensive": that comparison missed `ai-pentest`, which enables
@@ -242,31 +242,13 @@ async function runOne(
   // one on over a tame base profile.
   if (enablesOffensiveTools(scanConfig.profile, scanConfig.toolOverrides)) {
     const requestedProfile = scanConfig.profile;
-    const [tierOk, authorized] = await Promise.all([
-      hasTierAAccess(supabaseAdmin, job.owner),
-      hasActiveOffensiveAuthorization(supabaseAdmin, job.owner, job.target_url),
-    ]);
-    if (!tierOk || !authorized) {
-      const reason = !tierOk ? "owner is not on Tier A" : "no current offensive-scan authorization for this target";
-      console.warn(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} offensive tools refused for profile "${requestedProfile}" (${reason}); downgrading to safe`);
-      await logAuditEvent(supabaseAdmin, {
-        actorId: job.owner,
-        action: "offensive_scan.refused",
-        resourceType: "scan_job",
-        resourceId: job.id,
-        metadata: { target_url: job.target_url, reason, profile: requestedProfile },
-      });
+    const decision = await evaluateOffensiveGate(supabaseAdmin, job.owner, job.target_url);
+    await auditOffensiveGate(supabaseAdmin, job, decision, requestedProfile);
+    if (!decision.allowed) {
+      console.warn(`${logPrefix({ id: job.id, scan_id: scanId ?? job.scan_id })} offensive tools refused for profile "${requestedProfile}" (${describeRefusal(decision)}); downgrading to safe`);
       // Drops toolOverrides along with the profile — a "safe" profile carrying
       // an override that re-enabled an offensive tool would defeat the point.
       scanConfig = { profile: "safe" };
-    } else {
-      await logAuditEvent(supabaseAdmin, {
-        actorId: job.owner,
-        action: "offensive_scan.ran",
-        resourceType: "scan_job",
-        resourceId: job.id,
-        metadata: { target_url: job.target_url, profile: requestedProfile },
-      });
     }
   }
 
