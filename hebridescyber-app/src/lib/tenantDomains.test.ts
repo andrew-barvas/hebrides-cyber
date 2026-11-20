@@ -69,4 +69,9 @@ describe("loadTenantDomains", () => {
     expect(r.status).toBe("error");
     expect(JSON.stringify(r)).not.toContain("AADSTS");
   });
+
+  it("answers a fixed message if anything throws", async () => {
+    const throwing = { from: () => { throw new Error("boom"); } } as unknown as SupabaseClient;
+    expect(await loadTenantDomains(throwing, "o", { config })).toEqual({ status: "error", message: "Something went wrong reading your Microsoft 365 domains." });
+  });
 });
