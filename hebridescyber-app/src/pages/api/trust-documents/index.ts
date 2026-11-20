@@ -1,5 +1,5 @@
 // /api/trust-documents — the owner's documents for one site's public security
-// profile (src/lib/trustDocuments.ts, migration 087). Pro plan and above,
+// profile (src/lib/trustDocuments.ts, migration 085). Pro plan and above,
 // session only (a published document is a deliberate, visible choice, like
 // the profile itself).
 //   GET  ?targetUrl=…  → { documents, requests }  (requests: newest first, up to 100)
