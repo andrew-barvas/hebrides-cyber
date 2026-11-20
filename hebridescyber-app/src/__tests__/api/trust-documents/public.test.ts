@@ -159,3 +159,68 @@ describe("GET /api/trust-download", () => {
     expect(auditMock).not.toHaveBeenCalled();
   });
 });
+
+describe("public document routes: methods, limits and failures", () => {
+  it("refuses other methods on every public route", async () => {
+    expect((await call(download, "POST", { slug: "abcdefghijkl", id: DOC }))._getStatusCode()).toBe(405);
+    expect((await call(requestAccess, "GET", { slug: "abcdefghijkl", id: DOC }))._getStatusCode()).toBe(405);
+    expect((await call(tokenDownload, "POST", { token: TOKEN }))._getStatusCode()).toBe(405);
+  });
+
+  it("rate-limits requests and token downloads per IP", async () => {
+    rateMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
+    expect((await call(requestAccess, "POST", { slug: "abcdefghijkl", id: DOC }, { name: "Sam", email: "sam@x.example" }))._getStatusCode()).toBe(429);
+    expect((await call(tokenDownload, "GET", { token: TOKEN }))._getStatusCode()).toBe(429);
+  });
+
+  it("refuses a malformed request, and 404s a request for a document on a missing profile", async () => {
+    expect((await call(requestAccess, "POST", { slug: "abcdefghijkl", id: DOC }, { name: "", email: "not-an-email" }))._getStatusCode()).toBe(400);
+    profileMock.mockResolvedValueOnce(null);
+    expect((await call(requestAccess, "POST", { slug: "nope", id: DOC }, { name: "Sam", email: "sam@x.example" }))._getStatusCode()).toBe(404);
+  });
+
+  it("answers 500 when a document can't be read, and 404 when its file is gone", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    queues.trust_documents = [{ error: { message: "db down" } }];
+    expect((await call(download, "GET", { slug: "abcdefghijkl", id: DOC }))._getStatusCode()).toBe(500);
+    queues.trust_documents = [{ error: { message: "db down" } }];
+    expect((await call(requestAccess, "POST", { slug: "abcdefghijkl", id: DOC }, { name: "Sam", email: "sam@x.example" }))._getStatusCode()).toBe(500);
+    queues.trust_documents = [{ data: doc("public") }];
+    getMock.mockResolvedValueOnce(null);
+    expect((await call(download, "GET", { slug: "abcdefghijkl", id: DOC }))._getStatusCode()).toBe(404);
+    queues.trust_documents = [{ data: doc("public") }];
+    getMock.mockRejectedValueOnce(new Error("storage down"));
+    expect((await call(download, "GET", { slug: "abcdefghijkl", id: DOC }))._getStatusCode()).toBe(500);
+    spy.mockRestore();
+  });
+
+  it("refuses a token download whose file is gone or can't be fetched, and answers 500 on a lookup error", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const approved = { id: "r1", document_id: DOC, status: "approved", expires_at: "2099-01-01T00:00:00Z", download_count: 0 };
+    queues.trust_document_requests = [{ data: approved }];
+    queues.trust_documents = [{ data: { id: DOC, owner: "o1", title: "CE", object_key: "k" } }];
+    getMock.mockResolvedValueOnce(null);
+    expect((await call(tokenDownload, "GET", { token: TOKEN }))._getStatusCode()).toBe(404);
+    queues.trust_document_requests = [{ data: approved }];
+    queues.trust_documents = [{ data: { id: DOC, owner: "o1", title: "CE", object_key: "k" } }];
+    getMock.mockRejectedValueOnce(new Error("storage down"));
+    expect((await call(tokenDownload, "GET", { token: TOKEN }))._getStatusCode()).toBe(500);
+    queues.trust_document_requests = [{ error: { message: "db down" } }];
+    expect((await call(tokenDownload, "GET", { token: TOKEN }))._getStatusCode()).toBe(500);
+    spy.mockRestore();
+  });
+
+  it("still records a request when emailing the owner fails, and caps pending requests", async () => {
+    queues.trust_documents = [{ data: doc("on_request") }];
+    queues.trust_document_requests = [{ data: [] }, { data: null, error: null }];
+    queues.users = [{ data: { email: "owner@example.com" } }];
+    sendEmailMock.mockRejectedValueOnce(new Error("mail down"));
+    expect((await call(requestAccess, "POST", { slug: "abcdefghijkl", id: DOC }, { name: "Sam", email: "sam@x.example" }))._getStatusCode()).toBe(200);
+    expect(writes.some((w) => w.op === "insert")).toBe(true);
+    writes.length = 0;
+    queues.trust_documents = [{ data: doc("on_request") }];
+    queues.trust_document_requests = [{ data: Array.from({ length: 25 }, (_, i) => ({ requester_email: `p${i}@x.example` })) }];
+    expect((await call(requestAccess, "POST", { slug: "abcdefghijkl", id: DOC }, { name: "Sam", email: "new@x.example" }))._getStatusCode()).toBe(200);
+    expect(writes).toEqual([]);
+  });
+});

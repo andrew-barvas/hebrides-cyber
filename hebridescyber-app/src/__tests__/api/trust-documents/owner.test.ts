@@ -160,3 +160,32 @@ describe("/api/trust-documents/requests/[id]", () => {
     expect((await call(decide, "POST", { query: { id: REQ }, body: { decision: "approve" } }))._getStatusCode()).toBe(404);
   });
 });
+
+describe("owner document routes: methods and failures", () => {
+  it("refuses other methods", async () => {
+    expect((await call(listUpload, "PUT"))._getStatusCode()).toBe(405);
+    expect((await call(editDelete, "GET", { query: { id: DOC } }))._getStatusCode()).toBe(405);
+    expect((await call(decide, "GET", { query: { id: REQ } }))._getStatusCode()).toBe(405);
+  });
+
+  it("answers 500 when the file can't be stored, and removes it again if the row can't be saved", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const body = { targetUrl: "https://shop.example.com", title: "CE", kind: "cyber_essentials", visibility: "public", dataUrl: PDF };
+    queues.trust_documents = [{ data: [] }];
+    putMock.mockRejectedValueOnce(new Error("storage down"));
+    expect((await call(listUpload, "POST", { body }))._getStatusCode()).toBe(500);
+    queues.trust_documents = [{ data: [] }, { error: { message: "insert failed" } }];
+    expect((await call(listUpload, "POST", { body }))._getStatusCode()).toBe(500);
+    expect(removeMock).toHaveBeenCalled();
+    expect(auditMock).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("needs a website address to list, and a plan lookup that works", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect((await call(listUpload, "GET", { query: { targetUrl: "not a url" } }))._getStatusCode()).toBe(400);
+    gateMock.mockResolvedValueOnce("error");
+    expect((await call(listUpload, "GET", { query: { targetUrl: "https://shop.example.com" } }))._getStatusCode()).toBe(500);
+    spy.mockRestore();
+  });
+});

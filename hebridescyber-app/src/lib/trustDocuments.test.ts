@@ -122,3 +122,23 @@ describe("deleteOwnerDocumentFiles", () => {
     await expect(deleteOwnerDocumentFiles(client, "o1")).rejects.toThrow("down");
   });
 });
+
+describe("loaders that must never break the profile or block erasure on a missing table", () => {
+  it("loadSiteDocuments is empty on an error or a throw", async () => {
+    const { loadSiteDocuments } = await import("./trustDocuments");
+    const chain = (result: unknown) => {
+      const q: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "is"]) q[m] = () => q;
+      q.order = result instanceof Error ? () => { throw result; } : async () => result;
+      return { from: () => q } as unknown as SupabaseClient;
+    };
+    expect(await loadSiteDocuments(chain({ data: null, error: { message: "x" } }), "o1", "a.example")).toEqual([]);
+    expect(await loadSiteDocuments(chain(new Error("boom")), "o1", "a.example")).toEqual([]);
+  });
+
+  it("deleteOwnerDocumentFiles treats a missing table as nothing to delete, and throws on other errors", async () => {
+    const db = (message: string) => ({ from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { message } }) }) }) }) as unknown as SupabaseClient;
+    expect(await deleteOwnerDocumentFiles(db('relation "trust_documents" does not exist'), "o1")).toBe(0);
+    await expect(deleteOwnerDocumentFiles(db("permission denied"), "o1")).rejects.toThrow("permission denied");
+  });
+});
