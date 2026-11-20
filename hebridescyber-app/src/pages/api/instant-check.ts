@@ -10,6 +10,8 @@ import { z } from "zod";
 import { checkRateLimit, getClientIp, hasSharedRateLimitStore } from "@/lib/rateLimit";
 import { parseBody } from "@/lib/validate";
 import { InstantCheckError, normaliseTarget, runInstantCheck } from "@/lib/instantCheck";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { freeCheckBenchmark, recordFreeCheckScore } from "@/lib/scoreBenchmark";
 
 const bodySchema = z.object({ url: z.string().min(1).max(300) });
 
@@ -42,7 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    return res.status(200).json(await runInstantCheck(origin));
+    const result = await runInstantCheck(origin);
+    // "How you compare" (scoreBenchmark.ts): dark until SCORE_BENCHMARK_ENABLED.
+    // Compared before this score is recorded, so a site never counts against
+    // itself; the record is the score and time only.
+    const benchmark = await freeCheckBenchmark(supabaseAdmin, result.score);
+    await recordFreeCheckScore(supabaseAdmin, result.score);
+    return res.status(200).json(benchmark ? { ...result, benchmark } : result);
   } catch (err) {
     if (err instanceof InstantCheckError) return res.status(422).json({ error: err.message });
     console.error("[instant-check]", (err as Error).message);

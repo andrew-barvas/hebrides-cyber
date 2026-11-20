@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { limit, shared, run } = vi.hoisted(() => ({ limit: vi.fn(), shared: vi.fn(), run: vi.fn() }));
+const { limit, shared, run, rpc, insert } = vi.hoisted(() => ({ limit: vi.fn(), shared: vi.fn(), run: vi.fn(), rpc: vi.fn(), insert: vi.fn() }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: limit, getClientIp: () => "203.0.113.9", hasSharedRateLimitStore: shared }));
 vi.mock("@/lib/instantCheck", async (orig) => ({ ...(await orig<typeof import("@/lib/instantCheck")>()), runInstantCheck: run }));
+vi.mock("@/lib/supabaseAdmin", () => ({ supabaseAdmin: { rpc, from: () => ({ insert }) } }));
 
 import handler from "@/pages/api/instant-check";
 import { InstantCheckError } from "@/lib/instantCheck";
@@ -20,6 +21,8 @@ describe("POST /api/instant-check", () => {
     limit.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
     shared.mockReset().mockReturnValue(true);
     run.mockReset().mockResolvedValue({ target: "https://example.com", score: 80 });
+    rpc.mockReset().mockResolvedValue({ data: [{ total: 200, lower: 124 }], error: null });
+    insert.mockReset().mockResolvedValue({ error: null });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -68,5 +71,21 @@ describe("POST /api/instant-check", () => {
     const res = await call({ url: "example.com" });
     expect(res.statusCode).toBe(500);
     expect(res._getData()).not.toMatch(/secret internal/);
+  });
+
+  it("records nothing and compares nothing while the benchmark is off", async () => {
+    const res = await call({ url: "example.com" });
+    expect(res._getJSONData()).not.toHaveProperty("benchmark");
+    expect(rpc).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("when on, compares with other free checks first, then records only the score", async () => {
+    vi.stubEnv("SCORE_BENCHMARK_ENABLED", "true");
+    const res = await call({ url: "example.com" });
+    expect((res._getJSONData() as { benchmark?: unknown }).benchmark).toEqual({ betterThanPercent: 62, groupSize: 200, windowDays: 90, kind: "free_check" });
+    expect(rpc).toHaveBeenCalledWith("instant_check_score_counts", { p_score: 80, p_days: 90 });
+    expect(insert).toHaveBeenCalledWith({ score: 80 });
+    expect(rpc.mock.invocationCallOrder[0]).toBeLessThan(insert.mock.invocationCallOrder[0]);
   });
 });

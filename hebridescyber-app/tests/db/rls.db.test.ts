@@ -279,6 +279,19 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("instant_check_scores and the benchmark functions", () => {
+    it("are service-role-only: no one else can read the scores or call the count functions", async () => {
+      await asActor(db, service, async (c) => {
+        await c.query("insert into instant_check_scores (score) values (70)");
+      });
+      expect(await count(asA, "select 1 from instant_check_scores")).toBe(0);
+      expect(await count(anon, "select 1 from instant_check_scores")).toBe(0);
+      expect((await asActor(db, anon, (c) => attempt(c, "insert into instant_check_scores (score) values (1)"))).ok).toBe(false);
+      expect((await asActor(db, asA, (c) => attempt(c, "select * from instant_check_score_counts(50, 90)"))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, "select * from scan_score_counts(50, 90, null)"))).ok).toBe(false);
+    });
+  });
+
   describe("finding_assignments", () => {
     it("is service-role-only: read and written through /api/findings/assign", async () => {
       await asActor(db, service, async (c) => {
