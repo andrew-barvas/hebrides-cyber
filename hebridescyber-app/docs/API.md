@@ -527,6 +527,10 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/assign \r
   assignment). `GET /api/findings/accounts` lists the accounts you can read.
   The assignment email links to `/dashboard/findings?account=<owner id>&assignee=me`.
 
+### `GET /api/account/evidence-pack`
+
+Pro and above. A PDF (`security-evidence-pack-<date>.pdf`) for a Cyber Essentials application, an insurance proposal or a supplier questionnaire: the sites checked, common insurance questions (MFA on email, SPF/DKIM/DMARC, exposed remote access, patching, encryption, breached accounts, anti-malware, admin rights, backups, training, incident response) each answered as *Evidenced*, *Gap found*, *Self-declared* (your Cyber Essentials self-assessment) or *Your records*, Cyber Essentials readiness per control, and what to fix first. Rate-limited; `?format=html` returns the HTML.
+
 ### `GET /api/portfolio-report`
 
 Agency plan. Every site the account monitors in one client-ready report:
@@ -820,6 +824,11 @@ Enforced per account. On `429`, back off for the seconds given in
 ## `GET /api/estate/changes`
 
 Session-authenticated (the dashboard's own route, like `/api/findings`). `days` is 7, 30 or 90 (default 30). Answers what changed across every site you monitor in that window: `opened`, `fixed` and `openNow` finding counts by severity (critical, high, medium, low, total), `newHosts` (hostnames first seen in the window), the `hosts` with the most change, and up to ten `notableOpened` critical and high findings. Active false positives are left out; accepted and snoozed findings still count. A finding that was fixed and came back keeps its original first-seen date, so it appears in `openNow`, not `opened`. Before finding history exists the response is `{ "available": false }`.
+
+
+## `GET /api/estate/map`
+
+Every known host for your account, grouped by registrable domain: `web` (the newest httpx record's status, title and server, or `null` when never probed), `certificate` (expiry, days left and issuer from the newest scan of that host, or `null`), `exposedPorts` (from open `network-exposure.open-port:*` findings), `openFindings` by severity (false positives left out) and `scanId` (its newest report). `totals` counts hosts, hosts answering on the web, certificates expiring within 30 days and hosts with critical or high issues. Session or API key; your own data; no plan gate.
 
 ## Lookout reports (`/api/lookout/reports`)
 

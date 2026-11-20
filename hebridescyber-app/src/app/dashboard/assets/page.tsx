@@ -3,6 +3,7 @@
 import AssetInventory from "@/components/AssetInventory";
 import DmarcReports from "@/components/DmarcReports";
 import DomainVerification from "@/components/DomainVerification";
+import EstateMap from "@/components/EstateMap";
 import LockedFeature from "@/components/LockedFeature";
 import MonitoredTargets from "@/components/MonitoredTargets";
 import { useAppSession } from "@/components/app-shell/AppShell";
@@ -39,6 +40,16 @@ export default function AssetsPage() {
           availableOn="Paid plans"
         />
       )}
+
+      <section aria-labelledby="estate-map-heading" className="space-y-3">
+        <div>
+          <CardTitle id="estate-map-heading">estate map</CardTitle>
+          <CardDescription className="mt-1">
+            Every host we know about, grouped by domain: whether it answers on the web, when its certificate expires, which services are exposed and what&apos;s open.
+          </CardDescription>
+        </div>
+        <EstateMap token={accessToken} />
+      </section>
 
       <section aria-labelledby="discovered-assets-heading" className="space-y-3">
         <div>
