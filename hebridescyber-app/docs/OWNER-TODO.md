@@ -92,6 +92,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-60 | Phishing awareness: dedicated sending domains and an email provider whose terms allow simulations | 🟢 Low | Decision | 2026-11-19 | |
 | OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
 | OT-62 | Replace the Resend API key (shown in a screenshot) and delete `RESEND_API_KEY_OLD` | 🟠 High | Open | 2026-11-20 | |
+| OT-63 | Turn on "Continue with Google": a Google OAuth client, the Supabase Google provider, then the `NEXT_PUBLIC_GOOGLE_SIGNIN` variable | 🟢 Low | Open | 2026-11-20 | |
 
 ## Common steps
 
@@ -1194,6 +1195,27 @@ CNAMEs to `proud-stone-04a76350f.7.azurestaticapps.net`, so
   delete the old key in Resend and the `RESEND_API_KEY_OLD` setting in Azure.
 - **Verify:** Resend's API keys page lists only the new key, with a recent
   "last used"; a contact-form test shows Delivered.
+- **Raised:** 2026-11-20.
+
+### OT-63: Turn on "Continue with Google" 🟢
+- **What and why:** /login and /signup have a "Continue with Google" button,
+  hidden until Google sign-in is set up. It lets people sign in without an
+  email link, so it isn't affected by email rate limits.
+- **How:**
+  1. Google Cloud console → APIs & Services → Credentials → Create credentials
+     → OAuth client ID → Web application. Authorised redirect URI: the
+     callback Supabase shows in step 2 (it looks like
+     `https://<project>.supabase.co/auth/v1/callback`). Configure the consent
+     screen (app name Hebrides Cyber, support email, the site's privacy and
+     terms links); basic profile and email scopes don't need Google's review.
+  2. Supabase → Authentication → Sign In / Providers → Google: enable it and
+     paste the client ID and secret. Under URL Configuration, make sure
+     `https://www.hebridescyber.co.uk/auth/callback` is an allowed redirect.
+  3. GitHub → Settings → Secrets and variables → Actions → Variables → New
+     variable `NEXT_PUBLIC_GOOGLE_SIGNIN` = `true`, then re-run the Deploy
+     workflow (the value is built into the site).
+- **Verify:** the button appears on /login, and signing in with a Google
+  account lands on the dashboard.
 - **Raised:** 2026-11-20.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
