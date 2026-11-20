@@ -255,6 +255,36 @@ describe("FindingsExplorer", () => {
     });
   });
 
+  it("switches to a team's account read-only, defaulting to what's assigned to me", async () => {
+    const accounts = [
+      { ownerId: "me-id", email: null, role: "owner", own: true },
+      { ownerId: "boss-id", email: "boss@example.com", role: "member", own: false },
+    ];
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "/api/findings/accounts") return json(200, { accounts });
+      if (url.startsWith("/api/findings/assign")) return json(200, { available: true, assignees: [] });
+      if (url.includes("account=boss-id")) return json(200, { ...(listBody() as object), readOnly: true });
+      return json(200, listBody());
+    });
+    render(<FindingsExplorer token="tok" />);
+    await screen.findByText("Missing HSTS");
+    expect(screen.getByRole("checkbox", { name: "Select all 2 findings for Missing HSTS" })).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText("Account"), { target: { value: "boss-id" } });
+    await waitFor(() => expect(lastList()).toContain("account=boss-id"));
+    expect(lastList()).toContain("assignee=me");
+    expect(await screen.findByText(/viewing boss@example.com.s findings as a team member/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Select all/ })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((c) => c[0] === "/api/findings/assign?account=boss-id")).toBe(true);
+  });
+
+  it("opens straight on a team's findings from the assignment email's link", async () => {
+    render(<FindingsExplorer token="tok" initialAccount="boss-id" initialAssignee="me" />);
+    await screen.findByText("Missing HSTS");
+    expect(lastList()).toContain("account=boss-id");
+    expect(lastList()).toContain("assignee=me");
+  });
+
   it("shows who a finding is assigned to", async () => {
     listBody = () => body({ view: "rows", rows: [row({ assignee: { id: "dev-id", email: "dev@example.com" } })] });
     render(<FindingsExplorer token="tok" initialView="rows" />);

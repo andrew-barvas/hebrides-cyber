@@ -10,7 +10,7 @@
 // rows from ?sort=priority, each with its rank and a plain-English reason.
 //
 // Types only from findingsView.ts / estatePriority.ts: their loaders are server code.
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, ShieldCheck } from "lucide-react";
 import { ExploitabilityChip, ExploitabilityPanel } from "@/components/ExploitabilityDetails";
 import { Alert } from "@/components/ui/alert";
@@ -33,6 +33,8 @@ type ListRow = FindingRow & { priority?: Priority };
 
 type FindingsResponse = {
   available: boolean;
+  /** A team member viewing the owner's account: no selection or bulk actions. */
+  readOnly?: boolean;
   triageAvailable: boolean;
   slaEnabled: boolean;
   detailComplete: boolean;
@@ -67,6 +69,9 @@ type Filters = {
 const DEFAULT_FILTERS: Filters = { site: "", severity: "", kev: false, epssMin: "", category: "", triage: "open", sla: "", minAgeDays: "", assignee: "" };
 
 type Assignee = { id: string; email: string | null; role: string };
+type Account = { ownerId: string; email: string | null; role: string; own: boolean };
+
+const ReadOnlyContext = createContext(false);
 const assigneeLabel = (a: Assignee) => `${a.email ?? "Unknown user"}${a.role === "owner" ? " (you)" : ""}`;
 
 const SEVERITY_OPTIONS: ReadonlyArray<{ value: "" | FindingSeverity; label: string }> = [
@@ -101,8 +106,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SELECT_CLASS =
   "h-10 w-full rounded-md border border-cyberborder bg-cyberbg px-3 text-sm text-cybertext focus-visible:border-neon focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neon/40";
 
-function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "csv"): string {
+function buildQuery(filters: Filters, view: ViewMode, page: number, format?: "csv", account?: string): string {
   const p = new URLSearchParams();
+  if (account) p.set("account", account);
   if (filters.site) p.set("site", filters.site);
   if (filters.severity) p.set("severity", filters.severity);
   if (filters.kev) p.set("kev", "1");
@@ -186,16 +192,19 @@ function FindingLine({
 }) {
   const id = useId();
   const [whyOpen, setWhyOpen] = useState(false);
+  const readOnly = useContext(ReadOnlyContext);
   return (
     <li className="flex items-start gap-3 py-2">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        aria-label={`Select ${row.title} on ${row.host}`}
-        className="mt-1 size-4 shrink-0 accent-neon"
-      />
+      {!readOnly && (
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          aria-label={`Select ${row.title} on ${row.host}`}
+          className="mt-1 size-4 shrink-0 accent-neon"
+        />
+      )}
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           {row.priority && (
@@ -259,6 +268,7 @@ function GroupCard({
   const chosen = group.rows.filter((r) => selected.has(r.key)).length;
   const all = chosen === group.rows.length;
   const checkboxRef = useRef<HTMLInputElement>(null);
+  const readOnly = useContext(ReadOnlyContext);
   useEffect(() => {
     if (checkboxRef.current) checkboxRef.current.indeterminate = chosen > 0 && !all;
   }, [chosen, all]);
@@ -266,14 +276,16 @@ function GroupCard({
   return (
     <Card className="space-y-2">
       <div className="flex items-start gap-3">
-        <input
-          ref={checkboxRef}
-          type="checkbox"
-          checked={all}
-          onChange={() => onToggleGroup(group)}
-          aria-label={`Select all ${group.count} findings for ${group.label}`}
-          className="mt-1 size-4 shrink-0 accent-neon"
-        />
+        {!readOnly && (
+          <input
+            ref={checkboxRef}
+            type="checkbox"
+            checked={all}
+            onChange={() => onToggleGroup(group)}
+            aria-label={`Select all ${group.count} findings for ${group.label}`}
+            className="mt-1 size-4 shrink-0 accent-neon"
+          />
+        )}
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <SeverityBadge severity={group.severity} />
@@ -429,8 +441,22 @@ function BulkBar({
   );
 }
 
-export default function FindingsExplorer({ token, initialView = "grouped" }: { token: string | null; initialView?: ViewMode }) {
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+export default function FindingsExplorer({
+  token,
+  initialView = "grouped",
+  initialAccount = "",
+  initialAssignee = "",
+}: {
+  token: string | null;
+  initialView?: ViewMode;
+  /** A team owner's id from ?account= ("" = the caller's own account). */
+  initialAccount?: string;
+  /** "me", "unassigned" or a user id, from ?assignee=. */
+  initialAssignee?: string;
+}) {
+  const [filters, setFilters] = useState<Filters>({ ...DEFAULT_FILTERS, assignee: initialAssignee });
+  const [account, setAccount] = useState(initialAccount);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [view, setView] = useState<ViewMode>(initialView);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<FindingsResponse | null>(null);
@@ -440,16 +466,29 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
   const [bulk, setBulk] = useState<BulkStatus>({ kind: "idle" });
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
-  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  // Keyed by account, so switching accounts never shows the last one's people.
+  const [assigneesFor, setAssigneesFor] = useState<{ account: string; list: Assignee[] }>({ account: "", list: [] });
+  const assignees = assigneesFor.account === account ? assigneesFor.list : [];
 
   // Who findings can be assigned to (the owner and their team). Empty when
   // the server hasn't got migration 078, which hides the controls.
   useEffect(() => {
     if (!token) return;
-    fetch("/api/findings/assign", { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/findings/assign${account ? `?account=${encodeURIComponent(account)}` : ""}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
       .then((body: { available?: boolean; assignees?: Assignee[] } | null) => {
-        if (body?.available && Array.isArray(body.assignees)) setAssignees(body.assignees);
+        if (body?.available && Array.isArray(body.assignees)) setAssigneesFor({ account, list: body.assignees });
+      })
+      .catch(() => {});
+  }, [token, account]);
+
+  // Accounts this person can read: their own, then any team they're on.
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/findings/accounts", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { accounts?: Account[] } | null) => {
+        if (Array.isArray(body?.accounts)) setAccounts(body.accounts);
       })
       .catch(() => {});
   }, [token]);
@@ -459,7 +498,7 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/findings?${buildQuery(filters, view, page)}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+    fetch(`/api/findings?${buildQuery(filters, view, page, undefined, account)}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? "Could not load your findings");
@@ -474,7 +513,7 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [token, filters, view, page, reloads]);
+  }, [token, filters, view, page, reloads, account]);
 
   const rowsOnPage = useMemo(() => (data ? (data.view === "grouped" ? data.groups.flatMap((g) => g.rows) : data.items) : []), [data]);
   const byKey = useMemo(() => new Map(rowsOnPage.map((r) => [r.key, r])), [rowsOnPage]);
@@ -563,7 +602,7 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
     if (!token) return;
     setExportError(null);
     try {
-      const res = await fetch(`/api/findings?${buildQuery(filters, view, page, "csv")}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/findings?${buildQuery(filters, view, page, "csv", account)}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Could not export your findings");
       const url = URL.createObjectURL(await res.blob());
       const link = document.createElement("a");
@@ -578,9 +617,38 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
 
   const facets = data?.facets;
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
+  const readOnly = Boolean(data?.readOnly);
+  const viewing = account ? accounts.find((a) => a.ownerId === account) : null;
+
+  function switchAccount(value: string) {
+    const own = accounts.find((a) => a.own);
+    const next = own && value === own.ownerId ? "" : value;
+    setAccount(next);
+    // On a team's account the useful default is "what's mine to fix".
+    setFilters({ ...DEFAULT_FILTERS, assignee: next ? "me" : "" });
+    setPage(1);
+    setSelected(new Set());
+    setBulk({ kind: "idle" });
+  }
 
   return (
+    <ReadOnlyContext.Provider value={readOnly}>
     <div className="space-y-4">
+      {accounts.length > 1 && (
+        <div className="max-w-md">
+          <FilterSelect
+            label="Account"
+            value={account || (accounts.find((a) => a.own)?.ownerId ?? "")}
+            onChange={switchAccount}
+            options={accounts.map((a) => ({ value: a.ownerId, label: a.own ? "Your account" : `${a.email ?? "A team you're on"} (team)` }))}
+          />
+        </div>
+      )}
+      {readOnly && (
+        <Alert>
+          You&apos;re viewing {viewing?.email ?? "a team owner"}&apos;s findings as a team member. Only they can triage or assign them.
+        </Alert>
+      )}
       <section aria-label="Filters" className="space-y-3">
         <div className="flex flex-wrap gap-3">
           <FilterSelect
@@ -635,7 +703,12 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
               label="Assigned to"
               value={filters.assignee}
               onChange={(v) => updateFilter("assignee", v)}
-              options={[{ value: "", label: "Anyone" }, { value: "unassigned", label: "Nobody" }, ...assignees.map((a) => ({ value: a.id, label: assigneeLabel(a) }))]}
+              options={[
+                { value: "", label: "Anyone" },
+                ...(account ? [{ value: "me", label: "Me" }] : []),
+                { value: "unassigned", label: "Nobody" },
+                ...assignees.map((a) => ({ value: a.id, label: account && a.role === "owner" ? `${a.email ?? "Owner"} (owner)` : assigneeLabel(a) })),
+              ]}
             />
           )}
           {data?.slaEnabled && (
@@ -780,15 +853,18 @@ export default function FindingsExplorer({ token, initialView = "grouped" }: { t
         </div>
       )}
 
-      <BulkBar
-        count={selected.size}
-        disabled={Boolean(data && !data.triageAvailable)}
-        status={bulk}
-        onApply={applyBulk}
-        onClear={() => setSelected(new Set())}
-        assignees={assignees}
-        onAssign={applyAssign}
-      />
+      {!readOnly && (
+        <BulkBar
+          count={selected.size}
+          disabled={Boolean(data && !data.triageAvailable)}
+          status={bulk}
+          onApply={applyBulk}
+          onClear={() => setSelected(new Set())}
+          assignees={assignees}
+          onAssign={applyAssign}
+        />
+      )}
     </div>
+    </ReadOnlyContext.Provider>
   );
 }

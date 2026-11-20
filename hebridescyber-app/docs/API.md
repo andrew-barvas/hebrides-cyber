@@ -521,7 +521,11 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/assign \r
 - `items`: 1–200 findings. `assigneeId`: a user id from `GET`, or `null` to unassign.
 - Anyone other than you gets one email listing what was assigned to them.
 - `GET /api/findings` rows carry `assignee` (`{ id, email }` or `null`), and
-  `?assignee=unassigned` or `?assignee=<user id>` filters by it.
+  `?assignee=unassigned`, `?assignee=me` or `?assignee=<user id>` filters by it.
+- **Team members:** from a logged-in session, `GET /api/findings?account=<owner id>`
+  reads a team owner's findings, read-only (`readOnly: true`, no triage or
+  assignment). `GET /api/findings/accounts` lists the accounts you can read.
+  The assignment email links to `/dashboard/findings?account=<owner id>&assignee=me`.
 
 ### `GET /api/portfolio-report`
 
