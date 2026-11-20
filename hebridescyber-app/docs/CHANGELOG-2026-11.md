@@ -1,6 +1,6 @@
 # Changelog: 18 to 20 November 2026
 
-Everything merged to `master` from 2026-11-18 to 2026-11-20, in plain
+Everything merged to `master` from 2026-11-18 to 2026-11-20 (up to #293), in plain
 English, grouped by product. Each entry links to its pull request. Product
 summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
 [`NEXT-STEPS.md`](NEXT-STEPS.md).
@@ -65,6 +65,16 @@ summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
   Login and sign-up pages have a Google button that keeps the chosen plan or
   link through sign-in. It stays hidden until the owner sets up the Google
   provider (OT-63).
+- **Domain verification works for www sites.**
+  [#293](https://github.com/andrew-barvas/hebrides-cyber/pull/293)
+  A www address is almost always an alias (CNAME) of the web host, and DNS
+  allows no other record beside one, so the TXT record we asked for couldn't
+  be added. For a www site the record now goes on the bare domain, and the
+  instructions say so. Found verifying a real site.
+- **Printed and PDF scan reports are readable.**
+  [#289](https://github.com/andrew-barvas/hebrides-cyber/pull/289)
+  Grey text printed too faint; it now prints near-black, and the screen is
+  unchanged.
 - **Smaller UX fixes.**
   [#247](https://github.com/andrew-barvas/hebrides-cyber/pull/247)
   One audience in the homepage headline ("Professional security for UK small
@@ -119,10 +129,26 @@ summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
   GitHub's default runner moved to a newer Ubuntu with Python 3.14, which one
   of our scan tools refuses, so scheduled scans failed while installing
   tools. The scan jobs are pinned to Ubuntu 24.04 until the tool catches up.
+- **The CVE sync survives a dropped connection.**
+  [#287](https://github.com/andrew-barvas/hebrides-cyber/pull/287)
+  The first nightly sync after the move to file storage failed on one
+  dropped download among about 1,300. Reads and writes now retry with
+  back-off; a manual run after the fix passed.
+- **Fewer GitHub Actions minutes.**
+  [#290](https://github.com/andrew-barvas/hebrides-cyber/pull/290)
+  Changes that only touch docs no longer run the full check or a deploy,
+  e2e tests no longer run twice per change, and npm downloads are cached.
+  Tool integration tests run once per merge rather than on every push.
 - **Alert when tool updates can't be pushed.**
   [#259](https://github.com/andrew-barvas/hebrides-cyber/pull/259)
   If the weekly scanner tool update can't push its branch, the run now opens
   or comments on one GitHub issue with the run link.
+- **More tests, higher coverage floor.**
+  [#285](https://github.com/andrew-barvas/hebrides-cyber/pull/285)
+  Unit tests for the features above and four new e2e specs (team findings,
+  the Lookout report, the new dashboard features, sign-in pages). The
+  coverage floor rose to 81% statements, 74% branches, 82% functions and
+  83% lines.
 - **Dependency updates.**
   [#215](https://github.com/andrew-barvas/hebrides-cyber/pull/215),
   [#244](https://github.com/andrew-barvas/hebrides-cyber/pull/244)
@@ -150,6 +176,12 @@ summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
   [#262](https://github.com/andrew-barvas/hebrides-cyber/pull/262)
   What each product ships compared with large global vendors, with ranked
   ideas. Not for marketing until each fact is re-checked.
+- **Business documents moved to a private repo.**
+  [#291](https://github.com/andrew-barvas/hebrides-cyber/pull/291), [#292](https://github.com/andrew-barvas/hebrides-cyber/pull/292)
+  Marketing, grant, legal, competitor and strategy documents, the product
+  plans, the roadmap and reviews, and the owner to-do list now live in a
+  private repository, so this one can be public.
+  [`PRIVATE-DOCS.md`](PRIVATE-DOCS.md) lists what moved.
 - **Owner to-do updates.**
   [#254](https://github.com/andrew-barvas/hebrides-cyber/pull/254)
   Email sending (OT-02) recorded as done with proof.
