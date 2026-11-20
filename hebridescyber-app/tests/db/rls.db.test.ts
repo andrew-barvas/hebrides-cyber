@@ -292,6 +292,22 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("trust_documents and trust_document_requests", () => {
+    it("are service-role-only: owners manage documents and visitors request them through the API", async () => {
+      await asActor(db, service, async (c) => {
+        const doc = await c.query("insert into trust_documents (owner, target_host, title, kind, object_key, size_bytes, sha256) values ($1, 'a.example', 'CE', 'cyber_essentials', 'k/rls-test.pdf', 10, repeat('e', 64)) returning id", [A]);
+        await c.query("insert into trust_document_requests (document_id, requester_name, requester_email) values ($1, 'Sam', 'sam@example.com')", [doc.rows[0].id]);
+      });
+      for (const table of ["trust_documents", "trust_document_requests"]) {
+        expect(await count(asA, `select 1 from ${table}`)).toBe(0);
+        expect(await count(anon, `select 1 from ${table}`)).toBe(0);
+      }
+      const ins = "insert into trust_documents (owner, target_host, title, kind, object_key, size_bytes, sha256) values (gen_random_uuid(), 'x', 't', 'other', 'k/x.pdf', 1, repeat('f', 64))";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+  });
+
   describe("finding_assignments", () => {
     it("is service-role-only: read and written through /api/findings/assign", async () => {
       await asActor(db, service, async (c) => {

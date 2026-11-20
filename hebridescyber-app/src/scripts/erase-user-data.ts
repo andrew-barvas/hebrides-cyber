@@ -26,7 +26,8 @@
 
 import { createScriptSupabase } from "../lib/scriptSupabase";
 import { eraseAccount, findAccount, planErasure } from "../lib/accountErasure";
-import { getStripe } from "../lib/stripeClient";
+import { getStripe } from "../lib/stripeClient";
+import { deleteOwnerDocumentFiles } from "../lib/trustDocuments";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -77,10 +78,12 @@ async function main() {
           await getStripe().subscriptions.cancel(id);
         },
     deleteReportBlobs,
+    deleteTrustDocuments: (ownerId) => deleteOwnerDocumentFiles(supabaseAdmin, ownerId),
   });
 
   if (result.stripeCancelled) console.log(`Cancelled Stripe subscription ${plan.stripeToCancel}.`);
   console.log(`Deleted ${result.reportsDeleted} report PDF(s)${result.reportsSkipped ? " (Blob Storage not configured — skipped)" : ""}.`);
+  if (result.trustDocumentsDeleted) console.log(`Deleted ${result.trustDocumentsDeleted} profile document file(s).`);
   console.log(`Deleted auth user ${account.id} — cascading deletes removed all related rows.`);
   if (result.ledgerWarning) {
     console.error(result.ledgerWarning);

@@ -177,6 +177,24 @@ describe("eraseAccount", () => {
     expect(result).toEqual({ stripeCancelled: true, reportsDeleted: 1, reportsSkipped: false, ledgerWarning: null });
   });
 
+  it("deletes profile document files after reports and before the user, when asked", async () => {
+    const { db, order } = fakeDb({ deletion_requests: [{}] });
+    const docs = vi.fn(async () => {
+      order.push("deleteDocs");
+      return 3;
+    });
+    const result = await eraseAccount(db, { ...plan, stripeToCancel: null }, { deleteReportBlobs: async () => ({ deleted: 0, skipped: false }), deleteTrustDocuments: docs, now: NOW });
+    expect(order).toEqual(["deleteDocs", "deleteUser:u1", "update:deletion_requests"]);
+    expect(docs).toHaveBeenCalledWith("u1");
+    expect(result.trustDocumentsDeleted).toBe(3);
+  });
+
+  it("keeps the account if deleting profile document files fails", async () => {
+    const { db, deleteUser } = fakeDb({});
+    await expect(eraseAccount(db, { ...plan, stripeToCancel: null }, { deleteReportBlobs: async () => ({ deleted: 0, skipped: false }), deleteTrustDocuments: async () => Promise.reject(new Error("storage down")) })).rejects.toThrow("storage down");
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
   it("deletes nothing if cancelling the subscription fails", async () => {
     const { db, deleteUser } = fakeDb({});
     const blobs = vi.fn(async () => ({ deleted: 0, skipped: false }));
