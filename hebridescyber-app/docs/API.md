@@ -333,6 +333,46 @@ scan's findings with no current assessment: their type isn't rated yet, the scan
 predates the analysis, or you marked them a false positive. Not assessed doesn't
 mean safe.
 
+### `GET /api/v1/scans/{id}/plan`
+
+The score planner: the fewest fixes that take this scan to a rating, and
+optionally what the score would be if given findings were fixed. Your own
+scans only. It reads what the scan stored and sends nothing to your site.
+
+Query parameters, both optional:
+
+- `target`: `needs-attention` (50+), `good` (75+) or `strong` (90+). Without
+  it, the next rating above the current score; `target` and `plan` are `null`
+  when the scan is already Strong.
+- `fixed`: comma-separated checkIds (up to 200) to project as fixed.
+
+Findings you've triaged (accepted, false positive, snoozed) are never proposed,
+but accepted and snoozed ones still count towards the score, so a target can
+be unreachable (`reachable: false`). `estimate: true` because the next scan
+sets the real score.
+
+```json
+{
+  "scanId": "…",
+  "score": 48,
+  "rating": "At risk",
+  "estimate": true,
+  "target": { "rating": "Good", "minScore": 75 },
+  "plan": {
+    "reachable": true,
+    "projected": 78,
+    "projectedRating": "Good",
+    "fixes": [{ "checkId": "tls.weak-protocol:tls1.0", "title": "…", "severity": "critical", "points": 30 }]
+  },
+  "ifFixed": { "checkIds": ["headers.hsts"], "projected": 55, "projectedRating": "Needs attention" },
+  "candidates": 3
+}
+```
+
+`400` for an unknown `target` or too many `fixed` ids, `404` for a missing
+scan or result, `403` for someone else's scan, `409` when the scan has no
+score.
+
 ### `GET /api/v1/scans/{id}/sbom`
 
 A CycloneDX 1.5 JSON SBOM of the scan's dependencies, downloaded as
