@@ -1,0 +1,25 @@
+%% Lookout report: analyst draft -> publish -> customer page, PDF and acknowledgement
+%% Canonical source. Regenerate exports with: npm run docs:diagrams
+%% Breaches section is left out while HIBP_API_KEY is unset (OT-17); gallery is empty without Azure Blob.
+sequenceDiagram
+    autonumber
+    actor A as Analyst (admin panel)
+    participant ADM as /api/admin/lookout/reports
+    participant DB as Supabase (lookout_reports, lookout_report_items)
+    participant SRC as Ranking, drift, lookalikes, HIBP results
+    actor C as Customer (/dashboard/lookout)
+    participant API as /api/lookout/reports
+    participant PDF as /api/lookout/report-pdf (Chromium)
+    participant BLOB as Azure Blob (host screenshots)
+    A->>ADM: POST { customer: email or user id, period_days }
+    ADM->>SRC: estate ranking, drift, lookalikes, breaches for the period
+    ADM->>DB: INSERT draft report + prefilled items and summary
+    A->>ADM: PATCH items (include, priority, notes, who fixes it), status published
+    C->>API: GET list, then GET {id}
+    API->>DB: published reports for this customer only
+    API-->>C: items, lookalikes, breaches, galleryScanId
+    C->>PDF: GET ?id= (rate-limited)
+    PDF->>BLOB: up to 12 screenshots from the latest scan by period end
+    PDF-->>C: lookout-report-PERIOD-END.pdf
+    C->>API: POST {id} { action: acknowledge }
+    Note over DB: acknowledged reports are frozen, and admins preview drafts at /api/admin/lookout/report-pdf
