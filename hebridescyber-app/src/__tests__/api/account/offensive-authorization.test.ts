@@ -17,9 +17,12 @@ vi.mock("@/lib/apiAuth", () => {
   return { authenticateApiRequest: authMock, supabaseAdmin: { from: () => b } };
 });
 vi.mock("@/lib/planAccess", () => ({ planGate: gateMock }));
-vi.mock("@/lib/offensiveAuthorization", () => ({ recordOffensiveAuthorization: recordMock, revokeOffensiveAuthorization: revokeMock }));
+vi.mock("@/lib/offensiveAuthorization", async (original) => ({ ...(await original<typeof import("@/lib/offensiveAuthorization")>()), recordOffensiveAuthorization: recordMock, revokeOffensiveAuthorization: revokeMock }));
 
 import handler from "@/pages/api/account/offensive-authorization";
+
+// Ten days out: inside the 30-day maximum.
+const EXP = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
 
 const URL_OK = "https://shop.example.com";
 
@@ -31,7 +34,7 @@ function call(method: string, body?: unknown) {
 beforeEach(() => {
   authMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
   gateMock.mockReset().mockResolvedValue("ok");
-  recordMock.mockReset().mockResolvedValue({ ok: true, host: "shop.example.com" });
+  recordMock.mockReset().mockResolvedValue({ ok: true, host: "shop.example.com", expiresAt: EXP });
   revokeMock.mockReset().mockResolvedValue({ ok: true });
   target.current = { data: { id: "t1", owner: "owner-1" }, error: null };
 });
@@ -45,12 +48,12 @@ describe("/api/account/offensive-authorization", () => {
 
   it("401s when unauthenticated", async () => {
     authMock.mockResolvedValue(null);
-    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(401);
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP })).statusCode).toBe(401);
   });
 
   it("refuses an API key — consent to attack traffic needs a real session", async () => {
     authMock.mockResolvedValue({ ownerId: "owner-1", via: "api_key" });
-    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true });
+    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP });
     expect(res.statusCode).toBe(403);
     expect(recordMock).not.toHaveBeenCalled();
   });
@@ -64,34 +67,43 @@ describe("/api/account/offensive-authorization", () => {
 
   it("404s for a URL the caller doesn't monitor, before any plan check", async () => {
     target.current = { data: null, error: null };
-    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true });
+    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP });
     expect(res.statusCode).toBe(404);
     expect(gateMock).not.toHaveBeenCalled();
   });
 
   it("500s when the ownership lookup itself fails", async () => {
     target.current = { data: null, error: { message: "db" } };
-    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(500);
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP })).statusCode).toBe(500);
   });
 
   it("403s a non-Tier-A owner and 500s when the plan can't be checked", async () => {
     gateMock.mockResolvedValue("denied");
-    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(403);
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP })).statusCode).toBe(403);
     gateMock.mockResolvedValue("error");
-    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(500);
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP })).statusCode).toBe(500);
     expect(recordMock).not.toHaveBeenCalled();
   });
 
-  it("records the authorization with the default scope and no expiry", async () => {
-    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true });
+  it("records the authorization with the default scope and its expiry", async () => {
+    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP });
     expect(res.statusCode).toBe(200);
-    expect(res._getJSONData()).toEqual({ ok: true, host: "shop.example.com" });
-    expect(recordMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ owner: "owner-1", authorizedBy: "owner-1", expiresAt: null, scope: expect.stringContaining("Authorised offensive") }));
+    expect(res._getJSONData()).toEqual({ ok: true, host: "shop.example.com", expiresAt: EXP });
+    expect(recordMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ owner: "owner-1", authorizedBy: "owner-1", expiresAt: EXP, scope: expect.stringContaining("Authorised offensive") }));
   });
 
-  it("passes through a custom scope and expiry", async () => {
-    await call("POST", { targetUrl: URL_OK, acknowledge: true, scope: "login only", expiresAt: "2027-01-01T00:00:00Z" });
-    expect(recordMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ scope: "login only", expiresAt: "2027-01-01T00:00:00Z" }));
+  it("passes through a custom scope", async () => {
+    await call("POST", { targetUrl: URL_OK, acknowledge: true, scope: "login only", expiresAt: EXP });
+    expect(recordMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ scope: "login only", expiresAt: EXP }));
+  });
+
+  it("requires an expiry (audit M5), and says why one is refused", async () => {
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(400);
+    recordMock.mockResolvedValue({ ok: false, reason: "invalid_expiry" });
+    const tooFar = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+    const res = await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: tooFar });
+    expect(res.statusCode).toBe(400);
+    expect(res._getJSONData().error).toMatch(/at most 30 days/);
   });
 
   it.each([
@@ -100,7 +112,7 @@ describe("/api/account/offensive-authorization", () => {
     ["db", 500],
   ])("maps a record failure of %s to %i", async (reason, status) => {
     recordMock.mockResolvedValue({ ok: false, reason });
-    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true })).statusCode).toBe(status);
+    expect((await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP })).statusCode).toBe(status);
   });
 
   it("DELETE revokes without needing Tier A or an acknowledgement", async () => {
