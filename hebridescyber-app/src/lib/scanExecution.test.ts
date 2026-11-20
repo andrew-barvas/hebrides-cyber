@@ -3,10 +3,16 @@
 // that nothing after completion can turn a completed scan into a failure.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, customChecksMock, nucleiMock, record, engineFault } = vi.hoisted(() => {
+const { calls, attackSurfaceMock, lookalikeMock, whatwafMock, customChecksMock, nucleiMock, record, engineFault, posture, resolveAuthMock, proofMock, reportMock, slackMock, teamsMock } = vi.hoisted(() => {
   const calls: string[] = [];
   return {
     calls,
+    posture: { cloud: vi.fn(), prowler: vi.fn(), m365: vi.fn(), workspace: vi.fn() },
+    resolveAuthMock: vi.fn(),
+    proofMock: vi.fn(),
+    reportMock: vi.fn(),
+    slackMock: vi.fn(async () => {}),
+    teamsMock: vi.fn(async () => {}),
     engineFault: { throws: false },
     attackSurfaceMock: vi.fn(),
     lookalikeMock: vi.fn(),
@@ -41,6 +47,27 @@ vi.mock("./audit", () => ({ logAuditEvent: vi.fn(async (_db: unknown, e: { actio
 vi.mock("../worker/tools/whatwaf", () => ({ runWhatWaf: whatwafMock }));
 vi.mock("./customChecks", () => ({ runCustomChecksForOwner: customChecksMock }));
 vi.mock("../worker/tools/nuclei", () => ({ runNuclei: nucleiMock }));
+vi.mock("./scanners/cloudPosture", () => ({ runCloudPostureChecks: posture.cloud }));
+vi.mock("../worker/tools/prowlerIam", () => ({ runProwlerIam: posture.prowler }));
+vi.mock("./scanners/m365Posture", () => ({ runM365PostureChecks: posture.m365 }));
+vi.mock("./scanners/workspacePosture", () => ({ runWorkspacePostureChecks: posture.workspace }));
+vi.mock("./scanners/authenticatedCheck", async (orig) => {
+  const actual = await orig<typeof import("./scanners/authenticatedCheck")>();
+  resolveAuthMock.mockImplementation(actual.resolveAuthCredential);
+  return { ...actual, resolveAuthCredential: resolveAuthMock };
+});
+vi.mock("./scanners/proofOfExploit", async (orig) => {
+  const actual = await orig<typeof import("./scanners/proofOfExploit")>();
+  proofMock.mockImplementation(actual.enrichWithProofOfExploit);
+  return { ...actual, enrichWithProofOfExploit: proofMock };
+});
+vi.mock("./scanReport", async (orig) => {
+  const actual = await orig<typeof import("./scanReport")>();
+  reportMock.mockImplementation(actual.buildScanReport);
+  return { ...actual, buildScanReport: reportMock };
+});
+vi.mock("./slack", () => ({ sendSlackAlert: slackMock }));
+vi.mock("./msTeams", () => ({ sendTeamsAlert: teamsMock }));
 vi.mock("./exploitability", async (orig) => {
   const actual = await orig<typeof import("./exploitability")>();
   return {
@@ -52,19 +79,23 @@ vi.mock("./exploitability", async (orig) => {
   };
 });
 
-import { executeScan } from "./scanExecution";
+import { executeScan, confirmExploitable } from "./scanExecution";
 import { scoreFromFindings, summariseResults } from "./scanners";
 import * as findingTriage from "./findingTriage";
 import { canDetectFromResults } from "./findingLifecycle";
 import { EXTENDED_TOOL_NAMES } from "./scanProfiles";
 
-/** Accepts any query chain and answers { data: null, error: null }; records writes to scans and scan_results. */
-function fakeSupabase() {
+/**
+ * Accepts any query chain and answers { data: null, error: null }; records writes to scans and scan_results.
+ * `rows` gives a table's maybeSingle answer; reading `failTable` throws.
+ */
+function fakeSupabase(opts: { rows?: Record<string, unknown>; failTable?: string } = {}) {
   const scanUpdates: Array<Record<string, unknown>> = [];
   const resultInserts: Array<{ results: Record<string, unknown> }> = [];
   const assessmentInserts: Array<Record<string, unknown>> = [];
   const client = {
     from: (table: string) => {
+      if (table === opts.failTable) throw new Error(`relation "${table}" does not exist`);
       const b: Record<string, unknown> = {};
       for (const m of ["select", "eq", "neq", "lt", "gte", "in", "is", "order", "limit", "delete", "upsert", "ilike"]) b[m] = () => b;
       b.update = (values: Record<string, unknown>) => {
@@ -76,7 +107,7 @@ function fakeSupabase() {
         if (table === "exploitability_assessments") assessmentInserts.push(...(values as unknown as Array<Record<string, unknown>>));
         return b;
       };
-      b.maybeSingle = () => Promise.resolve({ data: null, error: null });
+      b.maybeSingle = () => Promise.resolve({ data: opts.rows?.[table] ?? null, error: null });
       b.single = b.maybeSingle;
       b.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(resolve, reject);
       return b;
@@ -300,5 +331,139 @@ describe("executeScan: customer-defined checks", () => {
     await scanWithNucleiOnly("exposure");
     expect(customChecksMock).not.toHaveBeenCalled();
     expect(nucleiMock).toHaveBeenCalledWith("https://shop.example", expect.any(Array), { nonIntrusive: true });
+  });
+});
+
+describe("executeScan: posture checks keyed on the owner's connections", () => {
+  const onlyPosture = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, ["cloudPosture", "prowler", "m365", "workspace"].includes(n)]));
+  const finding = (checkId: string) => ({ checkId, severity: "high", title: checkId, detail: "", remediation: "" });
+
+  beforeEach(() => {
+    for (const m of Object.values(posture)) m.mockReset();
+  });
+
+  async function scan() {
+    const { client, resultInserts } = fakeSupabase();
+    const result = await executeScan(client, "scan-posture", "owner-1", "https://shop.example", { profile: "full", toolOverrides: onlyPosture, confirmExploits: false });
+    expect(result.ok).toBe(true);
+    const stored = resultInserts[0].results as { extended: Record<string, { status: string; note?: string }>; findings: Array<{ checkId: string }> };
+    return { extended: stored.extended, ids: stored.findings.map((f) => f.checkId) };
+  }
+
+  it("adds each check's findings and keeps its result", async () => {
+    posture.cloud.mockResolvedValue({ status: "checked", findings: [finding("cloud-posture.s3-public")] });
+    // A partly failed run's evidenced findings still count.
+    posture.prowler.mockResolvedValue({ status: "error", note: "one account unreadable", findings: [finding("prowler.iam-admin")], accounts: [] });
+    posture.m365.mockResolvedValue({ status: "error", findings: [finding("m365.mfa-off")] });
+    posture.workspace.mockResolvedValue({ status: "checked", findings: [finding("workspace.2sv-off")] });
+    const { extended, ids } = await scan();
+    expect(ids).toEqual(expect.arrayContaining(["cloud-posture.s3-public", "prowler.iam-admin", "m365.mfa-off", "workspace.2sv-off"]));
+    expect(extended.cloudPosture.status).toBe("checked");
+    expect(extended.prowler.status).toBe("error");
+  });
+
+  it("adds nothing from a check that isn't connected or has no findings", async () => {
+    posture.cloud.mockResolvedValue({ status: "not_configured" });
+    posture.prowler.mockResolvedValue({ status: "not_configured", findings: [], accounts: [] });
+    posture.m365.mockResolvedValue({ status: "not_configured", findings: [] });
+    posture.workspace.mockResolvedValue({ status: "not_configured", findings: [] });
+    const { extended, ids } = await scan();
+    expect(ids.filter((id) => /^(cloud-posture|prowler|m365|workspace)\./.test(id))).toEqual([]);
+    expect(extended.m365.status).toBe("not_configured");
+  });
+
+  it("records a check that throws as an error, and the scan still completes", async () => {
+    for (const m of Object.values(posture)) m.mockRejectedValue(new Error("down"));
+    const { extended } = await scan();
+    expect(extended.cloudPosture).toEqual({ status: "error", note: "Cloud posture check failed" });
+    expect(extended.prowler).toMatchObject({ status: "error", note: "Prowler IAM check failed" });
+    expect(extended.m365).toEqual({ status: "error", note: "Microsoft 365 posture check failed" });
+    expect(extended.workspace).toEqual({ status: "error", note: "Google Workspace posture check failed" });
+  });
+});
+
+describe("executeScan: authenticated-scan credential and the tool kill switch", () => {
+  const noTools = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, false]));
+
+  it("skips the authenticated checks, and says so, when the stored credential can't be decrypted", async () => {
+    resolveAuthMock.mockReturnValueOnce({ credential: null, decrypted: false });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeSupabase({ rows: { monitored_targets: { id: "t-1" }, target_auth_credentials: { auth_type: "cookie", cookie_value: "enc:v1:xxx" } } });
+    const result = await executeScan(client, "scan-auth", "owner-1", "https://shop.example", { profile: "full", toolOverrides: noTools, confirmExploits: false });
+    expect(result.ok).toBe(true);
+    expect(resolveAuthMock).toHaveBeenCalledWith({ auth_type: "cookie", cookie_value: "enc:v1:xxx" });
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining("Could not decrypt the authenticated-scan credential"));
+    errors.mockRestore();
+  });
+
+  it("treats an unreadable kill-switch table as nothing disabled", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeSupabase({ failTable: "tool_kill_switches" });
+    const result = await executeScan(client, "scan-ks", "owner-1", "https://shop.example", { profile: "full", toolOverrides: noTools, confirmExploits: false });
+    expect(result.ok).toBe(true);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining("tool kill-switch read failed"), expect.any(String));
+    errors.mockRestore();
+  });
+});
+
+describe("confirmExploitable", () => {
+  const findings = [{ checkId: "headers.cors", severity: "medium" as const, title: "CORS", detail: "", remediation: "" }];
+
+  it("is switched off everywhere by DISABLE_PROOF_OF_EXPLOIT=1", async () => {
+    vi.stubEnv("DISABLE_PROOF_OF_EXPLOIT", "1");
+    proofMock.mockClear();
+    expect(await confirmExploitable("https://shop.example", findings)).toBe(findings);
+    expect(proofMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("leaves findings unconfirmed, never fails, when the re-check throws", async () => {
+    proofMock.mockRejectedValueOnce(new Error("browser crashed"));
+    expect(await confirmExploitable("https://shop.example", findings)).toBe(findings);
+  });
+});
+
+describe("executeScan: the Slack and Teams change alert", () => {
+  const noTools = Object.fromEntries(EXTENDED_TOOL_NAMES.map((n) => [n, false]));
+  const sub = { plan: "pro", status: "active", slack_webhook_url: "https://hooks.slack.example/x", ms_teams_webhook_url: "https://teams.example/y" };
+
+  async function scanWith(opts: { newFindings: number | null; sub?: unknown; admin?: boolean }) {
+    reportMock.mockImplementationOnce((scanRow: { id: string; target_url: string }) => ({ scan_id: scanRow.id, target_url: scanRow.target_url, score: 88, new_finding_count: opts.newFindings, fixed_finding_count: null }));
+    const { client } = fakeSupabase({ rows: { subscriptions: opts.sub ?? null, users: opts.admin ? { is_admin: true } : null } });
+    const result = await executeScan(client, "scan-alert", "owner-1", "https://shop.example", { profile: "safe", toolOverrides: noTools, confirmExploits: false });
+    expect(result.ok).toBe(true);
+  }
+
+  beforeEach(() => {
+    slackMock.mockClear();
+    teamsMock.mockClear();
+  });
+
+  it("goes to both webhooks when an active Pro scan found something new", async () => {
+    await scanWith({ newFindings: 2, sub });
+    const payload = expect.objectContaining({ scanId: "scan-alert", newFindingsCount: 2, fixedFindingsCount: 0 });
+    expect(slackMock).toHaveBeenCalledWith(sub.slack_webhook_url, payload);
+    expect(teamsMock).toHaveBeenCalledWith(sub.ms_teams_webhook_url, payload);
+  });
+
+  it("isn't sent when nothing is new, without a plan, on a lapsed or Basic plan, or with no webhook", async () => {
+    await scanWith({ newFindings: 0, sub });
+    await scanWith({ newFindings: null, sub });
+    await scanWith({ newFindings: 2, sub: null });
+    await scanWith({ newFindings: 2, sub: { ...sub, status: "past_due" } });
+    await scanWith({ newFindings: 2, sub: { ...sub, plan: "basic" } });
+    await scanWith({ newFindings: 2, sub: { ...sub, slack_webhook_url: null, ms_teams_webhook_url: null } });
+    expect(slackMock).not.toHaveBeenCalled();
+    expect(teamsMock).not.toHaveBeenCalled();
+  });
+
+  it("reaches an admin without a paid plan, and a failed webhook doesn't fail the scan", async () => {
+    slackMock.mockRejectedValueOnce(new Error("410 gone"));
+    teamsMock.mockRejectedValueOnce(new Error("timeout"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await scanWith({ newFindings: 1, sub: { ...sub, status: "cancelled", plan: null }, admin: true });
+    expect(errors).toHaveBeenCalledWith("[scanExecution] slack change alert failed:", "410 gone");
+    expect(errors).toHaveBeenCalledWith("[scanExecution] teams change alert failed:", "timeout");
+    errors.mockRestore();
   });
 });

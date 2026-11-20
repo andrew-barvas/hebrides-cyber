@@ -168,7 +168,7 @@ const DANGEROUS_TOOL_PORTS = new Set([2375, 2376, 6379, 9200, 27017, 2379]);
  * because runner.ts's queue (BullMQ+Redis) was never wired to anything —
  * see docs/decisions/ENGINEERING-LOG-2026-08.md.
  */
-async function runExtendedTools(
+export async function runExtendedTools(
   targetUrl: string,
   githubRepo: string | null,
   authCredential: AuthCredential | null,
