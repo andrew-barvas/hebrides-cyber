@@ -53,7 +53,8 @@ test("a customer reads their report, marks it read, and downloads the PDF", asyn
 
   // Lookalikes and breached accounts.
   await expect(page.getByRole("heading", { name: "Lookalike domains" })).toBeVisible();
-  await expect(page.getByText("exmple.com")).toBeVisible();
+  // The lookalike's "What to do" panel repeats the domain, so match the row's summary line.
+  await expect(page.locator("summary").getByText("exmple.com", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Email addresses in known data breaches" })).toBeVisible();
   await expect(page.getByText(/Acme Leak \(2025-06-01\): 2 addresses/)).toBeVisible();
 
