@@ -66,6 +66,12 @@ type Filters = {
   assignee: string;
 };
 
+/** "3 Nov 2026", or the raw value when it isn't a date (never "Invalid Date"). */
+export function formatFirstSeen(iso: string): string {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? iso : new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 const DEFAULT_FILTERS: Filters = { site: "", severity: "", kev: false, epssMin: "", category: "", triage: "open", sla: "", minAgeDays: "", assignee: "" };
 
 type Assignee = { id: string; email: string | null; role: string };
@@ -231,7 +237,7 @@ function FindingLine({
         </div>
         <p className="break-all text-xs text-cybermuted">
           {showTitle && <>{row.host} · </>}
-          {row.checkId} · open {row.ageDays} day{row.ageDays === 1 ? "" : "s"}
+          {row.checkId} · <span title={`First seen ${row.firstSeenAt}`}>first seen {formatFirstSeen(row.firstSeenAt)}, open {row.ageDays} day{row.ageDays === 1 ? "" : "s"}</span>
           {row.slaState && <> · {SLA_LABEL[row.slaState]}</>}
           {row.scanId && (
             <>

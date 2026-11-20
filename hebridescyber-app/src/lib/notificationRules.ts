@@ -31,10 +31,14 @@ export function severityRankOf(severity: string): number {
  *
  * - `severityMin`: suppress unless at least one NEW finding meets this
  *   severity or higher. A scan with no new findings is suppressed. Only
- *   applies when there's a previous scan to diff against.
+ *   applies when there's a previous scan to diff against. "info" therefore
+ *   means "only when something new is found".
+ *
+ * A new finding the owner has already triaged (accepted, false positive,
+ * snoozed: one that flapped back) never counts, matching scanAlerts.ts.
  */
 export function shouldNotify(
-  report: { score: number | null; new_finding_count?: number | null; findings: { severity: string; status?: string | null }[] },
+  report: { score: number | null; new_finding_count?: number | null; findings: { severity: string; status?: string | null; triage?: unknown }[] },
   prefs: NotificationPrefs
 ): boolean {
   const { scoreThreshold, severityMin } = prefs;
@@ -50,7 +54,7 @@ export function shouldNotify(
     if (!report.new_finding_count) return false; // no new findings to check
 
     const hasQualifyingFinding = report.findings.some(
-      (f) => f.status === "new" && severityRankOf(f.severity) >= minRank
+      (f) => f.status === "new" && !f.triage && severityRankOf(f.severity) >= minRank
     );
     if (!hasQualifyingFinding) return false;
   }

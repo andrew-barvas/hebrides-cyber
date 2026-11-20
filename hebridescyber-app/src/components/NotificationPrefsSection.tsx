@@ -130,22 +130,27 @@ export default function NotificationPrefsSection() {
             </div>
 
             <div>
-              <label className="block text-xs text-cybertext/60 mb-1">
-                Minimum new-finding severity
+              <label htmlFor="notify-severity-min" className="block text-xs text-cybertext/60 mb-1">
+                Which scans to email about
               </label>
               <select
+                id="notify-severity-min"
                 value={severityMin ?? ""}
                 onChange={(e) =>
                   setSeverityMin((e.target.value || null) as Severity | null)
                 }
                 className="w-full sm:w-auto rounded-md border border-cyberborder bg-cyberbg px-3 py-1.5 text-sm text-cybertext focus:border-neon focus:outline-hidden transition-colors"
               >
-                <option value="">Any new finding</option>
-                <option value="low">Low or higher</option>
-                <option value="medium">Medium or higher</option>
-                <option value="high">High or higher</option>
-                <option value="critical">Critical only</option>
+                <option value="">Every scan, even when nothing changed</option>
+                <option value="info">Only when something new is found</option>
+                <option value="low">Only new findings rated low or higher</option>
+                <option value="medium">Only new findings rated medium or higher</option>
+                <option value="high">Only new high or critical findings</option>
+                <option value="critical">Only new critical findings</option>
               </select>
+              <p className="mt-1 text-xs text-cybermuted">
+                New means not in the previous scan of that site. Findings you&apos;ve already accepted, snoozed or marked false positive never trigger an email. New critical and high findings are always emailed separately.
+              </p>
             </div>
           </div>
         )}

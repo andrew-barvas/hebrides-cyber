@@ -21,7 +21,7 @@ describe("shouldNotify", () => {
   const makeReport = (opts: {
     score?: number | null;
     newCount?: number | null;
-    findings?: { severity: string; status?: string }[];
+    findings?: { severity: string; status?: string; triage?: unknown }[];
   }) => ({
     score: opts.score !== undefined ? opts.score : 75,
     new_finding_count: opts.newCount ?? 0,
@@ -150,6 +150,15 @@ describe("shouldNotify", () => {
           prefs
         )
       ).toBe(true);
+    });
+  });
+
+  describe("triaged new findings", () => {
+    it("never counts a new finding the owner has already triaged", () => {
+      const prefs = { scoreThreshold: null, severityMin: "info" };
+      const triage = { state: "accepted", reason: "x", expires_at: null, triaged_at: "2026-11-01T00:00:00Z" };
+      expect(shouldNotify(makeReport({ score: 70, newCount: 1, findings: [{ severity: "high", status: "new", triage }] }), prefs)).toBe(false);
+      expect(shouldNotify(makeReport({ score: 70, newCount: 2, findings: [{ severity: "high", status: "new", triage }, { severity: "low", status: "new" }] }), prefs)).toBe(true);
     });
   });
 });
