@@ -79,6 +79,13 @@ describe("pricing page checkout", () => {
     expect(screen.queryByText(/offensive|exploit|credential/i)).toBeNull();
   });
 
+  it("says what counts as a monitored site, so the plan caps hold no surprises", () => {
+    render(<PricingPage />);
+    const note = screen.getByText(/What counts as a monitored site\?/).closest("p");
+    expect(note?.textContent).toMatch(/One web address you add/);
+    expect(note?.textContent).toMatch(/without using up a site/);
+  });
+
   it("acknowledges a cancelled checkout, and says nothing otherwise", () => {
     const { unmount } = render(<PricingPage />);
     expect(screen.queryByText(/Checkout cancelled/)).toBeNull();
