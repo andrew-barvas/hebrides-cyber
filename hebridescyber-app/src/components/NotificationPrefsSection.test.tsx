@@ -87,4 +87,31 @@ describe("NotificationPrefsSection", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save preferences" })).toBeEnabled());
     expect(fetchMock.mock.calls.filter((c) => (c[1] as { method?: string } | undefined)?.method === "PATCH")).toHaveLength(0);
   });
+
+  it("labels the filter by which scans get an email, and loads 'only when something new is found'", async () => {
+    fetchMock.mockImplementation(async () => json(200, { notify_email: true, notify_score_threshold: 70, notify_severity_min: "info", notify_weekly_fix: false }));
+    render(<NotificationPrefsSection />);
+    const select = (await screen.findByLabelText("Which scans to email about")) as HTMLSelectElement;
+    expect(select.value).toBe("info");
+    expect(screen.getByRole("option", { name: "Only when something new is found" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Every scan, even when nothing changed" })).toHaveValue("");
+    expect(screen.getByRole("option", { name: "Only new high or critical findings" })).toHaveValue("high");
+    expect(screen.getByText(/never trigger an email/)).toBeInTheDocument();
+    expect(weekly()).not.toBeChecked();
+  });
+
+  it("maps 'every scan' to no filter, and saves scan emails switched off", async () => {
+    fetchMock.mockImplementation(async (_url: string, init?: { method?: string }) =>
+      init?.method === "PATCH" ? json(200, { ok: true }) : json(200, { notify_email: true, notify_score_threshold: null, notify_severity_min: null, notify_weekly_fix: true })
+    );
+    render(<NotificationPrefsSection />);
+    const select = (await screen.findByLabelText("Which scans to email about")) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Send email on scan completion" }));
+    expect(screen.queryByLabelText("Which scans to email about")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+    await screen.findByText("Saved.");
+    const patch = fetchMock.mock.calls.find((c) => (c[1] as { method?: string } | undefined)?.method === "PATCH");
+    expect(JSON.parse((patch?.[1] as { body: string }).body)).toMatchObject({ notify_email: false, notify_severity_min: null });
+  });
 });
