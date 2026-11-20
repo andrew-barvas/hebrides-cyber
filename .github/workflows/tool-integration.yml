@@ -43,7 +43,10 @@ permissions:
 
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04, not ubuntu-latest: the 26.04 image (Nov 2026) ships Python 3.14,
+    # which prowler 5.x refuses, so docker/scan-tools.sh's hard prowler install failed
+    # every scheduled run from 2026-11-19. Move up once prowler supports 3.14.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
