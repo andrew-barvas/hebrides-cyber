@@ -99,7 +99,7 @@ export default function ConnectRepo() {
   }
 
   return (
-    <details className="rounded-lg border border-cyberborder bg-cyberpanel">
+    <details id="connect-repo" open={connections.some((c) => !c.target_host) || undefined} className="scroll-mt-6 rounded-lg border border-cyberborder bg-cyberpanel">
       <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-cybertext/80 hover:text-cybertext transition-colors">
         Connect a repository <span className="font-normal text-cybermuted">(for dependency scanning)</span>
       </summary>
