@@ -140,9 +140,15 @@ export type EvidencePack = {
   fixFirst: PrioritisedFinding[];
 };
 
-const SOURCE_LABEL: Record<AnswerSource, string> = { evidenced: "Evidenced", gap: "Gap found", declared: "Self-declared", not_evidenced: "Your records" };
-const SOURCE_COLOUR: Record<AnswerSource, string> = { evidenced: "#166534", gap: "#b91c1c", declared: "#1d4ed8", not_evidenced: "#475569" };
-const STATUS_LABEL: Record<string, string> = { pass: "Met", partial: "Partly met", fail: "Not met", "not-assessed": "Not assessed" };
+// Shared with the PDF renderer (evidencePackPdf.ts) so the two say the same thing.
+export const SOURCE_LABEL: Record<AnswerSource, string> = { evidenced: "Evidenced", gap: "Gap found", declared: "Self-declared", not_evidenced: "Your records" };
+export const SOURCE_COLOUR: Record<AnswerSource, string> = { evidenced: "#166534", gap: "#b91c1c", declared: "#1d4ed8", not_evidenced: "#475569" };
+export const STATUS_LABEL: Record<string, string> = { pass: "Met", partial: "Partly met", fail: "Not met", "not-assessed": "Not assessed" };
+export const STATUS_COLOUR: Record<string, string> = { pass: "#166534", partial: "#b45309", fail: "#b91c1c", "not-assessed": REPORT_MUTED };
+export const declaredLabel = (answer: CeAnswerValue | null): string => (answer ? DECLARED[answer] : "Not answered yet");
+export const readinessLabel = (status: CombinedCeReport["overall_status"]): string => (status === "ready" ? "ready" : status === "partial" ? "partly ready" : "not ready yet");
+export const EVIDENCE_PACK_FOOTER =
+  "Prepared by Hebrides Cyber from automated external checks of what is reachable from the internet, connected Microsoft 365 or Google Workspace checks, and your own self-assessment answers. It is supporting evidence, not a certification: Cyber Essentials certification is awarded by an IASME certification body, and you remain responsible for the accuracy of what you submit.";
 
 /** Pure. */
 export function renderEvidencePackHtml(pack: EvidencePack): string {
@@ -150,7 +156,7 @@ export function renderEvidencePackHtml(pack: EvidencePack): string {
   const controls = pack.ce.controls
     .map(
       (c) => `<div class="block"><h3>${e(c.control)}: <span class="${c.status}">${e(STATUS_LABEL[c.status] ?? c.status)}</span></h3>
-      ${c.questions.length ? `<ul>${c.questions.map((q) => `<li>${e(q.prompt)} <b>${e(q.answer ? DECLARED[q.answer] : "Not answered yet")}</b></li>`).join("")}</ul>` : ""}
+      ${c.questions.length ? `<ul>${c.questions.map((q) => `<li>${e(q.prompt)} <b>${e(declaredLabel(q.answer))}</b></li>`).join("")}</ul>` : ""}
       ${c.gaps.length ? `<p class="muted">To address: ${e(c.gaps.slice(0, 5).join("; "))}</p>` : ""}</div>`,
     )
     .join("");
@@ -190,13 +196,13 @@ export function renderEvidencePackHtml(pack: EvidencePack): string {
   <h2>Insurance and supplier questionnaire answers</h2>
   <table><thead><tr><th>Question</th><th>Answer</th><th>Evidence</th></tr></thead><tbody>${insurance}</tbody></table>
 
-  <h2>Cyber Essentials readiness: ${e(pack.ce.overall_status === "ready" ? "ready" : pack.ce.overall_status === "partial" ? "partly ready" : "not ready yet")}</h2>
+  <h2>Cyber Essentials readiness: ${e(readinessLabel(pack.ce.overall_status))}</h2>
   <p class="muted">${pack.ce.answered} of ${pack.ce.total_questions} self-assessment questions answered. ${e(pack.ce.recommendation)}</p>
   ${controls}
 
   ${fix ? `<h2>Fix these first</h2><ol>${fix}</ol>` : ""}
 
-  <div class="foot">Prepared by Hebrides Cyber from automated external checks of what is reachable from the internet, connected Microsoft 365 or Google Workspace checks, and your own self-assessment answers. It is supporting evidence, not a certification: Cyber Essentials certification is awarded by an IASME certification body, and you remain responsible for the accuracy of what you submit.</div>
+  <div class="foot">${EVIDENCE_PACK_FOOTER}</div>
 </body></html>`;
 }
 
