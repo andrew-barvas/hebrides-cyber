@@ -1,5 +1,5 @@
 // /api/fix-plans — shared fix plans the owner manages (src/lib/fixPlans.ts,
-// migration 083). Agency plan and above.
+// migration 085). Agency plan and above.
 //   GET  ?host=<host>  → { plans: [{ id, title, host, createdAt, expiresAt, revokedAt, progress }] }
 //   POST { scanId, checkIds, title?, expiresInDays? } → { id, url, expiresAt }
 //        The link is returned once; only its hash is kept.
