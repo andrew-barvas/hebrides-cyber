@@ -181,8 +181,8 @@ export default function LookoutPage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <CtaLink href={mainSiteUrl("/contact")}>Book a call about Lookout</CtaLink>
-              <CtaLink href={mainSiteUrl("/sample-reports")} variant="secondary">
-                See what&apos;s in a report
+              <CtaLink href={mainSiteUrl("/lookout/sample")} variant="secondary">
+                See a sample report
               </CtaLink>
             </div>
             <p className="mt-4 max-w-xl text-xs text-cybertext/60 leading-relaxed">
