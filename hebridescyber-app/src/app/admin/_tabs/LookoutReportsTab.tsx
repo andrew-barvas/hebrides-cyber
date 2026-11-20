@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../_shared";
 
-type ReportRow = { id: string; customer: string; period_start: string; period_end: string; status: string; published_at: string | null; acknowledged_at: string | null };
+type ReportRow = { id: string; customer: string; customer_email?: string | null; period_start: string; period_end: string; status: string; published_at: string | null; acknowledged_at: string | null };
 type Item = { id: string; host: string; check_id: string; severity: string; title: string; included: boolean; priority: number; analyst_note: string; business_impact: string; fix_owner: string };
 type Detail = { report: ReportRow & { summary: string }; items: Item[] };
 
@@ -104,8 +104,8 @@ export default function LookoutReportsTab({ token }: { token: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          <span className="block text-cybermuted">Customer user id</span>
-          <input value={customer} onChange={(e) => setCustomer(e.target.value)} className="mt-1 w-80 rounded-md border border-cyberborder bg-cyberbg px-2 py-1 font-mono text-xs text-cybertext" placeholder="uuid (blank lists every report)" />
+          <span className="block text-cybermuted">Customer email or user id</span>
+          <input value={customer} onChange={(e) => setCustomer(e.target.value)} className="mt-1 w-80 rounded-md border border-cyberborder bg-cyberbg px-2 py-1 font-mono text-xs text-cybertext" placeholder="email or user id (blank lists every report)" />
         </label>
         <label className="text-sm">
           <span className="block text-cybermuted">Period</span>
@@ -115,7 +115,7 @@ export default function LookoutReportsTab({ token }: { token: string }) {
             <option value={90}>90 days</option>
           </select>
         </label>
-        <button type="button" onClick={create} disabled={busy || !/^[0-9a-f-]{36}$/i.test(customer.trim())} className="rounded-md bg-neon px-3 py-1.5 text-sm font-semibold text-cyberbg disabled:opacity-50">
+        <button type="button" onClick={create} disabled={busy || !/^([0-9a-f-]{36}|[^\s@]+@[^\s@]+\.[^\s@]+)$/i.test(customer.trim())} className="rounded-md bg-neon px-3 py-1.5 text-sm font-semibold text-cyberbg disabled:opacity-50">
           New draft report
         </button>
       </div>
@@ -140,7 +140,7 @@ export default function LookoutReportsTab({ token }: { token: string }) {
               <td className="py-1">
                 {r.period_start} to {r.period_end}
               </td>
-              <td className="font-mono text-xs">{r.customer}</td>
+              <td className="font-mono text-xs" title={r.customer}>{r.customer_email ?? r.customer}</td>
               <td>{r.status}</td>
               <td>
                 <button type="button" onClick={() => open(r.id)} className="text-neon hover:underline">
