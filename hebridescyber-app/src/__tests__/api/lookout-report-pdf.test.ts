@@ -76,3 +76,58 @@ describe("Lookout report PDF", () => {
     expect((await call(admin, { id: ID }))._getStatusCode()).toBe(403);
   });
 });
+
+describe("admin Lookout report PDF failures", () => {
+  beforeEach(() => {
+    adminMock.mockReset().mockResolvedValue("admin-1");
+    loadMock.mockReset().mockResolvedValue(report("published"));
+    galleryMock.mockReset().mockResolvedValue([]);
+    pdfMock.mockReset().mockResolvedValue(Buffer.from("%PDF"));
+  });
+
+  it("answers 405, 404 for no report, 500 on a read error and on a failed render", async () => {
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "POST", query: { id: ID } });
+    await admin(req, res);
+    expect(res._getStatusCode()).toBe(405);
+    loadMock.mockResolvedValueOnce(null);
+    expect((await call(admin, { id: ID }))._getStatusCode()).toBe(404);
+    loadMock.mockRejectedValueOnce(new Error("db"));
+    expect((await call(admin, { id: ID }))._getStatusCode()).toBe(500);
+    pdfMock.mockRejectedValueOnce(new Error("chromium"));
+    const r = await call(admin, { id: ID });
+    expect(r._getStatusCode()).toBe(500);
+    expect(r._getData()).toContain("PDF render failed");
+  });
+
+  it("gives a draft PDF a draft file name", async () => {
+    loadMock.mockResolvedValueOnce(report("draft"));
+    const r = await call(admin, { id: ID });
+    expect(r.getHeader("Content-Disposition")).toBe('attachment; filename="draft-lookout-report-2026-11-19.pdf"');
+  });
+});
+
+describe("customer Lookout report PDF failures", () => {
+  beforeEach(() => {
+    authMock.mockReset().mockResolvedValue({ ownerId: "c1", via: "session" });
+    loadMock.mockReset().mockResolvedValue(report("published"));
+    galleryMock.mockReset().mockResolvedValue([]);
+    pdfMock.mockReset().mockResolvedValue(Buffer.from("%PDF"));
+    rateMock.mockReset().mockResolvedValue({ allowed: true });
+  });
+
+  it("answers 405, 401, the HTML preview, and 500s on read or render failure", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "POST", query: { id: ID } });
+    await customer(req, res);
+    expect(res._getStatusCode()).toBe(405);
+    authMock.mockResolvedValueOnce(null);
+    expect((await call(customer, { id: ID }))._getStatusCode()).toBe(401);
+    const html = await call(customer, { id: ID, format: "html" });
+    expect(html.getHeader("Content-Type")).toContain("text/html");
+    loadMock.mockRejectedValueOnce(new Error("db"));
+    expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
+    pdfMock.mockRejectedValueOnce(new Error("chromium"));
+    expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
+    err.mockRestore();
+  });
+});
