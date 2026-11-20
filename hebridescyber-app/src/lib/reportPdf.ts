@@ -1,7 +1,10 @@
-// HTML → PDF with headless Chromium, shared by api/generate-report.ts (one
-// scan) and api/portfolio-report.ts (every site). The report templates are
-// self-contained HTML; the only thing a render may fetch is an Agency's
-// https logo (executiveReport.ts's safeLogoUrl).
+// HTML → PDF with headless Chromium, for scheduled reports only
+// (send-scheduled-reports.ts), which run in GitHub Actions where Chromium is
+// installed. Never import this from an API route: those run as Azure Static
+// Web Apps managed Functions, which have no Chromium, so every call failed
+// with a 500. API routes use htmlPdf.ts (pdf-lib, no browser) instead. The
+// report templates are self-contained HTML; the only thing a render may fetch
+// is an Agency's https logo (executiveReport.ts's safeLogoUrl).
 import { chromium } from "playwright";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

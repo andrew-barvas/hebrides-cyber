@@ -9,9 +9,10 @@
 // font files: it uses the PDF standard fonts, which every PDF reader has.
 //
 // The standard fonts only encode Windows-1252 (WinAnsi), so text from
-// findings and company names goes through toWinAnsi() first; an unencodable
+// findings and company names goes through toWinAnsi() (pdfText.ts) first; an unencodable
 // character would otherwise make pdf-lib throw and turn a good pack into a 500.
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { colour, toWinAnsi } from "./pdfText";
 import {
   EVIDENCE_PACK_FOOTER,
   SOURCE_COLOUR,
@@ -24,6 +25,8 @@ import {
 } from "./evidencePack";
 import { REPORT_MUTED, REPORT_TEXT } from "./executiveReport";
 
+export { toWinAnsi };
+
 // A4 in points, with the HTML template's 18mm x 16mm margins.
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -34,57 +37,6 @@ const CONTENT_W = PAGE_W - MARGIN_X * 2;
 const NAVY = "#0b3d5b";
 const RULE = "#d5dde5";
 
-function colour(hex: string): RGB {
-  const n = Number.parseInt(hex.replace("#", ""), 16);
-  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
-}
-
-// Common characters outside WinAnsi, mapped to a readable equivalent.
-const SUBSTITUTES: Record<string, string> = {
-  "→": "->",
-  "←": "<-",
-  "≤": "<=",
-  "≥": ">=",
-  "≠": "!=",
-  "✓": "Yes",
-  "✔": "Yes",
-  "✗": "No",
-  "✘": "No",
-  "Ł": "L",
-  "ł": "l",
-  "Đ": "D",
-  "đ": "d",
-  "−": "-",
-  "‑": "-",
-  " ": " ",
-  " ": " ",
-  " ": " ",
-};
-
-/**
- * Pure: `text` restricted to what `font` can encode. Whitespace (newlines and
- * tabs included) collapses to single spaces, known symbols are spelled out,
- * accents a font lacks are dropped, and anything else becomes "?".
- */
-export function toWinAnsi(text: string, font: PDFFont): string {
-  const supported = new Set(font.getCharacterSet());
-  let out = "";
-  for (const ch of text.replace(/\s+/g, " ")) {
-    const cp = ch.codePointAt(0) ?? 63;
-    if (supported.has(cp)) {
-      out += ch;
-      continue;
-    }
-    const sub = SUBSTITUTES[ch];
-    if (sub !== undefined) {
-      out += sub;
-      continue;
-    }
-    const bare = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
-    out += bare && [...bare].every((c) => supported.has(c.codePointAt(0) ?? -1)) ? bare : "?";
-  }
-  return out.trim();
-}
 
 type Style = { font: PDFFont; size: number; colour: string; indent?: number; lineGap?: number; after?: number };
 

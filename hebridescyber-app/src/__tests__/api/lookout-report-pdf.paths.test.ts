@@ -14,7 +14,7 @@ const { authMock, loadMock, galleryMock, pdfMock, rateMock, adminMock } = vi.hoi
 vi.mock("@/lib/apiAuth", () => ({ authenticateApiRequest: authMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/adminAuth", () => ({ requireAdmin: adminMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: rateMock }));
-vi.mock("@/lib/reportPdf", () => ({ htmlToPdf: pdfMock }));
+vi.mock("@/lib/htmlPdf", () => ({ renderHtmlPdf: pdfMock }));
 vi.mock("@/lib/lookoutLookalikes", () => ({ loadReportLookalikes: async () => ({ available: false, newInPeriod: [], totalKnown: 0 }) }));
 vi.mock("@/lib/lookoutBreaches", () => ({ loadReportBreaches: async () => ({ available: false, sites: [] }) }));
 vi.mock("@/lib/reportTrends", async (orig) => ({ ...(await orig<typeof import("@/lib/reportTrends")>()), loadReportTrends: async () => ({ available: true, sites: [{ host: "a.example", start: 50, end: 70, change: 20 }], average: [{ at: "2026-11-01", score: 50 }, { at: "2026-11-19", score: 70 }] }) }));
@@ -61,7 +61,7 @@ describe("Lookout report PDF: the less common paths", () => {
     expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
     expect((await call(admin, { id: ID }))._getStatusCode()).toBe(500);
     loadMock.mockResolvedValue(report("published"));
-    pdfMock.mockRejectedValue(new Error("chromium missing"));
+    pdfMock.mockRejectedValue(new Error("render failed"));
     expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
     expect((await call(admin, { id: ID }))._getStatusCode()).toBe(500);
     spy.mockRestore();

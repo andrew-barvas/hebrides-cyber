@@ -1,15 +1,19 @@
 // Focused coverage added alongside E-12 (docs/ENHANCEMENTS.md): this route
-// had no test file at all before its rate limit was added. Covers only the
-// auth/rate-limit gates — the PDF-rendering path (Playwright/Chromium) is
-// out of scope for a unit test and isn't touched by either gate.
+// had no test file at all before its rate limit was added. It covers the
+// auth/rate-limit gates, branding, and that the PDF is drawn without a browser:
+// Playwright is mocked to fail the way it does on Azure Static Web Apps, where
+// no Chromium exists (every download answered 500 until htmlPdf.ts).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, checkRateLimitMock, renderMock } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, checkRateLimitMock, renderMock, launchMock, pdfSpy, captureMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   checkRateLimitMock: vi.fn(),
-  renderMock: vi.fn(() => "<html></html>"),
+  renderMock: vi.fn(() => "<html><head><title>Hebrides Cyber — www.example.com</title></head><body><h1>Hebrides Cyber</h1></body></html>"),
+  launchMock: vi.fn(),
+  pdfSpy: vi.fn(),
+  captureMock: vi.fn(),
 }));
 
 type QueueMap = Record<string, unknown[]>;
@@ -35,21 +39,13 @@ vi.mock("@/lib/apiAuth", () => ({
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
 vi.mock("@/lib/executiveReport", () => ({ renderExecutiveReportHtml: renderMock }));
 vi.mock("@/lib/findingTriage", () => ({ loadTriageIndexForTarget: async () => ({ index: null }) }));
-// Rendering the PDF is out of scope: a stand-in browser writes a placeholder.
-vi.mock("playwright", () => ({
-  chromium: {
-    launch: async () => ({
-      newPage: async () => ({
-        setContent: async () => undefined,
-        pdf: async ({ path: out }: { path: string }) => {
-          const { writeFile } = await import("node:fs/promises");
-          await writeFile(out, "%PDF-stub");
-        },
-      }),
-      close: async () => undefined,
-    }),
-  },
-}));
+vi.mock("playwright", () => ({ chromium: { launch: launchMock } }));
+vi.mock("@sentry/nextjs", () => ({ captureMessage: captureMock }));
+vi.mock("@/lib/htmlPdf", async (orig) => {
+  const real = await orig<typeof import("@/lib/htmlPdf")>();
+  pdfSpy.mockImplementation(real.renderHtmlPdf);
+  return { ...real, renderHtmlPdf: pdfSpy };
+});
 
 import handler from "@/pages/api/generate-report";
 
@@ -62,6 +58,8 @@ describe("GET /api/generate-report", () => {
     queues = {};
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+    launchMock.mockReset().mockRejectedValue(new Error("browserType.launch: Executable doesn't exist at /home/.cache/ms-playwright/chromium"));
+    captureMock.mockReset();
   });
 
   it("returns 405 for non-GET", async () => {
@@ -90,6 +88,33 @@ describe("GET /api/generate-report", () => {
     const { req, res } = mockReqRes({});
     await handler(req, res);
     expect(res._getStatusCode()).toBe(400);
+  });
+
+  describe("the PDF", () => {
+    const scanRow = { data: { scan_id: "scan-1", score: 80, results: { findings: [] }, scans: { owner: "owner-1", target_url: "https://www.example.com/", created_at: "2026-10-01T00:00:00Z" } }, error: null };
+
+    it("is drawn without Chromium, which Azure Static Web Apps doesn't have", async () => {
+      queues.scan_results = [scanRow];
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res.getHeader("Content-Type")).toBe("application/pdf");
+      expect(res.getHeader("Content-Disposition")).toBe('attachment; filename="hebridescyber-report-scan-1.pdf"');
+      const { PDFDocument } = await import("pdf-lib");
+      const doc = await PDFDocument.load(new Uint8Array(res._getData() as Buffer));
+      expect(doc.getTitle()).toBe("Hebrides Cyber — www.example.com");
+      expect(launchMock).not.toHaveBeenCalled();
+    });
+
+    it("answers a fixed message, and reports to Sentry, when drawing fails", async () => {
+      queues.scan_results = [scanRow];
+      pdfSpy.mockRejectedValueOnce(new Error("internal layout detail"));
+      const { req, res } = mockReqRes();
+      await handler(req, res);
+      expect(res._getStatusCode()).toBe(500);
+      expect(res._getData()).not.toContain("internal layout detail");
+      expect(captureMock).toHaveBeenCalledWith(expect.stringContaining("generate-report"), expect.anything());
+    });
   });
 
   describe("white-label branding", () => {

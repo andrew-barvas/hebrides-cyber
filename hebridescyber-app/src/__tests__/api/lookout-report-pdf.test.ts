@@ -14,7 +14,7 @@ const { authMock, loadMock, galleryMock, pdfMock, rateMock, adminMock } = vi.hoi
 vi.mock("@/lib/apiAuth", () => ({ authenticateApiRequest: authMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/adminAuth", () => ({ requireAdmin: adminMock, supabaseAdmin: { tag: "admin" } }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: rateMock }));
-vi.mock("@/lib/reportPdf", () => ({ htmlToPdf: pdfMock }));
+vi.mock("@/lib/htmlPdf", () => ({ renderHtmlPdf: pdfMock }));
 vi.mock("@/lib/lookoutReportPdf", async (orig) => ({ ...(await orig<typeof import("@/lib/lookoutReportPdf")>()), loadReportForPdf: loadMock, loadEstateGallery: galleryMock }));
 
 import customer from "@/pages/api/lookout/report-pdf";
@@ -60,7 +60,7 @@ describe("Lookout report PDF", () => {
     expect(pdfMock).not.toHaveBeenCalled();
   });
 
-  it("is rate-limited, since each call launches Chromium", async () => {
+  it("is rate-limited, since each call renders a PDF", async () => {
     rateMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
     const res = await call(customer, { id: ID });
     expect(res._getStatusCode()).toBe(429);
@@ -93,7 +93,7 @@ describe("admin Lookout report PDF failures", () => {
     expect((await call(admin, { id: ID }))._getStatusCode()).toBe(404);
     loadMock.mockRejectedValueOnce(new Error("db"));
     expect((await call(admin, { id: ID }))._getStatusCode()).toBe(500);
-    pdfMock.mockRejectedValueOnce(new Error("chromium"));
+    pdfMock.mockRejectedValueOnce(new Error("render failed"));
     const r = await call(admin, { id: ID });
     expect(r._getStatusCode()).toBe(500);
     expect(r._getData()).toContain("PDF render failed");
@@ -126,7 +126,7 @@ describe("customer Lookout report PDF failures", () => {
     expect(html.getHeader("Content-Type")).toContain("text/html");
     loadMock.mockRejectedValueOnce(new Error("db"));
     expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
-    pdfMock.mockRejectedValueOnce(new Error("chromium"));
+    pdfMock.mockRejectedValueOnce(new Error("render failed"));
     expect((await call(customer, { id: ID }))._getStatusCode()).toBe(500);
     err.mockRestore();
   });
