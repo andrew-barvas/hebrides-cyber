@@ -11,6 +11,7 @@ import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import EstateScreenshots from "@/components/EstateScreenshots";
+import type { ReportBreaches } from "@/lib/lookoutBreaches";
 
 type Report = { id: string; period_start: string; period_end: string; status: string; summary: string; published_at: string | null; acknowledged_at: string | null };
 type Item = { id: string; host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string };
@@ -22,7 +23,7 @@ const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: 
 export default function LookoutReportPage() {
   const { accessToken } = useAppSession();
   const params = useParams<{ id: string }>();
-  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null; lookalikes?: Lookalikes } | null>(null);
+  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null; lookalikes?: Lookalikes; breaches?: ReportBreaches } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,6 +123,41 @@ export default function LookoutReportPage() {
               </ul>
             </>
           )}
+        </section>
+      )}
+      {data.breaches?.available && (
+        <section aria-labelledby="breaches-heading" className="space-y-2 rounded-lg border border-cyberborder bg-cyberpanel p-4">
+          <h2 id="breaches-heading" className="font-semibold text-cybertext">Email addresses in known data breaches</h2>
+          <p className="text-sm text-cybertext/80">
+            From the Have I Been Pwned breach database. Anyone affected should change that password, and anywhere it was reused, and turn on multi-factor sign-in. We never see or store the addresses themselves.
+          </p>
+          <ul className="space-y-2 text-sm">
+            {data.breaches.sites.map((s) => (
+              <li key={s.host} className="break-words">
+                <span className="font-mono text-cybertext">{s.host}</span>{" "}
+                {s.status === "not_verified" ? (
+                  <span className="text-cybermuted">not enabled yet: the domain needs verifying with Have I Been Pwned. Your engineer can arrange this.</span>
+                ) : s.breaches.length === 0 ? (
+                  <span className="text-cybermuted">no addresses found in known breaches.</span>
+                ) : (
+                  <>
+                    <span className="text-cybertext/80">
+                      {s.affectedAliasCount} address{s.affectedAliasCount === 1 ? "" : "es"} found in:
+                    </span>
+                    <ul className="mt-1 list-disc pl-5 text-cybermuted">
+                      {s.breaches.map((b) => (
+                        <li key={b.name}>
+                          {b.title}
+                          {b.breachDate ? ` (${b.breachDate})` : ""}: {b.affectedAliasCount} address{b.affectedAliasCount === 1 ? "" : "es"}
+                          {b.dataClasses.length ? `; ${b.dataClasses.slice(0, 5).join(", ")}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
       {data.galleryScanId && accessToken && <EstateScreenshots scanId={data.galleryScanId} token={accessToken} />}
