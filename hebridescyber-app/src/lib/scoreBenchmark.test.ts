@@ -59,4 +59,12 @@ describe("loaders", () => {
     vi.stubEnv("SCORE_BENCHMARK_ENABLED", "true");
     expect(await freeCheckBenchmark(db({ data: null, error: { message: "function does not exist" } }), 70)).toBeNull();
   });
+
+  it("when on, a thrown database call means no benchmark", async () => {
+    vi.stubEnv("SCORE_BENCHMARK_ENABLED", "true");
+    const throwing = { rpc: () => { throw new Error("boom"); } } as unknown as SupabaseClient;
+    expect(await freeCheckBenchmark(throwing, 70)).toBeNull();
+    expect(await scanBenchmark(throwing, 70, "o1")).toBeNull();
+    expect(await scanBenchmark(db({ data: [{ total: "x", lower: 1 }], error: null }), 70, "o1")).toBeNull();
+  });
 });

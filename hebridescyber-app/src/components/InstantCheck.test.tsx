@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import InstantCheck from "./InstantCheck";
 
 const result = { target: "https://example.com", score: 90, counts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 }, total: 1, findings: [{ severity: "medium", title: "No DMARC record", detail: "d" }], hidden: 0, checkedAt: "2026-11-14T00:00:00Z" };
@@ -34,5 +34,17 @@ describe("InstantCheck", () => {
     render(<InstantCheck initialUrl="example.com" />);
     await waitFor(() => expect(screen.getByText("No DMARC record")).toBeInTheDocument());
     expect(screen.queryByText(/Better than/)).toBeNull();
+  });
+
+  it("runs a typed-in address, and shows the server's error or a network failure", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "That site has been checked a lot recently." }), { status: 429 })));
+    const { unmount } = render(<InstantCheck />);
+    fireEvent.change(screen.getByLabelText("Website address"), { target: { value: "example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(await screen.findByText("That site has been checked a lot recently.")).toBeInTheDocument();
+    unmount();
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    render(<InstantCheck initialUrl="example.com" />);
+    expect(await screen.findByText("Could not reach the service. Please try again.")).toBeInTheDocument();
   });
 });
