@@ -1,4 +1,4 @@
--- Migration 073: abort_engagement(), the engagement stop path
+-- Migration 083: abort_engagement(), the engagement stop path
 -- (docs/EXPLOITABILITY-ENGINE.md §10.6). One transaction, so a stop can't land
 -- half done: the engagement is aborted, every authorisation linked to it is
 -- revoked and its open simulations are withdrawn, or nothing changes and the

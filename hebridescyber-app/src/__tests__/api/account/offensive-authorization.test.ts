@@ -59,7 +59,7 @@ describe("/api/account/offensive-authorization with an engagement", () => {
     linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: false, reason } });
     const res = await call("POST", body);
     expect(res.statusCode).toBe(status);
-    expect(res._getJSONData().reason).toBe(reason);
+    expect((res._getJSONData() as { reason?: string }).reason).toBe(reason);
     expect(recordMock).not.toHaveBeenCalled();
   });
 

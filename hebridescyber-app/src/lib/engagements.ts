@@ -189,7 +189,7 @@ export async function checkAuthorizationLink(admin: SupabaseClient, owner: strin
 
 export type AbortOutcome = { outcome: "aborted" | "already_aborted"; from: EngagementState; revokedHosts: string[]; simulationsWithdrawn: number } | { outcome: "closed" } | { outcome: "not_found" };
 
-/** Calls abort_engagement() (migration 073), which does the whole stop in one transaction. */
+/** Calls abort_engagement() (migration 083), which does the whole stop in one transaction. */
 export async function abortEngagement(admin: SupabaseClient, id: string, reason: string | null): Promise<EngagementResult<AbortOutcome>> {
   const { data, error } = await admin.rpc("abort_engagement", { p_engagement_id: id, p_reason: reason });
   if (error) return error.code === "PGRST202" || error.code === "42883" ? { status: "unavailable" } : failure(error);
