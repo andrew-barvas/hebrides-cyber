@@ -3,12 +3,16 @@ name: Tool integration
 # Runs the real sqlmap, nuclei, gospider and kiterunner (and, informationally,
 # commix) against a deliberately vulnerable app on localhost, so the parsers in
 # src/worker/tools are checked against real output rather than assumptions
-# (E-72). Weekly, on changes to the tool wrappers, and on demand.
+# (E-72). Weekly, once per merge that touches the tool wrappers, and on demand.
+# It ran on every push to a matching pull request (~14 minutes each) until the
+# repo went private; to check a wrapper change before merging, dispatch it
+# on the PR's branch: gh workflow run tool-integration.yml --ref <branch>
 on:
   workflow_dispatch:
   schedule:
     - cron: "17 4 * * 1"
-  pull_request:
+  push:
+    branches: [master]
     paths:
       - "hebridescyber-app/src/worker/tools/sqlmap*.ts"
       - "hebridescyber-app/src/worker/tools/commix*.ts"
