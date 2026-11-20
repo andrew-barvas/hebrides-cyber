@@ -301,7 +301,7 @@ Built the same day as draft PRs, one per idea. None is merged.
 | 5 | Quiet-by-default alerts | #271: mostly already built. Fixed a misleading option label, made the filter skip triaged findings, and added the first-seen date |
 | 6 | Suggest sites from tenants | #275: Microsoft 365 only. Workspace waits for OT-58, and OT-66 is a decision for you |
 | 7 | Trend charts | #276: Lookout report (page and PDF) and Agency portfolio |
-| 8 | Shared fix plan | #278: migration 083, hashed link tokens, public `/plan/<token>` |
+| 8 | Shared fix plan | #278: a migration, hashed link tokens, public `/plan/<token>` |
 | 9 | Usage and "what counts" | #272: the meter already existed; added the definition to `/pricing` |
 | 10 | Exploit delivery pack | Not started: blocked on OT-13 and OT-51, and the Exploit drafts are another session's |
 | 11 | Sample Lookout report | #279: `/lookout/sample` |
@@ -309,7 +309,7 @@ Built the same day as draft PRs, one per idea. None is merged.
 | 13 | Phishing phase 1 | Not started: needs OT-59 to OT-61 |
 | 14 | Trust page documents | Not started: the next candidate (file storage and abuse controls) |
 
-Migration numbers 083 and 084 assume 080 to 082 land as the open PRs number them.
+#278 and #281 each add a migration numbered 082, the next free number on master. Whichever merges second renumbers to 083.
 
 ## 8. Owner decisions (not code)
 
