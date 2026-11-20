@@ -1,4 +1,4 @@
--- Migration 081: Tier A offensive-scan authorizations expire (audit M5,
+-- Migration 082: Tier A offensive-scan authorizations expire (audit M5,
 -- AUDIT-2026-11-POST-MERGE.md).
 --
 -- Recording one now requires an expiry at most 30 days away
