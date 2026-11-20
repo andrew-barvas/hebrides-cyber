@@ -1,4 +1,4 @@
-// Documents on the public security profile (migration 083,
+// Documents on the public security profile (migration 087,
 // COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md idea 14): a small trust centre.
 // UpGuard's Trust Exchange and Vanta's Trust Center are the pattern; ours
 // sits on the profile a customer already publishes.

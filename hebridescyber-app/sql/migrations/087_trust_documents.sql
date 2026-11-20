@@ -1,4 +1,4 @@
--- Migration 083: documents on the public security profile
+-- Migration 087: documents on the public security profile
 -- (COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md idea 14: a small trust centre).
 --
 -- An owner attaches PDFs (a Cyber Essentials certificate, an insurance
