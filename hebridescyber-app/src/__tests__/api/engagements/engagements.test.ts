@@ -16,6 +16,10 @@ const m = vi.hoisted(() => ({
   scope: vi.fn(),
   abort: vi.fn(),
   insert: vi.fn(),
+  contacts: vi.fn(),
+  windows: vi.fn(),
+  replaceContacts: vi.fn(),
+  replaceWindows: vi.fn(),
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -34,12 +38,18 @@ vi.mock("@/lib/engagements", async (original) => ({
   updateEngagement: m.update,
   applyScopeChanges: m.scope,
   abortEngagement: m.abort,
+  loadContacts: m.contacts,
+  loadTestingWindows: m.windows,
+  replaceContacts: m.replaceContacts,
+  replaceTestingWindows: m.replaceWindows,
 }));
 
 import createHandler from "@/pages/api/engagements/index";
 import patchHandler from "@/pages/api/engagements/[id]/index";
 import scopeHandler from "@/pages/api/engagements/[id]/scope";
 import abortHandler from "@/pages/api/engagements/[id]/abort";
+import contactsHandler from "@/pages/api/engagements/[id]/contacts";
+import windowsHandler from "@/pages/api/engagements/[id]/windows";
 
 const ID = "e1000000-0000-4000-8000-000000000001";
 const OWNER = "a1000000-0000-4000-8000-000000000001";
@@ -47,7 +57,20 @@ const ADMIN = "a2000000-0000-4000-8000-000000000002";
 const START = "2026-11-01T00:00:00.000Z";
 const END = "2026-11-30T00:00:00.000Z";
 
-const engagement = (over = {}) => ({ id: ID, owner: OWNER, state: "scoped", window_start: START, window_end: END, contract_signed_at: START, ...over });
+const EXPIRES = "2099-01-01T00:00:00.000Z";
+
+const engagement = (over = {}) => ({
+  id: ID,
+  owner: OWNER,
+  state: "scoped",
+  window_start: START,
+  window_end: END,
+  contract_signed_at: START,
+  roe_signed_at: START,
+  roe_document_ref: "ROE-1 v1",
+  expires_at: EXPIRES,
+  ...over,
+});
 
 async function call(handler: typeof createHandler, method: string, body?: unknown, id = ID) {
   const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: method as "POST", query: { id }, body: body as Record<string, unknown>, headers: { authorization: "Bearer t" } });
@@ -68,6 +91,10 @@ beforeEach(() => {
   m.scope.mockResolvedValue({ status: "ok", data: { added: [], removed: [], refused: [] } });
   m.insert.mockResolvedValue({ data: { id: ID }, error: null });
   m.abort.mockResolvedValue({ status: "ok", data: { outcome: "aborted", from: "in_window", revokedHosts: ["a.test", "b.test"], simulationsWithdrawn: 1 } });
+  m.contacts.mockResolvedValue({ status: "ok", data: [{ id: "c1", kind: "emergency", name: "On call", role: null, email: "oncall@a.test", phone: null }] });
+  m.windows.mockResolvedValue({ status: "ok", data: [] });
+  m.replaceContacts.mockImplementation(async (_a, _e, _actor, contacts: { kind: string }[]) => ({ status: "ok", data: contacts.map((c, i) => ({ id: `c${i}`, ...c })) }));
+  m.replaceWindows.mockImplementation(async (_a, _e, _actor, windows: unknown[]) => ({ status: "ok", data: windows.map((w, i) => ({ id: `w${i}`, ...(w as object) })) }));
 });
 
 describe.each([
@@ -175,6 +202,65 @@ describe("PATCH /api/engagements/{id}", () => {
     expect((await call(patchHandler, "PATCH", { windowStart: "2027-01-01T00:00:00.000Z" })).status).toBe(400);
   });
 
+  it("records the customer, the signed rules of engagement, the contract document and the expiry, auditing field names only", async () => {
+    const roe = { documentRef: "ROE-7 v2", documentSha256: "a".repeat(64), signedAt: START, signedByName: "A Person", signedByRole: "CTO" };
+    const contract = { signedAt: START, signedByName: "A Person", signedByRole: "CTO", documentRef: "Contracts/ENG-7.pdf" };
+    const { status } = await call(patchHandler, "PATCH", { customerName: "Acme Ltd", roe, contract, expiresAt: EXPIRES });
+    expect(status).toBe(200);
+    expect(m.update.mock.calls[0][3]).toMatchObject({
+      customer_name: "Acme Ltd",
+      roe_document_ref: "ROE-7 v2",
+      roe_document_sha256: "a".repeat(64),
+      roe_signed_at: START,
+      roe_signed_by_name: "A Person",
+      roe_signed_by_role: "CTO",
+      contract_document_ref: "Contracts/ENG-7.pdf",
+      expires_at: EXPIRES,
+    });
+    expect(m.audit.mock.calls[0][1]).toMatchObject({ action: "engagement.updated", metadata: { fields: ["expiry", "customer", "contract", "rules_of_engagement"] } });
+    expect(JSON.stringify(m.audit.mock.calls)).not.toContain("A Person");
+  });
+
+  it("rejects a malformed document hash and an expiry before the window ends", async () => {
+    const roe = { documentRef: "ROE-7", documentSha256: "not-a-hash", signedAt: START, signedByName: "A", signedByRole: "B" };
+    expect((await call(patchHandler, "PATCH", { roe })).status).toBe(400);
+    expect((await call(patchHandler, "PATCH", { expiresAt: "2026-11-15T00:00:00.000Z" })).status).toBe(400);
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it("freezes the rules of engagement, customer and expiry once authorised", async () => {
+    m.load.mockResolvedValue({ status: "ok", data: engagement({ state: "in_window" }) });
+    expect((await call(patchHandler, "PATCH", { expiresAt: EXPIRES })).status).toBe(409);
+    expect((await call(patchHandler, "PATCH", { customerName: "X" })).status).toBe(409);
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses `authorised` without signed rules of engagement, an expiry or an emergency contact", async () => {
+    m.load.mockResolvedValue({ status: "ok", data: engagement({ roe_signed_at: null }) });
+    expect((await call(patchHandler, "PATCH", { to: "authorised" })).body.reason).toBe("roe_not_signed");
+    m.load.mockResolvedValue({ status: "ok", data: engagement({ expires_at: null }) });
+    expect((await call(patchHandler, "PATCH", { to: "authorised" })).body.reason).toBe("expiry_not_set");
+    m.load.mockResolvedValue({ status: "ok", data: engagement() });
+    m.contacts.mockResolvedValue({ status: "ok", data: [{ id: "c1", kind: "technical", name: "Dev", role: null, email: "d@a.test", phone: null }] });
+    expect((await call(patchHandler, "PATCH", { to: "authorised" })).body.reason).toBe("no_emergency_contact");
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the contacts can't be read", async () => {
+    m.contacts.mockResolvedValue({ status: "error", error: { message: "relation engagement_contacts boom" } });
+    const { status, body } = await call(patchHandler, "PATCH", { to: "authorised" });
+    expect(status).toBe(500);
+    expect(JSON.stringify(body)).not.toContain("engagement_contacts");
+  });
+
+  it("won't move the overall window so that a testing window falls outside it", async () => {
+    m.windows.mockResolvedValue({ status: "ok", data: [{ id: "w1", starts_at: "2026-11-02T09:00:00.000Z", ends_at: "2026-11-02T17:00:00.000Z" }] });
+    const { status, body } = await call(patchHandler, "PATCH", { windowStart: "2026-11-05T00:00:00.000Z" });
+    expect(status).toBe(409);
+    expect(body.reason).toBe("outside_engagement_window");
+    expect(m.update).not.toHaveBeenCalled();
+  });
+
   it("is 409 when someone else moved it first, without auditing a move that didn't happen", async () => {
     m.update.mockResolvedValue({ status: "ok", data: null });
     expect((await call(patchHandler, "PATCH", { to: "authorised" })).status).toBe(409);
@@ -276,5 +362,95 @@ describe("POST /api/engagements/{id}/abort", () => {
     // planAccess isn't even loaded by this route; the stop must not depend on it.
     const source = (await import("node:fs")).readFileSync("src/pages/api/engagements/[id]/abort.ts", "utf8");
     expect(source).not.toMatch(/planGate|checkRateLimit/);
+  });
+});
+
+describe.each([
+  ["PUT /api/engagements/{id}/contacts", contactsHandler, { contacts: [{ kind: "emergency", name: "On call", email: "oncall@a.test" }] }],
+  ["PUT /api/engagements/{id}/windows", windowsHandler, { windows: [{ startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T17:00:00.000Z" }] }],
+] as const)("%s", (_name, handler, body) => {
+  it("is 403 for anyone but an admin session, and changes nothing", async () => {
+    m.requireAdmin.mockResolvedValue(null);
+    expect((await call(handler, "PUT", body)).status).toBe(403);
+    expect(m.replaceContacts).not.toHaveBeenCalled();
+    expect(m.replaceWindows).not.toHaveBeenCalled();
+  });
+
+  it("rejects other methods, with Allow", async () => {
+    const { status, allow } = await call(handler, "POST", body);
+    expect(status).toBe(405);
+    expect(allow).toBe("PUT");
+  });
+
+  it.each(["authorised", "in_window", "reported", "closed", "aborted"])("is 409 in state %s", async (state) => {
+    m.load.mockResolvedValue({ status: "ok", data: engagement({ state }) });
+    expect((await call(handler, "PUT", body)).status).toBe(409);
+    expect(m.replaceContacts).not.toHaveBeenCalled();
+    expect(m.replaceWindows).not.toHaveBeenCalled();
+  });
+
+  it("is 404 for a malformed id or a missing engagement", async () => {
+    expect((await call(handler, "PUT", body, "nope")).status).toBe(404);
+    m.load.mockResolvedValue({ status: "not_found" });
+    expect((await call(handler, "PUT", body)).status).toBe(404);
+  });
+});
+
+describe("PUT /api/engagements/{id}/contacts", () => {
+  it("replaces the list and audits counts per kind, never names or details", async () => {
+    const contacts = [
+      { kind: "authoriser", name: "A Person", role: "CTO", email: "cto@a.test" },
+      { kind: "emergency", name: "On call", phone: "+44 1851 000000" },
+      { kind: "emergency", name: "Backup", email: "backup@a.test" },
+    ];
+    const { status, body } = await call(contactsHandler, "PUT", { contacts });
+    expect(status).toBe(200);
+    expect((body.contacts as unknown[]).length).toBe(3);
+    expect(m.replaceContacts).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: ID, owner: OWNER }), ADMIN, contacts);
+    expect(m.audit.mock.calls[0][1]).toMatchObject({ action: "engagement.contacts_updated", metadata: { authoriser: 1, technical: 0, emergency: 2 } });
+    const audited = JSON.stringify(m.audit.mock.calls);
+    for (const secret of ["A Person", "cto@a.test", "1851"]) expect(audited).not.toContain(secret);
+  });
+
+  it("needs an email or a phone on every contact, and a known kind", async () => {
+    expect((await call(contactsHandler, "PUT", { contacts: [{ kind: "emergency", name: "Nobody" }] })).status).toBe(400);
+    expect((await call(contactsHandler, "PUT", { contacts: [{ kind: "boss", name: "X", email: "x@a.test" }] })).status).toBe(400);
+    expect((await call(contactsHandler, "PUT", { contacts: [{ kind: "technical", name: "X", phone: "call me" }] })).status).toBe(400);
+    expect(m.replaceContacts).not.toHaveBeenCalled();
+  });
+
+  it("hides database text on a failed write", async () => {
+    m.replaceContacts.mockResolvedValue({ status: "error", error: { message: "engagement_contacts_reachable_check" } });
+    const { status, body } = await call(contactsHandler, "PUT", { contacts: [] });
+    expect(status).toBe(500);
+    expect(JSON.stringify(body)).not.toContain("engagement_contacts");
+  });
+});
+
+describe("PUT /api/engagements/{id}/windows", () => {
+  it("replaces the list and audits the count", async () => {
+    const windows = [
+      { startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T17:00:00.000Z" },
+      { startsAt: "2026-11-03T09:00:00.000Z", endsAt: "2026-11-03T17:00:00.000Z" },
+    ];
+    expect((await call(windowsHandler, "PUT", { windows })).status).toBe(200);
+    expect(m.replaceWindows).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: ID }), ADMIN, windows);
+    expect(m.audit.mock.calls[0][1]).toMatchObject({ action: "engagement.windows_updated", metadata: { count: 2 } });
+  });
+
+  it("refuses a slot outside the overall window, one that ends before it starts, and any slot with no overall window", async () => {
+    const outside = await call(windowsHandler, "PUT", { windows: [{ startsAt: "2026-12-02T09:00:00.000Z", endsAt: "2026-12-02T17:00:00.000Z" }] });
+    expect(outside).toMatchObject({ status: 400, body: { reason: "outside_engagement_window", index: 0 } });
+    const backwards = await call(windowsHandler, "PUT", { windows: [{ startsAt: "2026-11-02T17:00:00.000Z", endsAt: "2026-11-02T09:00:00.000Z" }] });
+    expect(backwards.body.reason).toBe("end_before_start");
+    m.load.mockResolvedValue({ status: "ok", data: engagement({ window_start: null }) });
+    const unset = await call(windowsHandler, "PUT", { windows: [{ startsAt: "2026-11-02T09:00:00.000Z", endsAt: "2026-11-02T17:00:00.000Z" }] });
+    expect(unset.body.reason).toBe("window_not_set");
+    expect(m.replaceWindows).not.toHaveBeenCalled();
+  });
+
+  it("lets an empty list clear the slots, leaving the overall window as the only limit", async () => {
+    expect((await call(windowsHandler, "PUT", { windows: [] })).status).toBe(200);
+    expect(m.replaceWindows.mock.calls[0][3]).toEqual([]);
   });
 });

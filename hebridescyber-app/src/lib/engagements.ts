@@ -18,7 +18,8 @@ import { isAuthorizationCurrent } from "./offensiveAuthorization";
 import { isDomainVerified } from "./ownership";
 
 export const ENGAGEMENT_COLUMNS =
-  "id, owner, reference, state, scan_profile, window_start, window_end, contract_signed_at, contract_signed_by_name, contract_signed_by_role, created_at, closed_at, aborted_at, abort_reason";
+  "id, owner, reference, state, scan_profile, window_start, window_end, contract_signed_at, contract_signed_by_name, contract_signed_by_role, created_at, closed_at, aborted_at, abort_reason, " +
+  "customer_name, contract_document_ref, roe_document_ref, roe_document_sha256, roe_signed_at, roe_signed_by_name, roe_signed_by_role, expires_at";
 
 export type EngagementRow = {
   id: string;
@@ -35,7 +36,21 @@ export type EngagementRow = {
   closed_at: string | null;
   aborted_at: string | null;
   abort_reason: string | null;
+  /** Migration 084: the rest of the record an authorised test needs. */
+  customer_name: string | null;
+  contract_document_ref: string | null;
+  roe_document_ref: string | null;
+  roe_document_sha256: string | null;
+  roe_signed_at: string | null;
+  roe_signed_by_name: string | null;
+  roe_signed_by_role: string | null;
+  expires_at: string | null;
 };
+
+export const CONTACT_KINDS = ["authoriser", "technical", "emergency"] as const;
+export type ContactKind = (typeof CONTACT_KINDS)[number];
+export type EngagementContact = { id: string; kind: ContactKind; name: string; role: string | null; email: string | null; phone: string | null };
+export type TestingWindow = { id: string; starts_at: string; ends_at: string };
 
 type DbError = { code?: string; message?: string };
 export type EngagementFailure = { status: "not_found" | "unavailable" } | { status: "error"; error: DbError };
@@ -89,9 +104,16 @@ export async function loadIncludedHostFacts(admin: SupabaseClient, engagement: P
       host,
       domainVerified: await isDomainVerified(admin, engagement.owner, `https://${host}/`),
       authorizationLinkedAndCurrent: authRows.some((a) => a.target_host === host && isAuthorizationCurrent(a, now)),
+      authorizationExpiresAt: latestExpiry(authRows.filter((a) => a.target_host === host && isAuthorizationCurrent(a, now))),
     });
   }
   return { status: "ok", data: hosts };
+}
+
+/** The latest expiry among current rows; null when one of them never expires or there are none. */
+function latestExpiry(rows: readonly { expires_at: string | null }[]): string | null {
+  if (rows.length === 0 || rows.some((r) => !r.expires_at)) return null;
+  return rows.map((r) => r.expires_at as string).sort().at(-1) ?? null;
 }
 
 export type ScopeAdd = { host: string; included: boolean; trustGroup?: string };
@@ -197,4 +219,79 @@ export async function abortEngagement(admin: SupabaseClient, id: string, reason:
   if (row.outcome === "closed") return { status: "ok", data: { outcome: "closed" } };
   if (row.outcome === "not_found") return { status: "ok", data: { outcome: "not_found" } };
   return { status: "ok", data: { outcome: row.outcome, from: row.from as EngagementState, revokedHosts: row.revoked_hosts ?? [], simulationsWithdrawn: row.simulations_withdrawn ?? 0 } };
+}
+
+/** The details still editable before an engagement is authorised. After that, what was checked stays on record. */
+export function isEditableState(state: EngagementState): boolean {
+  return state === "booked" || state === "scoped";
+}
+
+export async function loadContacts(admin: SupabaseClient, engagementId: string): Promise<EngagementResult<EngagementContact[]>> {
+  const { data, error } = await admin.from("engagement_contacts").select("id, kind, name, role, email, phone").eq("engagement_id", engagementId).is("removed_at", null).order("added_at", { ascending: true });
+  if (error) return failure(error);
+  return { status: "ok", data: (data ?? []) as EngagementContact[] };
+}
+
+export async function loadTestingWindows(admin: SupabaseClient, engagementId: string): Promise<EngagementResult<TestingWindow[]>> {
+  const { data, error } = await admin.from("engagement_testing_windows").select("id, starts_at, ends_at").eq("engagement_id", engagementId).is("removed_at", null).order("starts_at", { ascending: true });
+  if (error) return failure(error);
+  return { status: "ok", data: (data ?? []) as TestingWindow[] };
+}
+
+/**
+ * Replaces an engagement's active rows in `table` with `rows`. The new rows go in
+ * first and only then are the old ones marked removed, so a failure partway never
+ * leaves the engagement with none. History stays: nothing is deleted.
+ */
+async function replaceActiveRows<T extends { id: string }>(
+  admin: SupabaseClient,
+  table: "engagement_contacts" | "engagement_testing_windows",
+  engagement: Pick<EngagementRow, "id" | "owner">,
+  actorId: string,
+  rows: readonly Record<string, unknown>[],
+  columns: string,
+): Promise<EngagementResult<T[]>> {
+  let inserted: T[] = [];
+  if (rows.length > 0) {
+    const { data, error } = await admin
+      .from(table)
+      .insert(rows.map((r) => ({ ...r, engagement_id: engagement.id, owner: engagement.owner, added_by: actorId })))
+      .select(columns);
+    if (error) return failure(error);
+    inserted = (data ?? []) as unknown as T[];
+  }
+  let removal = admin.from(table).update({ removed_at: new Date().toISOString() }).eq("engagement_id", engagement.id).is("removed_at", null);
+  if (inserted.length > 0) removal = removal.not("id", "in", `(${inserted.map((r) => r.id).join(",")})`);
+  const { error } = await removal;
+  if (error) return failure(error);
+  return { status: "ok", data: inserted };
+}
+
+export type ContactInput = { kind: ContactKind; name: string; role?: string; email?: string; phone?: string };
+
+export function replaceContacts(admin: SupabaseClient, engagement: Pick<EngagementRow, "id" | "owner">, actorId: string, contacts: readonly ContactInput[]): Promise<EngagementResult<EngagementContact[]>> {
+  const rows = contacts.map((c) => ({ kind: c.kind, name: c.name, role: c.role ?? null, email: c.email ?? null, phone: c.phone ?? null }));
+  return replaceActiveRows<EngagementContact>(admin, "engagement_contacts", engagement, actorId, rows, "id, kind, name, role, email, phone");
+}
+
+export function replaceTestingWindows(admin: SupabaseClient, engagement: Pick<EngagementRow, "id" | "owner">, actorId: string, windows: readonly { startsAt: string; endsAt: string }[]): Promise<EngagementResult<TestingWindow[]>> {
+  const rows = windows.map((w) => ({ starts_at: w.startsAt, ends_at: w.endsAt }));
+  return replaceActiveRows<TestingWindow>(admin, "engagement_testing_windows", engagement, actorId, rows, "id, starts_at, ends_at");
+}
+
+export type WindowProblem = "window_not_set" | "outside_engagement_window" | "end_before_start";
+
+/** Every testing window must sit inside the engagement's overall window. Null when they all do. */
+export function checkTestingWindows(engagement: Pick<EngagementRow, "window_start" | "window_end">, windows: readonly { startsAt: string; endsAt: string }[]): { problem: WindowProblem; index?: number } | null {
+  if (windows.length === 0) return null;
+  const outerStart = engagement.window_start ? Date.parse(engagement.window_start) : NaN;
+  const outerEnd = engagement.window_end ? Date.parse(engagement.window_end) : NaN;
+  if (Number.isNaN(outerStart) || Number.isNaN(outerEnd)) return { problem: "window_not_set" };
+  for (const [index, w] of windows.entries()) {
+    const start = Date.parse(w.startsAt);
+    const end = Date.parse(w.endsAt);
+    if (!(end > start)) return { problem: "end_before_start", index };
+    if (start < outerStart || end > outerEnd) return { problem: "outside_engagement_window", index };
+  }
+  return null;
 }

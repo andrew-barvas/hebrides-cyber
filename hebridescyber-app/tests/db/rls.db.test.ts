@@ -60,6 +60,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "engagement_scope_hosts", ownerCol: "owner", insert: `insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ('${ENG_A}', $1, 'new.test', true, $1)` },
   { table: "exploit_chains", ownerCol: "owner", insert: `insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, '${ENG_A}', '{}', 0, 'exp-v1', 'pc-test')` },
   { table: "exploit_simulations", ownerCol: "owner", insert: `insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, '${ENG_A}', $1, '{}', 'exp-v1')` },
+  { table: "engagement_contacts", ownerCol: "owner", insert: `insert into engagement_contacts (engagement_id, owner, kind, name, email, added_by) values ('${ENG_A}', $1, 'emergency', 'n', 'n@x.test', $1)` },
+  { table: "engagement_testing_windows", ownerCol: "owner", insert: `insert into engagement_testing_windows (engagement_id, owner, starts_at, ends_at, added_by) values ('${ENG_A}', $1, now(), now() + interval '1 hour', $1)` },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -70,7 +72,7 @@ const SERVICE_WRITE_ONLY = [
   "deletion_requests", "asset_inventory", "dns_snapshots", "offensive_scan_authorizations",
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
   "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors", "custom_nuclei_templates", "m365_tenants",
-  "exploitability_assessments", "engagements", "engagement_scope_hosts", "exploit_chains", "exploit_simulations",
+  "exploitability_assessments", "engagements", "engagement_scope_hosts", "exploit_chains", "exploit_simulations", "engagement_contacts", "engagement_testing_windows",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -135,6 +137,8 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ($1, $2, $3, true, $2)", [eng, o, h]);
       await q("insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, $2, '{}', 0, 'exp-v1', 'pc-test')", [o, eng]);
       await q("insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, $2, $1, '{}', 'exp-v1')", [o, eng]);
+      await q("insert into engagement_contacts (engagement_id, owner, kind, name, email, added_by) values ($1, $2, 'emergency', 'n', 'n@x.test', $2)", [eng, o]);
+      await q("insert into engagement_testing_windows (engagement_id, owner, starts_at, ends_at, added_by) values ($1, $2, now(), now() + interval '1 hour', $2)", [eng, o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
