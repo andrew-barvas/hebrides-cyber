@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeHtml, REPORT_MUTED, REPORT_TEXT } from "./executiveReport";
 import { isScreenshotFileName, SCREENSHOT_CONTAINER } from "./estateScreenshots";
 import type { ReportStatus } from "./lookoutReports";
+import type { ReportLookalikes } from "./lookoutLookalikes";
 
 export const GALLERY_MAX = 12;
 const GALLERY_SCANS = 5;
@@ -21,7 +22,7 @@ export type LookoutPdfReport = {
 };
 export type LookoutPdfItem = { host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string | null };
 export type GalleryImage = { host: string; dataUri: string };
-export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; now?: Date };
+export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; lookalikes?: ReportLookalikes; now?: Date };
 
 const SEVERITY_COLOUR: Record<string, string> = { critical: "#7f1d1d", high: "#b91c1c", medium: "#b45309", low: "#1d4ed8", info: "#475569" };
 const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: "Your IT supplier", hosting_provider: "Your hosting provider", unknown: "To be agreed" };
@@ -58,6 +59,19 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
        <div class="gallery">${gallery.map((g) => `<figure><img src="${g.dataUri}" alt="" /><figcaption>${e(g.host)}</figcaption></figure>`).join("")}</div>`
     : "";
 
+  const lookalikes = input.lookalikes;
+  const lookalikeHtml =
+    lookalikes?.available && lookalikes.newInPeriod.length > 0
+      ? `<h2>Lookalike domains</h2>
+       <p class="muted">Registered domains one character away from yours, with a certificate already issued: a common setup for phishing your customers or staff. They may be unrelated to you; it's worth checking who owns them and what they show.</p>
+       <table><thead><tr><th>Domain</th><th>How it differs</th><th>Spotted</th></tr></thead><tbody>${lookalikes.newInPeriod
+         .map((l) => `<tr><td><b>${e(l.domain)}</b> <span class="muted">(looks like ${e(l.targetDomain)})</span></td><td>${e(l.how)}</td><td>${e(l.spottedAt.slice(0, 10))}</td></tr>`)
+         .join("")}</tbody></table>
+       <p class="muted">${lookalikes.totalKnown} lookalike domain${lookalikes.totalKnown === 1 ? "" : "s"} known in all.</p>`
+      : lookalikes?.available
+        ? `<h2>Lookalike domains</h2><p class="muted">No new lookalike domains of yours were spotted this period${lookalikes.totalKnown ? ` (${lookalikes.totalKnown} known from before)` : ""}.</p>`
+        : "";
+
   const state =
     report.status === "draft"
       ? '<div class="draft">DRAFT — not yet published to the customer</div>'
@@ -76,6 +90,8 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
   .muted { color: ${REPORT_MUTED}; }
   .draft { margin-top: 8px; color: #b45309; font-weight: bold; letter-spacing: 0.04em; }
   .sev { display: inline-block; color: #fff; text-transform: uppercase; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; vertical-align: middle; }
+  table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #e4e9ee; vertical-align: top; }
+  th { font-size: 10px; text-transform: uppercase; color: ${REPORT_MUTED}; }
   .item { page-break-inside: avoid; border-bottom: 1px solid #e4e9ee; padding: 10px 0; } .item p { margin: 4px 0 0; }
   .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   figure { margin: 0; page-break-inside: avoid; } figure img { width: 100%; border: 1px solid #d5dde5; border-radius: 4px; }
@@ -93,6 +109,8 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
 
   <h2>What to fix, in order</h2>
   ${rows || '<p class="muted">Nothing needs fixing from this period.</p>'}
+
+  ${lookalikeHtml}
 
   ${galleryHtml}
 

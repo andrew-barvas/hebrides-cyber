@@ -261,6 +261,11 @@ const TECHNIQUE_LABELS: Record<string, string> = {
   "tld-swap": "a different top-level domain",
 };
 
+/** Plain-English name for how a lookalike was made ("a character removed"). */
+export function lookalikeTechniqueLabel(technique: string): string {
+  return TECHNIQUE_LABELS[technique] ?? technique;
+}
+
 function formatDate(iso: string): string {
   const t = Date.parse(iso);
   return Number.isFinite(t) ? new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) : "an unknown date";
