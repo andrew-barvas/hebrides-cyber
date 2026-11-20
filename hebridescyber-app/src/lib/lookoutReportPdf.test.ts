@@ -45,6 +45,15 @@ describe("renderLookoutReportHtml", () => {
     expect(renderLookoutReportHtml({ ...base, lookalikes: { ...lookalikes, newInPeriod: [] } })).not.toContain("What to do");
   });
 
+  it("shows the score over the period when there's history, and nothing otherwise", () => {
+    const trends = { available: true, sites: [{ host: "shop.example.com", start: 50, end: 80, change: 30 }], average: [{ at: "2026-10-27", score: 50 }, { at: "2026-11-19", score: 80 }] };
+    const html = renderLookoutReportHtml({ ...base, trends });
+    expect(html).toContain("Your security score over this period");
+    expect(html).toContain("<svg");
+    expect(html).toContain("<td>+30</td>");
+    expect(renderLookoutReportHtml(base)).not.toContain("over this period");
+  });
+
   it("names the file by the period's end", () => {
     expect(lookoutPdfFileName(base.report)).toBe("lookout-report-2026-11-19.pdf");
   });

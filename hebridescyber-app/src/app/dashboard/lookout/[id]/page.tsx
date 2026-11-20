@@ -12,7 +12,9 @@ import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import EstateScreenshots from "@/components/EstateScreenshots";
-import type { ReportBreaches } from "@/lib/lookoutBreaches";
+import type { ReportBreaches } from "@/lib/lookoutBreaches";
+import ScoreTrend from "@/components/ScoreTrend";
+import { formatChange, type ReportTrends } from "@/lib/reportTrends";
 
 type Report = { id: string; period_start: string; period_end: string; status: string; summary: string; published_at: string | null; acknowledged_at: string | null };
 type Item = { id: string; host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string };
@@ -24,7 +26,7 @@ const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: 
 export default function LookoutReportPage() {
   const { accessToken } = useAppSession();
   const params = useParams<{ id: string }>();
-  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null; lookalikes?: Lookalikes; breaches?: ReportBreaches } | null>(null);
+  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null; lookalikes?: Lookalikes; breaches?: ReportBreaches; trends?: ReportTrends } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,6 +86,33 @@ export default function LookoutReportPage() {
         </Button>
       </div>
       {report.summary && <p className="whitespace-pre-line text-cybertext">{report.summary}</p>}
+      {data.trends?.available && (
+        <section aria-labelledby="trend-heading" className="space-y-3 rounded-lg border border-cyberborder bg-cyberpanel p-4">
+          <h2 id="trend-heading" className="font-semibold text-cybertext">Your security score over this period</h2>
+          {data.trends.average.length >= 2 && <ScoreTrend points={data.trends.average.map((p) => ({ date: p.at, score: p.score }))} />}
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase text-cybermuted">
+                <th className="py-1 pr-2 font-normal">Site</th>
+                <th className="py-1 pr-2 font-normal">Start</th>
+                <th className="py-1 pr-2 font-normal">End</th>
+                <th className="py-1 font-normal">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.trends.sites.map((s) => (
+                <tr key={s.host} className="border-t border-cyberborder">
+                  <td className="break-all py-1 pr-2 text-cybertext">{s.host}</td>
+                  <td className="py-1 pr-2 text-cybertext/80">{s.start ?? "—"}</td>
+                  <td className="py-1 pr-2 font-semibold text-cybertext">{s.end ?? "—"}</td>
+                  <td className={`py-1 ${s.change !== null && s.change < 0 ? "text-danger" : "text-cybertext/80"}`}>{formatChange(s.change)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-xs text-cybermuted">{data.trends.sites.length > 1 ? "The chart is the average across your sites, week by week. " : ""}A site&apos;s score is from its latest scan.</p>
+        </section>
+      )}
       <ol className="space-y-4">
         {items.map((i) => (
           <li key={i.id} className="rounded-lg border border-cyberborder bg-cyberpanel p-4">
