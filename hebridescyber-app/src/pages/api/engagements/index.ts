@@ -18,8 +18,11 @@ const bodySchema = z
     scanProfile: z.enum(["safe", "exposure", "offensive"]).default("exposure"),
     windowStart: z.string().datetime().optional(),
     windowEnd: z.string().datetime().optional(),
+    expiresAt: z.string().datetime().optional(),
+    customerName: z.string().trim().min(1).max(200).optional(),
   })
-  .refine((b) => !b.windowStart || !b.windowEnd || Date.parse(b.windowEnd) > Date.parse(b.windowStart), { message: "windowEnd must be after windowStart" });
+  .refine((b) => !b.windowStart || !b.windowEnd || Date.parse(b.windowEnd) > Date.parse(b.windowStart), { message: "windowEnd must be after windowStart" })
+  .refine((b) => !b.expiresAt || !b.windowEnd || Date.parse(b.expiresAt) >= Date.parse(b.windowEnd), { message: "expiresAt can't be before windowEnd" });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -46,6 +49,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       scan_profile: body.scanProfile,
       window_start: body.windowStart ?? null,
       window_end: body.windowEnd ?? null,
+      expires_at: body.expiresAt ?? null,
+      customer_name: body.customerName ?? null,
       created_by: adminId,
     })
     .select(ENGAGEMENT_COLUMNS)

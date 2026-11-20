@@ -5,7 +5,20 @@ const { verified, audit } = vi.hoisted(() => ({ verified: vi.fn(), audit: vi.fn(
 vi.mock("./ownership", () => ({ isDomainVerified: verified }));
 vi.mock("./audit", () => ({ logAuditEvent: audit }));
 
-import { abortEngagement, applyScopeChanges, checkAuthorizationLink, loadEngagement, loadIncludedHostFacts, updateEngagement } from "./engagements";
+import {
+  abortEngagement,
+  applyScopeChanges,
+  checkAuthorizationLink,
+  checkTestingWindows,
+  isEditableState,
+  loadContacts,
+  loadEngagement,
+  loadIncludedHostFacts,
+  loadTestingWindows,
+  replaceContacts,
+  replaceTestingWindows,
+  updateEngagement,
+} from "./engagements";
 
 type Reply = { data?: unknown; error?: { code?: string; message?: string } | null };
 
@@ -22,6 +35,8 @@ function fakeAdmin(replies: Record<string, Reply[]>, rpc?: Reply) {
         select: () => builder,
         eq: (...args: unknown[]) => (filters.push(args), builder),
         is: (...args: unknown[]) => (filters.push(args), builder),
+        not: (...args: unknown[]) => (filters.push(["not", ...args]), builder),
+        order: () => builder,
         maybeSingle: async () => next(),
         then: (resolve: (r: Reply) => unknown) => resolve(next()),
         update: (row: unknown) => ((write = { table, op: "update", row, filters }), writes.push(write), builder),
@@ -68,10 +83,23 @@ describe("loadIncludedHostFacts", () => {
     expect(await loadIncludedHostFacts(admin, ENGAGEMENT, NOW)).toEqual({
       status: "ok",
       data: [
-        { host: "a.test", domainVerified: true, authorizationLinkedAndCurrent: true },
-        { host: "b.test", domainVerified: false, authorizationLinkedAndCurrent: false },
+        { host: "a.test", domainVerified: true, authorizationLinkedAndCurrent: true, authorizationExpiresAt: null },
+        { host: "b.test", domainVerified: false, authorizationLinkedAndCurrent: false, authorizationExpiresAt: null },
       ],
     });
+  });
+
+  it("reports when each host's current linked authorisation ends, taking the latest", async () => {
+    const auths = {
+      data: [
+        { target_host: "a.test", revoked_at: null, expires_at: "2026-11-20T00:00:00Z" },
+        { target_host: "a.test", revoked_at: null, expires_at: "2026-11-30T00:00:00Z" },
+        { target_host: "b.test", revoked_at: null, expires_at: "2026-11-01T00:00:00Z" },
+      ],
+    };
+    const { admin } = fakeAdmin({ engagement_scope_hosts: [scope], offensive_scan_authorizations: [auths] });
+    const result = await loadIncludedHostFacts(admin, ENGAGEMENT, NOW);
+    expect(result.status === "ok" && result.data.map((h) => h.authorizationExpiresAt)).toEqual(["2026-11-30T00:00:00Z", null]);
   });
 
   it("is a failure, never empty facts, on a failed read", async () => {
@@ -176,5 +204,83 @@ describe("abortEngagement", () => {
   it("is unavailable before the migration, and a failure on anything else", async () => {
     expect(await abortEngagement(fakeAdmin({}, { error: { code: "PGRST202" } }).admin, "e", null)).toEqual({ status: "unavailable" });
     expect((await abortEngagement(fakeAdmin({}, { error: { code: "XX000" } }).admin, "e", null)).status).toBe("error");
+  });
+});
+
+describe("isEditableState", () => {
+  it("allows edits only before the engagement is authorised", () => {
+    expect(isEditableState("booked")).toBe(true);
+    expect(isEditableState("scoped")).toBe(true);
+    for (const s of ["authorised", "in_window", "reported", "closed", "aborted"] as const) expect(isEditableState(s)).toBe(false);
+  });
+});
+
+describe("loadContacts and loadTestingWindows", () => {
+  it("read active rows only, and report a failed read as a failure", async () => {
+    const { admin } = fakeAdmin({ engagement_contacts: [{ data: [{ id: "c1", kind: "emergency" }] }], engagement_testing_windows: [{ data: null }] });
+    expect(await loadContacts(admin, "eng-1")).toEqual({ status: "ok", data: [{ id: "c1", kind: "emergency" }] });
+    expect(await loadTestingWindows(admin, "eng-1")).toEqual({ status: "ok", data: [] });
+    expect((await loadContacts(fakeAdmin({ engagement_contacts: [{ error: { code: "XX000" } }] }).admin, "eng-1")).status).toBe("error");
+    expect(await loadTestingWindows(fakeAdmin({ engagement_testing_windows: [{ error: { code: "42P01" } }] }).admin, "eng-1")).toEqual({ status: "unavailable" });
+  });
+});
+
+describe("replaceContacts", () => {
+  it("inserts the new list first, then marks every other active row removed", async () => {
+    const { admin, writes } = fakeAdmin({ engagement_contacts: [{ data: [{ id: "n1" }, { id: "n2" }] }, { data: null }] });
+    const result = await replaceContacts(admin, ENGAGEMENT, "admin-1", [
+      { kind: "emergency", name: "On call", phone: "+44 1" },
+      { kind: "authoriser", name: "Boss", role: "CEO", email: "b@a.test" },
+    ]);
+    expect(result).toEqual({ status: "ok", data: [{ id: "n1" }, { id: "n2" }] });
+    expect(writes.map((w) => w.op)).toEqual(["insert", "update"]);
+    expect(writes[0].row).toEqual([
+      { kind: "emergency", name: "On call", role: null, email: null, phone: "+44 1", engagement_id: "eng-1", owner: "owner-1", added_by: "admin-1" },
+      { kind: "authoriser", name: "Boss", role: "CEO", email: "b@a.test", phone: null, engagement_id: "eng-1", owner: "owner-1", added_by: "admin-1" },
+    ]);
+    expect(writes[1].row).toEqual({ removed_at: expect.any(String) });
+    expect(writes[1].filters).toContainEqual(["not", "id", "in", "(n1,n2)"]);
+    expect(writes[1].filters).toContainEqual(["engagement_id", "eng-1"]);
+  });
+
+  it("leaves the old list in place when the insert fails", async () => {
+    const { admin, writes } = fakeAdmin({ engagement_contacts: [{ error: { code: "23514" } }] });
+    expect((await replaceContacts(admin, ENGAGEMENT, "admin-1", [{ kind: "technical", name: "X", email: "x@a.test" }])).status).toBe("error");
+    expect(writes.map((w) => w.op)).toEqual(["insert"]);
+  });
+
+  it("an empty list removes every active row", async () => {
+    const { admin, writes } = fakeAdmin({ engagement_contacts: [{ data: null }] });
+    expect(await replaceContacts(admin, ENGAGEMENT, "admin-1", [])).toEqual({ status: "ok", data: [] });
+    expect(writes.map((w) => w.op)).toEqual(["update"]);
+    expect(writes[0].filters.some((f) => f[0] === "not")).toBe(false);
+  });
+
+  it("reports a failed removal", async () => {
+    const { admin } = fakeAdmin({ engagement_contacts: [{ data: [{ id: "n1" }] }, { error: { code: "XX000" } }] });
+    expect((await replaceContacts(admin, ENGAGEMENT, "admin-1", [{ kind: "technical", name: "X", email: "x@a.test" }])).status).toBe("error");
+  });
+});
+
+describe("replaceTestingWindows", () => {
+  it("stores each slot against the engagement", async () => {
+    const { admin, writes } = fakeAdmin({ engagement_testing_windows: [{ data: [{ id: "w1" }] }, { data: null }] });
+    await replaceTestingWindows(admin, ENGAGEMENT, "admin-1", [{ startsAt: "2026-11-02T09:00:00Z", endsAt: "2026-11-02T17:00:00Z" }]);
+    expect(writes[0].row).toEqual([{ starts_at: "2026-11-02T09:00:00Z", ends_at: "2026-11-02T17:00:00Z", engagement_id: "eng-1", owner: "owner-1", added_by: "admin-1" }]);
+  });
+});
+
+describe("checkTestingWindows", () => {
+  const outer = { window_start: "2026-11-01T00:00:00Z", window_end: "2026-11-30T00:00:00Z" };
+  it("accepts slots inside the overall window, including its edges, and no slots at all", () => {
+    expect(checkTestingWindows(outer, [])).toBeNull();
+    expect(checkTestingWindows({ window_start: null, window_end: null }, [])).toBeNull();
+    expect(checkTestingWindows(outer, [{ startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-11-30T00:00:00Z" }])).toBeNull();
+  });
+  it("names the first slot that is backwards, outside, or has no overall window to sit in", () => {
+    expect(checkTestingWindows(outer, [{ startsAt: "2026-11-02T09:00:00Z", endsAt: "2026-11-02T17:00:00Z" }, { startsAt: "2026-11-29T23:00:00Z", endsAt: "2026-11-30T01:00:00Z" }])).toEqual({ problem: "outside_engagement_window", index: 1 });
+    expect(checkTestingWindows(outer, [{ startsAt: "2026-11-02T17:00:00Z", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "end_before_start", index: 0 });
+    expect(checkTestingWindows(outer, [{ startsAt: "bad", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "end_before_start", index: 0 });
+    expect(checkTestingWindows({ window_start: "2026-11-01T00:00:00Z", window_end: null }, [{ startsAt: "2026-11-02T09:00:00Z", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "window_not_set" });
   });
 });
