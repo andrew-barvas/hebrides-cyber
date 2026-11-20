@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { authHostFromUrl, isAuthorizationCurrent, hasActiveOffensiveAuthorization } from "./offensiveAuthorization";
+import { authHostFromUrl, authorizationExpiryProblem, isAuthorizationCurrent, hasActiveOffensiveAuthorization, recordOffensiveAuthorization } from "./offensiveAuthorization";
 
 describe("authHostFromUrl", () => {
   it("lowercases the hostname and rejects a non-URL", () => {
@@ -55,5 +55,26 @@ describe("hasActiveOffensiveAuthorization", () => {
   it("false for an expired row even if returned", async () => {
     const client = readClient({ data: { revoked_at: null, expires_at: "2026-01-01T00:00:00Z" }, error: null });
     expect(await hasActiveOffensiveAuthorization(client, "o", "https://example.com", now)).toBe(false);
+  });
+});
+
+describe("authorizationExpiryProblem (audit M5)", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  it("requires a valid future expiry at most 30 days away", () => {
+    expect(authorizationExpiryProblem(undefined, now)).toMatch(/required/);
+    expect(authorizationExpiryProblem("not a date", now)).toMatch(/valid date/);
+    expect(authorizationExpiryProblem("2026-11-20T11:00:00Z", now)).toMatch(/future/);
+    expect(authorizationExpiryProblem("2027-01-01T00:00:00Z", now)).toMatch(/at most 30 days/);
+    expect(authorizationExpiryProblem("2026-12-19T12:00:00Z", now)).toBeNull();
+  });
+});
+
+describe("recordOffensiveAuthorization", () => {
+  it("refuses to record without an acceptable expiry, before touching the database", async () => {
+    const from = vi.fn();
+    const client = { from } as unknown as SupabaseClient;
+    const r = await recordOffensiveAuthorization(client, { owner: "o", authorizedBy: "o", targetUrl: "https://a.example.com", scope: "s" }, new Date("2026-11-20T00:00:00Z"));
+    expect(r).toEqual({ ok: false, reason: "invalid_expiry" });
+    expect(from).not.toHaveBeenCalled();
   });
 });
