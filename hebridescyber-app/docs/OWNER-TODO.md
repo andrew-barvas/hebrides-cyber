@@ -85,7 +85,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-53 | Exploit: decide whether the autonomous agents (`strix`, `cairn`) are in the first version | 🟢 Low | Decision | 2026-11-02 | |
 | OT-54 | Exploit: set engagement pricing after the manual pilot | 🟢 Low | Decision | 2026-11-02 | |
 | OT-55 | Exploit: confirm insurance covers contracted offensive testing (extends OT-13) | 🟡 Medium | Open | 2026-11-02 | |
-| OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟡 Medium | Open | 2026-11-14 | |
+| OT-56 | DNS and Azure custom domain for `lookout.hebridescyber.co.uk` | 🟢 Low | Partly done (forwarding) | 2026-11-14 | 2026-11-20 |
 | OT-57 | Custom SMTP for Supabase Auth, so sign-up and sign-in links aren't rate-limited | 🟠 High | Open | 2026-11-14 | |
 | OT-58 | Google Cloud project and OAuth app for Google Workspace posture checks | 🟢 Low | Open | 2026-11-14 | |
 | OT-59 | Phishing awareness: solicitor (DPA, terms, privacy policy) and insurer sign-off before any live campaign | 🟡 Medium | Decision | 2026-11-19 | |
@@ -1081,7 +1081,18 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
   file.
 - **Raised:** 2026-11-02.
 
-### OT-56: DNS for the Lookout subdomain 🟡
+### OT-56: DNS for the Lookout subdomain 🟢
+**Partly done 2026-11-20.** Azure's Free plan allows two custom domains (www and
+the bare domain), so `lookout.hebridescyber.co.uk` and, at the owner's request,
+`exploit.hebridescyber.co.uk` are GoDaddy subdomain forwards (301) to
+`https://www.hebridescyber.co.uk/lookout` and `/exploit`. Checked: both return
+301 over http; HTTPS follows when GoDaddy issues the forwarding certificate.
+`/exploit` stays noindex and unlinked. **Remaining:** at paid launch, move the
+Static Web App to the Standard plan (about $9 a month, five custom domains),
+remove the forwards, and add both hostnames as Azure custom domains with
+CNAMEs to `proud-stone-04a76350f.7.azurestaticapps.net`, so
+`src/lib/productSites.ts` serves each product on its own hostname.
+
 - **What and why:** the Lookout page is built and the app already routes
   `lookout.hebridescyber.co.uk` to it (`src/lib/productSites.ts`), but the
   name doesn't resolve (checked 2026-11-14). Until it does, Lookout is only
