@@ -174,8 +174,11 @@ export default function DomainVerification() {
             <div className="space-y-2">
               <p className="font-medium text-cybertext/80">Option A: add a DNS record</p>
               <p className="text-xs text-cybermuted">
-                In your domain&apos;s DNS settings (your registrar or host), add a TXT record. If the name field doesn&apos;t accept
-                the full domain, use <code className="text-neon">@</code>.
+                In your domain&apos;s DNS settings (your registrar or host), add a TXT record. If the name field wants only the part
+                before your domain, enter <code className="text-neon">@</code> when the name below is your domain itself.
+                {instructions.domain.startsWith("www.") && (
+                  <> For a www site the record goes on the bare domain, because www usually can&apos;t hold a TXT record.</>
+                )}
               </p>
               <Field label="Type" value="TXT" />
               <Field label="Name" value={instructions.dnsRecord.name} />

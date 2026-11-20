@@ -178,23 +178,44 @@ export async function isDomainVerified(
 export type DnsTxtStatus = "match" | "other_txt" | "no_txt";
 
 /**
- * Whether `domain` has a DNS TXT record `hebridescyber-verify=<token>`, and if
- * not, whether it has any TXT records at all (so the dashboard can tell "not
- * added yet / still propagating" from "added, but with the wrong value").
+ * Where the TXT record can live for `domain`. A `www.` host is almost always a
+ * CNAME to the web host, and DNS forbids any other record beside a CNAME, so
+ * its TXT record can't go on www itself: the bare domain (the zone apex, "@")
+ * counts too. Whoever controls the bare domain's DNS controls www, so this
+ * proves the same thing. Only `www.` is stripped; any other subdomain could
+ * sit under a public suffix (co.uk) we'd need a list to tell apart.
+ */
+export function dnsTxtNames(domain: string): string[] {
+  return domain.startsWith("www.") && domain.length > 4 ? [domain, domain.slice(4)] : [domain];
+}
+
+/** The name the dashboard tells the owner to put the TXT record on. */
+export function preferredDnsTxtName(domain: string): string {
+  const names = dnsTxtNames(domain);
+  return names[names.length - 1];
+}
+
+/**
+ * Whether `domain` (or, for a www host, its bare domain) has a DNS TXT record
+ * `hebridescyber-verify=<token>`, and if not, whether it has any TXT records
+ * at all (so the dashboard can tell "not added yet / still propagating" from
+ * "added, but with the wrong value").
  */
 export async function inspectDnsTxt(domain: string, token: string): Promise<DnsTxtStatus> {
-  try {
-    const records = await resolveTxt(domain);
-    const expected = `${VERIFICATION_PREFIX}=${token}`;
-    // resolveTxt returns string[][] — each TXT record can be split into
-    // multiple strings by DNS itself, so join before comparing.
-    const values = records.map((chunks) => chunks.join(""));
-    if (values.includes(expected)) return "match";
-    return values.length > 0 ? "other_txt" : "no_txt";
-  } catch {
-    // NXDOMAIN, no TXT records, timeout, etc. — all just mean "not verified yet".
-    return "no_txt";
+  const expected = `${VERIFICATION_PREFIX}=${token}`;
+  let sawOther = false;
+  for (const name of dnsTxtNames(domain)) {
+    try {
+      // resolveTxt returns string[][] — each TXT record can be split into
+      // multiple strings by DNS itself, so join before comparing.
+      const values = (await resolveTxt(name)).map((chunks) => chunks.join(""));
+      if (values.includes(expected)) return "match";
+      if (values.length > 0) sawOther = true;
+    } catch {
+      // NXDOMAIN, no TXT records, timeout, etc. — all just mean "not here".
+    }
   }
+  return sawOther ? "other_txt" : "no_txt";
 }
 
 export async function checkDnsTxt(domain: string, token: string): Promise<boolean> {
@@ -259,10 +280,11 @@ export async function verifyDomain(domain: string, token: string): Promise<Verif
 export function verificationHints(domain: string, token: string, result: Pick<VerifyResult, "dns" | "file">): string[] {
   const fileUrl = `https://${domain}${WELL_KNOWN_PATH}`;
   const hints: string[] = [];
+  const txtName = preferredDnsTxtName(domain);
   if (result.dns === "no_txt") {
-    hints.push(`DNS: no TXT record on ${domain} yet. New records usually show up within minutes but can take up to an hour. In your DNS provider, add it to the domain itself (often shown as "@"), not a subdomain.`);
+    hints.push(`DNS: no TXT record on ${txtName} yet. New records usually show up within minutes but can take up to an hour. In your DNS provider, add it to ${txtName} itself (often shown as "@"), not a subdomain.`);
   } else if (result.dns === "other_txt") {
-    hints.push(`DNS: ${domain} has TXT records, but not the ${VERIFICATION_PREFIX} one. Check the value was copied exactly, without extra quotes, and is on ${domain} itself.`);
+    hints.push(`DNS: ${txtName} has TXT records, but not the ${VERIFICATION_PREFIX} one. Check the value was copied exactly, without extra quotes, and is on ${txtName} itself.`);
   }
   const file: Record<Exclude<FileStatus, "match">, string> = {
     missing: `File: nothing at ${fileUrl} yet (it returned "not found").`,
