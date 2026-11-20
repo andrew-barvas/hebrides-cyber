@@ -12,8 +12,10 @@ function builder(table: string) {
     select: () => b,
     eq: () => b,
     in: () => b,
+    lte: () => b,
+    limit: () => b,
     order: () => (table === "lookout_report_items" ? Promise.resolve({ data: [{ id: "i1", title: "Weak TLS" }], error: null }) : b),
-    maybeSingle: async () => ({ data: state.report, error: null }),
+    maybeSingle: async () => (table === "scans" ? { data: { id: "scan-9" }, error: null } : { data: state.report, error: null }),
     update: (row: unknown) => {
       state.updates.push(row);
       const u: Record<string, unknown> = { eq: () => u, then: (r: (v: unknown) => void) => r({ error: null }) };
@@ -49,6 +51,8 @@ describe("/api/lookout/reports/[id] (customer)", () => {
     const body = res._getJSONData() as { report: Record<string, unknown>; items: unknown[] };
     expect(body.report.customer).toBeUndefined();
     expect(body.items).toHaveLength(1);
+    // The scan whose host screenshots form the report's estate gallery.
+    expect((body as { galleryScanId?: string }).galleryScanId).toBe("scan-9");
   });
 
   it("hides drafts and other customers' reports behind a 404", async () => {

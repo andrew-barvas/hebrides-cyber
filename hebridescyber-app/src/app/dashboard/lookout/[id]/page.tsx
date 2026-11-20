@@ -3,12 +3,14 @@
 // /dashboard/lookout/<id> — one Lookout report: the engineer's summary, then
 // each finding in priority order with their note, the business impact and who
 // should fix it. "I've read this report" records the acknowledgement (it does
-// not accept any risk). Printable: the browser's print makes the PDF.
+// not accept any risk). "Download PDF" gets the dated PDF with the estate
+// gallery (/api/lookout/report-pdf); the gallery also shows below.
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import EstateScreenshots from "@/components/EstateScreenshots";
 
 type Report = { id: string; period_start: string; period_end: string; status: string; summary: string; published_at: string | null; acknowledged_at: string | null };
 type Item = { id: string; host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string };
@@ -18,7 +20,8 @@ const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: 
 export default function LookoutReportPage() {
   const { accessToken } = useAppSession();
   const params = useParams<{ id: string }>();
-  const [data, setData] = useState<{ report: Report; items: Item[] } | null>(null);
+  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null } | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -45,6 +48,25 @@ export default function LookoutReportPage() {
     } else setError("Couldn't record that. Please try again.");
   }
 
+  async function downloadPdf() {
+    if (!accessToken || !data) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/lookout/report-pdf?id=${encodeURIComponent(data.report.id)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok) throw new Error(res.status === 429 ? "You've downloaded a lot of reports. Try again in a little while." : "Couldn't produce the PDF. Please try again.");
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `lookout-report-${data.report.period_end}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (error) return <p role="alert" className="text-sm text-danger">{error}</p>;
   if (!data) return <p className="text-sm text-cybermuted">Loading…</p>;
   const { report, items } = data;
@@ -52,6 +74,11 @@ export default function LookoutReportPage() {
   return (
     <article className="space-y-6">
       <PageHeader title={`Lookout report: ${report.period_start} to ${report.period_end}`} description={report.published_at ? `Published ${new Date(report.published_at).toLocaleDateString("en-GB")}` : undefined} />
+      <div className="print:hidden">
+        <Button variant="secondary" size="sm" onClick={downloadPdf} disabled={downloading}>
+          {downloading ? "Preparing PDF…" : "Download PDF"}
+        </Button>
+      </div>
       {report.summary && <p className="whitespace-pre-line text-cybertext">{report.summary}</p>}
       <ol className="space-y-4">
         {items.map((i) => (
@@ -69,6 +96,7 @@ export default function LookoutReportPage() {
           </li>
         ))}
       </ol>
+      {data.galleryScanId && accessToken && <EstateScreenshots scanId={data.galleryScanId} token={accessToken} />}
       <div className="print:hidden">
         {report.status === "acknowledged" ? (
           <p className="text-sm text-cybermuted">You marked this report as read on {new Date(report.acknowledged_at!).toLocaleDateString("en-GB")}.</p>
