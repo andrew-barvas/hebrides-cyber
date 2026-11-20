@@ -8,6 +8,7 @@ import { isScreenshotFileName, SCREENSHOT_CONTAINER } from "./estateScreenshots"
 import type { ReportStatus } from "./lookoutReports";
 import type { ReportLookalikes } from "./lookoutLookalikes";
 import type { ReportBreaches } from "./lookoutBreaches";
+import { emailResponseSteps } from "./lookalikeResponse";
 
 export const GALLERY_MAX = 12;
 const GALLERY_SCANS = 5;
@@ -68,7 +69,9 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
        <table><thead><tr><th>Domain</th><th>How it differs</th><th>Spotted</th></tr></thead><tbody>${lookalikes.newInPeriod
          .map((l) => `<tr><td><b>${e(l.domain)}</b> <span class="muted">(looks like ${e(l.targetDomain)})</span></td><td>${e(l.how)}</td><td>${e(l.spottedAt.slice(0, 10))}</td></tr>`)
          .join("")}</tbody></table>
-       <p class="muted">${lookalikes.totalKnown} lookalike domain${lookalikes.totalKnown === 1 ? "" : "s"} known in all.</p>`
+       <p class="muted">${lookalikes.totalKnown} lookalike domain${lookalikes.totalKnown === 1 ? "" : "s"} known in all.</p>
+       <p><b>What to do</b></p><ol>${emailResponseSteps().map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
+       <p class="muted">Step-by-step blocking instructions and a ready-written registrar report for each domain are in your portal, under this report and on the Assets page.</p>`
       : lookalikes?.available
         ? `<h2>Lookalike domains</h2><p class="muted">No new lookalike domains of yours were spotted this period${lookalikes.totalKnown ? ` (${lookalikes.totalKnown} known from before)` : ""}.</p>`
         : "";

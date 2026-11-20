@@ -55,6 +55,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { parse } from "tldts";
 import { isMissingSchemaError } from "./dbErrors";
 import { escapeHtml, sendEmail } from "./email";
+import { LOOKALIKE_TECHNIQUE_LABELS, emailResponseSteps, lookalikeTechniqueLabel } from "./lookalikeResponse";
 import { channelsFor, type OwnerContext } from "./emergingThreatAlerts";
 import { sendTeamsNotice } from "./msTeams";
 import { ownerDomain } from "./scanners/registrableDomain";
@@ -252,19 +253,10 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, fn: (it
 
 export type LookalikeFinding = { domain: string; technique: string; firstSeen: string };
 
-const TECHNIQUE_LABELS: Record<string, string> = {
-  omission: "a character removed",
-  doubling: "a character doubled",
-  transposition: "two characters swapped",
-  hyphenation: "a hyphen inserted",
-  substitution: "a character swapped for a lookalike",
-  "tld-swap": "a different top-level domain",
-};
-
-/** Plain-English name for how a lookalike was made ("a character removed"). */
-export function lookalikeTechniqueLabel(technique: string): string {
-  return TECHNIQUE_LABELS[technique] ?? technique;
-}
+// The labels live in lookalikeResponse.ts so client components can use them
+// without importing this server module; re-exported for existing callers.
+export { lookalikeTechniqueLabel };
+const TECHNIQUE_LABELS = LOOKALIKE_TECHNIQUE_LABELS;
 
 function formatDate(iso: string): string {
   const t = Date.parse(iso);
@@ -307,7 +299,9 @@ export function buildLookalikeDomainEmail(domain: string, findings: LookalikeFin
       ${list}
       ${more > 0 ? p(`…and ${more} more, listed on the Assets page.`) : ""}
       ${p(escapeHtml(WHY))}
-      <p style="margin:16px 0 0;font-size:13px;"><a href="${siteUrl}/dashboard/assets">Open Assets</a></p>
+      ${p("<b>What to do</b>")}
+      <ol style="margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.5;">${emailResponseSteps().map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
+      <p style="margin:16px 0 0;font-size:13px;"><a href="${siteUrl}/dashboard/assets#lookalikes">See each domain, step-by-step blocking instructions and a ready-written report</a></p>
       <p style="margin:16px 0 0;color:#9ca3af;font-size:12px;">
         We tell you about each lookalike domain once. This only checks public certificate records — it never contacts
         the domain itself, and a false match is possible (an unrelated domain may happen to be one character away

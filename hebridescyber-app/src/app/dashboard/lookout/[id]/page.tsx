@@ -5,7 +5,8 @@
 // should fix it. "I've read this report" records the acknowledgement (it does
 // not accept any risk). "Download PDF" gets the dated PDF with the estate
 // gallery (/api/lookout/report-pdf); the gallery also shows below.
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { LookalikeResponseKit } from "@/components/LookalikeResponseKit";
 import { useParams } from "next/navigation";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { PageHeader } from "@/components/ui/page-header";
@@ -114,10 +115,18 @@ export default function LookoutReportPage() {
               <ul className="space-y-1 text-sm">
                 {data.lookalikes.newInPeriod.map((l) => (
                   <li key={l.domain} className="break-all">
-                    <span className="font-mono text-cybertext">{l.domain}</span>{" "}
-                    <span className="text-cybermuted">
-                      looks like {l.targetDomain}, {l.how}, spotted {new Date(l.spottedAt).toLocaleDateString("en-GB")}
-                    </span>
+                    <details>
+                      <summary className="cursor-pointer">
+                        <span className="font-mono text-cybertext">{l.domain}</span>{" "}
+                        <span className="text-cybermuted">
+                          looks like {l.targetDomain}, {l.how}, spotted {new Date(l.spottedAt).toLocaleDateString("en-GB")}
+                        </span>{" "}
+                        <span className="text-xs text-neon">What to do</span>
+                      </summary>
+                      <div className="mt-2 break-normal">
+                        <LookalikeResponseKit domain={l.domain} targetDomain={l.targetDomain} how={l.how} spottedAt={l.spottedAt} />
+                      </div>
+                    </details>
                   </li>
                 ))}
               </ul>

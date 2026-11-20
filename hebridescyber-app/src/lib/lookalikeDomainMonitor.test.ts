@@ -154,6 +154,13 @@ describe("message building", () => {
     expect(html).toContain("https://app.example.com/dashboard/assets");
   });
 
+  it("says what to do and links to the per-domain kit on the Assets page", () => {
+    const { html } = buildLookalikeDomainEmail("example.com", findings, "https://app.example.com");
+    expect(html).toContain("<b>What to do</b>");
+    expect(html).toContain("report@phishing.gov.uk");
+    expect(html).toContain('href="https://app.example.com/dashboard/assets#lookalikes"');
+  });
+
   it("escapes HTML in the email body", () => {
     const malicious: LookalikeFinding[] = [{ domain: "<img src=x>.com", technique: "omission", firstSeen: "2024-01-01T00:00:00" }];
     const { html } = buildLookalikeDomainEmail("example.com", malicious, "https://app.example.com");
