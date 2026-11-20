@@ -1,4 +1,4 @@
--- Migration 080: the CVE index leaves Postgres.
+-- Migration 081: the CVE index leaves Postgres.
 --
 -- Migration 069's tables held the local CPE -> CVE index: 2.27 million
 -- criteria and 409,000 CVEs, 612 MB, which on its own exceeded the Supabase
