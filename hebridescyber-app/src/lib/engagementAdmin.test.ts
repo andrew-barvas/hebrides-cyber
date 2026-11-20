@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ENGAGEMENT_STATES, canTransition } from "./exploitability/scope/engagementState";
-import { NEXT_STATE, REFUSAL_TEXT, SCOPE_REFUSAL_TEXT, WINDOW_PROBLEM_TEXT, describeRefusal, fromLocalInput, parseHosts, toLocalInput } from "./engagementAdmin";
+import { NEXT_STATE, REFUSAL_TEXT, SCOPE_REFUSAL_TEXT, WINDOW_PROBLEM_TEXT, describeRefusal, editedDates, fromLocalInput, parseHosts, toLocalInput } from "./engagementAdmin";
 
 const TOOLS = /sqlmap|hydra|ffuf|nuclei|strix|cairn|exploit|payload|brute|spray/i;
 
@@ -47,6 +47,22 @@ describe("datetime-local conversion", () => {
   it("round-trips a timestamp to the minute", () => {
     const iso = "2026-12-01T09:30:00.000Z";
     expect(fromLocalInput(toLocalInput(iso))).toBe(iso);
+  });
+
+  it("sends only the dates the analyst edited, so a stored timestamp is never re-sent or rounded", () => {
+    // Stored as the database writes it: "+00:00", with seconds.
+    const stored = { windowStart: "2026-12-01T09:00:30+00:00", windowEnd: "2026-12-05T17:00:00+00:00", expiresAt: "2026-12-06T00:00:00+00:00" };
+    const initial = { windowStart: toLocalInput(stored.windowStart), windowEnd: toLocalInput(stored.windowEnd), expiresAt: toLocalInput(stored.expiresAt) };
+    expect(editedDates(initial, initial)).toEqual({ changes: {}, cleared: [] });
+
+    const later = { ...initial, expiresAt: toLocalInput("2026-12-07T00:00:00.000Z") };
+    expect(editedDates(initial, later)).toEqual({ changes: { expiresAt: "2026-12-07T00:00:00.000Z" }, cleared: [] });
+  });
+
+  it("reports an emptied date as cleared, not as a change, and ignores a half-typed one", () => {
+    const initial = { windowStart: toLocalInput("2026-12-01T09:00:00Z"), expiresAt: "" };
+    expect(editedDates(initial, { windowStart: "", expiresAt: "" })).toEqual({ changes: {}, cleared: ["windowStart"] });
+    expect(editedDates(initial, { windowStart: initial.windowStart, expiresAt: "not a date" })).toEqual({ changes: {}, cleared: [] });
   });
 
   it("treats empty or unreadable values as unset", () => {

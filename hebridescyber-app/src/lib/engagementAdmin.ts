@@ -3,16 +3,9 @@
 // under /api/engagements* decide; this only explains their answers to the analyst.
 import type { ScopeHostRefusal, WindowProblem } from "./engagements";
 import type { TransitionRefusal } from "./exploitability/scope/engagementState";
-import type { EngagementState } from "./exploitability/types";
 
-/** The one forward move from each state, as the state machine allows it. Stopping is separate. */
-export const NEXT_STATE: Readonly<Partial<Record<EngagementState, EngagementState>>> = {
-  booked: "scoped",
-  scoped: "authorised",
-  authorised: "in_window",
-  in_window: "reported",
-  reported: "closed",
-};
+/** The one forward move from each state, straight from the state machine. Stopping is separate. */
+export { NEXT_STATE } from "./exploitability/scope/engagementState";
 
 /** Why a state change was refused, as the analyst should read it: what to do next. */
 export const REFUSAL_TEXT: Readonly<Record<TransitionRefusal, string>> = {
@@ -71,4 +64,24 @@ export function fromLocalInput(value: string): string | null {
   if (!value.trim()) return null;
   const t = new Date(value).getTime();
   return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+/**
+ * Which date inputs the analyst actually edited, compared with what they were when
+ * the form opened, never with the stored timestamps. The database writes
+ * timestamps in its own format ("+00:00", seconds kept) and the inputs hold whole
+ * minutes, so comparing against the stored value would resend, and round, every
+ * date on every save. `cleared` lists inputs that had a value and were emptied:
+ * the API can change these dates but never unset them.
+ */
+export function editedDates<K extends string>(initial: Readonly<Record<K, string>>, current: Readonly<Record<K, string>>): { changes: Partial<Record<K, string>>; cleared: K[] } {
+  const changes: Partial<Record<K, string>> = {};
+  const cleared: K[] = [];
+  for (const key of Object.keys(initial) as K[]) {
+    if (current[key] === initial[key]) continue;
+    const iso = fromLocalInput(current[key]);
+    if (iso) changes[key] = iso;
+    else if (initial[key] && !current[key].trim()) cleared.push(key);
+  }
+  return { changes, cleared };
 }

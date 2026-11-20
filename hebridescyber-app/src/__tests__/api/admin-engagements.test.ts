@@ -47,10 +47,13 @@ beforeEach(() => {
   m.requireAdmin.mockResolvedValue(ADMIN);
   m.list.mockResolvedValue({
     status: "ok",
-    data: [
-      { id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked" },
-      { id: "e2", owner: OWNER_B, reference: "ENG-2", state: "in_window" },
-    ],
+    data: {
+      engagements: [
+        { id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked" },
+        { id: "e2", owner: OWNER_B, reference: "ENG-2", state: "in_window" },
+      ],
+      truncated: false,
+    },
   });
   m.emails.mockResolvedValue(new Map([[OWNER_A, "a@example.com"]]));
 });
@@ -82,18 +85,19 @@ describe("GET /api/admin/engagements", () => {
         { id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked", owner_email: "a@example.com" },
         { id: "e2", owner: OWNER_B, reference: "ENG-2", state: "in_window", owner_email: null },
       ],
+      truncated: false,
     });
   });
 
   it("looks the customer up by email and lists only theirs, returning the account to create under", async () => {
     m.resolve.mockResolvedValue({ ok: true, customer: { id: OWNER_A, email: "a@example.com" } });
-    m.list.mockResolvedValue({ status: "ok", data: [{ id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked" }] });
+    m.list.mockResolvedValue({ status: "ok", data: { engagements: [{ id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked" }], truncated: true } });
     const { status, body } = await call({ customer: "  A@Example.com " });
     expect(status).toBe(200);
     expect(m.resolve).toHaveBeenCalledWith(expect.anything(), "A@Example.com");
     expect(m.list).toHaveBeenCalledWith(expect.anything(), OWNER_A);
     expect(m.emails).not.toHaveBeenCalled();
-    expect(body).toEqual({ customer: { id: OWNER_A, email: "a@example.com" }, engagements: [{ id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked", owner_email: "a@example.com" }] });
+    expect(body).toEqual({ customer: { id: OWNER_A, email: "a@example.com" }, engagements: [{ id: "e1", owner: OWNER_A, reference: "ENG-1", state: "booked", owner_email: "a@example.com" }], truncated: true });
   });
 
   it("passes on the lookup's own refusal for an unknown or ambiguous customer", async () => {

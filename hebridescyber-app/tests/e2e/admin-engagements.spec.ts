@@ -12,6 +12,12 @@ test.use({ timezoneId: "UTC" });
 const ID = "e1000000-0000-4000-8000-000000000001";
 const OWNER = "22222222-2222-4222-8222-222222222222";
 const EMAIL = "it@acme.example";
+// A second account whose lookup answers slowly, to race a later lookup.
+const SLOW_OWNER = "33333333-3333-4333-8333-333333333333";
+const SLOW_EMAIL = "slow@other.example";
+
+/** A timestamp as PostgREST writes it ("+00:00"), not as the browser sent it (".000Z"). */
+const pg = (iso: unknown) => String(iso).replace(/.000Z$/, "+00:00");
 
 const METRICS = {
   totalCustomers: 1,
@@ -54,7 +60,7 @@ function newEngagement(reference: string): Engagement {
   };
 }
 
-async function open(page: Page) {
+async function open(page: Page, opts: { failReloadAfterStop?: boolean } = {}) {
   let engagement: Engagement | null = null;
   let scope: { host: string; included: boolean }[] = [];
   let contacts: Record<string, unknown>[] = [];
@@ -76,7 +82,8 @@ async function open(page: Page) {
       engagement = newEngagement((call.body as { reference: string }).reference);
       return { status: 201, json: { engagement } };
     },
-    [`GET /api/engagements/${ID}`]: () => ({ json: view() }),
+    [`GET /api/engagements/${ID}`]: () =>
+      opts.failReloadAfterStop && engagement?.state === "aborted" ? { status: 500, json: { error: "Could not complete the engagement request" } } : { json: view() },
     [`PATCH /api/engagements/${ID}`]: (call) => {
       const body = call.body as Record<string, unknown>;
       const e = engagement as Engagement;
@@ -84,11 +91,12 @@ async function open(page: Page) {
         return { status: 409, json: { error: "The engagement can't move to that state.", reason: "no_emergency_contact", state: e.state } };
       }
       if (body.to) e.state = body.to as string;
-      if (body.windowStart) e.window_start = body.windowStart;
-      if (body.windowEnd) e.window_end = body.windowEnd;
-      if (body.expiresAt) e.expires_at = body.expiresAt;
+      if (body.windowStart) e.window_start = pg(body.windowStart);
+      if (body.windowEnd) e.window_end = pg(body.windowEnd);
+      if (body.expiresAt) e.expires_at = pg(body.expiresAt);
+      if (body.customerName) e.customer_name = body.customerName;
       const roe = body.roe as Record<string, string> | undefined;
-      if (roe) Object.assign(e, { roe_document_ref: roe.documentRef, roe_document_sha256: roe.documentSha256 ?? null, roe_signed_at: roe.signedAt, roe_signed_by_name: roe.signedByName, roe_signed_by_role: roe.signedByRole });
+      if (roe) Object.assign(e, { roe_document_ref: roe.documentRef, roe_document_sha256: roe.documentSha256 ?? null, roe_signed_at: pg(roe.signedAt), roe_signed_by_name: roe.signedByName, roe_signed_by_role: roe.signedByRole });
       return { json: { engagement: e } };
     },
     [`POST /api/engagements/${ID}/scope`]: (call) => {
@@ -105,7 +113,7 @@ async function open(page: Page) {
       return { json: { contacts } };
     },
     [`PUT /api/engagements/${ID}/windows`]: (call) => {
-      windows = (call.body as { windows: { startsAt: string; endsAt: string }[] }).windows.map((w, i) => ({ id: `w${i}`, starts_at: w.startsAt, ends_at: w.endsAt }));
+      windows = (call.body as { windows: { startsAt: string; endsAt: string }[] }).windows.map((w, i) => ({ id: `w${i}`, starts_at: pg(w.startsAt), ends_at: pg(w.endsAt) }));
       return { json: { windows } };
     },
     [`POST /api/engagements/${ID}/abort`]: (call) => {
@@ -117,9 +125,13 @@ async function open(page: Page) {
     },
   });
   // The customer lookup: the account for its email or id, refused in words for anything else.
-  await page.route((url) => url.pathname === "/api/admin/engagements" && url.searchParams.has("customer"), (route) => {
+  await page.route((url) => url.pathname === "/api/admin/engagements" && url.searchParams.has("customer"), async (route) => {
     const asked = new URL(route.request().url()).searchParams.get("customer");
     api.calls.push({ method: "GET", path: "/api/admin/engagements", body: { customer: asked }, authorization: route.request().headers()["authorization"] });
+    if (asked === SLOW_EMAIL) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return route.fulfill({ json: { customer: { id: SLOW_OWNER, email: SLOW_EMAIL }, engagements: [] } }).catch(() => undefined);
+    }
     return asked === EMAIL || asked === OWNER ? route.fulfill({ json: { customer: { id: OWNER, email: EMAIL }, engagements: row() } }) : route.fulfill({ status: 404, json: { error: `No account uses ${asked}.` } });
   });
 
@@ -201,6 +213,41 @@ test("cancelling the stop sends nothing", async ({ page }) => {
   expect(api.to("POST", `/api/engagements/${ID}/abort`)).toHaveLength(0);
 });
 
+test("a failed lookup clears the last search's rows rather than leaving them under the error", async ({ page }) => {
+  await open(page);
+  await bookFor(page);
+  await expect(page.getByRole("cell", { name: "ENG-2026-001", exact: true })).toBeVisible();
+  await page.getByLabel("Customer email or user id").fill("nobody@acme.example");
+  await page.getByRole("button", { name: "Find customer" }).click();
+  await expect(page.getByText("No account uses nobody@acme.example.")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "ENG-2026-001", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Book engagement" })).toHaveCount(0);
+});
+
+test("a slow lookup answering after a newer one never replaces the customer being booked for", async ({ page }) => {
+  await open(page);
+  const lookup = page.getByLabel("Customer email or user id");
+  await lookup.fill(SLOW_EMAIL);
+  await page.getByRole("button", { name: "Find customer" }).click();
+  await lookup.fill(EMAIL);
+  await page.getByRole("button", { name: "Find customer" }).click();
+  await expect(page.getByText(`Book a new engagement for ${EMAIL}`)).toBeVisible();
+  // The slow answer lands about 1.5 s later and must be ignored.
+  await page.waitForTimeout(2_000);
+  await expect(page.getByText(`Book a new engagement for ${EMAIL}`)).toBeVisible();
+  await expect(page.getByText(SLOW_EMAIL)).toHaveCount(0);
+});
+
+test("a stop that went through is reported as done even when the reload after it fails", async ({ page }) => {
+  const api = await open(page, { failReloadAfterStop: true });
+  await bookFor(page);
+  await page.getByRole("button", { name: "Stop engagement" }).click();
+  await page.getByRole("button", { name: "Yes, stop this engagement" }).click();
+  await expect(page.getByText(/^Engagement stopped\. .*The page couldn't reload the engagement/)).toBeVisible();
+  await expect(page.getByText("Could not complete the engagement request")).toHaveCount(0);
+  expect(api.to("POST", `/api/engagements/${ID}/abort`)).toHaveLength(1);
+});
+
 test("contacts, testing windows, the window, expiry and the signed rules of engagement are sent as the routes expect", async ({ page }) => {
   const api = await open(page);
   await bookFor(page);
@@ -208,14 +255,26 @@ test("contacts, testing windows, the window, expiry and the signed rules of enga
   await page.getByLabel("Window opens").fill("2026-12-01T09:00");
   await page.getByLabel("Window closes").fill("2026-12-05T17:00");
   await page.getByLabel("Expires").fill("2026-12-06T00:00");
-  await page.getByRole("button", { name: "Save window and expiry" }).click();
+  const saveDates = page.getByRole("button", { name: "Save window and expiry" });
+  await saveDates.click();
   await expect(page.getByText("Window and expiry saved.")).toBeVisible();
+  // Reloaded in the database's own format ("+00:00"), the dates still count as unchanged.
+  await expect(saveDates).toBeDisabled();
+
+  // An emptied date is flagged, never sent, and can be put back.
+  await page.getByLabel("Expires").fill("");
+  await expect(page.getByText("Expires: once set, a date can be changed but not removed.")).toBeVisible();
+  await expect(saveDates).toBeDisabled();
+  await page.getByRole("button", { name: "Put it back" }).click();
+  await expect(page.getByText("once set, a date can be changed but not removed")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Add contact" }).click();
   await page.getByLabel("Contact 1 name").fill("On-call engineer");
   await page.getByLabel("Contact 1 phone").fill("+44 1851 000000");
+  await expect(page.getByText(/^Unsaved changes in Contacts\. Moving on checks only what is saved/)).toBeVisible();
   await page.getByRole("button", { name: "Save contacts" }).click();
   await expect(page.getByText("Contacts saved.")).toBeVisible();
+  await expect(page.getByText(/^Unsaved changes in/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Add testing window" }).click();
   await page.getByLabel("Testing window 1 starts").fill("2026-12-01T09:00");
@@ -235,9 +294,15 @@ test("contacts, testing windows, the window, expiry and the signed rules of enga
   await save.click();
   await expect(page.getByText("Rules of engagement recorded.")).toBeVisible();
 
+  // Changing only the organisation name sends only that, not the stored dates again.
+  await page.getByLabel("Organisation name", { exact: true }).fill("Acme Ltd");
+  await saveDates.click();
+  await expect(page.getByText("Window and expiry saved.")).toBeVisible();
+
   expect(api.to("PATCH", `/api/engagements/${ID}`).map((c) => c.body)).toEqual([
     { windowStart: "2026-12-01T09:00:00.000Z", windowEnd: "2026-12-05T17:00:00.000Z", expiresAt: "2026-12-06T00:00:00.000Z" },
     { roe: { documentRef: "ROE ENG-2026-001 v1", signedAt: "2026-11-20T10:00:00.000Z", signedByName: "A Person", signedByRole: "Director", documentSha256: "a".repeat(64) } },
+    { customerName: "Acme Ltd" },
   ]);
   expect(api.to("PUT", `/api/engagements/${ID}/contacts`)[0].body).toEqual({ contacts: [{ kind: "emergency", name: "On-call engineer", phone: "+44 1851 000000" }] });
   expect(api.to("PUT", `/api/engagements/${ID}/windows`)[0].body).toEqual({ windows: [{ startsAt: "2026-12-01T09:00:00.000Z", endsAt: "2026-12-01T17:00:00.000Z" }] });

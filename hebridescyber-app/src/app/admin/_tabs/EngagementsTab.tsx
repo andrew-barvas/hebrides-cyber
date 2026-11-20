@@ -6,7 +6,7 @@
 // engagement and expiry, move it on one state at a time (showing why a move
 // was refused), and stop it. Every rule stays in /api/engagements*; this tab
 // only sends what the analyst typed and shows what came back.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,14 +14,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { AdminEngagementSummary, ContactKind, EngagementView, ScopeChanges, WindowProblem } from "@/lib/engagements";
-import { NEXT_STATE, SCOPE_REFUSAL_TEXT, SHA256, WINDOW_PROBLEM_TEXT, describeRefusal, fromLocalInput, parseHosts, toLocalInput } from "@/lib/engagementAdmin";
+import { NEXT_STATE, SCOPE_REFUSAL_TEXT, SHA256, WINDOW_PROBLEM_TEXT, describeRefusal, editedDates, fromLocalInput, parseHosts, toLocalInput } from "@/lib/engagementAdmin";
 import { CONTACT_LABEL, STATE_LABEL, canStop, formatWhen } from "@/lib/engagementStatus";
 import { cn } from "@/lib/utils";
 import { ApiError, apiFetch } from "../_shared";
 
 type Row = AdminEngagementSummary & { owner_email: string | null };
 type Customer = { id: string; email: string | null };
-type Notice = { variant: "success" | "danger" | "info"; text: string } | null;
+type ListAnswer = { customer: Customer | null; engagements: Row[]; truncated?: boolean };
+type Notice = { variant: "success" | "danger" | "info" | "warning"; text: string } | null;
 
 const PROFILES: Array<[string, string]> = [
   ["exposure", "Exposure (default)"],
@@ -40,34 +41,59 @@ export default function EngagementsTab({ token }: { token: string }) {
   const [notice, setNotice] = useState<Notice>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  const [truncated, setTruncated] = useState(false);
+  // Only the newest list request may set the list and the customer: an older answer
+  // arriving late would otherwise book the next engagement under the wrong account.
+  const latest = useRef(0);
+
   const fetchList = useCallback(
-    (forCustomer: string) => apiFetch<{ customer: Customer | null; engagements: Row[] }>(`/api/admin/engagements${forCustomer ? `?customer=${encodeURIComponent(forCustomer)}` : ""}`, token),
+    (forCustomer: string) => apiFetch<ListAnswer>(`/api/admin/engagements${forCustomer ? `?customer=${encodeURIComponent(forCustomer)}` : ""}`, token),
     [token],
   );
+  const apply = useCallback((r: ListAnswer) => {
+    setRows(r.engagements);
+    setCustomer(r.customer);
+    setTruncated(r.truncated === true);
+  }, []);
+
+  /** Loads a list; false when a newer request has started since. Throws only for the newest request. */
   const loadList = useCallback(
     async (forCustomer: string) => {
-      const r = await fetchList(forCustomer);
-      setRows(r.engagements);
-      setCustomer(r.customer);
+      const ticket = ++latest.current;
+      let r: ListAnswer;
+      try {
+        r = await fetchList(forCustomer);
+      } catch (e) {
+        if (ticket !== latest.current) return false;
+        throw e;
+      }
+      if (ticket !== latest.current) return false;
+      apply(r);
+      return true;
     },
-    [fetchList],
+    [apply, fetchList],
   );
 
   useEffect(() => {
+    const ticket = ++latest.current;
     fetchList("")
       .then((r) => {
-        setRows(r.engagements);
-        setCustomer(r.customer);
+        if (ticket === latest.current) apply(r);
       })
-      .catch((e) => setNotice({ variant: "danger", text: errorText(e) }));
-  }, [fetchList]);
+      .catch((e) => {
+        if (ticket === latest.current) setNotice({ variant: "danger", text: errorText(e) });
+      });
+  }, [apply, fetchList]);
 
   async function find() {
     setNotice(null);
     try {
       await loadList(lookup.trim());
     } catch (e) {
+      // Don't leave the last search's rows under a message saying there is no such account.
       setCustomer(null);
+      setRows([]);
+      setTruncated(false);
       setNotice({ variant: "danger", text: errorText(e) });
     }
   }
@@ -156,6 +182,7 @@ export default function EngagementsTab({ token }: { token: string }) {
               ))}
             </tbody>
           </table>
+          {truncated && <p className="mt-2 text-sm text-cybermuted">Showing the newest {rows.length} engagements. Older ones aren&apos;t listed: find the customer to see all of theirs.</p>}
         </div>
       )}
 
@@ -236,22 +263,38 @@ function EngagementDetail({ token, id, onChanged }: { token: string; id: string;
       .catch((e) => setNotice({ variant: "danger", text: errorText(e) }));
   }, [fetchView]);
 
-  /** Sends one change, then reloads the record so the page shows what was stored, not what was typed. */
+  // Sections with edits not yet saved, so a refusal never contradicts what the form shows.
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
+  const markDirty = useCallback((section: string, isDirty: boolean) => setDirty((d) => (!!d[section] === isDirty ? d : { ...d, [section]: isDirty })), []);
+  const unsaved = Object.keys(dirty).filter((s) => dirty[s]);
+
+  /**
+   * Sends one change, then reloads the record so the page shows what was stored, not
+   * what was typed. The change and the reload are reported apart: a change that went
+   * through is never shown as failed because the reload after it didn't.
+   */
   async function send(path: string, init: RequestInit, done: string | ((r: unknown) => string), describe?: (e: ApiError) => string) {
     setBusy(true);
     setNotice(null);
+    let r: unknown;
     try {
-      const r = await apiFetch<unknown>(path, token, init);
-      await load();
-      onChanged();
-      setNotice({ variant: "success", text: typeof done === "string" ? done : done(r) });
-      return true;
+      r = await apiFetch<unknown>(path, token, init);
     } catch (e) {
       setNotice({ variant: "danger", text: e instanceof ApiError && describe ? describe(e) : errorText(e) });
+      setBusy(false);
       return false;
+    }
+    const text = typeof done === "string" ? done : done(r);
+    onChanged();
+    try {
+      await load();
+      setNotice({ variant: "success", text });
+    } catch {
+      setNotice({ variant: "warning", text: `${text} The page couldn't reload the engagement, so it may be out of date. Open it again to see the latest.` });
     } finally {
       setBusy(false);
     }
+    return true;
   }
 
   if (!view) {
@@ -287,6 +330,7 @@ function EngagementDetail({ token, id, onChanged }: { token: string; id: string;
         state={e.state}
         next={next}
         busy={busy}
+        unsaved={unsaved}
         onMove={() => next && patch({ to: next }, `Moved to ${STATE_LABEL[next].title}.`)}
         onStop={(reason) =>
           send(`/api/engagements/${id}/abort`, { method: "POST", body: JSON.stringify(reason ? { reason } : {}) }, (r) => {
@@ -296,36 +340,74 @@ function EngagementDetail({ token, id, onChanged }: { token: string; id: string;
         }
       />
 
-      <ScopeSection view={view} editable={editable} busy={busy} send={send} id={id} />
+      <ScopeSection view={view} editable={editable} busy={busy} send={send} id={id} onDirty={markDirty} />
 
-      <DetailsSection key={`d-${e.window_start}-${e.window_end}-${e.expires_at}-${e.customer_name}`} view={view} editable={editable} busy={busy} patch={patch} />
+      <DetailsSection key={`d-${e.window_start}-${e.window_end}-${e.expires_at}-${e.customer_name}`} view={view} editable={editable} busy={busy} patch={patch} onDirty={markDirty} />
 
-      <SignedSection key={`s-${e.contract_signed_at}-${e.roe_signed_at}-${e.roe_document_ref}`} view={view} editable={editable} busy={busy} patch={patch} />
+      <SignedSection
+        key={`s-${e.contract_signed_at}-${e.contract_signed_by_name}-${e.contract_signed_by_role}-${e.contract_document_ref}-${e.roe_signed_at}-${e.roe_document_ref}-${e.roe_document_sha256}-${e.roe_signed_by_name}-${e.roe_signed_by_role}`}
+        view={view}
+        editable={editable}
+        busy={busy}
+        patch={patch}
+        onDirty={markDirty}
+      />
 
-      <ContactsSection key={`c-${view.contacts.map((c) => c.id).join()}`} view={view} editable={editable} busy={busy} send={send} id={id} />
+      <ContactsSection key={`c-${view.contacts.map((c) => c.id).join()}`} view={view} editable={editable} busy={busy} send={send} id={id} onDirty={markDirty} />
 
-      <WindowsSection key={`w-${view.testingWindows.map((w) => w.id).join()}`} view={view} editable={editable} busy={busy} send={send} id={id} />
+      <WindowsSection key={`w-${view.testingWindows.map((w) => w.id).join()}`} view={view} editable={editable} busy={busy} send={send} id={id} onDirty={markDirty} />
     </Card>
   );
 }
 
 type Send = (path: string, init: RequestInit, done: string | ((r: unknown) => string), describe?: (e: ApiError) => string) => Promise<boolean>;
 type Patch = (body: unknown, done: string) => Promise<boolean>;
+type OnDirty = (section: string, isDirty: boolean) => void;
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** Tells the detail view whether this section has unsaved edits, and clears that when the section goes away. */
+function useReportDirty(section: string, isDirty: boolean, onDirty: OnDirty) {
+  useEffect(() => {
+    onDirty(section, isDirty);
+    return () => onDirty(section, false);
+  }, [section, isDirty, onDirty]);
+}
+
+function Section({ title, unsaved = false, children }: { title: string; unsaved?: boolean; children: ReactNode }) {
   return (
     <section className="space-y-3 border-t border-cyberborder pt-4">
-      <CardTitle as="h3">{title}</CardTitle>
+      <div className="flex items-baseline gap-3">
+        <CardTitle as="h3">{title}</CardTitle>
+        {unsaved && <span className="text-xs text-warning">Unsaved changes</span>}
+      </div>
       {children}
     </section>
   );
 }
 
-function StateControls({ state, next, busy, onMove, onStop }: { state: EngagementView["engagement"]["state"]; next: EngagementView["engagement"]["state"] | undefined; busy: boolean; onMove: () => void; onStop: (reason: string) => void }) {
+function StateControls({
+  state,
+  next,
+  busy,
+  unsaved,
+  onMove,
+  onStop,
+}: {
+  state: EngagementView["engagement"]["state"];
+  next: EngagementView["engagement"]["state"] | undefined;
+  busy: boolean;
+  unsaved: string[];
+  onMove: () => void;
+  onStop: (reason: string) => void;
+}) {
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState("");
   return (
     <Section title="State">
+      {next && unsaved.length > 0 && (
+        <Alert variant="warning">
+          Unsaved changes in {unsaved.join(", ")}. Moving on checks only what is saved, so save them first.
+        </Alert>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         {next && (
           <Button onClick={onMove} disabled={busy}>
@@ -366,9 +448,11 @@ function StateControls({ state, next, busy, onMove, onStop }: { state: Engagemen
   );
 }
 
-function ScopeSection({ view, editable, busy, send, id }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string }) {
+function ScopeSection({ view, editable, busy, send, id, onDirty }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string; onDirty: OnDirty }) {
   const [hosts, setHosts] = useState("");
   const [included, setIncluded] = useState(true);
+  const isDirty = editable && parseHosts(hosts).length > 0;
+  useReportDirty("Scope", isDirty, onDirty);
 
   const scopeDone = (r: unknown) => {
     const c = r as ScopeChanges;
@@ -386,7 +470,7 @@ function ScopeSection({ view, editable, busy, send, id }: { view: EngagementView
   }
 
   return (
-    <Section title="Scope">
+    <Section title="Scope" unsaved={isDirty}>
       {view.scope.length === 0 ? (
         <p className="text-sm text-cybermuted">No hosts yet.</p>
       ) : (
@@ -436,29 +520,29 @@ function DateField({ id, label, value, onChange, disabled }: { id: string; label
   );
 }
 
-function DetailsSection({ view, editable, busy, patch }: { view: EngagementView; editable: boolean; busy: boolean; patch: Patch }) {
+const DATE_LABEL = { windowStart: "Window opens", windowEnd: "Window closes", expiresAt: "Expires" } as const;
+
+function DetailsSection({ view, editable, busy, patch, onDirty }: { view: EngagementView; editable: boolean; busy: boolean; patch: Patch; onDirty: OnDirty }) {
   const e = view.engagement;
-  const [start, setStart] = useState(toLocalInput(e.window_start));
-  const [end, setEnd] = useState(toLocalInput(e.window_end));
-  const [expires, setExpires] = useState(toLocalInput(e.expires_at));
+  // What the inputs held when the form opened: only dates edited since are sent, so
+  // a stored timestamp is never re-sent in another format or rounded to the minute.
+  const [initial] = useState(() => ({ windowStart: toLocalInput(e.window_start), windowEnd: toLocalInput(e.window_end), expiresAt: toLocalInput(e.expires_at) }));
+  const [dates, setDates] = useState(initial);
   const [name, setName] = useState(e.customer_name ?? "");
 
-  const body: Record<string, string> = {};
-  const startIso = fromLocalInput(start);
-  const endIso = fromLocalInput(end);
-  const expiresIso = fromLocalInput(expires);
-  if (startIso && startIso !== e.window_start) body.windowStart = startIso;
-  if (endIso && endIso !== e.window_end) body.windowEnd = endIso;
-  if (expiresIso && expiresIso !== e.expires_at) body.expiresAt = expiresIso;
+  const { changes, cleared } = editedDates(initial, dates);
+  const body: Record<string, string> = { ...changes };
   if (name.trim() && name.trim() !== (e.customer_name ?? "")) body.customerName = name.trim();
+  const isDirty = editable && (Object.keys(body).length > 0 || cleared.length > 0);
+  useReportDirty("Window and expiry", isDirty, onDirty);
 
   return (
-    <Section title="Window and expiry">
+    <Section title="Window and expiry" unsaved={isDirty}>
       <p className="text-sm text-cybermuted">Times are in your own time zone. Nothing may run after the expiry, which can&apos;t be before the window ends.</p>
       <div className="flex flex-wrap items-end gap-3">
-        <DateField id="eng-window-start" label="Window opens" value={start} onChange={setStart} disabled={!editable} />
-        <DateField id="eng-window-end" label="Window closes" value={end} onChange={setEnd} disabled={!editable} />
-        <DateField id="eng-expires" label="Expires" value={expires} onChange={setExpires} disabled={!editable} />
+        <DateField id="eng-window-start" label={DATE_LABEL.windowStart} value={dates.windowStart} onChange={(v) => setDates({ ...dates, windowStart: v })} disabled={!editable} />
+        <DateField id="eng-window-end" label={DATE_LABEL.windowEnd} value={dates.windowEnd} onChange={(v) => setDates({ ...dates, windowEnd: v })} disabled={!editable} />
+        <DateField id="eng-expires" label={DATE_LABEL.expiresAt} value={dates.expiresAt} onChange={(v) => setDates({ ...dates, expiresAt: v })} disabled={!editable} />
         <div className="space-y-1">
           <Label htmlFor="eng-name">Organisation name</Label>
           <Input id="eng-name" value={name} onChange={(ev) => setName(ev.target.value)} disabled={!editable} className="w-56" />
@@ -469,14 +553,26 @@ function DetailsSection({ view, editable, busy, patch }: { view: EngagementView;
           </Button>
         )}
       </div>
+      {cleared.length > 0 && (
+        <p className="text-sm text-warning">
+          {cleared.map((k) => DATE_LABEL[k]).join(", ")}: once set, a date can be changed but not removed.{" "}
+          <Button variant="ghost" size="sm" onClick={() => setDates({ ...dates, ...Object.fromEntries(cleared.map((k) => [k, initial[k]])) })}>
+            Put it back
+          </Button>
+        </p>
+      )}
     </Section>
   );
 }
 
-function SignedSection({ view, editable, busy, patch }: { view: EngagementView; editable: boolean; busy: boolean; patch: Patch }) {
+function SignedSection({ view, editable, busy, patch, onDirty }: { view: EngagementView; editable: boolean; busy: boolean; patch: Patch; onDirty: OnDirty }) {
   const e = view.engagement;
-  const [contract, setContract] = useState({ documentRef: e.contract_document_ref ?? "", signedAt: toLocalInput(e.contract_signed_at), signedByName: e.contract_signed_by_name ?? "", signedByRole: e.contract_signed_by_role ?? "" });
-  const [roe, setRoe] = useState({ documentRef: e.roe_document_ref ?? "", documentSha256: e.roe_document_sha256 ?? "", signedAt: toLocalInput(e.roe_signed_at), signedByName: e.roe_signed_by_name ?? "", signedByRole: e.roe_signed_by_role ?? "" });
+  const [initialContract] = useState(() => ({ documentRef: e.contract_document_ref ?? "", signedAt: toLocalInput(e.contract_signed_at), signedByName: e.contract_signed_by_name ?? "", signedByRole: e.contract_signed_by_role ?? "" }));
+  const [initialRoe] = useState(() => ({ documentRef: e.roe_document_ref ?? "", documentSha256: e.roe_document_sha256 ?? "", signedAt: toLocalInput(e.roe_signed_at), signedByName: e.roe_signed_by_name ?? "", signedByRole: e.roe_signed_by_role ?? "" }));
+  const [contract, setContract] = useState(initialContract);
+  const [roe, setRoe] = useState(initialRoe);
+  const isDirty = editable && (JSON.stringify(contract) !== JSON.stringify(initialContract) || JSON.stringify(roe) !== JSON.stringify(initialRoe));
+  useReportDirty("Signed contract and rules of engagement", isDirty, onDirty);
 
   const contractAt = fromLocalInput(contract.signedAt);
   const contractReady = !!contractAt && !!contract.signedByName.trim() && !!contract.signedByRole.trim();
@@ -486,7 +582,7 @@ function SignedSection({ view, editable, busy, patch }: { view: EngagementView; 
   const roeReady = !!roeAt && !!roe.documentRef.trim() && !!roe.signedByName.trim() && !!roe.signedByRole.trim() && shaOk;
 
   return (
-    <Section title="Signed contract and rules of engagement">
+    <Section title="Signed contract and rules of engagement" unsaved={isDirty}>
       <p className="text-sm text-cybermuted">Record where each signed document is filed and who signed it, not the document itself.</p>
       <fieldset className="space-y-2" disabled={!editable}>
         <legend className="text-sm font-medium">Contract</legend>
@@ -551,10 +647,13 @@ function SignedSection({ view, editable, busy, patch }: { view: EngagementView; 
   );
 }
 
-function ContactsSection({ view, editable, busy, send, id }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string }) {
-  const [rows, setRows] = useState<ContactDraft[]>(view.contacts.map((c) => ({ kind: c.kind, name: c.name, role: c.role ?? "", email: c.email ?? "", phone: c.phone ?? "" })));
+function ContactsSection({ view, editable, busy, send, id, onDirty }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string; onDirty: OnDirty }) {
+  const [initial] = useState<ContactDraft[]>(() => view.contacts.map((c) => ({ kind: c.kind, name: c.name, role: c.role ?? "", email: c.email ?? "", phone: c.phone ?? "" })));
+  const [rows, setRows] = useState(initial);
   const set = (i: number, p: Partial<ContactDraft>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const ready = rows.every((r) => r.name.trim() && (r.email.trim() || r.phone.trim()));
+  const isDirty = editable && JSON.stringify(rows) !== JSON.stringify(initial);
+  useReportDirty("Contacts", isDirty, onDirty);
 
   function save() {
     const contacts = rows.map((r) => ({
@@ -568,7 +667,7 @@ function ContactsSection({ view, editable, busy, send, id }: { view: EngagementV
   }
 
   return (
-    <Section title="Contacts">
+    <Section title="Contacts" unsaved={isDirty}>
       <p className="text-sm text-cybermuted">Authorising needs at least one emergency stop contact. Each contact needs an email address or a phone number.</p>
       {rows.length === 0 && <p className="text-sm text-cybermuted">No contacts yet.</p>}
       <ul className="space-y-2">
@@ -607,10 +706,13 @@ function ContactsSection({ view, editable, busy, send, id }: { view: EngagementV
   );
 }
 
-function WindowsSection({ view, editable, busy, send, id }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string }) {
-  const [rows, setRows] = useState<WindowDraft[]>(view.testingWindows.map((w) => ({ startsAt: toLocalInput(w.starts_at), endsAt: toLocalInput(w.ends_at) })));
+function WindowsSection({ view, editable, busy, send, id, onDirty }: { view: EngagementView; editable: boolean; busy: boolean; send: Send; id: string; onDirty: OnDirty }) {
+  const [initial] = useState<WindowDraft[]>(() => view.testingWindows.map((w) => ({ startsAt: toLocalInput(w.starts_at), endsAt: toLocalInput(w.ends_at) })));
+  const [rows, setRows] = useState(initial);
   const set = (i: number, p: Partial<WindowDraft>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const ready = rows.every((r) => fromLocalInput(r.startsAt) && fromLocalInput(r.endsAt));
+  const isDirty = editable && JSON.stringify(rows) !== JSON.stringify(initial);
+  useReportDirty("Testing windows", isDirty, onDirty);
 
   function save() {
     const windows = rows.map((r) => ({ startsAt: fromLocalInput(r.startsAt), endsAt: fromLocalInput(r.endsAt) }));
@@ -622,7 +724,7 @@ function WindowsSection({ view, editable, busy, send, id }: { view: EngagementVi
   }
 
   return (
-    <Section title="Testing windows">
+    <Section title="Testing windows" unsaved={isDirty}>
       <p className="text-sm text-cybermuted">Optional times inside the overall window, say 09:00 to 17:00 on each agreed day. With none, the overall window is the only limit.</p>
       {rows.length === 0 && <p className="text-sm text-cybermuted">No testing windows.</p>}
       <ul className="space-y-2">

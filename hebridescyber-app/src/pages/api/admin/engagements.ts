@@ -1,6 +1,7 @@
 // GET /api/admin/engagements — the admin Engagements tab's list (Exploit, P-07).
-//   no query                      → { customer: null, engagements } every account's, newest first
-//   ?customer=<email or user id>  → { customer: { id, email }, engagements } that account's only
+//   no query                      → { customer: null, engagements, truncated } every account's, newest first
+//   ?customer=<email or user id>  → { customer: { id, email }, engagements, truncated } that account's only
+// At most ADMIN_LIST_LIMIT rows; `truncated` is true when older ones were left out.
 // Each row carries owner_email for display. The customer lookup is the same one the
 // Lookout reports tab uses (lookoutCustomer.ts), so an analyst creating an
 // engagement types an email, not a UUID, and gets the account id to create it under.
@@ -38,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const listed = await listAllEngagements(supabaseAdmin, customer?.id ?? null);
   if (listed.status !== "ok") return sendEngagementFailure(res, ROUTE, listed);
 
-  const emails = customer ? new Map(customer.email ? [[customer.id, customer.email]] : []) : await customerEmails(supabaseAdmin, listed.data.map((e) => e.owner));
+  const emails = customer ? new Map(customer.email ? [[customer.id, customer.email]] : []) : await customerEmails(supabaseAdmin, listed.data.engagements.map((e) => e.owner));
   res.setHeader("Cache-Control", "private, no-store");
-  return res.status(200).json({ customer, engagements: listed.data.map((e) => ({ ...e, owner_email: emails.get(e.owner) ?? null })) });
+  return res.status(200).json({ customer, engagements: listed.data.engagements.map((e) => ({ ...e, owner_email: emails.get(e.owner) ?? null })), truncated: listed.data.truncated });
 }

@@ -19,6 +19,7 @@ import {
   replaceContacts,
   replaceTestingWindows,
   linkedAuthorizationExpiry,
+  ADMIN_LIST_LIMIT,
   listAllEngagements,
   listOwnerEngagements,
   loadEngagementView,
@@ -318,12 +319,20 @@ describe("listOwnerEngagements", () => {
 describe("listAllEngagements", () => {
   it("reads every account's rows unfiltered, or one account's when given", async () => {
     const all = fakeAdmin({ engagements: [{ data: [{ id: "eng-1", owner: "owner-1" }, { id: "eng-2", owner: "owner-2" }] }] });
-    expect(await listAllEngagements(all.admin, null)).toEqual({ status: "ok", data: [{ id: "eng-1", owner: "owner-1" }, { id: "eng-2", owner: "owner-2" }] });
+    expect(await listAllEngagements(all.admin, null)).toEqual({ status: "ok", data: { engagements: [{ id: "eng-1", owner: "owner-1" }, { id: "eng-2", owner: "owner-2" }], truncated: false } });
     expect(all.filters()).toEqual([]);
 
     const one = fakeAdmin({ engagements: [{ data: null }] });
-    expect(await listAllEngagements(one.admin, "owner-1")).toEqual({ status: "ok", data: [] });
+    expect(await listAllEngagements(one.admin, "owner-1")).toEqual({ status: "ok", data: { engagements: [], truncated: false } });
     expect(one.filters()).toEqual([["owner", "owner-1"]]);
+  });
+
+  it("returns at most the limit and says when older ones were left out", async () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `eng-${i}` }));
+    const full = await listAllEngagements(fakeAdmin({ engagements: [{ data: rows(ADMIN_LIST_LIMIT) }] }).admin, null);
+    expect(full.status === "ok" && [full.data.engagements.length, full.data.truncated]).toEqual([ADMIN_LIST_LIMIT, false]);
+    const over = await listAllEngagements(fakeAdmin({ engagements: [{ data: rows(ADMIN_LIST_LIMIT + 1) }] }).admin, null);
+    expect(over.status === "ok" && [over.data.engagements.length, over.data.truncated]).toEqual([ADMIN_LIST_LIMIT, true]);
   });
 
   it("reports a missing table as unavailable and anything else as an error", async () => {

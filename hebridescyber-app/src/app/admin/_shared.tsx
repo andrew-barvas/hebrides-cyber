@@ -180,8 +180,11 @@ export async function apiFetch<T>(path: string, token: string, opts?: RequestIni
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(opts?.headers ?? {}) },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(body.error ?? `HTTP ${res.status}`, res.status, body);
+    // A proxy can answer with no body, a non-JSON page or JSON that isn't an object (`null`).
+    const parsed: unknown = await res.json().catch(() => null);
+    const body = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    const message = typeof body.error === "string" && body.error ? body.error : res.statusText || `HTTP ${res.status}`;
+    throw new ApiError(message, res.status, body);
   }
   return res.json() as Promise<T>;
 }
