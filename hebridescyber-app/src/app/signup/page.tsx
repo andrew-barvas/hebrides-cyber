@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink } from "@/lib/auth";
 import { safeNextPath } from "@/lib/safeRedirect";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 // Explicit "create an account" entry point. Mechanically this is the same
 // magic-link call as /login (Supabase's signInWithOtp creates a new
@@ -68,6 +69,10 @@ function SignupForm() {
             Check <strong>{email}</strong> for a link to finish creating your account. You can close this tab.
           </div>
         ) : (
+          <>
+          <div className="mb-4">
+            <GoogleSignInButton next={redirectTo} />
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <label htmlFor="email" className="sr-only">Email address</label>
             <input
@@ -101,6 +106,7 @@ function SignupForm() {
               {submitting ? "Sending…" : "Create account"}
             </button>
           </form>
+          </>
         )}
 
         <p className="mt-10 text-center text-xs text-cybermuted">

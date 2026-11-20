@@ -92,11 +92,13 @@ export async function signInWithPassword(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-// TODO: enable the Google provider in the Supabase Dashboard (Authentication
-// > Providers) and set its OAuth client ID/secret before this works —
-// until then it'll redirect to an error page, which is expected.
-export async function signInWithGoogle() {
-  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+// Needs the Google provider enabled in Supabase (Authentication > Providers)
+// with its OAuth client ID and secret (OWNER-TODO OT-63); GoogleSignInButton
+// only shows the button once NEXT_PUBLIC_GOOGLE_SIGNIN is "true".
+/** `next`: where to land after sign-in, carried through /auth/callback like the magic link's. */
+export async function signInWithGoogle(next?: string) {
+  const nextQuery = next && next !== "/dashboard" ? `?next=${encodeURIComponent(safeNextPath(next))}` : "";
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback${nextQuery}` : undefined;
   return supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
 }
 

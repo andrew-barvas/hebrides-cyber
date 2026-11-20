@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signInWithMagicLink, signInWithPassword } from "@/lib/auth";
 import { safeNextPath } from "@/lib/safeRedirect";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 // Magic link is the primary sign-in flow. Password sign-in is available so
 // the seeded demo accounts (admin, basic/pro/agency/no-plan customers from
@@ -78,6 +79,10 @@ function LoginForm() {
             Check <strong>{email}</strong> for a sign-in link. You can close this tab.
           </div>
         ) : (
+          <>
+          <div className="mb-4">
+            <GoogleSignInButton next={redirectTo} />
+          </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <label htmlFor="email" className="sr-only">Email address</label>
             <input
@@ -131,6 +136,7 @@ function LoginForm() {
               </Link>
             )}
           </form>
+          </>
         )}
 
         <p className="mt-6 text-center text-xs text-cybermuted">
