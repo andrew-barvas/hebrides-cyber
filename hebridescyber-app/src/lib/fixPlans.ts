@@ -1,4 +1,4 @@
-// Shared fix plans (migration 083, COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md
+// Shared fix plans (migration 082, COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md
 // idea 8): an Agency user shares chosen findings from one site with whoever
 // does the work, by link. SecurityScorecard's Action Plans are the pattern;
 // ours is for an agency and its client.
