@@ -7,7 +7,7 @@ describe("withRetries", () => {
   it("retries a failing get until it succeeds, with exponential back-off", async () => {
     const inner = memoryObjectStore({ k: Buffer.from("v") });
     const get = vi.fn().mockRejectedValueOnce(new Error("fetch failed")).mockRejectedValueOnce(new Error("ECONNRESET")).mockImplementation((key: string) => inner.get(key));
-    const sleep = vi.fn(async (_ms: number) => {});
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => {});
     const store = withRetries({ get, put: inner.put } as ObjectStore, { sleep, baseDelayMs: 100 });
     expect((await store.get("k"))?.toString()).toBe("v");
     expect(get).toHaveBeenCalledTimes(3);
