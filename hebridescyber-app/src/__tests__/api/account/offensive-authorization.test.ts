@@ -103,7 +103,7 @@ describe("/api/account/offensive-authorization", () => {
     const tooFar = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
     const res = await call("POST", { targetUrl: URL_OK, acknowledge: true, expiresAt: tooFar });
     expect(res.statusCode).toBe(400);
-    expect(res._getJSONData().error).toMatch(/at most 30 days/);
+    expect((res._getJSONData() as { error: string }).error).toMatch(/at most 30 days/);
   });
 
   it.each([
