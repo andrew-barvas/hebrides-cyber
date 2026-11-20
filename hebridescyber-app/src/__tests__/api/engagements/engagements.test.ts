@@ -20,6 +20,8 @@ const m = vi.hoisted(() => ({
   windows: vi.fn(),
   replaceContacts: vi.fn(),
   replaceWindows: vi.fn(),
+  list: vi.fn(),
+  view: vi.fn(),
 }));
 
 vi.mock("@/lib/adminAuth", () => ({
@@ -42,6 +44,8 @@ vi.mock("@/lib/engagements", async (original) => ({
   loadTestingWindows: m.windows,
   replaceContacts: m.replaceContacts,
   replaceTestingWindows: m.replaceWindows,
+  listOwnerEngagements: m.list,
+  loadEngagementView: m.view,
 }));
 
 import createHandler from "@/pages/api/engagements/index";
@@ -109,9 +113,9 @@ describe.each([
   });
 
   it("rejects other methods, with Allow", async () => {
-    const { status, allow } = await call(handler, "GET");
+    const { status, allow } = await call(handler, "DELETE");
     expect(status).toBe(405);
-    expect(allow).toBe(method);
+    expect(String(allow).split(", ")).toContain(method);
   });
 });
 
@@ -452,5 +456,68 @@ describe("PUT /api/engagements/{id}/windows", () => {
   it("lets an empty list clear the slots, leaving the overall window as the only limit", async () => {
     expect((await call(windowsHandler, "PUT", { windows: [] })).status).toBe(200);
     expect(m.replaceWindows.mock.calls[0][3]).toEqual([]);
+  });
+});
+
+describe("GET /api/engagements", () => {
+  it("lists the caller's own engagements, uncached", async () => {
+    m.list.mockResolvedValue({ status: "ok", data: [{ id: ID, reference: "ENG-1", state: "in_window" }] });
+    const { req, res } = createMocks<NextApiRequest, NextApiResponse>({ method: "GET", headers: { authorization: "Bearer t" } });
+    await createHandler(req, res);
+    expect(res._getStatusCode()).toBe(200);
+    expect(res._getJSONData()).toEqual({ engagements: [{ id: ID, reference: "ENG-1", state: "in_window" }] });
+    expect(m.list).toHaveBeenCalledWith(expect.anything(), OWNER);
+    expect(res.getHeader("Cache-Control")).toBe("private, no-store");
+  });
+
+  it("refuses an API key and no caller, and hides a failed read", async () => {
+    m.auth.mockResolvedValue({ ownerId: OWNER, via: "api_key" });
+    expect((await call(createHandler, "GET")).status).toBe(403);
+    m.auth.mockResolvedValue(null);
+    expect((await call(createHandler, "GET")).status).toBe(401);
+    expect(m.list).not.toHaveBeenCalled();
+    m.auth.mockResolvedValue({ ownerId: OWNER, via: "session" });
+    m.list.mockResolvedValue({ status: "error", error: { message: "relation engagements" } });
+    const failed = await call(createHandler, "GET");
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(failed.body)).not.toContain("relation");
+  });
+});
+
+describe("GET /api/engagements/{id}", () => {
+  const shown = { engagement: { id: ID }, scope: [], contacts: [], testingWindows: [] };
+  beforeEach(() => {
+    m.view.mockResolvedValue({ status: "ok", data: shown });
+  });
+
+  it("shows the owner their engagement", async () => {
+    const { status, body } = await call(patchHandler, "GET");
+    expect(status).toBe(200);
+    expect(body).toEqual(shown);
+    expect(m.requireAdmin).not.toHaveBeenCalled();
+  });
+
+  it("shows an admin someone else's, and is 404 (not 403) for anyone else", async () => {
+    m.auth.mockResolvedValue({ ownerId: "someone-else", via: "session" });
+    expect((await call(patchHandler, "GET")).status).toBe(200);
+    m.requireAdmin.mockResolvedValue(null);
+    expect((await call(patchHandler, "GET")).status).toBe(404);
+  });
+
+  it("refuses an API key, and is 404 for a malformed or missing id", async () => {
+    m.auth.mockResolvedValue({ ownerId: OWNER, via: "api_key" });
+    expect((await call(patchHandler, "GET")).status).toBe(403);
+    m.auth.mockResolvedValue({ ownerId: OWNER, via: "session" });
+    expect((await call(patchHandler, "GET", undefined, "nope")).status).toBe(404);
+    m.load.mockResolvedValue({ status: "not_found" });
+    expect((await call(patchHandler, "GET")).status).toBe(404);
+    expect(m.view).not.toHaveBeenCalled();
+  });
+
+  it("fails rather than showing a partial view", async () => {
+    m.view.mockResolvedValue({ status: "error", error: { message: "offensive_scan_authorizations boom" } });
+    const { status, body } = await call(patchHandler, "GET");
+    expect(status).toBe(500);
+    expect(JSON.stringify(body)).not.toContain("offensive_scan");
   });
 });
