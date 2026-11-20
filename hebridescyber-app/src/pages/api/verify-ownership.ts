@@ -14,7 +14,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { hostnameFromUrl, verificationHints, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
+import { hostnameFromUrl, preferredDnsTxtName, verificationHints, verifyDomain, VERIFICATION_PREFIX, WELL_KNOWN_PATH } from "@/lib/ownership";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -127,7 +127,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     domain,
     token,
     verified: Boolean(existing?.verified_at),
-    dnsRecord: { type: "TXT", name: domain, value: `${VERIFICATION_PREFIX}=${token}` },
+    // For a www host this is the bare domain: www is usually a CNAME, which
+    // can't hold a TXT record (ownership.ts dnsTxtNames).
+    dnsRecord: { type: "TXT", name: preferredDnsTxtName(domain), value: `${VERIFICATION_PREFIX}=${token}` },
     file: { url: `https://${domain}${WELL_KNOWN_PATH}`, contents: token },
     instructions: "Add EITHER the DNS TXT record OR upload the file, then call this endpoint again with action=check.",
   });

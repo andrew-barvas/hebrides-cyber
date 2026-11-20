@@ -11,7 +11,7 @@ vi.mock("node:dns/promises", () => {
   return { ...mod, default: mod };
 });
 
-import { checkDnsTxt, checkFileVerification, inspectDnsTxt, inspectFile, verificationHints, verifyDomain, validateNoSsrf, mappedIpv4, hostnameFromUrl } from "./ownership";
+import { checkDnsTxt, checkFileVerification, dnsTxtNames, inspectDnsTxt, inspectFile, preferredDnsTxtName, verificationHints, verifyDomain, validateNoSsrf, mappedIpv4, hostnameFromUrl } from "./ownership";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 const FILE_URL = "https://example.com/.well-known/hebridescyber-verify.txt";
@@ -47,6 +47,52 @@ describe("inspectDnsTxt", () => {
     resolveTxtMock.mockRejectedValue(Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }));
     expect(await inspectDnsTxt("example.com", TOKEN)).toBe("no_txt");
     expect(await checkDnsTxt("example.com", TOKEN)).toBe(false);
+  });
+
+  it("accepts the record on the bare domain for a www host (www is usually a CNAME)", async () => {
+    // www follows its CNAME to the web host's TXT records; the bare domain has ours.
+    resolveTxtMock.mockImplementation(async (name: string) =>
+      name === "example.com" ? [["v=spf1 -all"], [`hebridescyber-verify=${TOKEN}`]] : [["host-verification=abc"]],
+    );
+    expect(await inspectDnsTxt("www.example.com", TOKEN)).toBe("match");
+    expect(resolveTxtMock.mock.calls.map((c) => c[0])).toEqual(["www.example.com", "example.com"]);
+  });
+
+  it("still matches a record on www itself, and stops looking once it does", async () => {
+    resolveTxtMock.mockResolvedValue([[`hebridescyber-verify=${TOKEN}`]]);
+    expect(await inspectDnsTxt("www.example.com", TOKEN)).toBe("match");
+    expect(resolveTxtMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports other_txt when either name has records, no_txt when neither does", async () => {
+    resolveTxtMock.mockImplementation(async (name: string) => {
+      if (name === "www.example.com") throw Object.assign(new Error("ENODATA"), { code: "ENODATA" });
+      return [["v=spf1 -all"]];
+    });
+    expect(await inspectDnsTxt("www.example.com", TOKEN)).toBe("other_txt");
+    resolveTxtMock.mockImplementation(async () => []);
+    expect(await inspectDnsTxt("www.example.com", TOKEN)).toBe("no_txt");
+  });
+
+  it("never looks above any subdomain other than www", async () => {
+    resolveTxtMock.mockResolvedValue([]);
+    await inspectDnsTxt("app.example.co.uk", TOKEN);
+    expect(resolveTxtMock.mock.calls.map((c) => c[0])).toEqual(["app.example.co.uk"]);
+  });
+});
+
+describe("dnsTxtNames / preferredDnsTxtName", () => {
+  it("adds the bare domain for www hosts only, and prefers it", () => {
+    expect(dnsTxtNames("www.example.org")).toEqual(["www.example.org", "example.org"]);
+    expect(preferredDnsTxtName("www.example.org")).toBe("example.org");
+    expect(dnsTxtNames("example.org")).toEqual(["example.org"]);
+    expect(preferredDnsTxtName("shop.example.org")).toBe("shop.example.org");
+    // A bare "www." is not a host to strip down to nothing.
+    expect(dnsTxtNames("www.")).toEqual(["www."]);
+  });
+
+  it("names the bare domain in a www host's DNS hint", () => {
+    expect(verificationHints("www.example.org", TOKEN, { dns: "no_txt" })[0]).toMatch(/^DNS: no TXT record on example\.org yet/);
   });
 });
 
