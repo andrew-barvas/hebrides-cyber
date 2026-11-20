@@ -326,6 +326,17 @@ export async function listOwnerEngagements(admin: SupabaseClient, owner: string)
   return { status: "ok", data: (data ?? []) as EngagementSummary[] };
 }
 
+export type AdminEngagementSummary = EngagementSummary & Pick<EngagementRow, "owner" | "scan_profile">;
+
+/** Every account's engagements for the admin console, newest first, or one account's when `owner` is given. */
+export async function listAllEngagements(admin: SupabaseClient, owner: string | null): Promise<EngagementResult<AdminEngagementSummary[]>> {
+  let query = admin.from("engagements").select("id, owner, reference, customer_name, state, scan_profile, window_start, window_end, expires_at, created_at, aborted_at, closed_at");
+  if (owner) query = query.eq("owner", owner);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(200);
+  if (error) return failure(error);
+  return { status: "ok", data: (data ?? []) as AdminEngagementSummary[] };
+}
+
 export type ScopeHostView = {
   host: string;
   included: boolean;

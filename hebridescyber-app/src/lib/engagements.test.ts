@@ -19,6 +19,7 @@ import {
   replaceContacts,
   replaceTestingWindows,
   linkedAuthorizationExpiry,
+  listAllEngagements,
   listOwnerEngagements,
   loadEngagementView,
   updateEngagement,
@@ -29,10 +30,12 @@ type Reply = { data?: unknown; error?: { code?: string; message?: string } | nul
 /** A chainable stand-in: each awaited query takes the next reply queued for its table. */
 function fakeAdmin(replies: Record<string, Reply[]>, rpc?: Reply) {
   const writes: { table: string; op: string; row?: unknown; filters: unknown[][] }[] = [];
+  const reads: { table: string; filters: unknown[][] }[] = [];
   const admin = {
     rpc: vi.fn(async () => rpc ?? { data: null, error: null }),
     from(table: string) {
       const filters: unknown[][] = [];
+      reads.push({ table, filters });
       let write: (typeof writes)[number] | undefined;
       const next = () => (replies[table] ?? []).shift() ?? { data: null, error: null };
       const builder: Record<string, unknown> = {
@@ -50,7 +53,7 @@ function fakeAdmin(replies: Record<string, Reply[]>, rpc?: Reply) {
       return builder;
     },
   };
-  return { admin: admin as unknown as SupabaseClient, writes, rpc: admin.rpc };
+  return { admin: admin as unknown as SupabaseClient, writes, rpc: admin.rpc, filters: () => reads.flatMap((r) => r.filters) };
 }
 
 const ENGAGEMENT = { id: "eng-1", owner: "owner-1" };
@@ -309,6 +312,23 @@ describe("listOwnerEngagements", () => {
     const { admin } = fakeAdmin({ engagements: [{ data: [{ id: "eng-1" }] }] });
     expect(await listOwnerEngagements(admin, "owner-1")).toEqual({ status: "ok", data: [{ id: "eng-1" }] });
     expect((await listOwnerEngagements(fakeAdmin({ engagements: [{ error: { code: "XX000" } }] }).admin, "owner-1")).status).toBe("error");
+  });
+});
+
+describe("listAllEngagements", () => {
+  it("reads every account's rows unfiltered, or one account's when given", async () => {
+    const all = fakeAdmin({ engagements: [{ data: [{ id: "eng-1", owner: "owner-1" }, { id: "eng-2", owner: "owner-2" }] }] });
+    expect(await listAllEngagements(all.admin, null)).toEqual({ status: "ok", data: [{ id: "eng-1", owner: "owner-1" }, { id: "eng-2", owner: "owner-2" }] });
+    expect(all.filters()).toEqual([]);
+
+    const one = fakeAdmin({ engagements: [{ data: null }] });
+    expect(await listAllEngagements(one.admin, "owner-1")).toEqual({ status: "ok", data: [] });
+    expect(one.filters()).toEqual([["owner", "owner-1"]]);
+  });
+
+  it("reports a missing table as unavailable and anything else as an error", async () => {
+    expect((await listAllEngagements(fakeAdmin({ engagements: [{ error: { code: "42P01" } }] }).admin, null)).status).toBe("unavailable");
+    expect((await listAllEngagements(fakeAdmin({ engagements: [{ error: { code: "XX000" } }] }).admin, null)).status).toBe("error");
   });
 });
 
