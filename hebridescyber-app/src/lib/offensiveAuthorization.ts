@@ -85,12 +85,32 @@ export async function hasActiveOffensiveAuthorization(
  * invariant holds, then inserts the new row and audits it. Returns the host it
  * authorised, or null if the URL was invalid. Service-role caller only.
  */
+/**
+ * Audit M5 (AUDIT-2026-11-POST-MERGE.md): an authorization to send real attack
+ * traffic must expire. EXPLOIT-PRODUCT-PLAN.md says it ends with the engagement
+ * window, and a retest is a new authorization, never a standing grant.
+ */
+export const MAX_AUTHORIZATION_DAYS = 30;
+
+/** Pure: why an expiry isn't acceptable, or null when it is. */
+export function authorizationExpiryProblem(expiresAt: string | null | undefined, now: Date): string | null {
+  if (!expiresAt) return "an expiry date is required";
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t)) return "the expiry isn't a valid date";
+  if (t <= now.getTime()) return "the expiry must be in the future";
+  if (t > now.getTime() + MAX_AUTHORIZATION_DAYS * 24 * 60 * 60 * 1000) return `the expiry can be at most ${MAX_AUTHORIZATION_DAYS} days away`;
+  return null;
+}
+
 export async function recordOffensiveAuthorization(
   supabaseAdmin: SupabaseClient,
   params: { owner: string; authorizedBy: string; targetUrl: string; scope: string; expiresAt?: string | null },
-): Promise<{ ok: true; host: string } | { ok: false; reason: "invalid_url" | "unavailable" | "error" }> {
+  now: Date = new Date(),
+): Promise<{ ok: true; host: string; expiresAt: string } | { ok: false; reason: "invalid_url" | "invalid_expiry" | "unavailable" | "error" }> {
   const host = authHostFromUrl(params.targetUrl);
   if (!host) return { ok: false, reason: "invalid_url" };
+  if (authorizationExpiryProblem(params.expiresAt, now)) return { ok: false, reason: "invalid_expiry" };
+  const expiresAt = new Date(params.expiresAt as string).toISOString();
   try {
     // Revoke any current active authorization for this target first.
     const revoke = await supabaseAdmin
@@ -108,7 +128,7 @@ export async function recordOffensiveAuthorization(
       target_host: host,
       authorized_by: params.authorizedBy,
       scope: params.scope,
-      expires_at: params.expiresAt ?? null,
+      expires_at: expiresAt,
     });
     if (insert.error) {
       if (isMissingSchemaError(insert.error)) return { ok: false, reason: "unavailable" };
@@ -119,9 +139,9 @@ export async function recordOffensiveAuthorization(
       action: "offensive_scan.authorized",
       resourceType: "monitored_target",
       resourceId: host,
-      metadata: { owner: params.owner, scope: params.scope, expires_at: params.expiresAt ?? null },
+      metadata: { owner: params.owner, scope: params.scope, expires_at: expiresAt },
     });
-    return { ok: true, host };
+    return { ok: true, host, expiresAt };
   } catch {
     return { ok: false, reason: "error" };
   }

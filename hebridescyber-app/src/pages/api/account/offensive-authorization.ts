@@ -13,7 +13,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
-import { recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
+import { authorizationExpiryProblem, recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
 
 const postBodySchema = z.object({
   targetUrl: z.string().url("targetUrl must be a valid URL"),
@@ -21,8 +21,9 @@ const postBodySchema = z.object({
   acknowledge: z.literal(true, { message: "You must acknowledge that real attack traffic will be sent to this target." }),
   // What the owner is authorising, stored for the audit record.
   scope: z.string().min(1).max(2000).optional(),
-  // Optional ISO expiry; omitted means it stays until revoked.
-  expiresAt: z.string().datetime().optional(),
+  // Required ISO expiry, in the future and at most MAX_AUTHORIZATION_DAYS
+  // away (audit M5): consent to attack traffic is never open-ended.
+  expiresAt: z.string().datetime({ offset: true, message: "expiresAt must be an ISO date-time" }),
 });
 
 const deleteBodySchema = z.object({
@@ -80,11 +81,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     authorizedBy: caller.ownerId,
     targetUrl,
     scope: post.scope ?? DEFAULT_SCOPE,
-    expiresAt: post.expiresAt ?? null,
+    expiresAt: post.expiresAt,
   });
   if (!result.ok) {
+    if (result.reason === "invalid_expiry") {
+      return res.status(400).json({ error: `expiresAt: ${authorizationExpiryProblem(post.expiresAt, new Date()) ?? "invalid"}` });
+    }
     if (result.reason === "unavailable") return res.status(503).json({ error: "Offensive scanning isn't available yet." });
     return res.status(result.reason === "invalid_url" ? 400 : 500).json({ error: "Could not record the authorization." });
   }
-  return res.status(200).json({ ok: true, host: result.host });
+  return res.status(200).json({ ok: true, host: result.host, expiresAt: result.expiresAt });
 }
