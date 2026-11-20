@@ -1,5 +1,10 @@
 # Documentation map
 
+> **Moved 2026-11-20:** `marketing/`, `legal/`, the competitor and strategy
+> reviews, and the Exploit, Lookout and sprint plans are now in a private
+> repo. Links to them below no longer resolve here; see
+> [`PRIVATE-DOCS.md`](PRIVATE-DOCS.md).
+
 Which doc answers which question. No original content lives here — every
 row links to the file that owns that topic; if you find the same fact
 stated in two places, one of them is wrong and should be pointing here
