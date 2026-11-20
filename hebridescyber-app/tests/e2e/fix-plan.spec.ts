@@ -4,7 +4,10 @@ import { test, expect } from "@playwright/test";
 // mocked at the network layer, so no database is needed.
 const TOKEN = "A".repeat(43);
 
-const plan = {
+type Item = { checkId: string; position: number; severity: string; title: string; remediation: string; status: string; fixedAt: string | null; markedDoneAt: string | null; note: string };
+type Plan = { title: string; host: string; createdAt: string; expiresAt: string; progress: { fixed: number; markedDone: number; open: number; total: number }; items: Item[] };
+
+const plan: Plan = {
   title: "Before go-live",
   host: "shop.example.com",
   createdAt: "2026-11-01T00:00:00Z",
@@ -17,7 +20,7 @@ const plan = {
 };
 
 test("a shared fix plan shows progress and lets the person with the link mark an item done", async ({ page }) => {
-  let current = plan;
+  let current: Plan = plan;
   let posted: unknown = null;
   await page.route(`**/api/plans/${TOKEN}`, (route) => route.fulfill({ json: current }));
   await page.route(`**/api/plans/${TOKEN}/done`, async (route) => {
