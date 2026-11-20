@@ -75,5 +75,6 @@ test("a report that can't be found says so", async ({ page }) => {
   await mockSupabase(page, { subscriptions: [SUBSCRIPTION] });
   await mockApi(page, { [`GET /api/lookout/reports/${REPORT_ID}`]: { status: 404, json: { error: "Report not found" } } });
   await page.goto(`/dashboard/lookout/${REPORT_ID}`);
-  await expect(page.getByRole("alert")).toHaveText("Report not found.");
+  // Next.js adds its own empty role="alert" route announcer to every page.
+  await expect(page.getByRole("alert").filter({ hasText: "Report not found." })).toBeVisible();
 });

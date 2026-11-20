@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers/session";
+import { signIn, TEST_USER } from "./helpers/session";
 import { mockApi, mockSupabase } from "./helpers/mocks";
 import { SUBSCRIPTION } from "./helpers/fixtures";
 
@@ -73,10 +73,10 @@ test("the Cyber Essentials page downloads the security evidence pack", async ({ 
 });
 
 test("an owner with a repository not linked to a site is prompted to link it", async ({ page }) => {
-  await mockSupabase(page, { subscriptions: [SUBSCRIPTION], repo_connections: [{ id: "r1", github_repo: "acme/site", target_host: null, connected_at: "2026-11-01T00:00:00Z" }] });
+  await mockSupabase(page, { subscriptions: [SUBSCRIPTION], repo_connections: [{ id: "r1", owner: TEST_USER.id, github_repo: "acme/site", target_host: null, connected_at: "2026-11-01T00:00:00Z" }] });
   await mockApi(page, { "GET /api/emerging-threats": { json: { available: true, alerts: [] } } });
 
   await page.goto("/dashboard");
   await expect(page.getByText(/acme\/site/).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /link/i }).first()).toHaveAttribute("href", /integrations/);
+  await expect(page.getByRole("link", { name: "Choose its site" })).toHaveAttribute("href", /integrations/);
 });
