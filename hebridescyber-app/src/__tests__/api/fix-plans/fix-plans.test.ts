@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authMock, gateMock, canActMock, auditMock, tables, inserts } = vi.hoisted(() => ({
+const { authMock, gateMock, canActMock, auditMock, tables, inserts, failures } = vi.hoisted(() => ({
+  failures: { itemsInsert: null as unknown, deleted: [] as string[] },
   authMock: vi.fn(),
   gateMock: vi.fn(),
   canActMock: vi.fn(),
@@ -18,9 +19,12 @@ function builder(table: string) {
   q.single = async () => ({ data: { id: "plan-1" }, error: null });
   q.insert = (row: unknown) => {
     inserts.push({ table, row });
-    return table === "fix_plans" ? q : Promise.resolve({ error: null });
+    return table === "fix_plans" ? q : Promise.resolve({ error: failures.itemsInsert });
   };
-  q.delete = () => q;
+  q.delete = () => {
+    failures.deleted.push(table);
+    return q;
+  };
   q.then = (r: (v: unknown) => void) => r({ data: tables[table]?.list ?? [], error: null });
   return q;
 }
@@ -46,6 +50,8 @@ describe("/api/fix-plans", () => {
     canActMock.mockReset().mockResolvedValue(false);
     auditMock.mockReset();
     inserts.length = 0;
+    failures.itemsInsert = null;
+    failures.deleted = [];
     for (const k of Object.keys(tables)) delete tables[k];
     tables.scans = { single: { id: SCAN, owner: "o1", target_url: "https://shop.example.com/" } };
     tables.scan_results = {
@@ -95,5 +101,23 @@ describe("/api/fix-plans", () => {
     const res = await call("GET", undefined, { host: "shop.example.com" });
     expect(res._getStatusCode()).toBe(200);
     expect((res._getJSONData() as { plans: Array<{ progress: unknown }> }).plans[0].progress).toEqual({ fixed: 1, markedDone: 0, open: 0, total: 1 });
+  });
+
+  it("answers 500 when the plan can't be read, and removes a half-made plan if its items fail", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    gateMock.mockResolvedValueOnce("error");
+    expect((await call("GET"))._getStatusCode()).toBe(500);
+    failures.itemsInsert = { message: "insert failed" };
+    const res = await call("POST", { scanId: SCAN, checkIds: ["headers.hsts"] });
+    expect(res._getStatusCode()).toBe(500);
+    expect(failures.deleted).toContain("fix_plans");
+    expect(auditMock).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("lists every plan when no host is given", async () => {
+    tables.fix_plans = { list: [] };
+    const res = await call("GET");
+    expect(res._getJSONData()).toEqual({ plans: [] });
   });
 });

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { rateMock, auditMock, sendEmailMock, tables, updates, eqCalls } = vi.hoisted(() => ({
+const { rateMock, auditMock, sendEmailMock, tables, updates, eqCalls, readError } = vi.hoisted(() => ({
+  readError: { current: null as unknown },
   eqCalls: [] as Array<[string, string, unknown]>,
   rateMock: vi.fn(),
   auditMock: vi.fn(),
@@ -18,7 +19,7 @@ function builder(table: string) {
     eqCalls.push([table, column, value]);
     return q;
   };
-  q.maybeSingle = async () => ({ data: tables[table]?.single ?? null, error: null });
+  q.maybeSingle = async () => ({ data: tables[table]?.single ?? null, error: table === "fix_plans" ? readError.current : null });
   q.update = (row: unknown) => {
     updates.push({ table, row });
     return q;
@@ -61,6 +62,7 @@ describe("shared fix plan link", () => {
     sendEmailMock.mockReset().mockResolvedValue({ ok: true });
     updates.length = 0;
     eqCalls.length = 0;
+    readError.current = null;
     for (const k of Object.keys(tables)) delete tables[k];
     tables.fix_plans = { single: plan };
     tables.fix_plan_items = { list: items };
@@ -123,5 +125,20 @@ describe("shared fix plan link", () => {
     await view(TOKEN);
     expect(eqCalls).toContainEqual(["fix_plans", "token_hash", hashPlanToken(TOKEN)]);
     expect(eqCalls.some(([, , value]) => value === TOKEN)).toBe(false);
+  });
+
+  it("refuses other methods, a malformed body, and answers 500 when the plan can't be read", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const get = createMocks<NextApiRequest, NextApiResponse>({ method: "POST", query: { token: TOKEN } });
+    await viewHandler(get.req, get.res);
+    expect(get.res._getStatusCode()).toBe(405);
+    const put = createMocks<NextApiRequest, NextApiResponse>({ method: "GET", query: { token: TOKEN } });
+    await doneHandler(put.req, put.res);
+    expect(put.res._getStatusCode()).toBe(405);
+    expect((await done(TOKEN, { checkId: "headers.hsts" }))._getStatusCode()).toBe(400);
+    readError.current = { message: "db down" };
+    expect((await view(TOKEN))._getStatusCode()).toBe(500);
+    expect((await done(TOKEN, { checkId: "headers.hsts", done: true }))._getStatusCode()).toBe(500);
+    spy.mockRestore();
   });
 });
