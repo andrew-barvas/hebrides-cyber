@@ -97,6 +97,7 @@ uses the same `api-spec.` prefix, and `api-spec` is not in
   entry maps to at least one recognised prefix or base.
 
 **H4. The scanner-tool auto-update workflow cannot push.**
+*Status 2026-11-20: the update job now fails clearly when the token can't reach the repo, and `report-errors` also runs when an update job fails, opening or commenting on one "Scanner tool auto-update needs attention" issue. Renewing `GH_PAT` is still OT-49.*
 The only run of `scanner-tool-updates.yml`
 ([run 41363615029](https://github.com/andrew-barvas/hebrides-cyber/actions/runs/41363615029),
 2026-11-01) failed on all 10 update jobs at `git push`, with "Invalid username
@@ -139,6 +140,7 @@ never asserts it.
   record the exception in SCANNER-CONVENTIONS.
 
 **M3. Wayback CDX failure resolves `wayback-discovery.live-path:*` findings.**
+*Status 2026-11-20: fixed. A CDX failure now returns `status: "partial"`, so `BASE_NOT_RUN` keeps open findings open; an empty archive is still a clean `checked`.*
 The design is documented at `src/lib/scanners/waybackDiscovery.ts:24-29`
 ("degrades to a clean checked"), but it contradicts rule 7 for findings
 already open.
@@ -166,6 +168,7 @@ today.
   backfill that gives existing null rows an expiry.
 
 **M6. Lookout: findings from tools outside a target's current profile never resolve.**
+*Status 2026-11-20: fixed in the ranking. `rankFindings` leaves out findings whose source tool the site's current profile(s) no longer run (`recheckedByCurrentProfile`), so they no longer top the fix-first list, Lookout drafts or the weekly email. They stay in the full Findings list.*
 `isCovered` (`findingLifecycle.ts:111`) needs the source tool to have
 completed. A target moved from `full` to `exposure` keeps its ZAP, gospider,
 sqlmap and similar findings open forever. Those findings feed the fix-first
