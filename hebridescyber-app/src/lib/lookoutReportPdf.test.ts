@@ -37,6 +37,14 @@ describe("renderLookoutReportHtml", () => {
     expect(renderLookoutReportHtml({ ...base, report: { ...base.report, status: "acknowledged", acknowledged_at: "2026-11-21T09:00:00Z" } })).toContain("acknowledged 2026-11-21");
   });
 
+  it("says what to do about new lookalike domains, and not when there are none", () => {
+    const lookalikes = { available: true, newInPeriod: [{ domain: "examp1e.com", targetDomain: "example.com", how: "a character swapped for a lookalike", spottedAt: "2026-11-01T00:00:00Z", certificateSeenAt: "2026-10-30T00:00:00Z" }], totalKnown: 1 };
+    const html = renderLookoutReportHtml({ ...base, lookalikes });
+    expect(html).toContain("<b>What to do</b>");
+    expect(html).toContain("report@phishing.gov.uk");
+    expect(renderLookoutReportHtml({ ...base, lookalikes: { ...lookalikes, newInPeriod: [] } })).not.toContain("What to do");
+  });
+
   it("names the file by the period's end", () => {
     expect(lookoutPdfFileName(base.report)).toBe("lookout-report-2026-11-19.pdf");
   });
