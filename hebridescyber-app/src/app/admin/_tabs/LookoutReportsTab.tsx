@@ -69,8 +69,10 @@ export default function LookoutReportsTab({ token }: { token: string }) {
           ...(status ? { status } : {}),
         }),
       });
-      setMessage(status === "published" ? "Published. The customer can now read it." : status === "draft" ? "Moved back to draft." : "Saved.");
+      // Reopen first: open() clears the message, which wiped this
+      // confirmation the moment it appeared (found by the admin e2e spec).
       await open(detail.report.id);
+      setMessage(status === "published" ? "Published. The customer can now read it." : status === "draft" ? "Moved back to draft." : "Saved.");
       loadList();
     } catch (e) {
       setMessage((e as Error).message);
