@@ -294,7 +294,7 @@ attack traffic.**
 ## Working efficiently (token budget)
 
 - **Large docs: grep the headings, then read only that range.** Never read
-  `ENHANCEMENTS.md` (~108 KB), `NEXT-STEPS.md`, `OWNER-TODO.md` or
+  `ENHANCEMENTS.md` (~108 KB), `NEXT-STEPS.md` or
   `ARCHITECTURE-NOTES.md` whole: `grep -n "^#" <file>`, then `sed -n a,bp`.
 - Search with Grep/Glob first; read a file only once you know it is the one, and
   with an offset/limit when it is long. Don't re-read a file you just edited.
@@ -329,5 +329,5 @@ Read the one entry that matches the task. Don't read these up front.
 | Authenticated/signed-in crawl design + safety | `docs/AUTHENTICATED-CRAWL.md` |
 | Current state, in-flight plan | `docs/NEXT-STEPS.md` |
 | Business plans, pricing, grants, legal, competitor/strategy docs (now in a private repo) | `docs/PRIVATE-DOCS.md` |
-| Owner to-dos (manual steps: what, how, raised, actioned) — add an `OT-nn` item when you find a step only the owner can do, close it only with proof | `docs/OWNER-TODO.md` |
+| Owner to-dos (manual steps: what, how, raised, actioned) — add an `OT-nn` item when you find a step only the owner can do, close it only with proof | `docs/OWNER-TODO.md` in the **private** `andrew-barvas/hebrides-cyber-docs` repo (moved 2026-11-20; see `docs/PRIVATE-DOCS.md`). Clone it, commit on a branch, open a PR there. Never recreate it here |
 | Security posture, threat model | `docs/security.md`, `SECURITY.md` |
