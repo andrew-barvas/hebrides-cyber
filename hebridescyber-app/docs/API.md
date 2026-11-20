@@ -577,7 +577,7 @@ curl -X PUT https://www.hebridescyber.co.uk/api/findings/assign \r
 
 ### `GET /api/account/evidence-pack`
 
-Pro and above; session or API key. A PDF (`security-evidence-pack-<date>.pdf`) for a Cyber Essentials application, an insurance proposal or a supplier questionnaire: the sites checked, common insurance questions (MFA on email, SPF/DKIM/DMARC, exposed remote access, patching, encryption, breached accounts, anti-malware, admin rights, backups, training, incident response) each answered as *Evidenced*, *Gap found*, *Self-declared* (your Cyber Essentials self-assessment) or *Your records*, Cyber Essentials readiness per control, and what to fix first. With no scan behind an answer, it is never marked *Evidenced*. Rate-limited; `?format=html` returns the HTML. `403` below Pro.
+Pro and above; session or API key. A PDF (`security-evidence-pack-<date>.pdf`) for a Cyber Essentials application, an insurance proposal or a supplier questionnaire: the sites checked, common insurance questions (MFA on email, SPF/DKIM/DMARC, exposed remote access, patching, encryption, breached accounts, anti-malware, admin rights, backups, training, incident response) each answered as *Evidenced*, *Gap found*, *Self-declared* (your Cyber Essentials self-assessment) or *Your records*, Cyber Essentials readiness per control, and what to fix first. With no scan behind an answer, it is never marked *Evidenced*. Rate-limited; `?format=html` returns the same content as HTML. `403` below Pro.
 
 ### `GET /api/portfolio-report`
 
