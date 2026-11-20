@@ -47,6 +47,16 @@ describe("LookalikeDomains", () => {
     expect(writeText.mock.calls[0][0]).toMatch(/^Subject: Abuse report/);
   });
 
+  it("says when copying fails, so the owner can select the text instead", async () => {
+    result.current = { data: [{ ...row, notified_at: null }], error: null };
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    render(<LookalikeDomains />);
+    expect(await screen.findByText(/spotted 30 Oct 2026/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("What to do"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy report" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Couldn't copy automatically"));
+  });
+
   it("shows a quiet error rather than an empty list when loading fails", async () => {
     result.current = { data: null, error: { message: "relation does not exist" } };
     render(<LookalikeDomains />);

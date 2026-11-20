@@ -45,6 +45,24 @@ describe("renderLookoutReportHtml", () => {
     expect(renderLookoutReportHtml({ ...base, lookalikes: { ...lookalikes, newInPeriod: [] } })).not.toContain("What to do");
   });
 
+  it("lists breached accounts per site, and says when a domain isn't verified or had none", () => {
+    const breaches = {
+      available: true,
+      sites: [
+        { host: "a.example", status: "checked" as const, affectedAliasCount: 2, breaches: [{ name: "X", title: "X <Breach>", breachDate: "2024-01-01", dataClasses: ["Email addresses", "Passwords"], affectedAliasCount: 2 }] },
+        { host: "b.example", status: "checked" as const, affectedAliasCount: 0, breaches: [] },
+        { host: "c.example", status: "not_verified" as const },
+      ],
+    };
+    const html = renderLookoutReportHtml({ ...base, breaches });
+    expect(html).toContain("2 addresses found");
+    expect(html).toContain("X &lt;Breach&gt;");
+    expect(html).toContain("Email addresses, Passwords");
+    expect(html).toContain("<b>b.example</b>: no addresses found in known breaches.");
+    expect(html).toContain("not enabled yet");
+    expect(renderLookoutReportHtml({ ...base, breaches: { available: false, sites: [] } })).not.toContain("not enabled yet");
+  });
+
   it("names the file by the period's end", () => {
     expect(lookoutPdfFileName(base.report)).toBe("lookout-report-2026-11-19.pdf");
   });
