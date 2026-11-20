@@ -7,8 +7,7 @@ name: Publish scheduled blog posts
 # (publishDuePosts). Same pattern as deletion-requests.yml: the script
 # runs on the runner directly against Supabase, no HTTP hop.
 #
-# Runs every 3 hours (hourly until the repo went private), so a post goes
-# live within 3 hours of its time. Originally hourly,
+# Runs hourly so a post scheduled for e.g. 09:00 goes live within the hour,
 # matching the granularity scheduled-scans.yml already uses for its own
 # cron work.
 #
@@ -18,8 +17,7 @@ name: Publish scheduled blog posts
 on:
   schedule:
     # Every hour, 12 minutes past.
-    # Every 3 hours since the repo went private (Actions minutes).
-    - cron: "12 */3 * * *"
+    - cron: "12 * * * *"
   workflow_dispatch: {}
 
 permissions:

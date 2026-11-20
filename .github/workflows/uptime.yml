@@ -13,9 +13,7 @@ name: Uptime
 # issue body is safe to be public.
 on:
   schedule:
-    # Hourly (was every 10 min): a backstop, and the repo is private, so
-    # minutes count. UptimeRobot (OWNER-SETUP) is the real pager.
-    - cron: "7 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:

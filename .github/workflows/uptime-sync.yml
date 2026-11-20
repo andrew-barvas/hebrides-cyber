@@ -11,8 +11,7 @@ name: Uptime sync
 #   NEXT_PUBLIC_SITE_URL                     - optional, for dashboard links
 on:
   schedule:
-    # Hourly (was every 15 min) to fit the private repo's Actions minutes.
-    - cron: "22 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 permissions:

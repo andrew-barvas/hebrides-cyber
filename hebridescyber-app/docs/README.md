@@ -1,8 +1,9 @@
 # Documentation map
 
 > **Moved 2026-11-20:** `marketing/`, `legal/`, the competitor and strategy
-> reviews, and the Exploit, Lookout and sprint plans are now in a private
-> repo. Links to them below no longer resolve here; see
+> reviews, the Exploit, Lookout and sprint plans, the owner to-do list and
+> setup runbook, the roadmap, product ideas and reviews, the gap analysis,
+> the one-page overview and the November audit are now in a private repo. Links to them below no longer resolve here; see
 > [`PRIVATE-DOCS.md`](PRIVATE-DOCS.md).
 
 Which doc answers which question. No original content lives here — every
