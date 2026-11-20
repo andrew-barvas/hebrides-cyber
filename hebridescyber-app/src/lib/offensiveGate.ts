@@ -77,6 +77,9 @@ export async function evaluateOffensiveGate(
   const host = authHostFromUrl(targetUrl);
   if (!host) return { allowed: false, reason: "out_of_engagement_scope", engagementId, scopeRefusal: "host_not_in_scope" };
   const facts = await loadEngagementScopeFacts(admin, engagementId, host);
+  // Linking already requires the same owner (checkAuthorizationLink); this is
+  // defence in depth, so an authorisation can never borrow another account's engagement.
+  if (facts.engagement && facts.engagement.owner !== owner) return { allowed: false, reason: "out_of_engagement_scope", engagementId, scopeRefusal: "engagement_not_found" };
   const scope = checkScope(host, facts, now, "active");
   if (!scope.ok) return { allowed: false, reason: "out_of_engagement_scope", engagementId, scopeRefusal: scope.reason };
   if (facts.engagement?.scanProfile !== "offensive") return { allowed: false, reason: "engagement_profile_disallows", engagementId };

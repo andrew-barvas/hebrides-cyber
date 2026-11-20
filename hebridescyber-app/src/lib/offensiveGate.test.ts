@@ -90,6 +90,11 @@ describe("evaluateOffensiveGate", () => {
     expect(await gate()).toEqual({ allowed: false, reason: "out_of_engagement_scope", engagementId: ENG, scopeRefusal });
   });
 
+  it("refuses an engagement that belongs to another account", async () => {
+    m.facts.mockResolvedValue(facts({ engagement: engagement({ owner: "someone-else" }) }));
+    expect(await gate()).toEqual({ allowed: false, reason: "out_of_engagement_scope", engagementId: ENG, scopeRefusal: "engagement_not_found" });
+  });
+
   it("refuses when the engagement only allows a non-offensive profile", async () => {
     for (const scanProfile of ["safe", "exposure"] as const) {
       m.facts.mockResolvedValue(facts({ engagement: engagement({ scanProfile }) }));
