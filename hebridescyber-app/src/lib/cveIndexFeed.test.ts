@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   toIndexEntry,
   criteriaFromConfigurations,
@@ -9,7 +8,6 @@ import {
   nvdDate,
   incrementalWindows,
   syncCveIndex,
-  supabaseCveIndexWriter,
   NVD_MAX_RANGE_DAYS,
   type NvdCve,
   type CveIndexWriter,
@@ -352,54 +350,5 @@ describe("chunkForWrite", () => {
     expect(written.length).toBeGreaterThan(1);
     expect(written.flat()).toHaveLength(400);
     for (const chunk of written) expect(chunk.reduce((n, e) => n + 1 + (e.rejected ? 0 : e.matches.length), 0)).toBeLessThanOrEqual(MAX_ROWS_PER_WRITE);
-  });
-});
-
-describe("supabaseCveIndexWriter", () => {
-  function fakeClient(responses: { state?: unknown; stateError?: string; rpcError?: string; upsertError?: string; count?: number | null; countError?: string }) {
-    const rpc = vi.fn(async () => ({ error: responses.rpcError ? { message: responses.rpcError } : null }));
-    const upsert = vi.fn(async () => ({ error: responses.upsertError ? { message: responses.upsertError } : null }));
-    const client = {
-      rpc,
-      from(table: string) {
-        if (table === "cve_index_state") {
-          return {
-            select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: responses.state ?? null, error: responses.stateError ? { message: responses.stateError } : null }) }) }),
-            upsert,
-          };
-        }
-        return { select: async () => ({ count: responses.count ?? null, error: responses.countError ? { message: responses.countError } : null }) };
-      },
-    };
-    return { client: client as unknown as SupabaseClient, rpc, upsert };
-  }
-
-  it("sends entries to the batch RPC, flattening each record", async () => {
-    const { client, rpc } = fakeClient({});
-    const entry = toIndexEntry(REGRESSHION)!;
-    await supabaseCveIndexWriter(client).writeEntries([entry, { cve_id: "CVE-2023-9999", rejected: true }]);
-    const [[name, args]] = rpc.mock.calls as unknown as Array<[string, { p_entries: Array<Record<string, unknown>> }]>;
-    expect(name).toBe("replace_cve_batch");
-    expect(args.p_entries[0]).toMatchObject({ cve_id: "CVE-2024-6387", rejected: false, cvss_score: 8.1, matches: expect.any(Array) });
-    expect(args.p_entries[1]).toEqual({ cve_id: "CVE-2023-9999", rejected: true });
-  });
-
-  it("reads and upserts the single state row, and counts records", async () => {
-    const { client, upsert } = fakeClient({ state: { backfill_completed_at: null }, count: 7 });
-    const writer = supabaseCveIndexWriter(client);
-    expect(await writer.readState()).toEqual({ backfill_completed_at: null });
-    await writer.writeState({ last_run_at: "x", last_error: null });
-    expect(upsert).toHaveBeenCalledWith({ id: true, last_run_at: "x", last_error: null }, { onConflict: "id" });
-    expect(await writer.countRecords()).toBe(7);
-    expect(await supabaseCveIndexWriter(fakeClient({}).client).countRecords()).toBe(0);
-    expect(await supabaseCveIndexWriter(fakeClient({}).client).readState()).toBeNull();
-  });
-
-  it("throws on every failed write or read", async () => {
-    const writer = supabaseCveIndexWriter(fakeClient({ stateError: "a", rpcError: "b", upsertError: "c", countError: "d" }).client);
-    await expect(writer.readState()).rejects.toThrow("cve_index_state read failed: a");
-    await expect(writer.writeEntries([])).rejects.toThrow("replace_cve_batch failed: b");
-    await expect(writer.writeState({ last_run_at: "x", last_error: null })).rejects.toThrow("cve_index_state write failed: c");
-    await expect(writer.countRecords()).rejects.toThrow("cve_records count failed: d");
   });
 });

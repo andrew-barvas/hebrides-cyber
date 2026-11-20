@@ -25,7 +25,9 @@ import { runDalfox } from "../worker/tools/dalfox";
 import { runNmap } from "../worker/tools/nmap";
 import { runNetworkExposure } from "../worker/tools/networkExposure";
 import { buildServiceCveFindings } from "../worker/tools/serviceCve";
-import { createCveIndex, supabaseCveIndexStore } from "./cveIndex";
+import { createCveIndex } from "./cveIndex";
+import { objectCveIndexStore } from "./cveIndexObjects";
+import { cveIndexObjectStore } from "./objectStore";
 import { runSubdomainDiscovery } from "./scanners/subdomains";
 import { runHttpProbe, buildHttpProbeFindings, type HttpProbeRecord } from "./scanners/hostProbe";
 import { runContentDiscovery, buildContentDiscoveryFindings, type ContentDiscoveryHit } from "../worker/tools/contentDiscovery";
@@ -251,9 +253,10 @@ async function runExtendedTools(
       ? runNmap(targetUrl)
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
     // Broad port discovery (naabu top-1000) → nmap -sV on whatever's open,
-    // each identified service matched against the local CVE index (069).
+    // each identified service matched against the local CVE index (object
+    // storage, cveIndexObjects.ts).
     toolConfig.networkExposure
-      ? runNetworkExposure(targetUrl, { cveIndex: createCveIndex(supabaseCveIndexStore(supabaseAdmin)) })
+      ? cveIndexObjectStore(supabaseAdmin).then((store) => runNetworkExposure(targetUrl, { cveIndex: createCveIndex(objectCveIndexStore(store)) }))
       : Promise.resolve({ status: "not_configured" as const, host: targetUrl, ports: [] as never[] }),
     toolConfig.subdomains
       ? runSubdomainDiscovery(targetUrl)

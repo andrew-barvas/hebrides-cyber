@@ -35,7 +35,6 @@
 //   - Distribution backports (Ubuntu's 8.9p1-3ubuntu0.10 has fixes 8.9p1
 //     upstream doesn't) are not this module's concern: it answers for the
 //     upstream version it is given, and the caller says so.
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** The index must have synced this recently to be trusted (the job is nightly). */
 export const CVE_INDEX_MAX_AGE_DAYS = 7;
@@ -439,60 +438,6 @@ export function createCveIndex(store: CveIndexStore, options: { now?: Date; maxA
       } catch (err) {
         return { status: "error", note: `CVE index read failed: ${(err as Error).message}` };
       }
-    },
-  };
-}
-
-// ---- Postgres store -------------------------------------------------------------------
-
-const MATCH_COLUMNS =
-  "cve_id, part, vendor, product, exact_version, any_update, start_including, start_excluding, end_including, end_excluding, conditional, criteria";
-const RECORD_COLUMNS = "cve_id, cvss_score, cvss_version, cvss_vector, summary, published_at, last_modified_at";
-/** PostgREST's default max-rows; read in pages of this size. */
-const PAGE = 1000;
-/** Keep `in.(…)` filters well inside URL limits. */
-const ID_CHUNK = 150;
-
-/**
- * The index in Postgres (migration 069), read with the service role — the
- * tables have RLS on and no client policy. Before 069 is applied every read
- * fails, which `lookup` reports as "error", never as "no CVEs".
- */
-export function supabaseCveIndexStore(client: SupabaseClient): CveIndexStore {
-  return {
-    async readState() {
-      const { data, error } = await client
-        .from("cve_index_state")
-        .select("backfill_completed_at, last_success_at, last_modified_through, cve_count")
-        .eq("id", true)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      return (data as CveIndexState | null) ?? null;
-    },
-    async readMatches(vendor, product) {
-      const rows: CveMatchRow[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await client
-          .from("cve_cpe_matches")
-          .select(MATCH_COLUMNS)
-          .eq("vendor", vendor)
-          .eq("product", product)
-          .order("id", { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw new Error(error.message);
-        const page = (data ?? []) as CveMatchRow[];
-        rows.push(...page);
-        if (page.length < PAGE) return rows;
-      }
-    },
-    async readRecords(cveIds) {
-      const out: CveRecordRow[] = [];
-      for (let i = 0; i < cveIds.length; i += ID_CHUNK) {
-        const { data, error } = await client.from("cve_records").select(RECORD_COLUMNS).in("cve_id", cveIds.slice(i, i + ID_CHUNK));
-        if (error) throw new Error(error.message);
-        for (const r of (data ?? []) as CveRecordRow[]) out.push({ ...r, cvss_score: r.cvss_score === null ? null : Number(r.cvss_score) });
-      }
-      return out;
     },
   };
 }
