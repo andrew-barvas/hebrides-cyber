@@ -14,6 +14,7 @@ import ShareLinks from "@/components/ShareLinks";
 import EstateScreenshots from "@/components/EstateScreenshots";
 import SecurityProfileToggle from "@/components/SecurityProfileToggle";
 import { FixPlanShare } from "@/components/FixPlanShare";
+import { ScoreBenchmark } from "@/components/ScoreBenchmark";
 import ScoreTrend, { type ScorePoint } from "@/components/ScoreTrend";
 import { ScorePlanner } from "@/components/ScorePlanner";
 import FixWizard from "@/components/FixWizard";
@@ -728,6 +729,11 @@ export default function ScanDetailPage() {
               <p className="text-sm text-cybertext/70 leading-relaxed print:text-slate-600">
                 {result.summary ?? "Scan complete. Review findings below."}
               </p>
+              {result.score !== null && sessionToken && (
+                <div className="mt-2 print:hidden">
+                  <ScoreBenchmark scanId={result.scan_id} token={sessionToken} />
+                </div>
+              )}
               {findings.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   {(["critical", "high", "medium", "low", "info"] as const).map((sev) => {

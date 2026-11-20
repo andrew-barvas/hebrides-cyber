@@ -23,4 +23,16 @@ describe("InstantCheck", () => {
     render(<InstantCheck />);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("shows how the score compares only when the check returns a benchmark", async () => {
+    const withBenchmark = { ...result, benchmark: { betterThanPercent: 62, groupSize: 1240, windowDays: 90, kind: "free_check" } };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(withBenchmark), { status: 200 })));
+    const { unmount } = render(<InstantCheck initialUrl="example.com" />);
+    expect(await screen.findByText("Better than 62% of the 1,240 sites given this free check in the last 90 days.")).toBeInTheDocument();
+    unmount();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(result), { status: 200 })));
+    render(<InstantCheck initialUrl="example.com" />);
+    await waitFor(() => expect(screen.getByText("No DMARC record")).toBeInTheDocument());
+    expect(screen.queryByText(/Better than/)).toBeNull();
+  });
 });
