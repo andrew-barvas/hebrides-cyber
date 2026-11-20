@@ -328,5 +328,6 @@ Read the one entry that matches the task. Don't read these up front.
 | Public API shapes | `docs/API.md` |
 | Authenticated/signed-in crawl design + safety | `docs/AUTHENTICATED-CRAWL.md` |
 | Current state, in-flight plan | `docs/NEXT-STEPS.md` |
+| Business plans, pricing, grants, legal, competitor/strategy docs (now in a private repo) | `docs/PRIVATE-DOCS.md` |
 | Owner to-dos (manual steps: what, how, raised, actioned) — add an `OT-nn` item when you find a step only the owner can do, close it only with proof | `docs/OWNER-TODO.md` |
 | Security posture, threat model | `docs/security.md`, `SECURITY.md` |
