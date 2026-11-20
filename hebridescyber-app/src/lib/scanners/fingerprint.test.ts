@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkFingerprint, DETECTABLE_TECHNOLOGIES, distroFromHeader, getCmsType, type DetectedTech } from "./fingerprint";
+import { checkFingerprint, DETECTABLE_TECHNOLOGIES, distroFromHeader, getCmsType, KNOWN_RISKY_REVIEWED, type DetectedTech } from "./fingerprint";
 
 function tech(name: string): DetectedTech {
   return { name, category: "CMS", version: null, confidence: "high", source: "html" };
@@ -178,5 +178,14 @@ M.cfg = {"wwwroot":"https://lms.example.edu"};
       expect(DETECTABLE_TECHNOLOGIES.filter((n) => n === name)).toHaveLength(1);
     }
     expect(new Set(DETECTABLE_TECHNOLOGIES).size).toBe(DETECTABLE_TECHNOLOGIES.length);
+  });
+});
+
+describe("KNOWN_RISKY review date (audit 2026-11 M4)", () => {
+  it("has been reviewed in the last six months", () => {
+    const ageDays = (Date.now() - new Date(`${KNOWN_RISKY_REVIEWED}T00:00:00Z`).getTime()) / 86_400_000;
+    // Stale cut-offs gate the CVE lookup for anything endoflife.date can't
+    // place. Re-check each maxSafeMajor against vendor support, then bump the date.
+    expect(ageDays).toBeLessThan(183);
   });
 });

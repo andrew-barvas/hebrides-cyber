@@ -25,6 +25,7 @@
 // look", distinct from [] for "looked, nothing applies".
 import type { Finding } from "./index";
 import type { RiskyTech } from "./fingerprint";
+import type { EndOfLifeResult } from "./endOfLife";
 import { vulnerabilityAppliesToVersion, wpVulnSeverity } from "./wpvdb";
 
 const WPSCAN_API_BASE = "https://wpscan.com/api/v3";
@@ -258,6 +259,29 @@ export const NVD_CPE_BY_NAME: Record<string, { vendor: string; product: string }
   "Moment.js": { vendor: "momentjs", product: "moment" }, // CVE-2022-24785
   "Underscore.js": { vendor: "underscorejs", product: "underscore" }, // CVE-2021-23358
 };
+
+/** The families checkSoftwareCveDb can look up. */
+const LOOKUP_FAMILIES = new Set(["WordPress", "PHP", "Apache"]);
+
+/**
+ * What to look up: fingerprint.ts's hand-set riskySoftware, plus any
+ * WordPress/PHP/Apache version endoflife.date says is past its end of life
+ * (audit 2026-11 M4). The hand-set table works by major version only, so
+ * PHP 8.0 and 8.1 or Apache 2.2 (all end-of-life) never reached NVD from it.
+ * A failed or missing end-of-life check adds nothing, never removes a
+ * hand-set entry.
+ */
+export function softwareCveCandidates(riskySoftware: RiskyTech[], endOfLife: EndOfLifeResult | null): RiskyTech[] {
+  const out = [...riskySoftware];
+  if (endOfLife?.status !== "checked") return out;
+  for (const item of endOfLife.items) {
+    if (item.state !== "unsupported" || !LOOKUP_FAMILIES.has(item.tech)) continue;
+    if (out.some((r) => r.name === item.tech)) continue;
+    const when = item.eolDate ? ` on ${item.eolDate}` : "";
+    out.push({ name: item.tech, version: item.version, reason: `${item.label} ${item.cycle} reached its end of life${when} and no longer gets security fixes.` });
+  }
+  return out;
+}
 
 /**
  * Enriches fingerprint.ts's riskySoftware entries with real CVE data for
