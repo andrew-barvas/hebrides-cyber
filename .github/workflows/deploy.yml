@@ -30,8 +30,25 @@ name: Deploy
 on:
   push:
     branches: [master]
+    paths-ignore:
+      # Docs-only changes can't affect the site (nothing under docs/ or
+      # marketing/ is read at build time), so they skip the ~8-minute gate.
+      # Private repo: every Actions minute counts against the plan.
+      - "hebridescyber-app/docs/**"
+      - "marketing/**"
+      - "*.md"
+      - "hebridescyber-app/*.md"
+      - ".claude/**"
+      - "hebridescyber-app/.claude/**"
   pull_request:
     branches: [master]
+    paths-ignore: # same list as push
+      - "hebridescyber-app/docs/**"
+      - "marketing/**"
+      - "*.md"
+      - "hebridescyber-app/*.md"
+      - ".claude/**"
+      - "hebridescyber-app/.claude/**"
   workflow_dispatch:
     inputs:
       baseline_up_to:
@@ -57,6 +74,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -86,11 +105,16 @@ jobs:
           name: coverage-report
           path: hebridescyber-app/coverage
 
+      # E2E runs on the pull request (against the PR merged into master),
+      # not again after the merge: the deploy job builds the same commit and
+      # the post-deploy health check covers the live site.
       - name: Install Playwright browsers
+        if: github.event_name != 'push'
         working-directory: hebridescyber-app
         run: npx playwright install --with-deps chromium
 
       - name: E2E tests
+        if: github.event_name != 'push'
         working-directory: hebridescyber-app
         run: npm run test
 
@@ -113,6 +137,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
 
       - name: Install dependencies
         working-directory: hebridescyber-app
@@ -214,6 +240,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
 
       - name: Install dependencies
         working-directory: hebridescyber-app

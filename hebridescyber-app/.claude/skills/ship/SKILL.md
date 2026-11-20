@@ -52,6 +52,11 @@ gh pr checks --watch
 Don't poll in a loop beyond this, and don't schedule your own checks. Once the
 PR is open, bind it so the app tracks its CI and can offer Auto-fix.
 
+A docs-only PR (only `hebridescyber-app/docs/`, `marketing/`, top-level `*.md`
+or `.claude/` files) gets **no** Deploy checks: `deploy.yml` ignores those
+paths so the repo, now private, doesn't spend Actions minutes on them. "No
+checks reported" is expected there and is not a reason to wait.
+
 `deploy.yml` runs on `pull_request` too, so the PR gets the same four gates
 plus the schema verification. A fork PR skips the migration step (no
 `DATABASE_URL`) and falls back to verify-only.

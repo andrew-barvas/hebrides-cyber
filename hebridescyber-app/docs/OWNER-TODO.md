@@ -1257,6 +1257,28 @@ CNAMEs to `proud-stone-04a76350f.7.azurestaticapps.net`, so
   and the tenant ID recorded as the evidence.
 - **Raised:** 2026-11-20.
 
+### OT-68: Pay for GitHub Actions minutes, or make the repo public again 🟠
+- **What and why:** the repo went private on 2026-11-20. Private repos on the
+  Free plan get 2,000 Actions minutes a month; the week before used about
+  2,200 billable minutes (Deploy on pull requests and merges ~1,250, schedules
+  ~450, the rest tool and database tests). PR "trim Actions minutes" cuts
+  docs-only runs, the repeat e2e run after merge, and slows the hourly and
+  10/15-minute schedules, but at the current pace of work the total is still
+  several thousand minutes a month. With a $0 spending limit GitHub stops
+  every workflow once the 2,000 are used: deploys, scheduled scans, the CVE
+  sync, uptime checks and customer emails.
+- **How:** pick one.
+  1. Pay as you go: github.com → Settings → Billing and licensing → Budgets
+     and alerts → set an Actions budget (e.g. $50 a month, alert at 75%).
+     Check the per-minute price for Linux 2-core runners on GitHub's pricing
+     page first. GitHub Pro ($4 a month) also raises the allowance to 3,000.
+  2. Make the repo public again (unlimited minutes). The 2026-11-20 history
+     scan found no secrets, but the business plan, grant applications, legal
+     briefs and OWNER-TODO would be readable, so move those to a separate
+     private repo first.
+  Either way, check usage under Billing → Usage a week later.
+- **Raised:** 2026-11-20.
+
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
 for the browser and API side.
