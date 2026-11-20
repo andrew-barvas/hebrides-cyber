@@ -13,7 +13,7 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
-import { checkAuthorizationLink, sendEngagementFailure } from "@/lib/engagements";
+import { checkAuthorizationLink, linkedAuthorizationExpiry, sendEngagementFailure } from "@/lib/engagements";
 import { authHostFromUrl, authorizationExpiryProblem, recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
 
 const postBodySchema = z.object({
@@ -80,6 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const post = body as z.infer<typeof postBodySchema>;
 
+  let expiresAt: string | null = post.expiresAt;
   if (post.engagementId) {
     const host = authHostFromUrl(targetUrl);
     if (!host) return res.status(400).json({ error: "Could not record the authorization." });
@@ -91,6 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         reason: link.data.reason,
       });
     }
+    expiresAt = linkedAuthorizationExpiry(post.expiresAt, link.data.engagementExpiresAt);
   }
 
   const result = await recordOffensiveAuthorization(supabaseAdmin, {
@@ -98,12 +100,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     authorizedBy: caller.ownerId,
     targetUrl,
     scope: post.scope ?? DEFAULT_SCOPE,
-    expiresAt: post.expiresAt,
+    expiresAt,
     engagementId: post.engagementId,
   });
   if (!result.ok) {
     if (result.reason === "invalid_expiry") {
-      return res.status(400).json({ error: `expiresAt: ${authorizationExpiryProblem(post.expiresAt, new Date()) ?? "invalid"}` });
+      return res.status(400).json({ error: `expiresAt: ${authorizationExpiryProblem(expiresAt, new Date()) ?? "invalid"}` });
     }
     if (result.reason === "unavailable") return res.status(503).json({ error: "Offensive scanning isn't available yet." });
     return res.status(result.reason === "invalid_url" ? 400 : 500).json({ error: "Could not record the authorization." });

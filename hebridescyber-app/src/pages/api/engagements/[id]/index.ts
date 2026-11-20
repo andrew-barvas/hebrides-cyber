@@ -1,3 +1,7 @@
+// GET   /api/engagements/{id} — the engagement status page's read: the record,
+//       scope (with each host's current linked authorisation), contacts and
+//       testing windows. The owner or an admin, session only. Someone else's
+//       engagement is a 404, like one that doesn't exist.
 // PATCH /api/engagements/{id} — move an engagement on one state, and record its
 // window, expiry, customer name, signed contract and signed rules of engagement.
 // Admin session only. Stopping isn't here: `aborted` goes through /abort, the one
@@ -9,8 +13,19 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { authenticateApiRequest } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
-import { checkTestingWindows, isEditableState, loadContacts, loadEngagement, loadIncludedHostFacts, loadTestingWindows, sendEngagementFailure, updateEngagement } from "@/lib/engagements";
+import {
+  checkTestingWindows,
+  isEditableState,
+  loadContacts,
+  loadEngagement,
+  loadEngagementView,
+  loadIncludedHostFacts,
+  loadTestingWindows,
+  sendEngagementFailure,
+  updateEngagement,
+} from "@/lib/engagements";
 import { checkTransition } from "@/lib/exploitability/scope/engagementState";
 import { isUuid } from "@/lib/exploitabilityApi";
 import { parseBody } from "@/lib/validate";
@@ -49,9 +64,27 @@ const bodySchema = z
 
 const CONFLICT = "The engagement changed while this request was running. Reload and try again.";
 
+async function view(req: NextApiRequest, res: NextApiResponse) {
+  const caller = await authenticateApiRequest(req);
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  if (caller.via !== "session") return res.status(403).json({ error: "Engagements can only be viewed from a logged-in session, not with an API key." });
+
+  const id = req.query.id;
+  if (!isUuid(id)) return sendEngagementFailure(res, ROUTE, { status: "not_found" });
+  const loaded = await loadEngagement(supabaseAdmin, id);
+  if (loaded.status !== "ok") return sendEngagementFailure(res, ROUTE, loaded);
+  if (loaded.data.owner !== caller.ownerId && !(await requireAdmin(req))) return sendEngagementFailure(res, ROUTE, { status: "not_found" });
+
+  const shown = await loadEngagementView(supabaseAdmin, loaded.data);
+  if (shown.status !== "ok") return sendEngagementFailure(res, ROUTE, shown);
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.status(200).json(shown.data);
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "GET") return view(req, res);
   if (req.method !== "PATCH") {
-    res.setHeader("Allow", "PATCH");
+    res.setHeader("Allow", "GET, PATCH");
     return res.status(405).json({ error: "Method not allowed" });
   }
 

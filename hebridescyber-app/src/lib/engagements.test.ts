@@ -17,6 +17,9 @@ import {
   loadTestingWindows,
   replaceContacts,
   replaceTestingWindows,
+  linkedAuthorizationExpiry,
+  listOwnerEngagements,
+  loadEngagementView,
   updateEngagement,
 } from "./engagements";
 
@@ -37,6 +40,7 @@ function fakeAdmin(replies: Record<string, Reply[]>, rpc?: Reply) {
         is: (...args: unknown[]) => (filters.push(args), builder),
         not: (...args: unknown[]) => (filters.push(["not", ...args]), builder),
         order: () => builder,
+        limit: () => builder,
         maybeSingle: async () => next(),
         then: (resolve: (r: Reply) => unknown) => resolve(next()),
         update: (row: unknown) => ((write = { table, op: "update", row, filters }), writes.push(write), builder),
@@ -164,12 +168,12 @@ describe("applyScopeChanges", () => {
 });
 
 describe("checkAuthorizationLink", () => {
-  const row = (state: string, owner = "owner-1") => ({ data: { id: "eng-1", owner, state } });
+  const row = (state: string, owner = "owner-1") => ({ data: { id: "eng-1", owner, state, expires_at: "2026-12-31T00:00:00Z" } });
 
-  it("allows the owner's listed host before the engagement is authorised", async () => {
+  it("allows the owner's listed host before the engagement is authorised, passing on the engagement's expiry", async () => {
     for (const state of ["booked", "scoped"]) {
       const { admin } = fakeAdmin({ engagements: [row(state)], engagement_scope_hosts: [{ data: { host: "a.test" } }] });
-      expect(await checkAuthorizationLink(admin, "owner-1", "eng-1", "a.test")).toEqual({ status: "ok", data: { ok: true } });
+      expect(await checkAuthorizationLink(admin, "owner-1", "eng-1", "a.test")).toEqual({ status: "ok", data: { ok: true, engagementExpiresAt: "2026-12-31T00:00:00Z" } });
     }
   });
 
@@ -282,5 +286,65 @@ describe("checkTestingWindows", () => {
     expect(checkTestingWindows(outer, [{ startsAt: "2026-11-02T17:00:00Z", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "end_before_start", index: 0 });
     expect(checkTestingWindows(outer, [{ startsAt: "bad", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "end_before_start", index: 0 });
     expect(checkTestingWindows({ window_start: "2026-11-01T00:00:00Z", window_end: null }, [{ startsAt: "2026-11-02T09:00:00Z", endsAt: "2026-11-02T17:00:00Z" }])).toEqual({ problem: "window_not_set" });
+  });
+});
+
+describe("linkedAuthorizationExpiry", () => {
+  const ENG_EXPIRY = "2026-12-31T00:00:00Z";
+  it("never outlasts the engagement, and takes its expiry when none was asked for", () => {
+    expect(linkedAuthorizationExpiry(undefined, ENG_EXPIRY)).toBe(ENG_EXPIRY);
+    expect(linkedAuthorizationExpiry(null, ENG_EXPIRY)).toBe(ENG_EXPIRY);
+    expect(linkedAuthorizationExpiry("2027-06-01T00:00:00Z", ENG_EXPIRY)).toBe(ENG_EXPIRY);
+    expect(linkedAuthorizationExpiry("2026-12-01T00:00:00Z", ENG_EXPIRY)).toBe("2026-12-01T00:00:00Z");
+  });
+  it("leaves the request alone when the engagement has no expiry", () => {
+    expect(linkedAuthorizationExpiry("2026-12-01T00:00:00Z", null)).toBe("2026-12-01T00:00:00Z");
+    expect(linkedAuthorizationExpiry(undefined, null)).toBeNull();
+  });
+});
+
+describe("listOwnerEngagements", () => {
+  it("reads only the caller's rows", async () => {
+    const { admin } = fakeAdmin({ engagements: [{ data: [{ id: "eng-1" }] }] });
+    expect(await listOwnerEngagements(admin, "owner-1")).toEqual({ status: "ok", data: [{ id: "eng-1" }] });
+    expect((await listOwnerEngagements(fakeAdmin({ engagements: [{ error: { code: "XX000" } }] }).admin, "owner-1")).status).toBe("error");
+  });
+});
+
+describe("loadEngagementView", () => {
+  const engagementRow = { id: "eng-1", owner: "owner-1", state: "scoped" } as unknown as Parameters<typeof loadEngagementView>[1];
+  const tables = () => ({
+    engagement_scope_hosts: [{ data: [{ host: "shop.example.com", included: true }, { host: "www.example.com", included: true }, { host: "legacy.example.com", included: false }] }],
+    offensive_scan_authorizations: [
+      {
+        data: [
+          { target_host: "shop.example.com", authorized_at: "2026-11-02T00:00:00Z", expires_at: "2026-12-31T00:00:00Z", revoked_at: null },
+          { target_host: "www.example.com", authorized_at: "2026-11-02T00:00:00Z", expires_at: "2026-11-03T00:00:00Z", revoked_at: null },
+        ],
+      },
+    ],
+    monitored_targets: [{ data: [{ target_url: "https://shop.example.com" }, { target_url: "https://SHOP.example.com/app" }, { target_url: "https://legacy.example.com" }, { target_url: "not a url" }] }],
+    engagement_contacts: [{ data: [{ id: "c1", kind: "emergency" }] }],
+    engagement_testing_windows: [{ data: [] }],
+  });
+
+  it("joins each scope host to its current linked authorisation and the owner's matching targets", async () => {
+    const result = await loadEngagementView(fakeAdmin(tables()).admin, engagementRow, NOW);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.data.scope).toEqual([
+      { host: "shop.example.com", included: true, targetUrls: ["https://shop.example.com", "https://SHOP.example.com/app"], authorization: { authorized_at: "2026-11-02T00:00:00Z", expires_at: "2026-12-31T00:00:00Z" } },
+      { host: "www.example.com", included: true, targetUrls: [], authorization: null },
+      { host: "legacy.example.com", included: false, targetUrls: [], authorization: null },
+    ]);
+    expect(result.data.contacts).toEqual([{ id: "c1", kind: "emergency" }]);
+  });
+
+  it("fails on any failed read rather than showing a partial view", async () => {
+    for (const table of ["engagement_scope_hosts", "offensive_scan_authorizations", "monitored_targets", "engagement_contacts", "engagement_testing_windows"] as const) {
+      const t = tables();
+      t[table] = [{ error: { code: "XX000" } }] as never;
+      expect((await loadEngagementView(fakeAdmin(t).admin, engagementRow, NOW)).status, table).toBe("error");
+    }
   });
 });

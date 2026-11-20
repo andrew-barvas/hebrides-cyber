@@ -1,12 +1,15 @@
+// GET  /api/engagements — the caller's own engagements, for the status page.
+//      Session only, like everything about an engagement.
 // POST /api/engagements — create a booked engagement for an account. Admin session
 // only: engagements are never self-serve (docs/EXPLOITABILITY-ENGINE.md §7.1), and
 // requireAdmin refuses an API key. A database write only: nothing is sent to any target.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
+import { authenticateApiRequest } from "@/lib/apiAuth";
 import { logAuditEvent } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/dbErrors";
-import { ENGAGEMENT_COLUMNS, accountExists, sendEngagementFailure } from "@/lib/engagements";
+import { ENGAGEMENT_COLUMNS, accountExists, listOwnerEngagements, sendEngagementFailure } from "@/lib/engagements";
 import { parseBody } from "@/lib/validate";
 
 const ROUTE = "engagements";
@@ -25,8 +28,9 @@ const bodySchema = z
   .refine((b) => !b.expiresAt || !b.windowEnd || Date.parse(b.expiresAt) >= Date.parse(b.windowEnd), { message: "expiresAt can't be before windowEnd" });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "GET") return list(req, res);
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -69,4 +73,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     metadata: { reference: body.reference, owner: body.owner },
   });
   return res.status(201).json({ engagement: data });
+}
+
+async function list(req: NextApiRequest, res: NextApiResponse) {
+  const caller = await authenticateApiRequest(req);
+  if (!caller) return res.status(401).json({ error: "Unauthorized" });
+  if (caller.via !== "session") return res.status(403).json({ error: "Engagements can only be viewed from a logged-in session, not with an API key." });
+
+  const listed = await listOwnerEngagements(supabaseAdmin, caller.ownerId);
+  if (listed.status !== "ok") return sendEngagementFailure(res, ROUTE, listed);
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.status(200).json({ engagements: listed.data });
 }

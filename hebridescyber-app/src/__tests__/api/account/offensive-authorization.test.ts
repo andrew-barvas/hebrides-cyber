@@ -46,10 +46,21 @@ describe("/api/account/offensive-authorization with an engagement", () => {
   const body = { targetUrl: URL_OK, acknowledge: true, expiresAt: EXP, engagementId: ENGAGEMENT };
 
   it("links the authorisation once the engagement accepts this host", async () => {
-    linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: true } });
+    linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: true, engagementExpiresAt: null } });
     expect((await call("POST", body)).statusCode).toBe(200);
     expect(linkMock.mock.calls[0].slice(1)).toEqual(["owner-1", ENGAGEMENT, "shop.example.com"]);
     expect(recordMock.mock.calls[0][1]).toMatchObject({ engagementId: ENGAGEMENT });
+  });
+
+  it("never lets a linked authorisation outlast the engagement", async () => {
+    const days = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+    const engagementEnds = days(5);
+    linkMock.mockReset().mockResolvedValue({ status: "ok", data: { ok: true, engagementExpiresAt: engagementEnds } });
+    await call("POST", { ...body, expiresAt: days(20) });
+    expect(recordMock.mock.calls.at(-1)?.[1]).toMatchObject({ expiresAt: engagementEnds });
+    const sooner = days(2);
+    await call("POST", { ...body, expiresAt: sooner });
+    expect(recordMock.mock.calls.at(-1)?.[1]).toMatchObject({ expiresAt: sooner });
   });
 
   it.each([

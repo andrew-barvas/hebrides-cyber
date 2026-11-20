@@ -198,7 +198,12 @@ export type AuthorizationLinkRefusal = "state_disallows" | "host_not_in_scope";
  * host on its included list. This is what stops a new authorisation being tied
  * to an engagement that has already been stopped or finished.
  */
-export async function checkAuthorizationLink(admin: SupabaseClient, owner: string, engagementId: string, host: string): Promise<EngagementResult<{ ok: true } | { ok: false; reason: AuthorizationLinkRefusal }>> {
+export async function checkAuthorizationLink(
+  admin: SupabaseClient,
+  owner: string,
+  engagementId: string,
+  host: string,
+): Promise<EngagementResult<{ ok: true; engagementExpiresAt: string | null } | { ok: false; reason: AuthorizationLinkRefusal }>> {
   const loaded = await loadEngagement(admin, engagementId);
   if (loaded.status !== "ok") return loaded;
   if (loaded.data.owner !== owner) return { status: "not_found" };
@@ -206,7 +211,18 @@ export async function checkAuthorizationLink(admin: SupabaseClient, owner: strin
 
   const { data, error } = await admin.from("engagement_scope_hosts").select("host").eq("engagement_id", engagementId).eq("host", host).eq("included", true).is("removed_at", null).maybeSingle();
   if (error) return failure(error);
-  return { status: "ok", data: data ? { ok: true } : { ok: false, reason: "host_not_in_scope" } };
+  return { status: "ok", data: data ? { ok: true, engagementExpiresAt: loaded.data.expires_at } : { ok: false, reason: "host_not_in_scope" } };
+}
+
+/**
+ * The expiry for an authorisation signed against an engagement: never later than
+ * the engagement's own expiry, and the engagement's expiry when the owner gave
+ * none, so a linked authorisation can't outlive the engagement it was signed for.
+ */
+export function linkedAuthorizationExpiry(requested: string | null | undefined, engagementExpiresAt: string | null): string | null {
+  if (!engagementExpiresAt) return requested ?? null;
+  if (!requested) return engagementExpiresAt;
+  return Date.parse(requested) < Date.parse(engagementExpiresAt) ? requested : engagementExpiresAt;
 }
 
 export type AbortOutcome = { outcome: "aborted" | "already_aborted"; from: EngagementState; revokedHosts: string[]; simulationsWithdrawn: number } | { outcome: "closed" } | { outcome: "not_found" };
@@ -294,4 +310,74 @@ export function checkTestingWindows(engagement: Pick<EngagementRow, "window_star
     if (start < outerStart || end > outerEnd) return { problem: "outside_engagement_window", index };
   }
   return null;
+}
+
+export type EngagementSummary = Pick<EngagementRow, "id" | "reference" | "customer_name" | "state" | "window_start" | "window_end" | "expires_at" | "created_at" | "aborted_at" | "closed_at">;
+
+/** The owner's engagements, newest first. Only the fields a list needs. */
+export async function listOwnerEngagements(admin: SupabaseClient, owner: string): Promise<EngagementResult<EngagementSummary[]>> {
+  const { data, error } = await admin
+    .from("engagements")
+    .select("id, reference, customer_name, state, window_start, window_end, expires_at, created_at, aborted_at, closed_at")
+    .eq("owner", owner)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) return failure(error);
+  return { status: "ok", data: (data ?? []) as EngagementSummary[] };
+}
+
+export type ScopeHostView = {
+  host: string;
+  included: boolean;
+  /** The owner's monitored target URLs for this host: an authorisation is signed against one of them. */
+  targetUrls: string[];
+  /** The current authorisation signed for this engagement, if any. */
+  authorization: { authorized_at: string; expires_at: string | null } | null;
+};
+
+export type EngagementView = {
+  engagement: EngagementRow;
+  scope: ScopeHostView[];
+  contacts: EngagementContact[];
+  testingWindows: TestingWindow[];
+};
+
+/**
+ * Everything the engagement status page shows, in one read. Any failed read is a
+ * failure: a status page that silently drops the authorisations would tell the
+ * customer nothing is authorised when something is.
+ */
+export async function loadEngagementView(admin: SupabaseClient, engagement: EngagementRow, now: Date = new Date()): Promise<EngagementResult<EngagementView>> {
+  const scope = await admin.from("engagement_scope_hosts").select("host, included").eq("engagement_id", engagement.id).is("removed_at", null).order("host", { ascending: true });
+  if (scope.error) return failure(scope.error);
+  const auths = await admin.from("offensive_scan_authorizations").select("target_host, authorized_at, expires_at, revoked_at").eq("owner", engagement.owner).eq("engagement_id", engagement.id).is("revoked_at", null);
+  if (auths.error) return failure(auths.error);
+  const targets = await admin.from("monitored_targets").select("target_url").eq("owner", engagement.owner);
+  if (targets.error) return failure(targets.error);
+  const contacts = await loadContacts(admin, engagement.id);
+  if (contacts.status !== "ok") return contacts;
+  const windows = await loadTestingWindows(admin, engagement.id);
+  if (windows.status !== "ok") return windows;
+
+  const authRows = (auths.data ?? []) as { target_host: string; authorized_at: string; expires_at: string | null; revoked_at: string | null }[];
+  const targetUrls = ((targets.data ?? []) as { target_url: string }[]).map((t) => t.target_url);
+  const hostOf = (url: string) => normaliseScopeHost(safeHostname(url) ?? "");
+  const view: ScopeHostView[] = ((scope.data ?? []) as { host: string; included: boolean }[]).map(({ host, included }) => {
+    const current = authRows.filter((a) => a.target_host === host && isAuthorizationCurrent(a, now)).sort((a, b) => b.authorized_at.localeCompare(a.authorized_at))[0];
+    return {
+      host,
+      included,
+      targetUrls: included ? targetUrls.filter((u) => hostOf(u) === host) : [],
+      authorization: current ? { authorized_at: current.authorized_at, expires_at: current.expires_at } : null,
+    };
+  });
+  return { status: "ok", data: { engagement, scope: view, contacts: contacts.data, testingWindows: windows.data } };
+}
+
+function safeHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
