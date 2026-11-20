@@ -11,10 +11,9 @@ name: Scheduled Reports
 
 on:
   schedule:
-    # Every 3 hours at :15 (hourly until the repo went private and Actions
-    # minutes started to count): daily reports still land around 00:15 UTC,
-    # weekly/monthly within 3 hours of their next_due.
-    - cron: "15 */3 * * *"
+    # Every hour at :15 — daily reports land around 00:15 UTC,
+    # weekly/monthly whenever their next_due passes.
+    - cron: "15 * * * *"
   workflow_dispatch: {}
 
 jobs:
