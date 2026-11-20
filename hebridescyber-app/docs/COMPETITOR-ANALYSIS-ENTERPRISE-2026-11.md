@@ -288,6 +288,29 @@ Already proposed elsewhere and still valid, so not repeated above: the public
 accuracy benchmark and "what every plan sends" page (`COMPETITIVE-REVIEW-2026-11.md`
 bets 2 and 5), and the Cyber Essentials Plus readiness pack (bet 4).
 
+## 7a. Build status (2026-11-20)
+
+Built the same day as draft PRs, one per idea. None is merged.
+
+| # | Idea | Status |
+|---|---|---|
+| 1 | Score planner | #269: on the report and share page, in the weekly email, and `GET /api/v1/scans/{id}/plan` |
+| 2 | Evidence pack | Already built on another session's branch (`claude/evidence-pack`), not yet pushed, so not duplicated |
+| 3 | Lookalike response kit | #274: Assets section, Lookout report and PDF, alert email |
+| 4 | "How you compare" benchmark | #281: switched off until OT-65 |
+| 5 | Quiet-by-default alerts | #271: mostly already built. Fixed a misleading option label, made the filter skip triaged findings, and added the first-seen date |
+| 6 | Suggest sites from tenants | #275: Microsoft 365 only. Workspace waits for OT-58, and OT-66 is a decision for you |
+| 7 | Trend charts | #276: Lookout report (page and PDF) and Agency portfolio |
+| 8 | Shared fix plan | #278: migration 083, hashed link tokens, public `/plan/<token>` |
+| 9 | Usage and "what counts" | #272: the meter already existed; added the definition to `/pricing` |
+| 10 | Exploit delivery pack | Not started: blocked on OT-13 and OT-51, and the Exploit drafts are another session's |
+| 11 | Sample Lookout report | #279: `/lookout/sample` |
+| 12 | Supplier watch | Not started: needs owner decision 5 (legal) first |
+| 13 | Phishing phase 1 | Not started: needs OT-59 to OT-61 |
+| 14 | Trust page documents | Not started: the next candidate (file storage and abuse controls) |
+
+Migration numbers 083 and 084 assume 080 to 082 land as the open PRs number them.
+
 ## 8. Owner decisions (not code)
 
 | # | Decision | Recommendation |
@@ -297,10 +320,11 @@ bets 2 and 5), and the Cyber Essentials Plus readiness pack (bet 4).
 | 3 | Accreditation route for Exploit: CREST-style accreditation, a partner who countersigns, or neither at first | Partner first (`COMPETITIVE-REVIEW-2026-11.md` decision 1) |
 | 4 | Lookout tiers by staff count ("up to 50 staff") as well as by domains and IPs | Consider at the OT-42 review; test the wording with pilot customers |
 | 5 | Supplier watch (idea 12): is grading a third party from public records acceptable to us and our solicitor? | Ask under OT-35 before building |
-| 6 | Using anonymised, aggregated scan results for benchmarks (idea 4) | Yes, with a privacy-notice line and a minimum group size |
+| 6 | Using anonymised, aggregated scan results for benchmarks (idea 4) | Yes, with a privacy-notice line and a minimum group size (OT-65) |
 | 7 | Phishing packaging (design D9) | Included in Lookout Assured first; self-serve add-on later |
 | 8 | A 14-day Pro trial alongside the free check (SecurityScorecard and Defender EASM run trials [E1, E9]) | Try it after the first 40 sign-ups, so the effect can be measured |
-| 9 | Our own Cyber Essentials certification (a candidate OT item; OT-38 to OT-41 cover the bigger SOC 2 or ISO 27001 route) | Do it before Lookout ads: every enterprise rival is certified, and we sell Cyber Essentials help |
+| 9 | Our own Cyber Essentials certification (OT-64; OT-38 to OT-41 cover the bigger SOC 2 or ISO 27001 route) | Do it before Lookout ads: every enterprise rival is certified, and we sell Cyber Essentials help |
+| 10 | Whether a domain Microsoft has verified for a connected tenant counts as verified ownership (idea 6) | Your call (OT-66); the build keeps our own DNS verification |
 
 ## 9. What not to do
 
