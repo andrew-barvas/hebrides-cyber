@@ -1,5 +1,6 @@
 // /api/lookout/reports/<id> — one of the signed-in customer's reports.
-//   GET  → { report, items } (included items only, in priority order)
+//   GET  → { report, items, galleryScanId } (included items only, in priority
+//          order; galleryScanId = the scan whose screenshots form the gallery)
 //   POST { action: "acknowledge" } → records "I've read this report" once.
 // Drafts and other customers' reports answer 404, so their existence isn't
 // revealed. Acknowledging is not acceptance of any risk (OT-35 wording).
@@ -37,7 +38,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (itemsError) return respondInternalError(res, "lookout/reports/id", itemsError);
     const { customer: _customer, ...publicReport } = report as Record<string, unknown>;
     void _customer;
-    return res.status(200).json({ report: publicReport, items: items ?? [] });
+    // The scan whose host screenshots show as the report's estate gallery:
+    // the latest completed one by the period's end (lookoutReportPdf.ts).
+    const periodEnd = (report as { period_end: string }).period_end;
+    const { data: scan } = await supabaseAdmin
+      .from("scans")
+      .select("id")
+      .eq("owner", caller.ownerId)
+      .eq("status", "completed")
+      .lte("created_at", `${periodEnd}T23:59:59Z`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return res.status(200).json({ report: publicReport, items: items ?? [], galleryScanId: (scan as { id: string } | null)?.id ?? null });
   }
 
   if (req.method === "POST") {

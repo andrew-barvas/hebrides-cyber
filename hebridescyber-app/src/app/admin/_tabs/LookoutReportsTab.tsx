@@ -79,6 +79,24 @@ export default function LookoutReportsTab({ token }: { token: string }) {
     }
   }
 
+  // The PDF exactly as the customer gets it (drafts marked DRAFT), with the estate gallery.
+  async function previewPdf() {
+    if (!detail) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/lookout/report-pdf?id=${encodeURIComponent(detail.report.id)}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `PDF failed (${res.status})`);
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const setItem = (id: string, patch: Partial<Item>) => setDetail((d) => (d ? { ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) } : d));
   const frozen = detail?.report.status === "acknowledged";
 
@@ -170,6 +188,11 @@ export default function LookoutReportsTab({ token }: { token: string }) {
               </li>
             ))}
           </ol>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={previewPdf} disabled={busy} className="rounded-md border border-cyberborder px-3 py-1.5 text-sm">
+              Preview PDF (saved version)
+            </button>
+          </div>
           {!frozen && (
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => save()} disabled={busy} className="rounded-md border border-cyberborder px-3 py-1.5 text-sm">
