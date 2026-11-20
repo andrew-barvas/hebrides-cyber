@@ -15,12 +15,14 @@ import EstateScreenshots from "@/components/EstateScreenshots";
 type Report = { id: string; period_start: string; period_end: string; status: string; summary: string; published_at: string | null; acknowledged_at: string | null };
 type Item = { id: string; host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string };
 
+type Lookalikes = { available: boolean; newInPeriod: Array<{ domain: string; targetDomain: string; how: string; spottedAt: string }>; totalKnown: number };
+
 const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: "Your IT supplier", hosting_provider: "Your hosting provider", unknown: "To be agreed" };
 
 export default function LookoutReportPage() {
   const { accessToken } = useAppSession();
   const params = useParams<{ id: string }>();
-  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null } | null>(null);
+  const [data, setData] = useState<{ report: Report; items: Item[]; galleryScanId?: string | null; lookalikes?: Lookalikes } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -96,6 +98,32 @@ export default function LookoutReportPage() {
           </li>
         ))}
       </ol>
+      {data.lookalikes?.available && (
+        <section aria-labelledby="lookalikes-heading" className="space-y-2 rounded-lg border border-cyberborder bg-cyberpanel p-4">
+          <h2 id="lookalikes-heading" className="font-semibold text-cybertext">Lookalike domains</h2>
+          {data.lookalikes.newInPeriod.length === 0 ? (
+            <p className="text-sm text-cybermuted">
+              No new lookalike domains of yours were spotted this period{data.lookalikes.totalKnown ? ` (${data.lookalikes.totalKnown} known from before)` : ""}.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-cybertext/80">
+                Registered domains one character away from yours, with a certificate already issued: a common setup for phishing your customers or staff. They may be unrelated to you; it&apos;s worth checking who owns them.
+              </p>
+              <ul className="space-y-1 text-sm">
+                {data.lookalikes.newInPeriod.map((l) => (
+                  <li key={l.domain} className="break-all">
+                    <span className="font-mono text-cybertext">{l.domain}</span>{" "}
+                    <span className="text-cybermuted">
+                      looks like {l.targetDomain}, {l.how}, spotted {new Date(l.spottedAt).toLocaleDateString("en-GB")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
       {data.galleryScanId && accessToken && <EstateScreenshots scanId={data.galleryScanId} token={accessToken} />}
       <div className="print:hidden">
         {report.status === "acknowledged" ? (

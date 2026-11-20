@@ -8,6 +8,7 @@ import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { respondInternalError } from "@/lib/apiError";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { htmlToPdf } from "@/lib/reportPdf";
+import { loadReportLookalikes } from "@/lib/lookoutLookalikes";
 import { loadEstateGallery, loadReportForPdf, lookoutPdfFileName, renderLookoutReportHtml } from "@/lib/lookoutReportPdf";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -31,8 +32,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(429).json({ error: "Rate limit exceeded — try again later", retryAfterSeconds: limit.retryAfterSeconds });
   }
 
-  const gallery = await loadEstateGallery(supabaseAdmin, loaded.customer, loaded.report.period_end);
-  const html = renderLookoutReportHtml({ report: loaded.report, items: loaded.items, gallery });
+  const [gallery, lookalikes] = await Promise.all([
+    loadEstateGallery(supabaseAdmin, loaded.customer, loaded.report.period_end),
+    loadReportLookalikes(supabaseAdmin, loaded.customer, loaded.report.period_start, loaded.report.period_end),
+  ]);
+  const html = renderLookoutReportHtml({ report: loaded.report, items: loaded.items, gallery, lookalikes });
   res.setHeader("Cache-Control", "no-store");
   if (req.query.format === "html") {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
