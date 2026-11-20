@@ -8,7 +8,7 @@
 //
 // Honesty rules:
 //   - Free-check scores are compared only with free checks, scan scores only
-//     with scans (migration 086): the two come from different checks.
+//     with scans (migration 084): the two come from different checks.
 //   - Nothing is shown until a group has MIN_GROUP sites, so a handful of
 //     results is never dressed up as a benchmark, and no single site can be
 //     inferred from it.
