@@ -249,6 +249,11 @@ const SCAN_PROFILES: Record<ScanProfile, Partial<Record<ExtendedToolName, boolea
  * see scan_bundles (Item 3). Deliberately names no count: the previous
  * "all-14-keys-present" wording went stale as tools were added.
  */
+/** True for a stored value that names a real profile. */
+export function isScanProfile(value: unknown): value is ScanProfile {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(SCAN_PROFILES, value);
+}
+
 export function resolveToolConfig(
   profile: ScanProfile,
   bundleOverrides?: Partial<Record<ExtendedToolName, boolean>>

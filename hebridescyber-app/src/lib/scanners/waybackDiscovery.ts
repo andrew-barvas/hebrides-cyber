@@ -21,11 +21,13 @@
 // today is not a finding — the point is "still-live forgotten endpoint", not
 // "used to exist".
 //
-// Follows the same contract as exposure.ts / directoryListing.ts: never
-// throws, `{ status: "error" }` only for a malformed target URL, and any CDX
-// failure/timeout/empty-result degrades to a clean `{ status: "checked",
-// discovered: [] }` rather than surfacing an error — a dead third-party API
-// is not evidence of anything about the target.
+// Never throws. `{ status: "error" }` only for a malformed target URL. An
+// empty CDX result is a clean `{ status: "checked", discovered: [] }`: the
+// archive genuinely has nothing. A CDX failure (network, timeout, HTTP error,
+// unreadable body) is `{ status: "partial" }`, never "checked": a dead
+// third-party API is no evidence about the target, so findingLifecycle.ts
+// (BASE_NOT_RUN) must keep last scan's wayback findings open rather than
+// mark them fixed (CLAUDE.md rule 7, audit 2026-11 M3).
 import { createHash } from "node:crypto";
 import {
   type Baseline,
@@ -44,6 +46,8 @@ export type WaybackDiscoveryResult =
       candidatesConsidered: number;
       candidatesProbed: number;
     }
+  /** The archive couldn't be read, so nothing was checked; open findings stay open. */
+  | { status: "partial"; note: string; discovered: []; candidatesConsidered: 0; candidatesProbed: 0 }
   | { status: "error"; note: string };
 
 export type WaybackLiveFinding = {
@@ -159,11 +163,11 @@ function looksLikeRealPath(pathname: string): boolean {
 /**
  * Queries the CDX API for every archived URL under `domain`, then filters to
  * a deduplicated, sorted (for determinism across runs) list of pathnames
- * worth considering as live-probe candidates. Never throws — any failure
- * (network, timeout, malformed response, empty result) resolves to `[]`, and
- * the caller treats that exactly like "Wayback has nothing on this domain".
+ * worth considering as live-probe candidates. Never throws. A failure
+ * (network, timeout, HTTP error, unreadable body) is `null`, which the caller
+ * reports as "partial"; an empty archive is `[]`.
  */
-async function fetchCdxCandidates(domain: string): Promise<string[]> {
+async function fetchCdxCandidates(domain: string): Promise<string[] | null> {
   const url =
     `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}/*` +
     `&output=json&fl=original,statuscode,mimetype&collapse=urlkey&limit=${CDX_ROW_LIMIT}`;
@@ -171,13 +175,14 @@ async function fetchCdxCandidates(domain: string): Promise<string[]> {
   let rows: unknown;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(CDX_TIMEOUT_MS) });
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     rows = await res.json();
   } catch {
-    return [];
+    return null;
   }
 
-  if (!Array.isArray(rows) || rows.length <= 1) return [];
+  if (!Array.isArray(rows)) return null;
+  if (rows.length <= 1) return [];
 
   // First row is the column header (["original","statuscode","mimetype"]),
   // per the CDX API's own documented `output=json` shape — not a data row.
@@ -311,8 +316,8 @@ async function probeCandidate(origin: string, path: string, baseline: Baseline):
  * Discovers historically-archived paths for the target's own hostname via the
  * Wayback Machine's CDX API, then live-probes a bounded, priority-ordered
  * subset. Never throws: a malformed target URL is the only `"error"` case,
- * everything else (no CDX data, every candidate 404s today, network failure)
- * resolves to `{ status: "checked", discovered: [] }`.
+ * an unreadable archive is `"partial"`, and everything else (no CDX data,
+ * every candidate 404s today) is `{ status: "checked" }`.
  */
 export async function checkWaybackDiscovery(targetUrl: string): Promise<WaybackDiscoveryResult> {
   let origin: string;
@@ -326,6 +331,9 @@ export async function checkWaybackDiscovery(targetUrl: string): Promise<WaybackD
   }
 
   const candidates = await fetchCdxCandidates(domain);
+  if (candidates === null) {
+    return { status: "partial", note: "The Wayback Machine couldn't be read, so archived paths weren't re-checked.", discovered: [], candidatesConsidered: 0, candidatesProbed: 0 };
+  }
   const prioritised = prioritiseAndCap(candidates);
 
   if (prioritised.length === 0) {

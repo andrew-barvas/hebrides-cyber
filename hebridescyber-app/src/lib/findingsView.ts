@@ -74,9 +74,11 @@ export type FindingRow = {
   assignee?: { id: string; email: string | null } | null;
   /** Null = not assessed, or not on a Pro-and-up plan — never "not exploitable". */
   exploitabilityAssessment: FindingExploitability | null;
+  /** "base", or the normalised key of the extended tool that produced it (findingLifecycle.ts's findingSource). */
+  source?: string;
 };
 
-export type LifecycleOpenRow = LifecycleRow & { last_scan_id?: string | null };
+export type LifecycleOpenRow = LifecycleRow & { last_scan_id?: string | null; source?: string | null };
 
 export type ScanFinding = {
   checkId?: string;
@@ -156,6 +158,7 @@ export function buildFindingRows(
       triage: active ? { state: active.state, reason: active.reason, expiresAt: active.expires_at } : null,
       // A false positive gets no rating, including one marked since the scan ran.
       exploitabilityAssessment: showExploitability && active?.state !== "false_positive" ? (found?.exploitabilityAssessment ?? null) : null,
+      ...(row.source ? { source: row.source } : {}),
     });
   }
   return rows;
@@ -481,7 +484,7 @@ export type FindingsViewData = {
   detailByHost: Map<string, HostDetail>;
 };
 
-const LIFECYCLE_SELECT = "id, target_host, check_id, severity, title, first_seen_at, last_seen_at, resolved_at, last_scan_id";
+const LIFECYCLE_SELECT = "id, target_host, check_id, severity, title, first_seen_at, last_seen_at, resolved_at, last_scan_id, source";
 
 /** The latest completed scan's findings per host (only for `hosts`). Null on
  *  any failure — detail is enrichment, so the caller degrades. */
