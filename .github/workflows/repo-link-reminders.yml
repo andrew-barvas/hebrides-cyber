@@ -1,0 +1,42 @@
+name: Repo Link Reminders
+
+# Emails owners whose connected repositories aren't linked to a site, once per
+# connection (hebridescyber-app/src/lib/repoLinkReminder.ts). Since migration
+# 077 an unlinked repository is never scanned. Run by hand; choose "dry run"
+# first to see who would be emailed.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access
+#   RESEND_API_KEY                            - email delivery
+#   NEXT_PUBLIC_SITE_URL                      - links in the email
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List who would be emailed, send nothing"
+        type: boolean
+        default: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Send the reminders
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: npx tsx src/scripts/send-repo-link-reminders.ts $([ "$DRY_RUN" = "true" ] && echo --dry-run)
