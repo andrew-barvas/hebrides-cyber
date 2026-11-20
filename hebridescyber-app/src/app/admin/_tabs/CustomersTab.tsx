@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Customer, CustomerDetail, statusBadge, reltime, apiFetch, UsageRow, AdminInput, AdminSelect } from "../_shared";
+import { SUBSCRIPTION_PLANS } from "@/lib/planAccess";
 
 export default function CustomersTab({ token }: { token: string }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -113,7 +114,7 @@ export default function CustomersTab({ token }: { token: string }) {
   );
 }
 
-const PLAN_OPTIONS = ["basic", "pro", "agency", "tier_a"] as const;
+const PLAN_OPTIONS = SUBSCRIPTION_PLANS;
 const STATUS_OPTIONS = ["active", "inactive", "past_due", "cancelled"] as const;
 
 function CustomerDetailPanel({

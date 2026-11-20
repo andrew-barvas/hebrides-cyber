@@ -9,6 +9,7 @@ import type { ReportStatus } from "./lookoutReports";
 import type { ReportLookalikes } from "./lookoutLookalikes";
 import type { ReportBreaches } from "./lookoutBreaches";
 import { emailResponseSteps } from "./lookalikeResponse";
+import { formatChange, renderTrendSvg, type ReportTrends } from "./reportTrends";
 
 export const GALLERY_MAX = 12;
 const GALLERY_SCANS = 5;
@@ -24,7 +25,7 @@ export type LookoutPdfReport = {
 };
 export type LookoutPdfItem = { host: string; severity: string; title: string; priority: number; analyst_note: string; business_impact: string; fix_owner: string | null };
 export type GalleryImage = { host: string; dataUri: string };
-export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; lookalikes?: ReportLookalikes; breaches?: ReportBreaches; now?: Date };
+export type LookoutPdfInput = { report: LookoutPdfReport; items: LookoutPdfItem[]; gallery: GalleryImage[]; lookalikes?: ReportLookalikes; breaches?: ReportBreaches; trends?: ReportTrends; now?: Date };
 
 const SEVERITY_COLOUR: Record<string, string> = { critical: "#7f1d1d", high: "#b91c1c", medium: "#b45309", low: "#1d4ed8", info: "#475569" };
 const FIX_OWNER_LABEL: Record<string, string> = { customer: "You", it_supplier: "Your IT supplier", hosting_provider: "Your hosting provider", unknown: "To be agreed" };
@@ -93,6 +94,16 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
          .join("")}`
     : "";
 
+  const trends = input.trends;
+  const trendHtml = trends?.available
+    ? `<h2>Your security score over this period</h2>
+       ${renderTrendSvg(trends.average, { label: "average" })}
+       <p class="muted">${trends.sites.length > 1 ? "The average across your sites, week by week. " : ""}A site's score is from its latest scan; scores move when a fix is confirmed or something new is found.</p>
+       <table><thead><tr><th>Site</th><th>Start of period</th><th>End of period</th><th>Change</th></tr></thead><tbody>${trends.sites
+         .map((s) => `<tr><td>${e(s.host)}</td><td>${s.start ?? "—"}</td><td><b>${s.end ?? "—"}</b></td><td>${e(formatChange(s.change))}</td></tr>`)
+         .join("")}</tbody></table>`
+    : "";
+
   const state =
     report.status === "draft"
       ? '<div class="draft">DRAFT — not yet published to the customer</div>'
@@ -127,6 +138,8 @@ export function renderLookoutReportHtml(input: LookoutPdfInput): string {
 
   <h2>Summary</h2>
   ${paragraphs || '<p class="muted">No summary was written for this period.</p>'}
+
+  ${trendHtml}
 
   <h2>What to fix, in order</h2>
   ${rows || '<p class="muted">Nothing needs fixing from this period.</p>'}

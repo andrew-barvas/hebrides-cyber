@@ -6,6 +6,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { InstantCheckResult } from "@/lib/instantCheck";
+import { benchmarkSentence, type Benchmark } from "@/lib/scoreBenchmark";
 
 const SEVERITY_STYLE: Record<string, string> = {
   critical: "bg-red-100 text-red-800",
@@ -22,7 +23,7 @@ export default function InstantCheck({ initialUrl = "" }: { initialUrl?: string 
   const [url, setUrl] = useState(initialUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<InstantCheckResult | null>(null);
+  const [result, setResult] = useState<(InstantCheckResult & { benchmark?: Benchmark }) | null>(null);
 
   async function run(target: string) {
     setBusy(true);
@@ -80,6 +81,7 @@ export default function InstantCheck({ initialUrl = "" }: { initialUrl?: string 
           <section aria-label="Check result" className="rounded-lg border border-cyberborder bg-cyberpanel p-6">
             <p className="text-sm text-cybermuted">{result.target}</p>
             <p className="mt-1 text-4xl font-bold">{result.score}<span className="text-lg font-normal text-cybermuted"> / 100</span></p>
+            {result.benchmark && <p className="mt-1 text-sm text-neon">{benchmarkSentence(result.benchmark)}</p>}
             <p className="mt-1 text-cybertext/80">
               {result.total === 0 ? "No problems found in the TLS, headers and email checks." : `${result.total} thing${result.total === 1 ? "" : "s"} to fix in the TLS, headers and email checks.`}
             </p>

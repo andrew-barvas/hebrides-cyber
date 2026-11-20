@@ -160,6 +160,8 @@ export type ErasureDeps = {
   /** Cancels the Stripe subscription now. Omit to leave billing alone (the operator chose --keep-stripe-subscription). */
   cancelStripeSubscription?: (subscriptionId: string) => Promise<void>;
   deleteReportBlobs: (scanIds: string[]) => Promise<{ deleted: number; skipped: boolean }>;
+  /** Deletes the owner's profile document files (trustDocuments.ts); rows go with the user. Throws to stop the erasure. */
+  deleteTrustDocuments?: (ownerId: string) => Promise<number>;
   now?: Date;
 };
 
@@ -167,6 +169,8 @@ export type ErasureResult = {
   stripeCancelled: boolean;
   reportsDeleted: number;
   reportsSkipped: boolean;
+  /** Profile document files deleted, when deleteTrustDocuments was given. */
+  trustDocumentsDeleted?: number;
   /** Set when the account is gone but the request couldn't be marked completed. */
   ledgerWarning: string | null;
 };
@@ -188,6 +192,7 @@ export async function eraseAccount(db: SupabaseClient, plan: ErasurePlan, deps: 
   }
 
   const blobs = await deps.deleteReportBlobs(plan.scanIds);
+  const trustDocumentsDeleted = deps.deleteTrustDocuments ? await deps.deleteTrustDocuments(plan.account.id) : undefined;
 
   const { error: deleteError } = await db.auth.admin.deleteUser(plan.account.id);
   if (deleteError) throw new Error(`Could not delete auth user ${plan.account.id}: ${deleteError.message}`);
@@ -200,7 +205,7 @@ export async function eraseAccount(db: SupabaseClient, plan: ErasurePlan, deps: 
     .eq("status", "pending");
   const ledgerWarning = ledgerError && !isMissingSchemaError(ledgerError) ? `The account was erased, but its deletion request could not be marked completed: ${ledgerError.message}` : null;
 
-  return { stripeCancelled, reportsDeleted: blobs.deleted, reportsSkipped: blobs.skipped, ledgerWarning };
+  return { stripeCancelled, reportsDeleted: blobs.deleted, reportsSkipped: blobs.skipped, ...(trustDocumentsDeleted !== undefined ? { trustDocumentsDeleted } : {}), ledgerWarning };
 }
 
 export type ReminderOutcome =

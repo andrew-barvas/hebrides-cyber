@@ -15,11 +15,14 @@ import type { Finding } from "./scanners";
 import { escapeHtml, plainText, prioritise, ratingFor, safeLogoUrl, REPORT_MUTED, REPORT_TEXT, type ReportBranding } from "./executiveReport";
 import { hostOf } from "./findingLifecycle";
 import { partitionByTriage, type TriageIndex } from "./findingTriage";
+import { buildReportTrends, formatChange, renderTrendSvg, type ScorePoint } from "./reportTrends";
 
 export type PortfolioSiteInput = {
   targetUrl: string;
   /** Latest completed scan, or null when the site has none yet. */
   scan: { id: string; completedAt: string; score: number | null; findings: Finding[] } | null;
+  /** Completed-scan scores over the trend window (reportTrends.ts), for the change column and chart. Absent = no trend shown. */
+  history?: ScorePoint[];
 };
 
 export type PortfolioInput = {
@@ -27,7 +30,12 @@ export type PortfolioInput = {
   triage: TriageIndex;
   branding?: ReportBranding;
   now?: Date;
+  /** Days the change column and chart cover (default TREND_DAYS). */
+  trendDays?: number;
 };
+
+/** The portfolio's change column and chart look back this far. */
+export const TREND_DAYS = 90;
 
 type Severity = Finding["severity"];
 const COUNTED: Severity[] = ["critical", "high", "medium", "low"];
@@ -47,6 +55,8 @@ export type PortfolioSite = {
   exploited: number;
   top: Finding[];
   stale: boolean;
+  /** Score change over the trend window; null when unknown. */
+  change: number | null;
 };
 
 export type CommonIssue = { checkId: string; title: string; severity: Severity; hosts: string[] };
@@ -58,6 +68,8 @@ export type PortfolioSummary = {
   totals: Record<Severity, number>;
   exploited: number;
   common: CommonIssue[];
+  /** Weekly average score across sites over the trend window. */
+  trend: ScorePoint[];
 };
 
 const SEVERITY_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
@@ -77,7 +89,7 @@ export function summarisePortfolio(input: PortfolioInput): PortfolioSummary {
     const host = hostOf(site.targetUrl) ?? site.targetUrl;
     const counts = emptyCounts();
     if (!site.scan) {
-      return { host, targetUrl: site.targetUrl, scanId: null, completedAt: null, score: null, counts, exploited: 0, top: [], stale: true };
+      return { host, targetUrl: site.targetUrl, scanId: null, completedAt: null, score: null, counts, exploited: 0, top: [], stale: true, change: null };
     }
     const { open } = partitionByTriage(site.scan.findings, host, input.triage);
     let siteExploited = 0;
@@ -102,8 +114,21 @@ export function summarisePortfolio(input: PortfolioInput): PortfolioSummary {
       exploited: siteExploited,
       top: prioritise(open).filter((f) => f.severity !== "info").slice(0, TOP_PER_SITE),
       stale: now - Date.parse(site.scan.completedAt) > STALE_AFTER_DAYS * 24 * 60 * 60 * 1000,
+      change: null,
     };
   });
+
+  // Trend: each site's change over the window and the weekly average, from
+  // whatever history was loaded (none = no trend, never a made-up one).
+  const history = new Map<string, ScorePoint[]>();
+  for (const site of input.sites) {
+    const host = hostOf(site.targetUrl) ?? site.targetUrl;
+    if (site.history?.length) history.set(host, site.history);
+  }
+  const windowStart = new Date(now - (input.trendDays ?? TREND_DAYS) * 24 * 60 * 60 * 1000).toISOString();
+  const trends = history.size ? buildReportTrends(history, windowStart, new Date(now).toISOString()) : null;
+  const changeByHost = new Map((trends?.sites ?? []).map((t) => [t.host, t.change]));
+  for (const s of sites) s.change = changeByHost.get(s.host) ?? null;
 
   sites.sort((a, b) => {
     if ((a.score === null) !== (b.score === null)) return a.score === null ? 1 : -1;
@@ -124,6 +149,7 @@ export function summarisePortfolio(input: PortfolioInput): PortfolioSummary {
     totals,
     exploited,
     common,
+    trend: trends?.average ?? [],
   };
 }
 
@@ -149,6 +175,7 @@ export function renderPortfolioReportHtml(input: PortfolioInput): string {
         <td style="color:${rating.colour}"><b>${s.score ?? "—"}</b>${s.score === null ? "" : ` <span class="muted">${e(rating.label)}</span>`}</td>
         ${COUNTED.map((sev) => `<td class="num">${s.scanId ? s.counts[sev] : "—"}</td>`).join("")}
         <td class="num">${s.scanId ? s.exploited : "—"}</td>
+        <td class="num">${e(formatChange(s.change))}</td>
         <td>${when}</td>
       </tr>`;
     })
@@ -208,8 +235,10 @@ export function renderPortfolioReportHtml(input: PortfolioInput): string {
   <p>${summary.exploited ? `<span class="kev">${summary.exploited} open finding${summary.exploited === 1 ? " is" : "s are"} on CISA's list of vulnerabilities being actively exploited.</span> Fix those first.` : "No open finding is on CISA's list of actively exploited vulnerabilities."}</p>
   ${caveat}
 
+  ${summary.trend.length >= 2 ? `<h2>Average score, last ${input.trendDays ?? TREND_DAYS} days</h2>${renderTrendSvg(summary.trend, { label: "average" })}<p class="muted">Week by week, across every site with a scan by then.</p>` : ""}
+
   <h2>Sites, most in need of attention first</h2>
-  <table><thead><tr><th>Site</th><th>Score</th>${COUNTED.map((s) => `<th>${e(s)}</th>`).join("")}<th>Exploited</th><th>Last scan</th></tr></thead><tbody>${siteRows}</tbody></table>
+  <table><thead><tr><th>Site</th><th>Score</th>${COUNTED.map((s) => `<th>${e(s)}</th>`).join("")}<th>Exploited</th><th>${input.trendDays ?? TREND_DAYS}-day change</th><th>Last scan</th></tr></thead><tbody>${siteRows}</tbody></table>
 
   ${commonHtml}
 

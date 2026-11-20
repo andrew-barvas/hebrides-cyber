@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { buffer } from "node:stream/consumers";
 import { getStripe } from "@/lib/stripeClient";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { PLAN_LABELS, isLookoutPlan, isSubscriptionPlan, type SubscriptionPlan } from "@/lib/planAccess";
 
 export const config = {
   api: { bodyParser: false },
@@ -70,7 +71,7 @@ async function lookupSubscriptionOwner(stripeSubscriptionId: string): Promise<{ 
   return { owner: sub.owner, email: profile?.email ?? null };
 }
 
-async function sendWelcomeEmail(email: string, plan: string) {
+async function sendWelcomeEmail(email: string, plan: SubscriptionPlan) {
   const key = process.env.SENDGRID_API_KEY;
   if (!key) return;
   const from = process.env.SENDGRID_FROM_EMAIL ?? "hello@hebridescyber.co.uk";
@@ -85,13 +86,13 @@ async function sendWelcomeEmail(email: string, plan: string) {
     body: JSON.stringify({
       personalizations: [{ to: [{ email }] }],
       from: { email: from, name: "Hebrides Cyber" },
-      subject: `Welcome to Hebrides Cyber — ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
+      subject: `Welcome to Hebrides Cyber — ${PLAN_LABELS[plan]} Plan`,
       content: [
         {
           type: "text/plain",
-          value: `Hi,
+          value: isLookoutPlan(plan) ? lookoutWelcome(PLAN_LABELS[plan], siteUrl) : `Hi,
 
-Thanks for subscribing to the Hebrides Cyber ${plan} plan.
+Thanks for subscribing to the Hebrides Cyber ${PLAN_LABELS[plan]} plan.
 
 Your first automated security scan will run within the next 24 hours. You'll receive a Security Score report by email once it's complete.
 
@@ -107,6 +108,26 @@ If you have any questions, just reply to this email.
       ],
     }),
   }).catch((err) => console.error("[webhook] welcome email failed:", err.message));
+}
+
+// Lookout starts with people, not a scan: nothing is checked until the
+// onboarding call has agreed the scope and each domain is verified
+// (docs/DEFENSIVE-ASSESSMENT-PLAN.md, "Service Workflow"), so the scanner
+// welcome's "first scan within 24 hours" would be untrue.
+function lookoutWelcome(planLabel: string, siteUrl: string): string {
+  return `Hi,
+
+Thanks for subscribing to ${planLabel}, the Hebrides Cyber managed exposure review.
+
+We'll be in touch to book your onboarding call, where we agree which domains and public IP addresses are in scope. Nothing is checked until that scope is agreed and each domain has been verified as yours.
+
+Before the call, you can add and verify your domains here: ${siteUrl}/dashboard/assets
+
+Lookout is not a penetration test: there is no exploitation and no test payloads.
+
+If you have any questions, just reply to this email.
+
+— Andrew & the Hebrides Cyber team`;
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -145,13 +166,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!owner) break;
 
         // Validate the plan from metadata — never default to "basic" if absent,
-        // which would silently activate the wrong plan for Pro/Agency checkouts.
-        const VALID_PLANS = ["basic", "pro", "agency", "tier_a"] as const;
-        type ValidPlan = (typeof VALID_PLANS)[number];
+        // which would silently activate the wrong plan for Pro/Agency/Lookout
+        // checkouts. SUBSCRIPTION_PLANS (planAccess.ts) is the one list.
         const rawPlan = session.metadata?.plan;
-        const plan: ValidPlan | undefined = VALID_PLANS.includes(rawPlan as ValidPlan)
-          ? (rawPlan as ValidPlan)
-          : undefined;
+        const plan = isSubscriptionPlan(rawPlan) ? rawPlan : undefined;
 
         if (plan === undefined) {
           // Unresolvable plan — audit the gap and bail. The session is genuine
@@ -220,18 +238,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .eq("id", owner);
         }
 
-        await markProcessed(event.id, "stripe.checkout.completed", { actor: owner, metadata: { plan } });
+        // The billing period (monthly/quarterly/annual, Lookout only) lives on
+        // the Stripe price; it is recorded here for support, not stored on
+        // the subscription row, since nothing gates on it.
+        await markProcessed(event.id, "stripe.checkout.completed", {
+          actor: owner,
+          metadata: { plan, period: session.metadata?.period ?? null },
+        });
         break;
       }
 
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
-        const VALID_PLANS = ["basic", "pro", "agency", "tier_a"] as const;
-        type ValidPlan = (typeof VALID_PLANS)[number];
         const rawPlan = sub.metadata?.plan;
-        const plan: ValidPlan | undefined = VALID_PLANS.includes(rawPlan as ValidPlan)
-          ? (rawPlan as ValidPlan)
-          : undefined;
+        const plan = isSubscriptionPlan(rawPlan) ? rawPlan : undefined;
         const status = sub.status === "active" ? "active"
           : sub.status === "past_due" ? "past_due"
           : sub.status === "canceled" ? "cancelled"

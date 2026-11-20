@@ -6,6 +6,7 @@ import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
 import { htmlToPdf } from "@/lib/reportPdf";
 import { loadReportLookalikes } from "@/lib/lookoutLookalikes";
 import { loadReportBreaches } from "@/lib/lookoutBreaches";
+import { loadReportTrends } from "@/lib/reportTrends";
 import { loadEstateGallery, loadReportForPdf, lookoutPdfFileName, renderLookoutReportHtml } from "@/lib/lookoutReportPdf";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -22,12 +23,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   if (!loaded) return res.status(404).json({ error: "Report not found" });
 
-  const [gallery, lookalikes, breaches] = await Promise.all([
+  const [gallery, lookalikes, breaches, trends] = await Promise.all([
     loadEstateGallery(supabaseAdmin, loaded.customer, loaded.report.period_end),
     loadReportLookalikes(supabaseAdmin, loaded.customer, loaded.report.period_start, loaded.report.period_end),
     loadReportBreaches(supabaseAdmin, loaded.customer, loaded.report.period_end),
+    loadReportTrends(supabaseAdmin, loaded.customer, loaded.report.period_start, loaded.report.period_end),
   ]);
-  const html = renderLookoutReportHtml({ report: loaded.report, items: loaded.items, gallery, lookalikes, breaches });
+  const html = renderLookoutReportHtml({ report: loaded.report, items: loaded.items, gallery, lookalikes, breaches, trends });
   res.setHeader("Cache-Control", "no-store");
   if (req.query.format === "html") {
     res.setHeader("Content-Type", "text/html; charset=utf-8");

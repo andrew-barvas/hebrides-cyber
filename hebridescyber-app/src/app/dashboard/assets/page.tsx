@@ -7,6 +7,7 @@ import EstateMap from "@/components/EstateMap";
 import LockedFeature from "@/components/LockedFeature";
 import LookalikeDomains from "@/components/LookalikeDomains";
 import MonitoredTargets from "@/components/MonitoredTargets";
+import TenantDomainSuggestions from "@/components/TenantDomainSuggestions";
 import { useAppSession } from "@/components/app-shell/AppShell";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -33,7 +34,10 @@ export default function AssetsPage() {
           per-plan target caps are enforced server-side (scanCadence.ts,
           018_monitored_targets_plan_cap.sql); this only mirrors that gate. */}
       {plan !== "none" ? (
-        <MonitoredTargets />
+        <>
+          <MonitoredTargets />
+          {planIncludes(plan, "pro") && <TenantDomainSuggestions token={accessToken} />}
+        </>
       ) : (
         <LockedFeature
           title="monitored sites"

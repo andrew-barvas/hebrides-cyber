@@ -9,6 +9,8 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { ratingFor } from "@/lib/executiveReport";
 import { buildPublicProfile, loadLatestScanForProfile, loadProfileBySlug, STALE_AFTER_DAYS } from "@/lib/securityProfile";
+import { formatSize, loadSiteDocuments, publicDocuments } from "@/lib/trustDocuments";
+import { DocumentRequestForm } from "@/components/DocumentRequestForm";
 
 export const metadata: Metadata = {
   title: "Security profile — Hebrides Cyber",
@@ -19,7 +21,9 @@ export default async function ProfilePage({ params }: { params: Promise<{ slug: 
   const { slug } = await params;
   const row = await loadProfileBySlug(supabaseAdmin, slug);
   if (!row) notFound();
-  const profile = buildPublicProfile({ host: row.target_host, scan: await loadLatestScanForProfile(supabaseAdmin, row) });
+  const [scan, docRows] = await Promise.all([loadLatestScanForProfile(supabaseAdmin, row), loadSiteDocuments(supabaseAdmin, row.owner, row.target_host)]);
+  const profile = buildPublicProfile({ host: row.target_host, scan });
+  const documents = publicDocuments(docRows);
   const rating = ratingFor(profile.score);
   const current = !profile.stale && profile.score !== null;
 
@@ -57,6 +61,36 @@ export default async function ProfilePage({ params }: { params: Promise<{ slug: 
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {documents.length > 0 && (
+        <section className="mt-8" aria-labelledby="documents-heading">
+          <h2 id="documents-heading" className="text-lg font-semibold">
+            Documents
+          </h2>
+          <p className="mt-1 text-sm text-cybermuted">Shared by the site&apos;s owner. Some are available on request; the owner decides who receives them.</p>
+          <ul className="mt-3 space-y-3">
+            {documents.map((doc) => (
+              <li key={doc.id} className="rounded-lg border border-cyberborder bg-cyberpanel p-4">
+                <p className="font-medium text-cybertext">{doc.title}</p>
+                <p className="text-xs text-cybermuted">
+                  {doc.kindLabel} · PDF, {formatSize(doc.sizeBytes)} · added {new Date(doc.uploadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+                <div className="mt-2">
+                  {doc.visibility === "public" ? (
+                    <a href={`/api/profile/${slug}/documents/${doc.id}`} className="text-sm font-semibold text-neon underline-offset-2 hover:underline" download>
+                      Download
+                      <span className="sr-only"> {doc.title}</span>
+                    </a>
+                  ) : (
+                    <DocumentRequestForm slug={slug} documentId={doc.id} title={doc.title} />
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-cybermuted">Documents are the owner&apos;s own; Hebrides Cyber hosts them but doesn&apos;t check their contents.</p>
         </section>
       )}
 

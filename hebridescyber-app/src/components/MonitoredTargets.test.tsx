@@ -306,3 +306,15 @@ describe("MonitoredTargets criticality (067)", () => {
     expect(screen.queryByRole("button", { name: /criticality/ })).toBeNull();
   });
 });
+
+describe("MonitoredTargets reload", () => {
+  it("reloads its list when a site is added elsewhere on the page", async () => {
+    render(<MonitoredTargets />);
+    await waitFor(() => expect(fromMock).toHaveBeenCalledWith("monitored_targets"));
+    const before = fromMock.mock.calls.filter(([t]) => t === "monitored_targets").length;
+    state.targets = [{ id: "t1", target_url: "https://new.example.com", created_at: "2026-11-20T00:00:00Z" }];
+    window.dispatchEvent(new Event("hc:monitored-targets-changed"));
+    expect(await screen.findByText("https://new.example.com")).toBeInTheDocument();
+    expect(fromMock.mock.calls.filter(([t]) => t === "monitored_targets").length).toBeGreaterThan(before);
+  });
+});

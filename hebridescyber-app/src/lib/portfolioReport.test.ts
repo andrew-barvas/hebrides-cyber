@@ -135,3 +135,19 @@ describe("renderPortfolioReportHtml", () => {
     expect(html).not.toContain("Top priorities per site");
   });
 });
+
+describe("portfolio trend", () => {
+  it("adds each site's 90-day change and an average chart from history, and leaves both out without it", () => {
+    const withHistory = { ...site("https://a.example", 80, []), history: [{ at: "2026-07-20T00:00:00Z", score: 60 }, { at: "2026-09-01T00:00:00Z", score: 70 }, { at: "2026-10-05T00:00:00Z", score: 80 }] };
+    const input = { sites: [withHistory, site("https://b.example", 50, [])], triage: noTriage, now: NOW };
+    const summary = summarisePortfolio(input);
+    expect(summary.sites.find((s) => s.host === "a.example")?.change).toBe(20);
+    expect(summary.sites.find((s) => s.host === "b.example")?.change).toBeNull();
+    expect(summary.trend.length).toBeGreaterThan(1);
+    const html = renderPortfolioReportHtml(input);
+    expect(html).toContain("90-day change");
+    expect(html).toContain("Average score, last 90 days");
+    expect(html).toContain(">+20<");
+    expect(renderPortfolioReportHtml({ sites: [site("https://b.example", 50, [])], triage: noTriage, now: NOW })).not.toContain("Average score, last");
+  });
+});
