@@ -31,7 +31,7 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | ID | Item | Priority | Status | Raised | Actioned |
 |---|---|---|---|---|---|
 | OT-01 | Rotate the Supabase database password | 🔴 Critical | Open | 2026-10-14 | |
-| OT-02 | Add `RESEND_API_KEY` (no scheduled email has been sent) | 🔴 Critical | Open | 2026-10-06 | |
+| OT-02 | Add `RESEND_API_KEY` (no scheduled email has been sent) | — | Done | 2026-10-06 | 2026-11-20 |
 | OT-03 | Review and merge #107 (cookie settings, Sentry in the privacy policy) | — | Done | 2026-10-26 | 2026-10-30 |
 | OT-04 | Decide on #110 (Tier A plan checks), closed unmerged | 🟠 High | Decision | 2026-10-27 | |
 | OT-05 | Confirm `CREDENTIALS_ENC_KEY` in Azure and encrypt stored secrets | 🟠 High | Check | 2026-10-14 | |
@@ -90,7 +90,8 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-58 | Google Cloud project and OAuth app for Google Workspace posture checks | 🟢 Low | Open | 2026-11-14 | |
 | OT-59 | Phishing awareness: solicitor (DPA, terms, privacy policy) and insurer sign-off before any live campaign | 🟡 Medium | Decision | 2026-11-19 | |
 | OT-60 | Phishing awareness: dedicated sending domains and an email provider whose terms allow simulations | 🟢 Low | Decision | 2026-11-19 | |
-| OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
+| OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
+| OT-62 | Replace the Resend API key (shown in a screenshot) and delete `RESEND_API_KEY_OLD` | 🟠 High | Open | 2026-11-20 | |
 
 ## Common steps
 
@@ -134,7 +135,19 @@ you confirm.
   (on 2026-10-27 it still showed 2026-10-14).
 - **Raised:** 2026-10-14 (`NEXT-STEPS.md`, Owner actions 0 and 4).
 
-### OT-02: Add `RESEND_API_KEY` 🔴
+### OT-02: Add `RESEND_API_KEY` ✅
+**Done 2026-11-20.** Resend account "hebridescyber", domain `hebridescyber.co.uk`
+verified in the EU (Ireland) region with sending on and receiving off: DKIM
+`resend._domainkey` TXT, `send` and `rsend` CNAMEs, all verified, added by
+Resend's GoDaddy auto-configure. The root MX (Microsoft 365), SPF and DMARC were
+left unchanged. The key is set as the GitHub secret (2026-11-20 01:10 UTC) and
+in the Azure Static Web App `hebrides-cyber`. Proof: a test enquiry through the
+live contact form showed **Delivered** to `hello@hebridescyber.co.uk` in Resend
+and arrived in the admin@ inbox. `hello@` was added that day as an alias of
+`admin@` in GoDaddy Email & Office (it didn't exist, so the first test bounced
+and was suppressed; the suppression was removed). The GitHub copy is proven by
+the next worker run that sends mail. Follow-up: OT-62.
+
 - **What and why:** every worker email goes through Resend (`src/lib/email.ts`),
   and the secret isn't set. Eight workflows use it: `scheduled-scans.yml`,
   `on-demand-scan.yml`, `scheduled-reports.yml`, `monthly-digest.yml`,
@@ -1158,6 +1171,19 @@ bare-domain redirect, so `SITE_URL` doesn't need changing to `www`.
 - **How:** read the NCSC e-learning terms; choose packaging and a price.
 - **Verify:** licence terms recorded in the design; prices agreed.
 - **Raised:** 2026-11-19.
+
+### OT-62: Replace the Resend API key 🟠
+- **What and why:** the production Resend key was shown in plain text in a
+  screenshot during setup on 2026-11-20, so treat it as exposed. The Azure
+  app also has a leftover `RESEND_API_KEY_OLD` setting that nothing reads.
+- **How:** in Resend, create a new key (sending access, `hebridescyber.co.uk`
+  only). Set it in Azure (Static Web App `hebrides-cyber` → Environment
+  variables → `RESEND_API_KEY`) and GitHub
+  (`gh secret set RESEND_API_KEY --repo andrew-barvas/hebrides-cyber`). Then
+  delete the old key in Resend and the `RESEND_API_KEY_OLD` setting in Azure.
+- **Verify:** Resend's API keys page lists only the new key, with a recent
+  "last used"; a contact-form test shows Delivered.
+- **Raised:** 2026-11-20.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
 Done 2026-10-23 (`gh secret list`). It covers scan-worker errors; see OT-08
