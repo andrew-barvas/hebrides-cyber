@@ -1,0 +1,43 @@
+name: DB size guard
+
+# Keeps the Supabase database inside the Free plan's 500 MB (owner decision
+# 2026-11-20). Daily: prints the size and largest tables to the job summary,
+# emails a warning from 70%, and fails from 85% so GitHub alerts the owner.
+# See hebridescyber-app/src/lib/dbSize.ts.
+#
+# Requires:
+#   DATABASE_URL     - direct Postgres connection string (same secret deploy.yml uses)
+#   RESEND_API_KEY   - for the warning email
+#   ALERT_EMAIL      - optional repository variable; defaults to hello@hebridescyber.co.uk
+
+on:
+  schedule:
+    # 06:15 UTC daily.
+    - cron: "15 6 * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [claude/db-size]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Check the database size
+        working-directory: hebridescyber-app
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        run: npx tsx src/scripts/db-size-guard.ts
