@@ -12,7 +12,7 @@ vi.mock("./findingsView", async (orig) => ({ ...(await orig<typeof import("./fin
 vi.mock("./estatePriority", async (orig) => ({ ...(await orig<typeof import("./estatePriority")>()), loadTargetContexts: targetsMock, rankFindings: rankMock }));
 vi.mock("./email", async (orig) => ({ ...(await orig<typeof import("./email")>()), sendEmail: sendEmailMock }));
 
-import { buildWeeklyFixEmail, pickWeeklyFix, remediationFor, sendWeeklyFixEmails } from "./weeklyFixEmail";
+import { buildWeeklyFixEmail, pickWeeklyFix, ratingStepFor, remediationFor, sendWeeklyFixEmails } from "./weeklyFixEmail";
 
 const finding = (over: Partial<PrioritisedFinding> = {}): PrioritisedFinding =>
   ({
@@ -47,6 +47,31 @@ describe("remediationFor", () => {
   });
 });
 
+describe("ratingStepFor", () => {
+  const detail = (score: number | null | undefined, findings: Array<{ checkId: string; severity: string }>) => ({ scanId: "s", score, findings });
+  // 100 - 30 - 15 - 7 = 48: At risk; Needs attention is 50+.
+  const findings = [
+    { checkId: "crit", severity: "critical" },
+    { checkId: "high", severity: "high" },
+    { checkId: "med", severity: "medium" },
+  ];
+  const open = new Set(["crit", "high", "med"]);
+
+  it("counts the fixes, starting with this week's, to the next rating", () => {
+    expect(ratingStepFor(detail(48, findings), open, "med")).toEqual({ fixes: 1, fromLabel: "At risk", toLabel: "Needs attention" });
+    expect(ratingStepFor(detail(60, [{ checkId: "low", severity: "low" }, ...findings]), new Set(["low", "crit"]), "low")).toEqual({ fixes: 2, fromLabel: "Needs attention", toLabel: "Good" });
+  });
+
+  it("is null with no stored score, at Strong, when this week's isn't open, or when the next rating is out of reach", () => {
+    expect(ratingStepFor(detail(null, findings), open, "med")).toBeNull();
+    expect(ratingStepFor(detail(undefined, findings), open, "med")).toBeNull();
+    expect(ratingStepFor(detail(95, findings), open, "med")).toBeNull();
+    expect(ratingStepFor(undefined, open, "med")).toBeNull();
+    expect(ratingStepFor(detail(48, findings), new Set(["crit"]), "med")).toBeNull();
+    expect(ratingStepFor(detail(20, [{ checkId: "low", severity: "low" }]), new Set(["low"]), "low")).toBeNull();
+  });
+});
+
 describe("buildWeeklyFixEmail", () => {
   const base = { finding: finding(), remediation: "**On WordPress:** renew in the dashboard.\n<script>x</script>", openCount: 4, last: null, siteUrl: "https://www.hebridescyber.co.uk" };
 
@@ -59,6 +84,12 @@ describe("buildWeeklyFixEmail", () => {
     expect(html).toContain('href="https://www.hebridescyber.co.uk/dashboard/scans/scan-1"');
     expect(html).toContain("3 other open issues can wait");
     expect(html).toContain("/dashboard/integrations");
+  });
+
+  it("says how many fixes lift the site to the next rating, when known", () => {
+    expect(buildWeeklyFixEmail({ ...base, ratingStep: { fixes: 1, fromLabel: "Needs attention", toLabel: "Good" } }).html).toContain("<b>Fixing this one</b> should take shop.example.com from Needs attention to Good.");
+    expect(buildWeeklyFixEmail({ ...base, ratingStep: { fixes: 3, fromLabel: "At risk", toLabel: "Needs attention" } }).html).toContain("<b>Fixing this and 2 more</b> should take shop.example.com from At risk to Needs attention.");
+    expect(buildWeeklyFixEmail(base).html).not.toContain("should take");
   });
 
   it("says when last week's is fixed, or that it's still the same one", () => {
@@ -115,6 +146,12 @@ describe("sendWeeklyFixEmails", () => {
     rankMock.mockReturnValue([]);
     expect(await sendWeeklyFixEmails(db(), { now: new Date("2026-11-23T08:00:00Z") })).toEqual({ sent: 0, skipped: 1, errors: [] });
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("adds the rating line from the site's latest score and open findings", async () => {
+    loadViewMock.mockResolvedValue({ ok: true, data: { rows: [], detailByHost: new Map([["shop.example.com", { scanId: "scan-1", score: 85, findings: [{ checkId: "tls.cert-expiring-soon", severity: "high" }] }]]) } });
+    await sendWeeklyFixEmails(db(), { now: new Date("2026-11-23T08:00:00Z") });
+    expect(sendEmailMock.mock.calls[0][0].html).toContain("from Good to Strong");
   });
 
   it("reports a failed send as an error and doesn't record it as sent", async () => {

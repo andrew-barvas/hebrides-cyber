@@ -7,11 +7,16 @@
 // platformGuides.ts), a rough effort, and a link to the report where "Check
 // it's fixed" reruns just that check. It also says whether last week's
 // suggestion has been fixed. No finding worth fixing means no email.
+//
+// When the site isn't yet rated Strong, it also says how many fixes, starting
+// with this one, would lift it to the next rating (scorePlanner.ts), counting
+// only open, untriaged findings from that site's latest scan.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeHtml, sendEmail } from "./email";
 import { buildHostSignals, loadTargetContexts, rankFindings, type PrioritisedFinding } from "./estatePriority";
 import { loadFindingsView, type HostDetail } from "./findingsView";
 import { estimateFixMinutes, getFixDifficulty } from "./scanners/fixDifficulty";
+import { nextRatingTarget, planCandidates, planToTarget, ratingLabel } from "./scorePlanner";
 
 /** A re-run within this window of the last send skips the owner, so the cron or a manual dispatch never sends twice in a week. */
 export const RESEND_GUARD_MS = 6 * 24 * 60 * 60 * 1000;
@@ -19,12 +24,16 @@ const REMEDIATION_MAX = 1500;
 
 export type LastSuggestion = { host: string; checkId: string; title: string; fixed: boolean } | null;
 
+/** How many fixes, starting with this week's, lift the site to its next rating. */
+export type RatingStep = { fixes: number; fromLabel: string; toLabel: string };
+
 export type WeeklyFixInput = {
   finding: PrioritisedFinding;
   remediation: string | null;
   openCount: number;
   last: LastSuggestion;
   siteUrl: string;
+  ratingStep?: RatingStep | null;
 };
 
 /** Pure: the most urgent finding worth a weekly nudge, or null. */
@@ -36,6 +45,23 @@ export function pickWeeklyFix(ranked: readonly PrioritisedFinding[]): Prioritise
 export function remediationFor(detailByHost: ReadonlyMap<string, HostDetail>, host: string, checkId: string): string | null {
   const f = detailByHost.get(host)?.findings.find((x) => x.checkId === checkId) as { remediation?: unknown } | undefined;
   return typeof f?.remediation === "string" && f.remediation.trim() ? f.remediation.trim() : null;
+}
+
+/**
+ * Pure. The rating step for this week's finding's site, or null when the site
+ * has no stored score, is already Strong, or can't reach the next rating from
+ * its open, untriaged findings. `openCheckIds` is the site's open, untriaged
+ * checkIds (from the ranked rows), so fixed and triaged findings never appear.
+ */
+export function ratingStepFor(detail: HostDetail | undefined, openCheckIds: ReadonlySet<string>, checkId: string): RatingStep | null {
+  if (!detail || typeof detail.score !== "number") return null;
+  const target = nextRatingTarget(detail.score);
+  if (!target) return null;
+  const candidates = planCandidates(detail.findings.filter((f) => f.checkId && openCheckIds.has(f.checkId)));
+  if (!candidates.some((c) => c.checkId === checkId)) return null;
+  const plan = planToTarget(detail.score, candidates, target.minScore, { include: [checkId] });
+  if (!plan.reachable || plan.fixes.length === 0) return null;
+  return { fixes: plan.fixes.length, fromLabel: ratingLabel(detail.score), toLabel: target.label };
 }
 
 /** Minimal Markdown (bold, line breaks) to safe HTML; everything else is escaped. */
@@ -56,7 +82,7 @@ function effortLabel(checkId: string): string | null {
 
 /** Pure. */
 export function buildWeeklyFixEmail(input: WeeklyFixInput): { subject: string; html: string } {
-  const { finding, remediation, openCount, last, siteUrl } = input;
+  const { finding, remediation, openCount, last, siteUrl, ratingStep } = input;
   const e = escapeHtml;
   const effort = effortLabel(finding.checkId);
   const reportUrl = finding.scanId ? `${siteUrl}/dashboard/scans/${finding.scanId}` : `${siteUrl}/dashboard/findings?sort=priority`;
@@ -69,6 +95,13 @@ export function buildWeeklyFixEmail(input: WeeklyFixInput): { subject: string; h
         ? p("This is still last week's suggestion. It's the most important one to get done.")
         : ""
     : "";
+  const step = ratingStep
+    ? p(
+        ratingStep.fixes === 1
+          ? `<b>Fixing this one</b> should take ${e(finding.host)} from ${e(ratingStep.fromLabel)} to ${e(ratingStep.toLabel)}.`
+          : `<b>Fixing this and ${ratingStep.fixes - 1} more</b> should take ${e(finding.host)} from ${e(ratingStep.fromLabel)} to ${e(ratingStep.toLabel)}. The report's planner shows which.`
+      )
+    : "";
   const remaining = openCount > 1 ? p(`<span style="color:#4b5563">${openCount - 1} other open issue${openCount - 1 === 1 ? "" : "s"} can wait until this one's done.</span>`) : "";
 
   const html = `
@@ -80,6 +113,7 @@ export function buildWeeklyFixEmail(input: WeeklyFixInput): { subject: string; h
       ${p(`<b>Why this one:</b> ${e(finding.priority.reason)}`)}
       ${finding.detail ? p(e(finding.detail)) : ""}
       ${remediation ? `<div style="margin:0 0 16px;padding:12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;line-height:1.5;"><b>How to fix it</b><br>${markdownish(remediation)}</div>` : ""}
+      ${step}
       <p style="margin:0 0 16px;"><a href="${reportUrl}" style="display:inline-block;background:#0b3d5b;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-size:14px;">Open the report and check it's fixed</a></p>
       ${remaining}
       <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">You get this weekly as part of your Hebrides Cyber plan. Turn it off under Integrations → Notification preferences: ${siteUrl}/dashboard/integrations</p>
@@ -133,12 +167,14 @@ async function sendForOwner(supabaseAdmin: SupabaseClient, sub: SubRow, now: Dat
   const to = (user as { email?: string } | null)?.email;
   if (!to) return "skipped";
 
+  const openOnHost = new Set(ranked.filter((r) => r.host === finding.host && r.triage === null).map((r) => r.checkId));
   const email = buildWeeklyFixEmail({
     finding,
     remediation: remediationFor(view.data.detailByHost, finding.host, finding.checkId),
     openCount: ranked.length,
     last,
     siteUrl,
+    ratingStep: ratingStepFor(view.data.detailByHost.get(finding.host), openOnHost, finding.checkId),
   });
   const sent = await sendEmail({ to, subject: email.subject, html: email.html });
   if (!sent.ok) throw new Error(sent.error ?? "send failed");

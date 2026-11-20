@@ -144,8 +144,6 @@ export function scoreFinding(
 ): { score: number; base: number; factors: PriorityFactor[] } {
   const base = findingPenalty({
     severity: row.severity,
-    title: row.title,
-    detail: "",
     cvssScore: row.cvssScore ?? undefined,
     threatIntel: { knownExploited: row.knownExploited, ransomware: row.ransomware, epss: row.epss ?? undefined },
   });

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ScoreGauge, FindingCard, ExecutiveSummary, type ViewFinding, type Severity } from "@/components/ScanReportView";
+import { ScorePlanner } from "@/components/ScorePlanner";
 
 type ApiFinding = {
   check_id: string | null;
@@ -120,6 +121,7 @@ export default function SharedReportPage() {
         </div>
 
         {report.score !== null && <ExecutiveSummary findings={findings} score={report.score} />}
+        {report.score !== null && <ScorePlanner findings={findings} score={report.score} />}
 
         {findings.length > 0 ? (
           <div>
