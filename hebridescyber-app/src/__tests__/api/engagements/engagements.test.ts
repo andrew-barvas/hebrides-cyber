@@ -521,3 +521,49 @@ describe("GET /api/engagements/{id}", () => {
     expect(JSON.stringify(body)).not.toContain("offensive_scan");
   });
 });
+
+describe("route error paths", () => {
+  it("abort rejects other methods, with Allow", async () => {
+    const { status, allow } = await call(abortHandler, "GET");
+    expect(status).toBe(405);
+    expect(allow).toBe("POST");
+  });
+
+  it("scope: 404 for a malformed or missing id, and a failed edit hides database text", async () => {
+    const body = { add: [{ host: "a.test", included: true }] };
+    expect((await call(scopeHandler, "POST", body, "nope")).status).toBe(404);
+    m.load.mockResolvedValueOnce({ status: "not_found" });
+    expect((await call(scopeHandler, "POST", body)).status).toBe(404);
+    m.scope.mockResolvedValueOnce({ status: "error", error: { message: "engagement_scope_hosts boom" } });
+    const failed = await call(scopeHandler, "POST", body);
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(failed.body)).not.toContain("engagement_scope_hosts");
+  });
+
+  it("windows: 400 for a malformed body, and a failed write hides database text", async () => {
+    expect((await call(windowsHandler, "PUT", { windows: [{ startsAt: "soon" }] })).status).toBe(400);
+    m.replaceWindows.mockResolvedValueOnce({ status: "error", error: { message: "engagement_testing_windows boom" } });
+    const failed = await call(windowsHandler, "PUT", { windows: [] });
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(failed.body)).not.toContain("engagement_testing_windows");
+  });
+
+  it("create: refuses an expiry before the window ends, and fails closed when the account lookup fails", async () => {
+    const base = { owner: OWNER, reference: "ENG-9" };
+    expect((await call(createHandler, "POST", { ...base, windowStart: START, windowEnd: END, expiresAt: START })).status).toBe(400);
+    m.account.mockResolvedValueOnce({ status: "error", error: { message: "users boom" } });
+    const failed = await call(createHandler, "POST", base);
+    expect(failed.status).toBe(500);
+    expect(m.insert).not.toHaveBeenCalled();
+  });
+
+  it("patch: fails closed when the testing windows can't be read, and on a failed write", async () => {
+    m.windows.mockResolvedValueOnce({ status: "error", error: { message: "boom" } });
+    expect((await call(patchHandler, "PATCH", { windowEnd: END })).status).toBe(500);
+    expect(m.update).not.toHaveBeenCalled();
+    m.update.mockResolvedValueOnce({ status: "error", error: { message: "engagements boom" } });
+    const failed = await call(patchHandler, "PATCH", { customerName: "Acme" });
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(failed.body)).not.toContain("engagements boom");
+  });
+});

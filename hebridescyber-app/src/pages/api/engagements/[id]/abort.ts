@@ -4,8 +4,10 @@
 // limit: nothing may stand in the way of a stop, including a lapsed subscription.
 //
 // abort_engagement() does it all in one transaction. Asking again is safe, and
-// revokes anything linked since. A job the worker has already claimed keeps running
-// until its next gate check (§13 Q5).
+// revokes anything linked since. A job the worker has already claimed is stopped by
+// the watchdog (src/lib/offensiveWatchdog.ts), which re-asks the gate every
+// WATCHDOG_INTERVAL_MS during an offensive run and kills its tools on a refusal
+// (§13 Q5).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/adminAuth";

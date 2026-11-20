@@ -79,7 +79,7 @@ test("the stop button asks once, sends the reason, and the page then shows the e
   await page.getByLabel("Reason (optional)").fill("the site is slow");
   await page.getByRole("button", { name: "Yes, stop all testing" }).click();
 
-  await expect(page.getByText("Testing is stopped. 1 authorisation was withdrawn, and no new test step will start.")).toBeVisible();
+  await expect(page.getByText("Testing is stopped. 1 authorisation was withdrawn. Anything still running stops within about half a minute, and nothing new starts.")).toBeVisible();
   await expect(page.getByText("Stopped", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop testing now" })).toHaveCount(0);
 
@@ -119,4 +119,43 @@ test("a stopped engagement offers no stop and says when it stopped", async ({ pa
   await expect(page.getByText("This engagement can no longer run any test.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop testing now" })).toHaveCount(0);
   await expect(page.getByText(/: the site is slow$/)).toBeVisible();
+});
+
+test("the engagements list links each engagement to its status page", async ({ page }) => {
+  await mockSupabase(page, { subscriptions: [SUBSCRIPTION] });
+  const api = await mockApi(page, {
+    "GET /api/engagements": {
+      json: {
+        engagements: [
+          { id: ID, reference: "ENG-2026-001", customer_name: "Acme Ltd", state: "in_window", window_start: "2026-12-01T09:00:00Z", window_end: "2026-12-05T17:00:00Z", expires_at: "2026-12-06T00:00:00Z", created_at: "2026-11-20T00:00:00Z", aborted_at: null, closed_at: null },
+        ],
+      },
+    },
+  });
+  await page.goto("/dashboard/engagements");
+  await expect(page.getByRole("heading", { name: "Testing engagements", level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "ENG-2026-001 (Acme Ltd)" })).toHaveAttribute("href", `/dashboard/engagements/${ID}`);
+  await expect(page.getByText(/Testing window open ·/)).toBeVisible();
+  expect(api.to("GET", "/api/engagements")[0].authorization).toBe(`Bearer ${ACCESS_TOKEN}`);
+});
+
+test("the engagements list says so when there are none, and when it can't load", async ({ page }) => {
+  await mockSupabase(page, { subscriptions: [SUBSCRIPTION] });
+  let fail = false;
+  await mockApi(page, { "GET /api/engagements": () => (fail ? { status: 500, json: { error: "x" } } : { json: { engagements: [] } }) });
+  await page.goto("/dashboard/engagements");
+  await expect(page.getByText("You have no testing engagements.")).toBeVisible();
+  fail = true;
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn't load your engagements" })).toHaveText("Couldn't load your engagements. Refresh to try again.");
+});
+
+test("signing early shows the 30-day warning", async ({ page }) => {
+  await mockSupabase(page, { subscriptions: [SUBSCRIPTION] });
+  const far = view("scoped", false);
+  far.engagement.window_end = new Date(Date.now() + 60 * 24 * HOUR).toISOString();
+  far.engagement.expires_at = new Date(Date.now() + 61 * 24 * HOUR).toISOString();
+  await mockApi(page, { [`GET /api/engagements/${ID}`]: { json: far } });
+  await page.goto(`/dashboard/engagements/${ID}`);
+  await expect(page.getByText(/one signed today would end before the testing window does/)).toBeVisible();
 });

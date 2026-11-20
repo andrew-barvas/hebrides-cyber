@@ -162,3 +162,21 @@ describe("describeRefusal", () => {
     expect(describeRefusal({ allowed: false, reason: "not_tier_a", engagementId: null })).toBe("owner is not on Tier A");
   });
 });
+
+describe("evaluateOffensiveGate edge cases", () => {
+  it("refuses a Tier A failure with no authorisation, naming no engagement", async () => {
+    m.tier.mockResolvedValue(false);
+    m.auth.mockResolvedValue(null);
+    expect(await gate()).toEqual({ allowed: false, reason: "not_tier_a", engagementId: null });
+  });
+
+  it("refuses a target URL it can't read as a host, without loading any facts", async () => {
+    expect(await evaluateOffensiveGate(admin, OWNER, "not a url", NOW, {})).toEqual({ allowed: false, reason: "out_of_engagement_scope", engagementId: ENG, scopeRefusal: "host_not_in_scope" });
+    expect(m.facts).not.toHaveBeenCalled();
+  });
+
+  it("puts a profile refusal on the engagement's record, with the refusal as the reason", async () => {
+    await auditOffensiveGate(admin, { id: "job-1", owner: OWNER, target_url: URL }, { allowed: false, reason: "engagement_profile_disallows", engagementId: ENG }, "offensive");
+    expect(m.audit.mock.calls[1][1]).toMatchObject({ action: "engagement_scope.refused", metadata: { reason: "engagement_profile_disallows" } });
+  });
+});

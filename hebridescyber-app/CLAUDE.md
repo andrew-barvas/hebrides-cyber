@@ -274,7 +274,9 @@ target is inside the engagement's signed scope, window, testing windows and
 expiry (`checkScope`, "active"). `OFFENSIVE_REQUIRE_ENGAGEMENT=1` makes an
 engagement mandatory for every offensive run. Otherwise it is downgraded to
 `safe` and audited (`offensive_scan.refused`, plus `engagement_scope.refused`
-on the engagement). This reverses the default "no destructive payloads"
+on the engagement). A run that starts is re-checked every 20 seconds and its
+tools killed on a refusal (`runOffensiveScan`, `toolHalt.ts`); every tool must
+go through `execTool` (rule 10) or a stop can't reach it. This reverses the default "no destructive payloads"
 posture for Tier A only, per-scan and per-target. **Owner action before
 enabling the destructive tools: customer contracts/ToS must authorise real
 attack traffic.**
