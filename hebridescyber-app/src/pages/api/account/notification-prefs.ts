@@ -10,6 +10,8 @@ const patchSchema = z.object({
   notify_email: z.boolean().optional(),
   notify_score_threshold: z.number().int().min(0).max(100).nullable().optional(),
   notify_severity_min: z.enum(["info", "low", "medium", "high", "critical"]).nullable().optional(),
+  // Migration 079: the weekly "one thing to fix" email.
+  notify_weekly_fix: z.boolean().optional(),
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -23,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "GET") {
     const { data, error } = await supabaseAdmin
       .from("subscriptions")
-      .select("notify_email, notify_score_threshold, notify_severity_min")
+      .select("notify_email, notify_score_threshold, notify_severity_min, notify_weekly_fix")
       .eq("owner", auth.ownerId)
       .maybeSingle();
 
@@ -36,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       notify_email: data?.notify_email ?? true,
       notify_score_threshold: data?.notify_score_threshold ?? null,
       notify_severity_min: data?.notify_severity_min ?? null,
+      notify_weekly_fix: data?.notify_weekly_fix ?? true,
     });
   }
 
@@ -46,6 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (parsed.notify_email !== undefined) updates.notify_email = parsed.notify_email;
   if (parsed.notify_score_threshold !== undefined) updates.notify_score_threshold = parsed.notify_score_threshold;
   if (parsed.notify_severity_min !== undefined) updates.notify_severity_min = parsed.notify_severity_min;
+  if (parsed.notify_weekly_fix !== undefined) updates.notify_weekly_fix = parsed.notify_weekly_fix;
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: "No fields to update" });

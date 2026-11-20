@@ -53,6 +53,8 @@ describe("GET/PATCH /api/account/notification-prefs — E-50/E-51", () => {
       notify_email: false,
       notify_score_threshold: 70,
       notify_severity_min: "high",
+      // Migration 079; absent from the row, so the default.
+      notify_weekly_fix: true,
     });
   });
 
@@ -67,6 +69,7 @@ describe("GET/PATCH /api/account/notification-prefs — E-50/E-51", () => {
       notify_email: true,
       notify_score_threshold: null,
       notify_severity_min: null,
+      notify_weekly_fix: true,
     });
   });
 
