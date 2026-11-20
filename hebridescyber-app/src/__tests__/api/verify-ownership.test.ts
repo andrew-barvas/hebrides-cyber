@@ -151,6 +151,19 @@ describe("POST /api/verify-ownership", () => {
       expect(inserted[0].table).toBe("verifications");
     });
 
+    it("puts a www host's TXT record on the bare domain, because www is usually a CNAME", async () => {
+      queues.verifications = [{ data: null, error: null }, { error: null }];
+      const { req, res } = mockReqRes({ targetUrl: "https://www.example.com" });
+
+      await handler(req, res);
+
+      const body = res._getJSONData() as { domain: string; dnsRecord: { name: string }; file: { url: string } };
+      expect(body.domain).toBe("www.example.com");
+      expect(body.dnsRecord.name).toBe("example.com");
+      // The file still has to be served by the www host itself.
+      expect(body.file.url).toBe("https://www.example.com/.well-known/hebridescyber-verify.txt");
+    });
+
     it("returns the existing token without inserting a duplicate row", async () => {
       queues.verifications = [{ data: { token: "existing-token-abc", verified_at: null }, error: null }];
       const { req, res } = mockReqRes({ targetUrl: "https://example.com" });

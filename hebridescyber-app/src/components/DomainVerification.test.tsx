@@ -68,6 +68,14 @@ describe("DomainVerification", () => {
     expect(screen.getByText(START.file.url)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy value" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copy url" })).toBeTruthy();
+    expect(screen.queryByText(/For a www site the record goes on the bare domain/)).toBeNull();
+  });
+
+  it("explains that a www site's record goes on the bare domain", async () => {
+    stubApi({ body: { ...START, domain: "www.example.com", dnsRecord: { ...START.dnsRecord, name: "example.com" } } });
+    render(<DomainVerification />);
+    await getInstructions();
+    expect(screen.getByText(/For a www site the record goes on the bare domain/)).toBeTruthy();
   });
 
   it("explains why a check failed, using the server's hints", async () => {
