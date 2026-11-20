@@ -21,7 +21,6 @@
 // vector and a 300-character summary; per criterion only vulnerable,
 // version-bounded ones (an exact version, or a start/end bound). A criterion
 // naming every version is not evidence of anything and is dropped here.
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseCpe, splitCpe23, type CveMatchRow, type CveRecordRow, type CveIndexState } from "./cveIndex";
 
 export const NVD_CVE_API = "https://services.nvd.nist.gov/rest/json/cves/2.0";
@@ -405,34 +404,4 @@ export async function syncCveIndex(writer: CveIndexWriter, options: CveSyncOptio
     }
     throw err;
   }
-}
-
-// ---- Postgres writer ----------------------------------------------------------------------
-
-const STATE_COLUMNS =
-  "backfill_started_at, backfill_next_index, backfill_completed_at, last_success_at, last_modified_through, cve_count";
-
-/** Writes through the service role; the batch RPC replaces each CVE's rows atomically. */
-export function supabaseCveIndexWriter(client: SupabaseClient): CveIndexWriter {
-  return {
-    async readState() {
-      const { data, error } = await client.from("cve_index_state").select(STATE_COLUMNS).eq("id", true).maybeSingle();
-      if (error) throw new Error(`cve_index_state read failed: ${error.message}`);
-      return (data as CveSyncState | null) ?? null;
-    },
-    async writeEntries(entries) {
-      const payload = entries.map((e) => (e.rejected ? e : { rejected: false, ...e.record, matches: e.matches }));
-      const { error } = await client.rpc("replace_cve_batch", { p_entries: payload });
-      if (error) throw new Error(`replace_cve_batch failed: ${error.message}`);
-    },
-    async writeState(patch) {
-      const { error } = await client.from("cve_index_state").upsert({ id: true, ...patch }, { onConflict: "id" });
-      if (error) throw new Error(`cve_index_state write failed: ${error.message}`);
-    },
-    async countRecords() {
-      const { count, error } = await client.from("cve_records").select("cve_id", { count: "exact", head: true });
-      if (error) throw new Error(`cve_records count failed: ${error.message}`);
-      return count ?? 0;
-    },
-  };
 }
