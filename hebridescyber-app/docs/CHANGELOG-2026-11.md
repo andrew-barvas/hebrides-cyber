@@ -152,8 +152,7 @@ summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
   ideas. Not for marketing until each fact is re-checked.
 - **Owner to-do updates.**
   [#254](https://github.com/andrew-barvas/hebrides-cyber/pull/254)
-  Email sending (OT-02) recorded as done with proof; OT-62 added to replace
-  the email key that appeared in a screenshot.
+  Email sending (OT-02) recorded as done with proof.
 
 ## Database migrations in this period
 

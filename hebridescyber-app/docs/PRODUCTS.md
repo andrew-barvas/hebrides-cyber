@@ -1,21 +1,21 @@
 # Products
 
-What each Hebrides Cyber product is, who it is for, what it costs, what is
-live and what is waiting on the owner. Checked against `master` on
-2026-11-20. Everything here describes built code or a documented manual
+What each Hebrides Cyber product is, who it is for, what it costs and what
+is built. Checked against `master` on 2026-11-20. Launch status and the
+owner's open items are kept in the private docs repo (`PRIVATE-DOCS.md`). Everything here describes built code or a documented manual
 service (rule OT-14); planned work is labelled as planned.
 
 | Product | One line | Status |
 |---|---|---|
-| [Scanner](#scanner) | Self-serve security monitoring for a small business's websites | Live and priced; no real purchase tested yet |
-| [Lookout](#lookout) | Managed exposure review: daily checks plus an engineer-written report | Page live, sold by hand; checkout waiting on owner items |
+| [Scanner](#scanner) | Self-serve security monitoring for a small business's websites | Live |
+| [Lookout](#lookout) | Managed exposure review: daily checks plus an engineer-written report | Page live, sold by hand; no online checkout yet |
 | [Exploit](#exploit) | Authorised, contracted penetration testing by engagement | **Not launched. Do not market.** |
 | [Phishing awareness](#planned-phishing-awareness) | Simulated phishing and staff training | Design only |
 
 Detail lives elsewhere and is linked rather than repeated: per-check detail in
 [`SCANNER-INVENTORY.md`](SCANNER-INVENTORY.md), gating in
 [`FUNCTIONALITY-MATRIX.md`](FUNCTIONALITY-MATRIX.md), routes in
-[`API.md`](API.md), owner items in [`OWNER-TODO.md`](OWNER-TODO.md).
+[`API.md`](API.md).
 
 ---
 
@@ -33,15 +33,7 @@ Detail lives elsewhere and is linked rather than repeated: per-check detail in
   daily, code and dependency checks, Slack/Teams, evidence pack), Agency £75
   (15 sites, teams, white-label reports, logged-in scanning, SLA tracking,
   portfolio report). One free scan without a plan.
-- **Status.** Live at www.hebridescyber.co.uk. Stripe checkout is configured;
-  no real purchase has been made to prove it end to end. Email works (OT-02
-  done 2026-11-20).
-- **Waiting on the owner.** Security and operations items before marketing:
-  OT-01 (database password), OT-05/OT-28 (encryption key), OT-06 (rate
-  limiting), OT-07 (branch protection), OT-08 (Sentry), OT-49 (tool updates),
-  OT-50 (tool licences), OT-14 (copy check), OT-57 (sign-in email), OT-62
-  (replace the exposed Resend key). Optional: OT-17 (breach and NVD keys),
-  OT-63 (Google sign-in).
+- **Status.** Live at www.hebridescyber.co.uk, with Stripe checkout.
 
 ### How it works
 
@@ -109,7 +101,7 @@ flowchart LR
   dependency findings; a CI script and templates; pull-request dependency
   checks.
 - **Accounts.** Magic link or password sign-in with TOTP two-factor; "Continue
-  with Google" built but hidden until OT-63 (#273); API keys with IP
+  with Google" built but hidden until it is set up (#273); API keys with IP
   allowlists; webhooks; teams and roles (Agency); white-label (Agency);
   Microsoft 365 posture checks (Pro and up, tenant consent).
 
@@ -135,14 +127,8 @@ daily, repository connection, Slack/Teams, uptime, Microsoft 365, evidence
 pack, exploitability detail. Agency: 15 sites, teams, white-label, logged-in
 scanning, SLA tracking, portfolio report. Not plan-gated by design: triage,
 assignment, estate map, weekly email (any active subscription), API keys,
-share links, tickets (OT-10 is the open decision). Full table:
+share links, tickets. Full table:
 [`FUNCTIONALITY-MATRIX.md`](FUNCTIONALITY-MATRIX.md) §6.
-
-### Owner items outstanding
-
-OT-01, OT-05, OT-06, OT-07, OT-08, OT-10, OT-11, OT-12, OT-14, OT-17, OT-27,
-OT-28, OT-29, OT-49, OT-50, OT-57, OT-62, OT-63, plus one real purchase and
-refund to prove checkout. Status of each: [`OWNER-TODO.md`](OWNER-TODO.md).
 
 ---
 
@@ -164,12 +150,6 @@ refund to prove checkout. Status of each: [`OWNER-TODO.md`](OWNER-TODO.md).
   `lookout.hebridescyber.co.uk`) with "Book a call", and the service is sold by
   hand. The report tooling is built and usable now. There is no online
   checkout and no Lookout plan in code yet: checkout is draft PR #199.
-- **Waiting on the owner.** OT-33 (name and prices), OT-34 (Stripe prices),
-  OT-35 (terms wording), OT-42 (tier limits), OT-43 (traffic disclosure and
-  cover), OT-45 (pilot-first launch and five prospects), OT-56 (custom domain;
-  forwarding done). OT-44 (review the restricted check lists) is also open.
-  OT-17 switches on breached accounts; OT-58 switches on Google Workspace
-  checks; OT-64 (our own Cyber Essentials) comes before Lookout advertising.
 
 ### How it works
 
@@ -217,7 +197,7 @@ flowchart LR
 - **Breached email accounts (#258).** Per site, known breaches that included
   addresses on the domain: name, date, address count and the kinds of data
   leaked. Counts and breach names only; no individual address is stored or
-  shown. Left out entirely until `HIBP_API_KEY` is set (OT-17), and shows "not
+  shown. Left out entirely until `HIBP_API_KEY` is set, and shows "not
   enabled yet" for a domain not verified with the breach service.
 - **Analyst workflow (#256).** Start a report from the customer's email
   instead of copying a user id.
@@ -225,7 +205,7 @@ flowchart LR
   ranking, "What changed" drift, the estate map (#265), the evidence pack
   (#264; Pro-gated in Scanner, and an "insurance evidence pack" is listed as a
   quoted Lookout extra), Microsoft 365 posture checks, and Google Workspace
-  posture checks (built dark until OT-58).
+  posture checks (built, switched off for now).
 
 ### Data it uses
 
@@ -240,18 +220,12 @@ None in code yet. Reports are created by an admin for a named customer, and a
 customer sees only their own published reports. Forcing Lookout customers onto
 the `exposure` profile by plan arrives with checkout (#199).
 
-### Owner items outstanding
-
-OT-33, OT-34, OT-35, OT-42, OT-43, OT-45, OT-56 (partly done), plus OT-44,
-OT-17, OT-58 and OT-64.
-
 ---
 
 ## Exploit
 
 > **Not launched. It must not be marketed, advertised or linked** until the
-> owner has completed OT-13 (solicitor-reviewed engagement contract and
-> professional indemnity insurance) and made the OT-51 go decision. The
+> owner signs it off (contract, cover and a go decision). The
 > `/exploit` page is noindex, unlinked from the main site, absent from the
 > sitemap and carries a "not yet available" banner.
 
@@ -264,15 +238,10 @@ OT-17, OT-58 and OT-64.
 - **Who it is for.** Businesses that need a contracted test, for example for
   a customer, an insurer or a compliance requirement, and that already know
   their exposure from Scanner or Lookout.
-- **Price.** Quoted per engagement. Pricing is set after a manual pilot
-  (OT-54). Engagements are booked by hand, never by self-serve checkout
-  (OT-52).
+- **Price.** Quoted per engagement. Engagements are booked by hand, never by
+  self-serve checkout.
 - **Status.** Not launched. Parts of the platform are built (below); the
   engagement record, scope enforcement and stop controls are in draft PRs.
-- **Waiting on the owner.** OT-13 (contract and insurance), OT-51 (go or
-  no-go), OT-52 (booking by hand), OT-53 (whether the autonomous agents are in
-  the first version), OT-54 (pricing), OT-55 (insurance covers contracted
-  testing).
 
 ### How it would work
 
@@ -327,11 +296,10 @@ under way (#266).
 Tier A for authorisations and the offensive profile, enforced on the server
 and again in the worker. Customer engagements will not be self-serve.
 
-### Owner items outstanding
+### Design
 
-OT-13, OT-51, OT-52, OT-53, OT-54, OT-55. Design and limits:
-[`EXPLOIT-PRODUCT-PLAN.md`](EXPLOIT-PRODUCT-PLAN.md),
-[`EXPLOITABILITY-ENGINE.md`](EXPLOITABILITY-ENGINE.md).
+[`EXPLOITABILITY-ENGINE.md`](EXPLOITABILITY-ENGINE.md); the product plan is in
+the private docs repo.
 
 ---
 
@@ -344,7 +312,4 @@ rather than punitive (the reporting rate is the headline measure), never
 captures credentials, needs a written authorisation per campaign, avoids
 real-brand impersonation by default and sends from dedicated domains, never
 hebridescyber.co.uk. Proposed phases: a managed pilot inside Lookout, then
-self-serve for Pro and up, then a report button for Outlook and Gmail. Owner
-items: OT-59 (solicitor and insurer sign-off), OT-60 (sending domains and an
-email provider whose terms allow simulations), OT-61 (course licence and
-pricing).
+self-serve for Pro and up, then a report button for Outlook and Gmail.
