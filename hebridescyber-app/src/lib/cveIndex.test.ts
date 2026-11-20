@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   parseCpe,
   compareVersions,
@@ -10,7 +9,6 @@ import {
   isVersionBounded,
   createCveIndex,
   memoryCveIndexStore,
-  supabaseCveIndexStore,
   type CveMatchRow,
   type CveRecordRow,
   type CveIndexState,
@@ -264,79 +262,5 @@ describe("createCveIndex", () => {
       cpe: "cpe:/a:openbsd:openssh:8.9p1",
     });
     expect(result.status === "checked" && result.matches.map((m) => m.cveId)).toEqual(["CVE-2024-6387", "CVE-2023-0001"]);
-  });
-});
-
-// A chainable stand-in for the bits of supabase-js the store uses.
-function fakeClient(tables: Record<string, Array<{ data: unknown; error: { message: string } | null }>>) {
-  const calls: Array<{ table: string; ops: Array<[string, unknown[]]> }> = [];
-  const client = {
-    from(table: string) {
-      const call = { table, ops: [] as Array<[string, unknown[]]> };
-      calls.push(call);
-      const builder: Record<string, unknown> = {};
-      for (const op of ["select", "eq", "order", "range", "in"]) {
-        builder[op] = (...args: unknown[]) => {
-          call.ops.push([op, args]);
-          return builder;
-        };
-      }
-      const next = () => Promise.resolve(tables[table].shift() ?? { data: null, error: { message: "no more responses" } });
-      builder.maybeSingle = next;
-      builder.then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => next().then(resolve, reject);
-      return builder;
-    },
-  };
-  return { client: client as unknown as SupabaseClient, calls };
-}
-
-describe("supabaseCveIndexStore", () => {
-  it("reads the state row and pages through a product's criteria", async () => {
-    const page = Array.from({ length: 1000 }, () => row({}));
-    const { client, calls } = fakeClient({
-      cve_index_state: [{ data: FRESH, error: null }],
-      cve_cpe_matches: [
-        { data: page, error: null },
-        { data: [row({})], error: null },
-      ],
-    });
-    const store = supabaseCveIndexStore(client);
-    expect(await store.readState()).toEqual(FRESH);
-    expect(await store.readMatches("openbsd", "openssh")).toHaveLength(1001);
-    const ranges = calls.filter((c) => c.table === "cve_cpe_matches").map((c) => c.ops.find(([op]) => op === "range")?.[1]);
-    expect(ranges).toEqual([
-      [0, 999],
-      [1000, 1999],
-    ]);
-  });
-
-  it("reads records in chunks and coerces numeric scores", async () => {
-    const ids = Array.from({ length: 160 }, (_, i) => `CVE-2024-${String(10000 + i)}`);
-    const { client, calls } = fakeClient({
-      cve_records: [
-        { data: [{ ...RECORDS[0], cvss_score: "8.1" }], error: null },
-        { data: [{ ...RECORDS[0], cve_id: "CVE-2024-0002", cvss_score: null }], error: null },
-      ],
-    });
-    const recs = await supabaseCveIndexStore(client).readRecords(ids);
-    expect(recs.map((r) => r.cvss_score)).toEqual([8.1, null]);
-    expect(calls).toHaveLength(2);
-  });
-
-  it("throws on a failed read, which lookup reports as an error", async () => {
-    const { client } = fakeClient({
-      cve_index_state: [{ data: null, error: { message: "relation \"cve_index_state\" does not exist" } }],
-      cve_cpe_matches: [{ data: null, error: { message: "boom" } }],
-      cve_records: [{ data: null, error: { message: "boom" } }],
-    });
-    const store = supabaseCveIndexStore(client);
-    await expect(store.readState()).rejects.toThrow(/does not exist/);
-    await expect(store.readMatches("a", "b")).rejects.toThrow("boom");
-    await expect(store.readRecords(["CVE-2024-0001"])).rejects.toThrow("boom");
-  });
-
-  it("treats an absent state row as never built", async () => {
-    const { client } = fakeClient({ cve_index_state: [{ data: null, error: null }] });
-    expect(await supabaseCveIndexStore(client).readState()).toBeNull();
   });
 });

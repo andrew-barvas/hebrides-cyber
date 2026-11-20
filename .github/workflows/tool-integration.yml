@@ -386,7 +386,9 @@ jobs:
           curl -fsSL -o "/tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl" \
             "https://files.pythonhosted.org/packages/23/fa/bf388f40a49322653af49a07d515354758f1915767448e56b1af4824ed38/prowler-${PROWLER_VERSION}-py3-none-any.whl"
           echo "${PROWLER_SHA256}  /tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl" | sha256sum -c -
-          python3 -m venv /tmp/pins/prowler
+          # The system Python (3.12), as scan-tools.sh's `sudo python3` gets: the
+          # runner's default python3 became 3.14 in Nov 2026, which prowler rejects.
+          /usr/bin/python3 -m venv /tmp/pins/prowler
           /tmp/pins/prowler/bin/pip install --quiet "/tmp/pins/prowler-${PROWLER_VERSION}-py3-none-any.whl"
           /tmp/pins/prowler/bin/prowler --version 2>&1 | tee /tmp/capture/prowler.version.txt | grep -F "${PROWLER_VERSION}"
 
