@@ -52,9 +52,13 @@ won't post yet.
 | **Facebook page** | 3 | Hebrides Cyber | Reserve; low priority for the UK-wide B2B buyer. |
 | **Bluesky** | optional | `hebridescyber.co.uk` | Can use the domain itself as the handle (a DNS TXT record). |
 
-**Brand assets needed** (a session can generate these from the site's
-existing logo and colours): square logo 400×400; LinkedIn banner 1128×191; X
-header 1500×500; YouTube banner 2560×1440; a social sharing image 1200×630.
+**Brand assets (done):** in `hebridescyber-app/public/brand/social/`: the
+profile picture `profile-400x400.png` (fits inside a circle crop), the LinkedIn
+company cover `linkedin-company-1128x191.png`, your LinkedIn banner
+`linkedin-personal-1584x396.png`, the X header `x-header-1500x500.png`, the
+YouTube banner `youtube-banner-2560x1440.png` and the link preview
+`share-1200x630.png` (now shown whenever a page of the site is shared). To
+change the copy, edit and re-run `src/scripts/render-social-images.ts`.
 
 **Bios, ready to paste:**
 
