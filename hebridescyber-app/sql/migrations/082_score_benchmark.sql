@@ -1,4 +1,4 @@
--- Migration 084: "how you compare" score benchmarks
+-- Migration 082: "how you compare" score benchmarks
 -- (COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md idea 4). Dark until the owner
 -- sets SCORE_BENCHMARK_ENABLED (owner decision 6: aggregate use and the
 -- privacy-notice line); nothing is written while it is off.
