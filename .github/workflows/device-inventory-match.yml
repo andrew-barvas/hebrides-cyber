@@ -1,0 +1,55 @@
+name: Device Inventory Match
+
+# Matches device agent reports (POST /api/agent/inventory) to CVEs via OSV.dev
+# and the CPE index, and to end-of-life dates, then re-checks the Cyber
+# Essentials 14-day patch rule for each device
+# (hebridescyber-app/src/lib/deviceAgent/matchJob.ts). Only devices with a
+# report newer than their last match are processed, so a quiet hour costs one
+# small query. Before migration 086 the script exits cleanly with nothing to do.
+#
+# Requires:
+#   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY - direct Supabase access, and the
+#                                             CVE index in Supabase Storage
+#   CVE_INDEX_STORE / AZURE_STORAGE_CONNECTION_STRING - only if the CVE index
+#                                             lives in Azure Blob instead
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Match and evaluate, write nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: device-inventory-match
+  cancel-in-progress: false
+
+jobs:
+  match:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: hebridescyber-app/package-lock.json
+      - name: Install dependencies
+        working-directory: hebridescyber-app
+        run: npm ci
+      - name: Match device inventories
+        working-directory: hebridescyber-app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CVE_INDEX_STORE: ${{ vars.CVE_INDEX_STORE }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: npx tsx src/scripts/match-device-inventories.ts $([ "$DRY_RUN" = "true" ] && echo --dry-run)

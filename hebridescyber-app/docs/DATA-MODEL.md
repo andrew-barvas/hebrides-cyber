@@ -27,6 +27,15 @@ service-role key. Isolation is tested on real Postgres in
 | `081_drop_cve_index_tables.sql` | #268 | Drops `cve_cpe_matches`, `cve_records`, `cve_index_state` and the `replace_cve_batch` function (all from 069). The CPE → CVE index is now gzipped objects in the private Supabase Storage bucket `cve-index` (Azure Blob optional), so it no longer counts toward the database's 500 MB |
 | `082_offensive_authorization_expiry.sql` | #280 | Sets `expires_at = now() + 30 days` on every unrevoked `offensive_scan_authorizations` row that had none. New authorizations must carry an expiry at most 30 days out (enforced in the API) |
 
+## Device agent tables (migration 086, P1-5)
+
+| Table | What | Access |
+|---|---|---|
+| `agent_devices` | One enrolled device: owner, name, `token_hash` (SHA-256 hex, unique) and `token_prefix`, `revoked_at`, what it last reported about itself (hostname, OS, agent version, `last_seen_at`), `pending_first_seen` (update id to the day this device first reported it, for sources with no release date), `patch_status` (`never_reported`/`passes`/`at_risk`/`fails`/`unknown`), `evaluation` and `last_match` (jsonb) and `matched_at` | Service role only (RLS on, no policies). Owners go through `/api/agent/devices`; agents through `/api/agent/inventory` |
+| `agent_inventories` | The validated reports, the newest 10 per device (the API deletes older ones), with `received_at` and `collected_at` | Service role only |
+
+Both cascade from `auth.users`, so account erasure removes them.
+
 ## Entity-relationship (core)
 
 ```mermaid

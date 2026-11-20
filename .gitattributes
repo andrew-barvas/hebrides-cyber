@@ -32,3 +32,8 @@
 hebridescyber-app/src/worker/tools/fixtures/** -text
 hebridescyber-app/src/lib/scanners/fixtures/** -text
 hebridescyber-app/bench/fixtures/retire-subset.json -text
+
+# The Go device agent: LF everywhere so gofmt agrees on every OS, and its
+# captured command output byte-exact (same reasoning as the fixtures above).
+agent/** text eol=lf
+agent/**/testdata/** -text

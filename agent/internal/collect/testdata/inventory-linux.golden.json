@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-11-20T09:00:00Z",
+  "hostname": "test-host",
+  "os": {
+    "family": "linux",
+    "name": "Ubuntu",
+    "version": "22.04",
+    "release": "22.04.4 LTS (Jammy Jellyfish)",
+    "kernel": "5.15.0-101-generic",
+    "arch": "amd64",
+    "distro_id": "ubuntu",
+    "distro_version_id": "22.04"
+  },
+  "software": [
+    {
+      "name": "openssl",
+      "version": "3.0.2-0ubuntu1.10",
+      "source": "dpkg",
+      "arch": "amd64",
+      "source_name": "openssl",
+      "source_version": "3.0.2-0ubuntu1.10"
+    },
+    {
+      "name": "libssl3",
+      "version": "3.0.2-0ubuntu1.10",
+      "source": "dpkg",
+      "arch": "amd64",
+      "source_name": "openssl",
+      "source_version": "3.0.2-0ubuntu1.10"
+    },
+    {
+      "name": "libc6",
+      "version": "2.35-0ubuntu3.6",
+      "source": "dpkg",
+      "arch": "amd64",
+      "source_name": "glibc",
+      "source_version": "2.35-0ubuntu3.6"
+    },
+    {
+      "name": "vim",
+      "version": "2:8.2.3995-1ubuntu2.15",
+      "source": "dpkg",
+      "arch": "amd64",
+      "source_name": "vim",
+      "source_version": "2:8.2.3995-1ubuntu2.15"
+    }
+  ],
+  "software_checked": true,
+  "pending_updates": [
+    {
+      "id": "libssl3",
+      "title": "libssl3",
+      "version": "3.0.2-0ubuntu1.15",
+      "security": true,
+      "source": "apt"
+    },
+    {
+      "id": "openssl",
+      "title": "openssl",
+      "version": "3.0.2-0ubuntu1.15",
+      "security": true,
+      "source": "apt"
+    },
+    {
+      "id": "tzdata",
+      "title": "tzdata",
+      "version": "2024a-0ubuntu0.22.04.1",
+      "security": false,
+      "source": "apt"
+    }
+  ],
+  "pending_updates_checked": true,
+  "hotfixes": [],
+  "truncated": false,
+  "errors": []
+}

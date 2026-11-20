@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-11-20T09:00:00Z",
+  "hostname": "test-host",
+  "os": {
+    "family": "macos",
+    "name": "macOS",
+    "version": "14.4.1",
+    "build": "23E224",
+    "kernel": "23.4.0",
+    "arch": "amd64"
+  },
+  "software": [
+    {
+      "name": "Google Chrome",
+      "version": "123.0.6312.122",
+      "publisher": "Google LLC",
+      "source": "app",
+      "installed_at": "2024-04-10",
+      "arch": "arch_arm_i64"
+    },
+    {
+      "name": "Safari",
+      "version": "17.4.1",
+      "publisher": "apple",
+      "source": "app",
+      "installed_at": "2024-03-21",
+      "arch": "arch_arm_i64"
+    },
+    {
+      "name": "us.zoom.pkg.videomeeting",
+      "version": "5.17.11.31580",
+      "source": "pkgutil",
+      "installed_at": "2024-04-10"
+    }
+  ],
+  "software_checked": true,
+  "pending_updates": [
+    {
+      "id": "macOS Sonoma 14.5-23F79",
+      "title": "macOS Sonoma 14.5",
+      "version": "14.5",
+      "security": true,
+      "source": "softwareupdate"
+    },
+    {
+      "id": "Safari17.5SonomaAuto-17.5",
+      "title": "Safari",
+      "version": "17.5",
+      "security": true,
+      "source": "softwareupdate"
+    },
+    {
+      "id": "Command Line Tools for Xcode-15.3",
+      "title": "Command Line Tools for Xcode",
+      "version": "15.3",
+      "security": false,
+      "source": "softwareupdate"
+    }
+  ],
+  "pending_updates_checked": true,
+  "hotfixes": [],
+  "truncated": false,
+  "errors": []
+}

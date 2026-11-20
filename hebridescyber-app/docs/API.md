@@ -889,6 +889,49 @@ Session-authenticated, the customer's own reports only. `GET /api/lookout/report
 - `GET /api/admin/lookout/reports/{id}` returns the report and items. `PATCH` takes `summary`, `items` (`id`, `included`, `priority`, `analyst_note`, `business_impact`, `fix_owner`) and `status` (`published` or `draft`). A published report can go back to draft until the customer acknowledges it; after that it is frozen.
 - `GET /api/admin/lookout/report-pdf?id={id}` previews any report as PDF, drafts included and marked DRAFT.
 
+## Device agent (`/api/agent/*`)
+
+The device patch-audit agent (`agent/` at the repo root) and the dashboard's
+Cyber Essentials → Devices page. Pro and above for now
+(`src/lib/deviceAgent/access.ts`; which plan it belongs to is an open owner
+decision).
+
+### `POST /api/agent/inventory`
+
+Called by the agent, authenticated by its **device token** (`Authorization:
+Bearer hcd_…`), never a session or API key. The body is the inventory in
+`agent/internal/inventory/inventory.go`: OS, installed software (up to 5,000),
+pending updates (up to 1,000), Windows hotfixes, and the `software_checked` /
+`pending_updates_checked` flags. Every field is validated
+(`inventorySchema.ts`: lengths, enums, `YYYY-MM-DD` dates, no control
+characters); unknown keys are dropped.
+
+- `200 { device_id, patch_status, summary }`: `patch_status` is `passes`,
+  `at_risk`, `fails` or `unknown` for the Cyber Essentials 14-day rule.
+- `401` missing, malformed, unknown or revoked token (all the same answer).
+- `403` the account's plan doesn't include device reporting.
+- `400` a field failed validation (`"software.0.name: must be 200 characters or fewer"`);
+  `413` body over 2 MB; `415` not `application/json`.
+- `429` with `Retry-After`: 600 requests an hour per IP, 12 an hour per token.
+- `503` before migration 086, or when the plan couldn't be read.
+
+### `GET /POST /DELETE /api/agent/devices`
+
+Session only (`403` with an API key).
+
+- `GET` returns `{ devices: [...], enabled }`. Each device has its name, token
+  prefix, hostname, OS, last report, `status` (`passes`, `at_risk`, `fails`,
+  `unknown`, `stale` after 7 days without a report, `never_reported`,
+  `revoked`), the stored `evaluation` (overdue and due-soon items with the date
+  each 14-day window runs from, and what evidence is missing) and the latest
+  CVE and end-of-life `match` (first 25 CVEs, the count, coverage). Never the
+  token hash. Before migration 086: `{ devices: [], enabled: false }`.
+- `POST { "name": "Reception PC" }` (1–80 characters) answers `201` with
+  `token`, shown once and stored only as a SHA-256 hash. At most 250 active
+  devices. Audited as `agent_device.created`.
+- `DELETE { "id": "<uuid>" }` revokes the device's token (`404` if it isn't
+  yours or is already revoked). Audited as `agent_device.revoked`.
+
 ## Dashboard account routes
 
 These routes back the dashboard. `connect-repo` and `offensive-authorization` take a logged-in session only (`403` with an API key); `notification-prefs` accepts either.

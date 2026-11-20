@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "agent_version": "0.1.0",
+  "collected_at": "2026-11-20T09:00:00Z",
+  "hostname": "test-host",
+  "os": {
+    "family": "windows",
+    "name": "Microsoft Windows 11 Pro",
+    "version": "10.0.22631.3447",
+    "build": "22631",
+    "release": "23H2",
+    "arch": "64-bit"
+  },
+  "software": [
+    {
+      "name": "Google Chrome",
+      "version": "123.0.6312.122",
+      "publisher": "Google LLC",
+      "source": "registry",
+      "installed_at": "2024-04-10"
+    },
+    {
+      "name": "7-Zip 23.01 (x64)",
+      "version": "23.01",
+      "publisher": "Igor Pavlov",
+      "source": "registry"
+    },
+    {
+      "name": "Mozilla Firefox (x64 en-GB)",
+      "version": "124.0.2",
+      "publisher": "Mozilla",
+      "source": "registry"
+    }
+  ],
+  "software_checked": true,
+  "pending_updates": [
+    {
+      "id": "KB5036893",
+      "title": "2024-04 Cumulative Update for Windows 11 Version 23H2 for x64-based Systems (KB5036893)",
+      "severity": "critical",
+      "security": true,
+      "released_at": "2024-04-09",
+      "source": "windows-update"
+    },
+    {
+      "id": "KB890830",
+      "title": "Windows Malicious Software Removal Tool x64 - v5.123 (KB890830)",
+      "security": false,
+      "released_at": "2024-04-09",
+      "source": "windows-update"
+    },
+    {
+      "id": "Microsoft Defender Antivirus antimalware platform update",
+      "title": "Microsoft Defender Antivirus antimalware platform update",
+      "security": true,
+      "source": "windows-update"
+    }
+  ],
+  "pending_updates_checked": true,
+  "hotfixes": [
+    {
+      "id": "KB5034765",
+      "installed_on": "2024-02-14",
+      "description": "Security Update"
+    },
+    {
+      "id": "KB5033920",
+      "description": "Update"
+    }
+  ],
+  "truncated": false,
+  "errors": []
+}

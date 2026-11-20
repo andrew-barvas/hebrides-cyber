@@ -308,6 +308,31 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
     });
   });
 
+  describe("agent_devices and agent_inventories", () => {
+    it("are service-role-only: owners manage devices and agents report through the API", async () => {
+      await asActor(db, service, async (c) => {
+        const dev = await c.query("insert into agent_devices (owner, name, token_hash, token_prefix) values ($1, 'Reception PC', repeat('e', 64), 'hcd_abcdefgh') returning id", [A]);
+        await c.query("insert into agent_inventories (device_id, owner, inventory) values ($1, $2, '{}'::jsonb)", [dev.rows[0].id, A]);
+      });
+      for (const table of ["agent_devices", "agent_inventories"]) {
+        expect(await count(asA, `select 1 from ${table}`)).toBe(0);
+        expect(await count(anon, `select 1 from ${table}`)).toBe(0);
+      }
+      const ins = "insert into agent_devices (owner, name, token_hash, token_prefix) values (gen_random_uuid(), 'x', repeat('f', 64), 'hcd_x')";
+      expect((await asActor(db, asA, (c) => attempt(c, ins))).ok).toBe(false);
+      expect((await asActor(db, anon, (c) => attempt(c, ins))).ok).toBe(false);
+    });
+
+    it("refuses a token hash that isn't a SHA-256 hex digest and an unknown patch status", async () => {
+      const bad = await asActor(db, service, (c) => attempt(c, "insert into agent_devices (owner, name, token_hash, token_prefix) values ($1, 'x', 'hcd_plaintext', 'hcd_x')", [A]));
+      expect(bad.ok).toBe(false);
+      const status = await asActor(db, service, (c) =>
+        attempt(c, "insert into agent_devices (owner, name, token_hash, token_prefix, patch_status) values ($1, 'x', repeat('9', 64), 'hcd_x', 'great')", [A])
+      );
+      expect(status.ok).toBe(false);
+    });
+  });
+
   describe("finding_assignments", () => {
     it("is service-role-only: read and written through /api/findings/assign", async () => {
       await asActor(db, service, async (c) => {

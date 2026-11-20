@@ -96,6 +96,23 @@ off.
 
 A Pro-or-above customer can paste their own UptimeRobot API key. It is checked once against `api.uptimerobot.com`, then stored encrypted (`credentialEncryption.ts`) in `uptime_integrations`, a table with **no client policy at all**: the browser can never read it back, and `GET /api/uptime/status` returns monitor rows and sync times only. The key is only ever sent to `api.uptimerobot.com` (a pagination link pointing anywhere else is refused). Sent to UptimeRobot: the key, and for each monitor the customer's own verified site URL and a name (`Hebrides: <host>`). Received: monitor id, status and how long it has been in it. Monitors can only be created for domains the customer has verified. Disconnecting deletes the key and our monitor records but not the monitors in the customer's UptimeRobot account. Rows cascade-delete with the account. UptimeRobot's terms bar reselling or white-labelling its monitoring, which is why there is no shared Hebrides account.
 
+## Device agent (P1-5)
+
+The agent (`agent/`) collects inventory only: OS version, installed software,
+pending updates. It runs read-only local commands, opens no listening port,
+never scans the network and sends to one HTTPS origin, refusing redirects.
+`hebrides-agent inventory` shows exactly what it would send.
+
+Its token (`hcd_…`) can only post an inventory for its own device. It is
+stored as a SHA-256 hash, shown once, and revoked from the dashboard. Because
+the token lives on the device, the server treats every field as untrusted:
+per-IP and per-token rate limits before the database is touched, a 2 MB body
+limit, and a schema that bounds every list and string and rejects control
+characters. The worst a stolen token can do is write misleading inventory for
+that one device until it is revoked. The binaries are unsigned until the owner
+completes code signing and notarisation (`agent/SIGNING.md`); until then they
+are for testing only.
+
 ## Secrets Handling
 
 - Set production secrets (Supabase service role key, Stripe secret key,
