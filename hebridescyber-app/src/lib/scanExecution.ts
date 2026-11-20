@@ -82,6 +82,7 @@ import { EMPTY_TRIAGE_INDEX, excludeFalsePositives, loadTriageIndexForTarget, ty
 import { sendSlaAlerts } from "./slaAlerts";
 import { triggerOncallAlerts, resolveOncallAlerts } from "./oncallAlerts";
 import { logAuditEvent } from "./audit";
+import { assertNotHalted } from "./toolHalt";
 import { forwardToSiem } from "./siemIntegration";
 import { runCloudPostureChecks } from "./scanners/cloudPosture";
 import { runProwlerIam } from "../worker/tools/prowlerIam";
@@ -1293,6 +1294,13 @@ export async function executeScan(
         console.error("[exploitability] assessment failed:", err instanceof Error ? err.message : "unknown error");
       }
     }
+
+    // A run whose tools were stopped part-way (an engagement stopped, its window
+    // closed: src/lib/toolHalt.ts) fails here, before anything is stored. Its
+    // partial output must never reach finding lifecycle, which would read a
+    // tool that was killed as "no longer found" and mark last scan's findings
+    // fixed (CLAUDE.md rule 7).
+    assertNotHalted();
 
     // One result per scan: a re-run (admin retry, stale-job recovery, or a
     // job that was somehow enqueued twice) replaces the previous result

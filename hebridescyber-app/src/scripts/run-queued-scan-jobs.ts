@@ -24,6 +24,7 @@ import { pathToFileURL } from "node:url";
 import { validateNoSsrf, isDomainVerified } from "../lib/ownership";
 import { executeScan } from "../lib/scanExecution";
 import { auditOffensiveGate, describeRefusal, evaluateOffensiveGate } from "../lib/offensiveGate";
+import { runOffensiveScan } from "../lib/offensiveWatchdog";
 import { enablesOffensiveTools } from "../lib/scanProfiles";
 import type { ScanProfile, ExtendedToolName } from "../lib/scanProfiles";
 
@@ -240,6 +241,7 @@ async function runOne(
   // profile to "offensive": that comparison missed `ai-pentest`, which enables
   // the same four tools, and would miss a scan bundle whose tool_overrides turn
   // one on over a tame base profile.
+  let offensiveRun: { engagementId: string | null } | null = null;
   if (enablesOffensiveTools(scanConfig.profile, scanConfig.toolOverrides)) {
     const requestedProfile = scanConfig.profile;
     const decision = await evaluateOffensiveGate(supabaseAdmin, job.owner, job.target_url);
@@ -249,6 +251,8 @@ async function runOne(
       // Drops toolOverrides along with the profile — a "safe" profile carrying
       // an override that re-enabled an offensive tool would defeat the point.
       scanConfig = { profile: "safe" };
+    } else {
+      offensiveRun = { engagementId: decision.engagementId };
     }
   }
 
@@ -289,10 +293,22 @@ async function runOne(
   // scanning right now", not "a scan_jobs row exists somewhere".
   await supabaseAdmin.from("scans").update({ status: "running" }).eq("id", scanId);
 
-  const outcome = await executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
-    profile: scanConfig.profile,
-    toolOverrides: scanConfig.toolOverrides,
-  });
+  const runScan = () =>
+    executeScan(supabaseAdmin, scanId, job.owner, job.target_url, {
+      profile: scanConfig.profile,
+      toolOverrides: scanConfig.toolOverrides,
+    });
+  // An offensive run carries on only while the gate keeps passing: the
+  // watchdog asks it again every WATCHDOG_INTERVAL_MS and, the moment it
+  // refuses (engagement stopped, authorisation revoked, window or testing
+  // window closed, expiry passed, plan lapsed), kills the scan's tool
+  // processes and starts no more. executeScan then fails the scan rather than
+  // storing partial results.
+  const outcome = offensiveRun ? await runOffensiveScan(supabaseAdmin, job, scanId, offensiveRun.engagementId, runScan) : await runScan();
+  if (!outcome.ok && offensiveRun && outcome.error.startsWith("Testing was stopped part-way")) {
+    await failJob(outcome.error);
+    return false;
+  }
   if (!outcome.ok) {
     await failJob(outcome.error, true);
     return false;

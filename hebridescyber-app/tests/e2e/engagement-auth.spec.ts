@@ -79,7 +79,7 @@ test("the stop button asks once, sends the reason, and the page then shows the e
   await page.getByLabel("Reason (optional)").fill("the site is slow");
   await page.getByRole("button", { name: "Yes, stop all testing" }).click();
 
-  await expect(page.getByText("Testing is stopped. 1 authorisation was withdrawn, and no new test step will start.")).toBeVisible();
+  await expect(page.getByText("Testing is stopped. 1 authorisation was withdrawn. Anything still running stops within about half a minute, and nothing new starts.")).toBeVisible();
   await expect(page.getByText("Stopped", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop testing now" })).toHaveCount(0);
 

@@ -5,7 +5,8 @@
 // system's authorisation, and a stop button that is always there until the
 // engagement is closed. The stop calls POST /api/engagements/{id}/abort, which
 // withdraws every authorisation for the engagement in one transaction; the
-// worker gate then refuses any new test step.
+// worker gate then refuses any new test step, and the watchdog
+// (src/lib/offensiveWatchdog.ts) stops a step already running within one interval.
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAppSession } from "@/components/app-shell/AppShell";
@@ -53,7 +54,7 @@ export default function EngagementStatusPage() {
     if (r.ok) {
       const body = (await r.json()) as { authorisationsRevoked: number };
       setConfirmingStop(false);
-      setNotice(`Testing is stopped. ${body.authorisationsRevoked} authorisation${body.authorisationsRevoked === 1 ? " was" : "s were"} withdrawn, and no new test step will start.`);
+      setNotice(`Testing is stopped. ${body.authorisationsRevoked} authorisation${body.authorisationsRevoked === 1 ? " was" : "s were"} withdrawn. Anything still running stops within about half a minute, and nothing new starts.`);
       await load();
     } else {
       setError("The stop didn't go through. Try again, and if it still fails, phone your emergency contact at Hebrides Cyber.");
@@ -128,7 +129,7 @@ export default function EngagementStatusPage() {
           </CardHeader>
           <CardDescription>
             {canStop(engagement.state)
-              ? "If anything looks wrong, stop the engagement. Every authorisation for it is withdrawn at once and no new test step starts. Restarting needs a new authorisation."
+              ? "If anything looks wrong, stop the engagement. Every authorisation for it is withdrawn at once, anything running stops within about half a minute, and nothing new starts. Restarting needs a new authorisation."
               : "This engagement can no longer run any test."}
           </CardDescription>
           {canStop(engagement.state) && (
