@@ -1,4 +1,4 @@
--- Migration 085: shared fix plans (COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md
+-- Migration 083: shared fix plans (COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md
 -- idea 8).
 --
 -- An Agency user picks findings from one site's scan and shares them as a fix
