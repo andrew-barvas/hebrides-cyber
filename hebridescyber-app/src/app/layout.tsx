@@ -44,6 +44,13 @@ export const metadata: Metadata = {
   openGraph: {
     siteName: "Hebrides Cyber",
     type: "website",
+    // The link preview when any page is shared (public/brand/social/,
+    // rendered by src/scripts/render-social-images.ts).
+    images: [{ url: "/brand/social/share-1200x630.png", width: 1200, height: 630, alt: "Hebrides Cyber: find out how secure your website is in 30 seconds" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/brand/social/share-1200x630.png"],
   },
   manifest: "/manifest.webmanifest",
 };
