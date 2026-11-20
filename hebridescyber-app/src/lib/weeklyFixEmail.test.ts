@@ -86,6 +86,12 @@ describe("buildWeeklyFixEmail", () => {
     expect(html).toContain("/dashboard/integrations");
   });
 
+  it("gives a rough effort in minutes or hours, from the fix difficulty", () => {
+    expect(buildWeeklyFixEmail({ ...base, finding: finding({ checkId: "tls.hsts-missing" }) }).html).toMatch(/shop\.example\.com · about \d+ minutes/);
+    expect(buildWeeklyFixEmail({ ...base, finding: finding({ checkId: "malware.cryptominer" }) }).html).toMatch(/about \d+ hours/);
+    expect(buildWeeklyFixEmail({ ...base, finding: finding({ checkId: "unmapped.check" }) }).html).not.toContain(" · about");
+  });
+
   it("says how many fixes lift the site to the next rating, when known", () => {
     expect(buildWeeklyFixEmail({ ...base, ratingStep: { fixes: 1, fromLabel: "Needs attention", toLabel: "Good" } }).html).toContain("<b>Fixing this one</b> should take shop.example.com from Needs attention to Good.");
     expect(buildWeeklyFixEmail({ ...base, ratingStep: { fixes: 3, fromLabel: "At risk", toLabel: "Needs attention" } }).html).toContain("<b>Fixing this and 2 more</b> should take shop.example.com from At risk to Needs attention.");

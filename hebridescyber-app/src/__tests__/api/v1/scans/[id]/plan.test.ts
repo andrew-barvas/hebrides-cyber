@@ -115,4 +115,21 @@ describe("GET /api/v1/scans/[id]/plan", () => {
     expect(body.plan.reachable).toBe(false);
     expect(body.ifFixed).toEqual({ checkIds: ["med"], projected: 55, projectedRating: "Needs attention" });
   });
+
+  it("404s a scan with no results yet", async () => {
+    ownScan();
+    supabaseTables.scan_results = { data: null };
+    const r = req({ id: "scan-1" });
+    await handler(r.req, r.res);
+    expect(r.res._getStatusCode()).toBe(404);
+  });
+
+  it("has no target or plan for a scan already rated Strong, and copes with no stored findings", async () => {
+    authenticateApiRequestMock.mockResolvedValue({ ownerId: "owner-1", via: "api_key" });
+    supabaseTables.scans = { data: { id: "scan-1", owner: "owner-1", target_url: "https://example.com" } };
+    supabaseTables.scan_results = { data: { score: 95, results: null } };
+    const r = req({ id: "scan-1" });
+    await handler(r.req, r.res);
+    expect(r.res._getJSONData()).toMatchObject({ score: 95, rating: "Strong", target: null, plan: null, candidates: 0 });
+  });
 });

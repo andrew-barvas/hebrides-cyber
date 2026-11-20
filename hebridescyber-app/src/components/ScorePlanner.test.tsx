@@ -48,6 +48,33 @@ describe("ScorePlanner", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Fixing every open finding gets to about 40, short of Good: accepted and snoozed findings still count.");
   });
 
+  it("clears a selection", () => {
+    render(<ScorePlanner findings={findings} score={48} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reach Good (75+)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("Nothing ticked yet")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("shows a fractional point value", () => {
+    render(<ScorePlanner findings={[vf("kev", "medium", { threatIntel: { knownExploited: true } })]} score={90} />);
+    expect(screen.getByText("+10.5")).toBeInTheDocument();
+  });
+
+  it("expands a long list, and opens it when a plan needs an item beyond the first twelve", () => {
+    // 20 lows: 100 - 40 = 60. Strong (89.5+) needs 15 of them.
+    const many = Array.from({ length: 20 }, (_, i) => vf(`low${String(i).padStart(2, "0")}`, "low"));
+    render(<ScorePlanner findings={many} score={60} />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(12);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 20" }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(20);
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(12);
+    fireEvent.click(screen.getByRole("button", { name: "Reach Strong (90+)" }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(20);
+    expect(screen.getByRole("status")).toHaveTextContent("15 fixes should take this site to Strong.");
+  });
+
   it("offers only ratings above the current score, and renders nothing with no candidates", () => {
     const { container, rerender } = render(<ScorePlanner findings={findings} score={80} />);
     expect(screen.queryByRole("button", { name: /Reach Good/ })).toBeNull();
