@@ -93,6 +93,9 @@ Raised dates are the first commit that recorded each item. Last reviewed:
 | OT-61 | Phishing awareness: check the NCSC staff e-learning licence; decide pricing and packaging | 🟢 Low | Decision | 2026-11-19 | |
 | OT-62 | Replace the Resend API key (shown in a screenshot) and delete `RESEND_API_KEY_OLD` | 🟠 High | Open | 2026-11-20 | |
 | OT-63 | Turn on "Continue with Google": a Google OAuth client, the Supabase Google provider, then the `NEXT_PUBLIC_GOOGLE_SIGNIN` variable | 🟢 Low | Open | 2026-11-20 | |
+| OT-64 | Get Hebrides Cyber its own Cyber Essentials certification before Lookout ads | 🟡 Medium | Open | 2026-11-20 | |
+| OT-65 | Decide on "how you compare" benchmarks; if yes, add the privacy-notice line and set `SCORE_BENCHMARK_ENABLED` | 🟢 Low | Decision | 2026-11-20 | |
+| OT-66 | Decide whether a domain Microsoft has verified for a connected tenant counts as verified ownership for scanning | 🟢 Low | Decision | 2026-11-20 | |
 
 ## Common steps
 
@@ -1216,6 +1219,42 @@ CNAMEs to `proud-stone-04a76350f.7.azurestaticapps.net`, so
      workflow (the value is built into the site).
 - **Verify:** the button appears on /login, and signing in with a Google
   account lands on the dashboard.
+- **Raised:** 2026-11-20.
+
+### OT-64: Hebrides Cyber's own Cyber Essentials 🟡
+- **What and why:** we sell Cyber Essentials help and every enterprise rival
+  holds certifications (`COMPETITOR-ANALYSIS-ENTERPRISE-2026-11.md`, owner
+  decision 9). Cyber Essentials is the cheap, quick step; OT-38 to OT-41
+  cover the bigger SOC 2 or ISO 27001 route, which can wait.
+- **How:** pick an IASME certification body, complete the self-assessment
+  questionnaire for the company's devices, accounts and cloud services, and
+  submit it. Once certified, add the certificate to `/trust` (a session can
+  do that from the certificate number and date).
+- **Verify:** the certificate shows on the IASME / NCSC certificate search,
+  and `/trust` says so.
+- **Raised:** 2026-11-20.
+
+### OT-65: Switch on "how you compare" benchmarks 🟢
+- **What and why:** built switched off (PR #281, migration 084). When on, the
+  free check keeps each score and its time (no site, IP or user) and shows
+  "Better than N% of the sites given this free check"; the scan report
+  compares with other customers' sites' latest scores. It needs your
+  decision on using aggregate results (owner decision 6).
+- **How:** once #281 is merged, add a line to the privacy policy: "When you
+  use the free website check we keep the score it gives, without the
+  website's address, to show how sites compare." Then set Azure Static Web
+  App setting `SCORE_BENCHMARK_ENABLED` = `true`.
+- **Verify:** after 50 free checks, a result shows the "Better than" line.
+- **Raised:** 2026-11-20.
+
+### OT-66: Microsoft-verified domains as verified ownership? 🟢
+- **What and why:** PR #275 suggests monitored sites from a connected
+  Microsoft 365 tenant's verified domains. Adding one still needs our DNS
+  verification before it is scanned. The tenant admin has already proved
+  DNS control to Microsoft, so we could accept that instead; it is a trust
+  decision, so it is yours.
+- **How:** decide yes or no. If yes, a session adds it with an audit entry
+  and the tenant ID recorded as the evidence.
 - **Raised:** 2026-11-20.
 
 ### OT-26: `SENTRY_DSN` GitHub secret ✅
