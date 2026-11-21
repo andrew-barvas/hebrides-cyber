@@ -13,7 +13,8 @@ import { z } from "zod";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { planGate } from "@/lib/planAccess";
 import { parseBody } from "@/lib/validate";
-import { authorizationExpiryProblem, recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
+import { checkAuthorizationLink, sendEngagementFailure } from "@/lib/engagements";
+import { authHostFromUrl, authorizationExpiryProblem, recordOffensiveAuthorization, revokeOffensiveAuthorization } from "@/lib/offensiveAuthorization";
 
 const postBodySchema = z.object({
   targetUrl: z.string().url("targetUrl must be a valid URL"),
@@ -24,6 +25,8 @@ const postBodySchema = z.object({
   // Required ISO expiry, in the future and at most MAX_AUTHORIZATION_DAYS
   // away (audit M5): consent to attack traffic is never open-ended.
   expiresAt: z.string().datetime({ offset: true, message: "expiresAt must be an ISO date-time" }),
+  // The engagement this was signed for, when there is one. Omitted, it behaves as it always has.
+  engagementId: z.string().uuid().optional(),
 });
 
 const deleteBodySchema = z.object({
@@ -76,12 +79,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (gate === "denied") return res.status(403).json({ error: "Offensive scanning is a Tier A feature." });
 
   const post = body as z.infer<typeof postBodySchema>;
+
+  if (post.engagementId) {
+    const host = authHostFromUrl(targetUrl);
+    if (!host) return res.status(400).json({ error: "Could not record the authorization." });
+    const link = await checkAuthorizationLink(supabaseAdmin, caller.ownerId, post.engagementId, host);
+    if (link.status !== "ok") return sendEngagementFailure(res, "account/offensive-authorization", link);
+    if (!link.data.ok) {
+      return res.status(409).json({
+        error: link.data.reason === "host_not_in_scope" ? "That host isn't on this engagement's scope." : "This engagement can't take new authorisations in its current state.",
+        reason: link.data.reason,
+      });
+    }
+  }
+
   const result = await recordOffensiveAuthorization(supabaseAdmin, {
     owner: caller.ownerId,
     authorizedBy: caller.ownerId,
     targetUrl,
     scope: post.scope ?? DEFAULT_SCOPE,
     expiresAt: post.expiresAt,
+    engagementId: post.engagementId,
   });
   if (!result.ok) {
     if (result.reason === "invalid_expiry") {
