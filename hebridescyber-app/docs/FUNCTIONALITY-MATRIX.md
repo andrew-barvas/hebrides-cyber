@@ -368,7 +368,7 @@ for the full decision record.
 | Supabase | Everything — auth, data, RLS | Throws at lazy access; admin routes catch → 403 |
 | Stripe | Billing | "Stripe is not configured"; `STRIPE_PRICE_*` unset → 400/500 |
 | Azure Blob Storage | Report hosting (optional), image/logo upload (**required**, 503 if unset) | PDF falls back to raw bytes; upload 503s |
-| Playwright/Chromium | Page-health check, PDF rendering | Required for those two features specifically |
+| Playwright/Chromium | Page-health check, scheduled-report PDFs (GitHub Actions) | Required for those two features specifically; PDFs downloaded from the site are drawn without it (`htmlPdf.ts`, `evidencePackPdf.ts`) |
 | Slack, MS Teams, Jira, Linear, GitHub App/PAT, Azure OpenAI, Upstash Redis, WPScan, Safe Browsing, HIBP, Resend, Google Analytics | Various (see rows above / `docs/architecture.md`) | All degrade gracefully to `not_configured`/disabled — **except** Upstash, which fails **open** (allows the request) when unreachable, silently removing the only cost control on the two rate-limited routes |
 | Shodan InternetDB, OSV.dev, crt.sh, Cloudflare DoH, Wayback/CDX, endoflife.date, CISA KEV/NVD/security RSS | Free, keyless, no config | Where a failure could close earlier findings, the module reports `error` or `partial` instead of a clean result (rule 7): crt.sh (`ctLookupFailed`), OSV dependency lookups, endoflife.date and, since #259, Wayback/CDX (`partial`). See `SCANNER-INVENTORY.md` A(b) for each source |
 | Supabase Storage bucket `cve-index` (or Azure Blob with `CVE_INDEX_STORE=azure`) | Service CVE matching's local CPE → CVE index (#268) | Lookups answer `error` when the index is missing, half-built or more than 7 days stale |

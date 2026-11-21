@@ -1,9 +1,9 @@
 // GET /api/admin/lookout/report-pdf?id=<report id> — an admin's preview of
 // any Lookout report as the customer will get it, drafts included (marked
-// DRAFT). Same renderer as /api/lookout/report-pdf.
+// DRAFT). Same renderer as /api/lookout/report-pdf (htmlPdf.ts, no browser).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { requireAdmin, supabaseAdmin } from "@/lib/adminAuth";
-import { htmlToPdf } from "@/lib/reportPdf";
+import { renderHtmlPdf } from "@/lib/htmlPdf";
 import { loadReportLookalikes } from "@/lib/lookoutLookalikes";
 import { loadReportBreaches } from "@/lib/lookoutBreaches";
 import { loadReportTrends } from "@/lib/reportTrends";
@@ -36,7 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   }
   try {
-    const pdf = await htmlToPdf(html);
+    const pdf = await renderHtmlPdf(html);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${loaded.report.status === "draft" ? "draft-" : ""}${lookoutPdfFileName(loaded.report)}"`);
     return res.status(200).send(pdf);

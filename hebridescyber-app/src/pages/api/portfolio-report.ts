@@ -4,16 +4,17 @@
 // Agency's branding. `?format=html` returns the same report as HTML.
 //
 // Agency plan (planAccess.ts), session or API key (agencies automate their
-// monthly client packs), rate-limited because each call launches Chromium.
-// The PDF is streamed and never stored, so there is nothing to expire or to
-// erase with the account.
+// monthly client packs), rate-limited. The PDF is drawn by htmlPdf.ts
+// (pdf-lib, no browser: SWA managed Functions have no Chromium), streamed and
+// never stored, so there is nothing to expire or to erase with the account.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { respondInternalError } from "@/lib/apiError";
 import { planGate } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { loadPortfolioInput } from "@/lib/portfolioData";
 import { renderPortfolioReportHtml } from "@/lib/portfolioReport";
-import { htmlToPdf } from "@/lib/reportPdf";
+import { renderHtmlPdf } from "@/lib/htmlPdf";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -22,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
 
   const gate = await planGate(supabaseAdmin, caller.ownerId, "agency");
-  if (gate === "error") return res.status(500).json({ error: "Could not check your plan — try again." });
+  if (gate === "error") return respondInternalError(res, "portfolio-report", { message: "plan check failed" }, { publicMessage: "Could not check your plan — try again." });
   if (gate === "denied") return res.status(403).json({ error: "The portfolio report is part of the Agency plan.", code: "plan_required" });
 
   const limit = await checkRateLimit(caller.ownerId, "portfolio-report");
@@ -35,8 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     input = await loadPortfolioInput(supabaseAdmin, caller.ownerId);
   } catch (err) {
-    console.error("[portfolio-report]", (err as Error).message);
-    return res.status(500).json({ error: "Could not load your sites — try again." });
+    return respondInternalError(res, "portfolio-report", err as Error, { publicMessage: "Could not load your sites — try again." });
   }
   if (input.sites.length === 0) {
     return res.status(404).json({ error: "No monitored sites yet. Add sites under Assets first.", code: "no_sites" });
@@ -48,7 +48,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   }
 
-  const pdf = await htmlToPdf(html);
+  let pdf: Buffer;
+  try {
+    pdf = await renderHtmlPdf(html);
+  } catch (err) {
+    return respondInternalError(res, "portfolio-report", err as Error, { publicMessage: "Could not produce the PDF. Try again." });
+  }
   const date = (input.now ?? new Date()).toISOString().slice(0, 10);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${input.branding ? "security" : "hebridescyber"}-portfolio-${date}.pdf"`);

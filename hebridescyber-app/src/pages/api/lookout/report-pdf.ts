@@ -1,13 +1,14 @@
 // GET /api/lookout/report-pdf?id=<report id> — the signed-in customer's
 // published Lookout report as a dated PDF, with the estate gallery
 // (lookoutReportPdf.ts). Drafts and other customers' reports answer 404, as
-// /api/lookout/reports/<id> does. Rate-limited because each call launches
-// Chromium. ?format=html returns the HTML instead (for checking the layout).
+// /api/lookout/reports/<id> does. Rate-limited. The PDF is drawn by
+// htmlPdf.ts (pdf-lib, no browser: SWA managed Functions have no Chromium).
+// ?format=html returns the HTML instead (for checking the layout).
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
 import { respondInternalError } from "@/lib/apiError";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { htmlToPdf } from "@/lib/reportPdf";
+import { renderHtmlPdf } from "@/lib/htmlPdf";
 import { loadReportLookalikes } from "@/lib/lookoutLookalikes";
 import { loadReportBreaches } from "@/lib/lookoutBreaches";
 import { loadReportTrends } from "@/lib/reportTrends";
@@ -47,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   }
   try {
-    const pdf = await htmlToPdf(html);
+    const pdf = await renderHtmlPdf(html);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${lookoutPdfFileName(loaded.report)}"`);
     return res.status(200).send(pdf);

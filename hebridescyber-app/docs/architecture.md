@@ -271,7 +271,7 @@ sequenceDiagram
     participant SRC as Ranking, drift, lookalikes, HIBP results
     actor C as Customer (/dashboard/lookout)
     participant API as /api/lookout/reports
-    participant PDF as /api/lookout/report-pdf (Chromium)
+    participant PDF as /api/lookout/report-pdf (pdf-lib)
     participant BLOB as Azure Blob (host screenshots)
     A->>ADM: POST { customer: email or user id, period_days }
     ADM->>SRC: estate ranking, drift, lookalikes, breaches for the period

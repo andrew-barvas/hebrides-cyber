@@ -1,14 +1,18 @@
-// GET /api/portfolio-report, through the real loader (portfolioData.ts) and
-// renderer (portfolioReport.ts), with Supabase and the browser stood in.
+// GET /api/portfolio-report, through the real loader (portfolioData.ts),
+// renderer (portfolioReport.ts) and PDF drawing (htmlPdf.ts), with Supabase
+// stood in. Playwright is mocked to fail the way it does on Azure Static Web
+// Apps, where no Chromium exists: the PDF must not need it.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMocks } from "node-mocks-http";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const { authenticateApiRequestMock, checkRateLimitMock, tables, setContent } = vi.hoisted(() => ({
+const { authenticateApiRequestMock, checkRateLimitMock, tables, launchMock, pdfSpy, captureMock } = vi.hoisted(() => ({
   authenticateApiRequestMock: vi.fn(),
   checkRateLimitMock: vi.fn(),
   tables: {} as Record<string, { data: unknown; error: unknown }[]>,
-  setContent: vi.fn(),
+  launchMock: vi.fn(),
+  pdfSpy: vi.fn(),
+  captureMock: vi.fn(),
 }));
 
 function builder(table: string) {
@@ -25,20 +29,13 @@ vi.mock("@/lib/apiAuth", () => ({
   supabaseAdmin: { from: (t: string) => builder(t) },
 }));
 vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: checkRateLimitMock }));
-vi.mock("playwright", () => ({
-  chromium: {
-    launch: async () => ({
-      newPage: async () => ({
-        setContent,
-        pdf: async ({ path: out }: { path: string }) => {
-          const { writeFile } = await import("node:fs/promises");
-          await writeFile(out, "%PDF-stub");
-        },
-      }),
-      close: async () => undefined,
-    }),
-  },
-}));
+vi.mock("playwright", () => ({ chromium: { launch: launchMock } }));
+vi.mock("@sentry/nextjs", () => ({ captureMessage: captureMock }));
+vi.mock("@/lib/htmlPdf", async (orig) => {
+  const real = await orig<typeof import("@/lib/htmlPdf")>();
+  pdfSpy.mockImplementation(real.renderHtmlPdf);
+  return { ...real, renderHtmlPdf: pdfSpy };
+});
 
 import handler from "@/pages/api/portfolio-report";
 
@@ -76,7 +73,8 @@ describe("GET /api/portfolio-report", () => {
     for (const k of Object.keys(tables)) delete tables[k];
     authenticateApiRequestMock.mockReset().mockResolvedValue({ ownerId: "owner-1", via: "session" });
     checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
-    setContent.mockReset();
+    launchMock.mockReset().mockRejectedValue(new Error("browserType.launch: Executable doesn't exist at /home/.cache/ms-playwright/chromium"));
+    captureMock.mockReset();
   });
 
   it("answers 405, 401, and 403 plan_required below an active Agency plan", async () => {
@@ -184,9 +182,24 @@ describe("GET /api/portfolio-report", () => {
     expect(res._getStatusCode()).toBe(200);
     expect(res._getHeaders()["content-type"]).toBe("application/pdf");
     expect(res._getHeaders()["content-disposition"]).toMatch(/^attachment; filename="security-portfolio-\d{4}-\d{2}-\d{2}\.pdf"$/);
-    expect(String(res._getData())).toBe("%PDF-stub");
-    const rendered = setContent.mock.calls[0][0] as string;
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.load(new Uint8Array(res._getData() as Buffer));
+    expect(doc.getTitle()).toBe("Acme Digital — security portfolio");
+    expect(`${doc.getCreator()} ${doc.getProducer()} ${doc.getAuthor()}`).not.toMatch(/Hebrides/i);
+    const rendered = pdfSpy.mock.calls.at(-1)?.[0] as string;
     expect(rendered).toContain("Acme Digital");
     expect(rendered).not.toMatch(/Hebrides/i);
+    expect(launchMock).not.toHaveBeenCalled();
+  });
+
+  it("answers a fixed message, and reports to Sentry, when drawing the PDF fails", async () => {
+    agency();
+    portfolio();
+    pdfSpy.mockRejectedValueOnce(new Error("internal layout detail"));
+    const { req, res } = get();
+    await handler(req, res);
+    expect(res._getStatusCode()).toBe(500);
+    expect(res._getData()).not.toContain("internal layout detail");
+    expect(captureMock).toHaveBeenCalledWith(expect.stringContaining("portfolio-report"), expect.anything());
   });
 });

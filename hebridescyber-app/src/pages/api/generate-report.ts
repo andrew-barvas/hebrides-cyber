@@ -1,5 +1,7 @@
 // GET /api/generate-report?scan_id=... — renders the scan's findings as HTML
-// and converts to PDF with Playwright. Two response modes:
+// and draws it as a PDF with htmlPdf.ts (pdf-lib, no browser: this runs as an
+// Azure Static Web Apps managed Function, which has no Chromium, so the old
+// Playwright render answered 500 on every call). Two response modes:
 //   - AZURE_STORAGE_CONNECTION_STRING set -> upload to Blob Storage, return
 //     a short-lived (1h) SAS URL instead of the binary.
 //   - Not set (local dev) -> return the PDF bytes directly.
@@ -12,11 +14,12 @@
 // be an admin), matching every other scan-scoped route in this codebase.
 import type { NextApiRequest, NextApiResponse } from "next";
 import { authenticateApiRequest, supabaseAdmin } from "@/lib/apiAuth";
+import { respondInternalError } from "@/lib/apiError";
 import { subscriptionGrants } from "@/lib/planAccess";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { renderExecutiveReportHtml } from "@/lib/executiveReport";
 import { hasProAccess } from "@/lib/planAccess";
-import { htmlToPdf } from "@/lib/reportPdf";
+import { renderHtmlPdf } from "@/lib/htmlPdf";
 import { loadTriageIndexForTarget } from "@/lib/findingTriage";
 import type { Finding } from "@/lib/scanners";
 
@@ -28,8 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const caller = await authenticateApiRequest(req);
   if (!caller) return res.status(401).json({ error: "Missing or invalid Authorization header" });
 
-  // E-12 (docs/ENHANCEMENTS.md): launches a headless Chromium per call,
-  // uncapped before this.
+  // E-12 (docs/ENHANCEMENTS.md): each call renders a PDF, uncapped before this.
   const limit = await checkRateLimit(caller.ownerId, "generate-report");
   if (!limit.allowed) {
     res.setHeader("Retry-After", String(limit.retryAfterSeconds));
@@ -93,11 +95,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // A configured brand_logo_url is fetched during render — an https URL we
   // store (Agency branding), checked by safeLogoUrl; nothing else is.
-  const pdfBuffer = await htmlToPdf(html);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await renderHtmlPdf(html);
+  } catch (err) {
+    return respondInternalError(res, "generate-report", err as Error, { publicMessage: "Could not produce the PDF. Try again." });
+  }
 
   if (storageConnectionString) {
-    const url = await uploadToBlobStorage(pdfBuffer, `report-${scanId}.pdf`);
-    return res.status(200).json({ url, expiresInSeconds: 3600 });
+    try {
+      const url = await uploadToBlobStorage(pdfBuffer, `report-${scanId}.pdf`);
+      return res.status(200).json({ url, expiresInSeconds: 3600 });
+    } catch (err) {
+      return respondInternalError(res, "generate-report", err as Error, { publicMessage: "Could not store the PDF. Try again." });
+    }
   }
 
   res.setHeader("Content-Type", "application/pdf");
