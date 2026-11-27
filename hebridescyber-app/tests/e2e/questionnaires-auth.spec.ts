@@ -65,8 +65,8 @@ test("a Pro customer uploads a questionnaire, reviews the drafts and exports the
   await expect(page.getByText("Confidence: High")).toBeVisible();
   await expect(page.getByText("No evidence held for this question.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Accept", exact: true }).click();
-  await expect(page.getByText("Accepted", { exact: true })).toBeVisible();
+  await page.locator("#main-content").getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(page.locator("#main-content").getByText("Accepted", { exact: true })).toBeVisible();
   expect(api.to("PATCH", `/api/questionnaires/${QID}`)[0].body).toEqual({ action: "accept", answerIds: ["55555555-5555-4555-8555-555555555555"] });
 
   await page.getByRole("button", { name: "Export .csv" }).click();

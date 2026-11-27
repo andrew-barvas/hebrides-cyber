@@ -77,11 +77,16 @@ describe("QuestionnaireReview", () => {
   it("accepts, rejects and undoes single answers", async () => {
     render(<QuestionnaireReview token="tok" id="q1" />);
     await screen.findByText("Is MFA enforced?");
-    fireEvent.click(within(card("Is MFA enforced?")).getByRole("button", { name: "Accept" }));
+    // Each action disables the buttons until the reload finishes, so wait for them first.
+    const clickWhenReady = async (question: string, name: string) => {
+      await waitFor(() => expect(within(card(question)).getByRole("button", { name })).toBeEnabled());
+      fireEvent.click(within(card(question)).getByRole("button", { name }));
+    };
+    await clickWhenReady("Is MFA enforced?", "Accept");
     await waitFor(() => expect(patches()).toEqual([{ action: "accept", answerIds: ["a1"] }]));
-    fireEvent.click(within(card("Do staff get training?")).getByRole("button", { name: "Reject" }));
+    await clickWhenReady("Do staff get training?", "Reject");
     await waitFor(() => expect(patches()[1]).toEqual({ action: "reject", answerIds: ["a2"] }));
-    fireEvent.click(within(card("Are backups tested?")).getByRole("button", { name: "Undo" }));
+    await clickWhenReady("Are backups tested?", "Undo");
     await waitFor(() => expect(patches()[2]).toEqual({ action: "reset", answerIds: ["a4"] }));
   });
 
@@ -96,6 +101,7 @@ describe("QuestionnaireReview", () => {
     fireEvent.click(within(mfa).getByRole("button", { name: "Save and accept" }));
     await waitFor(() => expect(patches()[0]).toEqual({ action: "edit", answerIds: ["a1"], answer: "Yes, everywhere." }));
 
+    await waitFor(() => expect(within(card("Do staff get training?")).getByRole("button", { name: "Reject" })).toBeEnabled());
     const training = card("Do staff get training?");
     const box = within(training).getByPlaceholderText(/We hold no evidence/);
     expect(within(training).getByRole("button", { name: "Save and accept" })).toBeDisabled();

@@ -24,7 +24,7 @@ export default function QuestionnaireReviewPage() {
           </Link>
         }
       />
-      {planIncludes(plan, "pro") ? <QuestionnaireReview token={accessToken} id={params.id} /> : <PlanUpsell plan={plan} />}
+      {planIncludes(plan, "pro") ? <QuestionnaireReview token={accessToken} id={params?.id ?? ""} /> : <PlanUpsell plan={plan} />}
     </div>
   );
 }
