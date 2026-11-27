@@ -54,6 +54,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "csp_evaluator": "1.1.8",
+    "exceljs": "4.4.0",
     "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.73.0",
     "marked": "^13.0.2",
@@ -72,6 +73,9 @@
     "qs": "^6.16.0",
     "postcss-selector-parser": "^6.1.5",
     "fast-xml-parser": "^5.12.1",
+    "exceljs": {
+      "uuid": "^11.1.1"
+    },
     "@sentry/bundler-plugins": {
       "glob": "^14.0.6"
     },

@@ -11,6 +11,8 @@ const SCAN_A = "a1000000-0000-0000-0000-000000000001";
 const SCAN_B = "b1000000-0000-0000-0000-000000000002";
 const ENG_A = "a2000000-0000-0000-0000-000000000001";
 const ENG_B = "b2000000-0000-0000-0000-000000000002";
+const QN_A = "a3000000-0000-0000-0000-000000000001";
+const QN_B = "b3000000-0000-0000-0000-000000000002";
 
 const asA: Actor = { role: "authenticated", uid: A };
 const asB: Actor = { role: "authenticated", uid: B };
@@ -60,6 +62,8 @@ const KEY_TABLES: TableSpec[] = [
   { table: "engagement_scope_hosts", ownerCol: "owner", insert: `insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ('${ENG_A}', $1, 'new.test', true, $1)` },
   { table: "exploit_chains", ownerCol: "owner", insert: `insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, '${ENG_A}', '{}', 0, 'exp-v1', 'pc-test')` },
   { table: "exploit_simulations", ownerCol: "owner", insert: `insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, '${ENG_A}', $1, '{}', 'exp-v1')` },
+  { table: "questionnaires", ownerCol: "owner", insert: "insert into questionnaires (owner, name, source_format, question_column) values ($1, 'new.csv', 'csv', 0)" },
+  { table: "questionnaire_answers", ownerCol: "owner", insert: `insert into questionnaire_answers (questionnaire_id, owner, row_index, question) values ('${QN_A}', $1, 99, 'Is MFA enforced?')` },
 ];
 
 // Tables a logged-in user may only READ (the server writes with the service
@@ -71,6 +75,7 @@ const SERVICE_WRITE_ONLY = [
   "lookalike_domain_sweeps", "lookalike_domains", "cloud_credentials", "sla_policies",
   "dmarc_reports", "dmarc_ingest_tokens", "ce_self_assessment", "uptime_monitors", "custom_nuclei_templates", "m365_tenants",
   "exploitability_assessments", "engagements", "engagement_scope_hosts", "exploit_chains", "exploit_simulations",
+  "questionnaires", "questionnaire_answers",
 ];
 
 // Tables with no client policy at all: even the owner reads nothing.
@@ -135,6 +140,9 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       await q("insert into engagement_scope_hosts (engagement_id, owner, host, included, added_by) values ($1, $2, $3, true, $2)", [eng, o, h]);
       await q("insert into exploit_chains (owner, engagement_id, chain_set, chain_count, model_version, catalogue_version) values ($1, $2, '{}', 0, 'exp-v1', 'pc-test')", [o, eng]);
       await q("insert into exploit_simulations (owner, engagement_id, requested_by, plan, model_version) values ($1, $2, $1, '{}', 'exp-v1')", [o, eng]);
+      const qn = o === A ? QN_A : QN_B;
+      await q("insert into questionnaires (id, owner, name, source_format, question_column) values ($1, $2, 'supplier.xlsx', 'xlsx', 1)", [qn, o]);
+      await q("insert into questionnaire_answers (questionnaire_id, owner, row_index, question, status) values ($1, $2, 0, 'Do you enforce MFA?', 'accepted')", [qn, o]);
     }
     await q("insert into audit_logs (actor, action) values ($1, 'scan.started')", [A]);
     await q("insert into contact_enquiries (name, email, message) values ('n', 'e@x.test', 'm')");
@@ -530,6 +538,17 @@ describe.skipIf(!DB_TESTS_ENABLED)("row level security (real Postgres)", () => {
       expect(await count(asM, "select 1 from scans where owner = $1", [A])).toBeGreaterThan(0);
       expect(await count(asM, "select 1 from scan_results where scan_id = $1", [SCAN_A])).toBe(1);
       expect(await count(asM, "select 1 from monitored_targets where owner = $1", [A])).toBeGreaterThan(0);
+    });
+
+    it("reads the owner's questionnaires and answers, but cannot change them", async () => {
+      expect(await count(asM, "select 1 from questionnaires where owner = $1", [A])).toBeGreaterThan(0);
+      expect(await count(asM, "select 1 from questionnaire_answers where owner = $1", [A])).toBeGreaterThan(0);
+      expect(await count(asM, "select 1 from questionnaires where owner = $1", [B])).toBe(0);
+      await asActor(db, asM, async (c) => {
+        const upd = await attempt(c, "update questionnaire_answers set status = 'rejected' where owner = $1", [A]);
+        expect(upd.ok ? upd.rowCount : 0).toBe(0);
+        expect((await attempt(c, "insert into questionnaires (owner, name, source_format, question_column) values ($1, 'x.csv', 'csv', 0)", [A])).ok).toBe(false);
+      });
     });
 
     it("does not read other owners' data or the owner's non-shared tables", async () => {

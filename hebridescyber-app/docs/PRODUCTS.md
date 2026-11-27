@@ -91,6 +91,20 @@ flowchart LR
   questionnaires and Cyber Essentials, every answer labelled Evidenced, Gap
   found, Self-declared or Your records (Pro and up, #264); Cyber Essentials
   self-assessment and readiness.
+- **Security questionnaire autopilot** (Pro and up). Upload an insurer or
+  customer questionnaire as `.xlsx` or `.csv`, confirm the question column (it
+  is detected when obvious), and get a draft answer to each question from the
+  customer's own evidence only: scan results and score, Microsoft 365 / Google
+  Workspace checks, SPF/DKIM/DMARC, the Cyber Essentials self-assessment, the
+  device agent, and documents on the public security profile. Every draft
+  cites its source and date and carries a confidence level; anything without
+  evidence (policies, training, HR, backups, data location) is "Needs your
+  answer". The customer accepts, edits or rejects each answer, then exports
+  the original rows with Answer, Evidence and Status columns. Accepted answers
+  are reused for similar questions in later questionnaires. Optional AI
+  rewording through the existing Azure OpenAI deployment, which only rewords
+  and falls back to the rule-based draft. Labelled throughout as drafts based
+  on scan evidence, not certification.
 - **Email.** Critical-finding alerts; **weekly "one thing to fix" email**
   naming the single most urgent finding, on by default with a switch to turn it
   off (#255); monthly digest; scheduled reports.
@@ -111,7 +125,8 @@ flowchart LR
   `scan_jobs`, `finding_lifecycle`, `finding_triage`, `finding_assignments`,
   `asset_inventory`, `repo_connections` (with `target_host`), `subscriptions`
   (plan, alert settings, `notify_weekly_fix`), `teams`, `team_members`,
-  `ticket_integrations`, `ticket_links`, `m365_tenants`. Schema:
+  `ticket_integrations`, `ticket_links`, `m365_tenants`, `questionnaires`,
+  `questionnaire_answers` (087). Schema:
   [`DATA-MODEL.md`](DATA-MODEL.md).
 - **External sources:** free public feeds (OSV.dev, NVD, CISA KEV, FIRST EPSS,
   certificate logs, endoflife.date, the Wayback Machine) and optional keyed
@@ -124,7 +139,7 @@ flowchart LR
 All gates go through `src/lib/planAccess.ts`; only an active subscription
 grants a tier, and admins are exempt. Basic: 1 site, weekly. Pro: 3 sites,
 daily, repository connection, Slack/Teams, uptime, Microsoft 365, evidence
-pack, exploitability detail. Agency: 15 sites, teams, white-label, logged-in
+pack, questionnaire autopilot, exploitability detail. Agency: 15 sites, teams, white-label, logged-in
 scanning, SLA tracking, portfolio report. Not plan-gated by design: triage,
 assignment, estate map, weekly email (any active subscription), API keys,
 share links, tickets. Full table:

@@ -36,6 +36,15 @@ service-role key. Isolation is tested on real Postgres in
 
 Both cascade from `auth.users`, so account erasure removes them.
 
+## Questionnaire tables (migration 087)
+
+| Table | What | Access |
+|---|---|---|
+| `questionnaires` | One uploaded security questionnaire: owner, `name` (the file name), `source_format` (`xlsx`/`csv`), `sheet_name`, the original `headers` and `rows` (jsonb, kept so the export returns them unchanged, capped at 3 MB) and `question_column` | Owner reads; team members read their owner's (read-only). Writes service role only, through `/api/questionnaires` |
+| `questionnaire_answers` | One drafted answer per question row: `row_index` (unique per questionnaire), `question`, `topic`, `draft_answer` (the rule-based draft), `answer` (current wording), `evidence` (jsonb citations with source and date), `confidence` (`high`/`medium`/`low`/`none`), `status` (`draft`/`needs_answer`/`accepted`/`rejected`), `edited`, `ai_checked`, `ai_worded`, `reused_from` (an earlier accepted answer), `decided_by`, `decided_at` | Same as `questionnaires`. Accepted answers are reused for similar later questions (`questionnaire_answers_reuse_idx`) |
+
+Both cascade from `auth.users` (and answers from their questionnaire), so account erasure removes them.
+
 ## Entity-relationship (core)
 
 ```mermaid
