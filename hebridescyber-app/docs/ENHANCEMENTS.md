@@ -1876,5 +1876,5 @@ too slow for this class of finding.
 follow-through) and 4 (SBOM) from the same review are already covered — by E-30
 (`retest-finding.ts`) + the `/dashboard/sla` tracker + `generate-fix-pr`, and by
 E-78 respectively — so they get no new item. Point 1 (activate HIBP breach
-monitoring) is an owner step, tracked in the private `hebrides-cyber-docs` repo's
+monitoring) is an owner step, already tracked as OT-17 in the private `hebrides-cyber-docs` repo's
 `OWNER-TODO.md`, not here.
