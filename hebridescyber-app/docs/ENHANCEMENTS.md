@@ -1852,3 +1852,29 @@ rule 15) and a licence check before it runs inside a paid service.
 for tools the page marks "not stated" are unchecked. The AI red-team tools on
 that list (Garak, PyRIT and others) send adversarial prompts and are out of
 scope here.
+
+## E-79 — KEV-speed re-scan and out-of-band alert for perimeter exposures
+
+**Status: open.** Builds on the service-CVE matching and estate "fix this first"
+work; this is the *speed* layer on top of them.
+**Why**: the exposures that actually breach companies are known-exploited vulns
+(CISA KEV) sitting unpatched on an edge service for weeks. Threat intel already
+tags KEV membership (`threatIntel.ts`), but a KEV hit on a customer's perimeter
+currently waits for the normal cadence and the periodic Lookout report. That is
+too slow for this class of finding.
+**What**:
+1. When a scan produces a finding that is both internet-facing and KEV-listed,
+   raise an **out-of-band urgent alert** (existing alert/webhook channels,
+   `scheduledReports.ts`/webhooks), not the next scheduled report.
+2. Put KEV-listed targets on a **shorter re-scan cadence** until the finding
+   clears (`scanCadence.ts` `isScanDue()`), so a fix is confirmed quickly and a
+   new KEV match is caught within days, not the full period.
+3. Gate noise: only fire once per (target, checkId) until resolved, reusing
+   `findingLifecycle.ts` so a cleared-then-returned exposure re-alerts.
+**Impact/effort**: high / medium. **Category**: code.
+**Source**: Lookout/Exploit protection review, 2026-11-27. Points 3 (remediation
+follow-through) and 4 (SBOM) from the same review are already covered — by E-30
+(`retest-finding.ts`) + the `/dashboard/sla` tracker + `generate-fix-pr`, and by
+E-78 respectively — so they get no new item. Point 1 (activate HIBP breach
+monitoring) is an owner step, tracked in the private `hebrides-cyber-docs` repo's
+`OWNER-TODO.md`, not here.
