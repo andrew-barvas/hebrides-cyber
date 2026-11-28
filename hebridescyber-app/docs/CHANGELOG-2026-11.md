@@ -204,7 +204,7 @@ and [#243](https://github.com/andrew-barvas/hebrides-cyber/pull/243).
 ## Added after 20 November
 
 - **Security questionnaire autopilot (Scanner, Pro and up).**
-  [#PRNUM](https://github.com/andrew-barvas/hebrides-cyber/pull/PRNUM)
+  [#310](https://github.com/andrew-barvas/hebrides-cyber/pull/310)
   Upload an insurer or customer security questionnaire as `.xlsx` or `.csv`,
   confirm the question column, and get a draft answer to each question built
   only from your own evidence: scans, Microsoft 365 or Google Workspace
