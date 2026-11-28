@@ -17,9 +17,14 @@ export default function CyberEssentialsPage() {
         title="Cyber Essentials readiness"
         description="Your latest scan's external evidence combined with the questions only you can answer — host firewalls, device configuration, admin access, endpoint anti-malware and patching — merged into a per-control readiness view. Answers autosave."
         actions={
-          <Link href="/dashboard/cyber-essentials/devices" className="text-sm text-neon hover:underline">
-            Device patching (14-day rule)
-          </Link>
+          <div className="flex flex-wrap gap-4">
+            <Link href="/dashboard/cyber-essentials/devices" className="text-sm text-neon hover:underline">
+              Device patching (14-day rule)
+            </Link>
+            <Link href="/dashboard/questionnaires" className="text-sm text-neon hover:underline">
+              Answer a security questionnaire
+            </Link>
+          </div>
         }
       />
       {planIncludes(plan, "pro") && <EvidencePackButton token={accessToken} />}

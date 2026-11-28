@@ -21,6 +21,7 @@ describe("activeNavHref", () => {
     ["/dashboard/findings", "/dashboard/findings"],
     ["/dashboard/assets", "/dashboard/assets"],
     ["/dashboard/integrations", "/dashboard/integrations"],
+    ["/dashboard/questionnaires/abc-123", "/dashboard/questionnaires"],
     ["/account", "/account"],
     ["/account/security", "/account"],
   ])("%s → %s", (pathname, expected) => {
@@ -73,7 +74,7 @@ describe("AppMobileNav", () => {
     state.pathname = "/dashboard/integrations";
     render(<AppMobileNav />);
     const links = screen.getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Findings", "Assets", "SLAs", "Cyber Essentials", "Integrations", "Account"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Overview", "Scans", "Trends", "Findings", "Assets", "SLAs", "Cyber Essentials", "Questionnaires", "Integrations", "Account"]);
     expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute("aria-current", "page");
   });
 });

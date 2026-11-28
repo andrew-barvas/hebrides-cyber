@@ -200,3 +200,19 @@ summaries: [`PRODUCTS.md`](PRODUCTS.md). Current plan:
 Migrations 075 (Lookout reports) and 076 (Google Workspace connections) landed
 on 2026-11-14 in [#242](https://github.com/andrew-barvas/hebrides-cyber/pull/242)
 and [#243](https://github.com/andrew-barvas/hebrides-cyber/pull/243).
+
+## Added after 20 November
+
+- **Security questionnaire autopilot (Scanner, Pro and up).**
+  [#310](https://github.com/andrew-barvas/hebrides-cyber/pull/310)
+  Upload an insurer or customer security questionnaire as `.xlsx` or `.csv`,
+  confirm the question column, and get a draft answer to each question built
+  only from your own evidence: scans, Microsoft 365 or Google Workspace
+  checks, SPF/DKIM/DMARC, your Cyber Essentials answers, your enrolled devices
+  and the documents on your security profile. Each draft cites its source and
+  date and has a confidence level; questions we hold no evidence for say
+  "Needs your answer". You accept, edit or reject each answer, then export the
+  original spreadsheet with Answer, Evidence and Status columns. Accepted
+  answers are offered again for similar questions next time. Optional AI
+  rewording uses the existing Azure OpenAI deployment and only rewords.
+  Migration 087 adds `questionnaires` and `questionnaire_answers`.

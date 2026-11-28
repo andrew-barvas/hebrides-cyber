@@ -93,6 +93,7 @@ const subscriptions: Array<{
       "Dependency & CI/CD scanning",
       "Slack & Microsoft Teams alerts",
       "Uptime alerts via your UptimeRobot account",
+      "Security questionnaire answers drafted from your own evidence, for you to review",
     ],
     highlight: true,
   },
