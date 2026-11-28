@@ -42,6 +42,11 @@ async function call(handler: (req: NextApiRequest, res: NextApiResponse) => unkn
   return res;
 }
 
+// The parsed JSON body. node-mocks-http types it from Express's Response, which
+// resolves to unknown in CI, so read it through one typed helper.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test assertions read arbitrary response fields
+type Json = any;
+const json = (res: { _getJSONData: () => unknown }) => res._getJSONData() as Json;
 const csv = (text: string) => `data:text/csv;base64,${Buffer.from(text).toString("base64")}`;
 const missing = { error: { message: "relation does not exist", code: "42P01" } };
 
@@ -71,7 +76,7 @@ describe("shared gates", () => {
     gateMock.mockResolvedValueOnce("denied");
     const denied = await call(handler, method, { query });
     expect(denied.statusCode).toBe(403);
-    expect(denied._getJSONData().code).toBe("plan_required");
+    expect(json(denied).code).toBe("plan_required");
     gateMock.mockResolvedValueOnce("error");
     expect((await call(handler, method, { query })).statusCode).toBe(500);
   });
@@ -86,7 +91,7 @@ describe("GET /api/questionnaires", () => {
     state.resolve = () => ({ data: [{ id: QID, name: "Q.xlsx", source_format: "xlsx", created_at: "c", updated_at: "u", questionnaire_answers: [{ status: "accepted" }, { status: "draft" }] }, { id: "x", name: "R", source_format: "csv", created_at: "c", updated_at: "u", questionnaire_answers: null }] });
     const res = await call(listHandler, "GET");
     expect(res.statusCode).toBe(200);
-    const body = res._getJSONData();
+    const body = json(res);
     expect(body.enabled).toBe(true);
     expect(body.aiAvailable).toBe(false);
     expect(body.questionnaires[0]).toEqual({ id: QID, name: "Q.xlsx", source_format: "xlsx", created_at: "c", updated_at: "u", counts: { draft: 1, needs_answer: 0, accepted: 1, rejected: 0, total: 2 } });
@@ -96,11 +101,11 @@ describe("GET /api/questionnaires", () => {
 
   it("says disabled before the migration, and hides other errors", async () => {
     state.resolve = () => missing;
-    expect((await call(listHandler, "GET"))._getJSONData()).toEqual({ questionnaires: [], enabled: false, aiAvailable: false });
+    expect(json((await call(listHandler, "GET")))).toEqual({ questionnaires: [], enabled: false, aiAvailable: false });
     state.resolve = () => ({ error: { message: "column secret_col does not exist" } });
     const res = await call(listHandler, "GET");
     expect(res.statusCode).toBe(500);
-    expect(JSON.stringify(res._getJSONData())).not.toContain("secret_col");
+    expect(JSON.stringify(json(res))).not.toContain("secret_col");
   });
 });
 
@@ -110,7 +115,7 @@ describe("POST /api/questionnaires", () => {
   it("previews the sheets with the detected question column", async () => {
     const res = await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), preview: true } });
     expect(res.statusCode).toBe(200);
-    expect(res._getJSONData()).toEqual({
+    expect(json(res)).toEqual({
       format: "csv",
       sheets: [{ name: null, headers: ["Ref", "Question"], sample: [["1", "Is MFA enforced?"], ["2", "Do staff get training?"]], rowCount: 2, suggestedColumn: 1, confident: true, questions: 2 }],
     });
@@ -118,16 +123,16 @@ describe("POST /api/questionnaires", () => {
   });
 
   it("previews when no column is given", async () => {
-    expect((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file) } }))._getJSONData().sheets).toHaveLength(1);
+    expect(json((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file) } }))).sheets).toHaveLength(1);
   });
 
   it("refuses bad input", async () => {
-    expect((await call(listHandler, "POST", { body: { fileName: "q.pdf", dataUrl: csv(file) } }))._getJSONData().error).toBe("Upload an .xlsx or .csv file.");
+    expect(json((await call(listHandler, "POST", { body: { fileName: "q.pdf", dataUrl: csv(file) } }))).error).toBe("Upload an .xlsx or .csv file.");
     expect((await call(listHandler, "POST", { body: { dataUrl: csv(file) } })).statusCode).toBe(400);
     expect((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: "data:text/csv;base64,!!!" } })).statusCode).toBe(400);
-    expect((await call(listHandler, "POST", { body: { fileName: "q.xlsx", dataUrl: csv(file) } }))._getJSONData().error).toMatch(/isn't an .xlsx/);
-    expect((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), questionColumn: 7 } }))._getJSONData().error).toBe("That column isn't in the sheet.");
-    expect((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), sheet: "Nope", questionColumn: 1 } }))._getJSONData().error).toBe("That sheet wasn't found in the file.");
+    expect(json((await call(listHandler, "POST", { body: { fileName: "q.xlsx", dataUrl: csv(file) } }))).error).toMatch(/isn't an .xlsx/);
+    expect(json((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), questionColumn: 7 } }))).error).toBe("That column isn't in the sheet.");
+    expect(json((await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), sheet: "Nope", questionColumn: 1 } }))).error).toBe("That sheet wasn't found in the file.");
   });
 
   it("rate-limits uploads", async () => {
@@ -141,7 +146,7 @@ describe("POST /api/questionnaires", () => {
     state.resolve = (q) => (q.op === "select" && q.options?.head ? { count: 3 } : q.table === "questionnaires" && q.op === "insert" ? { data: { id: QID } } : { data: [] });
     const res = await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), sheet: null, questionColumn: 1 } });
     expect(res.statusCode).toBe(201);
-    expect(res._getJSONData()).toEqual({ id: QID, questions: 2 });
+    expect(json(res)).toEqual({ id: QID, questions: 2 });
     const answers = state.calls.find((c) => c.table === "questionnaire_answers" && c.op === "insert")!.values as Array<Record<string, unknown>>;
     expect(answers.map((a) => [a.topic, a.status])).toEqual([["mfa", "draft"], ["training", "needs_answer"]]);
     expect(auditMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "questionnaire.created", resourceId: QID }));
@@ -174,7 +179,7 @@ describe("POST /api/questionnaires", () => {
     state.resolve = (q) => (q.op === "select" && q.options?.head ? { count: 0 } : q.op === "insert" ? { error: { message: "constraint questionnaires_name_check" } } : { data: [] });
     const res = await call(listHandler, "POST", { body: { fileName: "q.csv", dataUrl: csv(file), questionColumn: 1 } });
     expect(res.statusCode).toBe(500);
-    expect(res._getJSONData().error).toBe("Couldn't save the questionnaire.");
+    expect(json(res).error).toBe("Couldn't save the questionnaire.");
   });
 });
 
@@ -188,7 +193,7 @@ describe("/api/questionnaires/[id]", () => {
     vi.stubEnv("AZURE_OPENAI_DEPLOYMENT", "d");
     state.resolve = (q) => (q.table === "questionnaires" ? { data: qRow } : { data: [{ ...answerRow(), row_index: 0 }] });
     const res = await call(itemHandler, "GET", { query: { id: QID } });
-    const body = res._getJSONData();
+    const body = json(res);
     expect(body.questionnaire.rows).toBeUndefined();
     expect(body.questionnaire.rowCount).toBe(1);
     expect(body.counts.draft).toBe(1);
@@ -203,7 +208,7 @@ describe("/api/questionnaires/[id]", () => {
     state.resolve = () => ({ error: { message: "x" } });
     expect((await call(itemHandler, "GET", { query: { id: QID } })).statusCode).toBe(500);
     state.resolve = (q) => (q.table === "questionnaires" ? { data: { ...qRow, rows: null } } : { data: [] });
-    expect((await call(itemHandler, "GET", { query: { id: QID } }))._getJSONData().questionnaire.rowCount).toBe(0);
+    expect(json((await call(itemHandler, "GET", { query: { id: QID } }))).questionnaire.rowCount).toBe(0);
   });
 
   it("DELETE removes the owner's questionnaire and audits it", async () => {
@@ -222,7 +227,7 @@ describe("/api/questionnaires/[id]", () => {
   it("PATCH accept: accepts answers with words in, skips empty ones", async () => {
     state.resolve = (q) => (q.table === "questionnaire_answers" && q.op === "select" ? { data: [answerRow(), answerRow({ id: BID, status: "needs_answer", answer: "", confidence: "none" })] } : { data: null });
     const res = await call(itemHandler, "PATCH", { query: { id: QID }, body: { action: "accept", answerIds: [AID, BID] } });
-    expect(res._getJSONData()).toEqual({ updated: [AID], skipped: [BID] });
+    expect(json(res)).toEqual({ updated: [AID], skipped: [BID] });
     const upd = state.calls.find((c) => c.table === "questionnaire_answers" && c.op === "update")!;
     expect(upd.values).toMatchObject({ status: "accepted", decided_by: "owner-1" });
     expect(upd.filters).toEqual([["eq", "questionnaire_id", QID], ["eq", "owner", "owner-1"], ["in", "id", [AID]]]);
@@ -244,7 +249,7 @@ describe("/api/questionnaires/[id]", () => {
     expect(state.calls.find((c) => c.op === "update")!.values).toMatchObject({ status: "rejected" });
     state.calls.splice(0);
     const res = await call(itemHandler, "PATCH", { query: { id: QID }, body: { action: "reset", answerIds: [AID, BID] } });
-    expect(res._getJSONData().updated).toEqual([AID, BID]);
+    expect(json(res).updated).toEqual([AID, BID]);
     const updates = state.calls.filter((c) => c.table === "questionnaire_answers" && c.op === "update").map((c) => c.values);
     expect(updates).toEqual([
       expect.objectContaining({ status: "draft", edited: false, ai_worded: false, decided_at: null }),
@@ -302,7 +307,7 @@ describe("POST /api/questionnaires/[id]/word", () => {
   it("leaves drafts untouched when Azure OpenAI isn't configured", async () => {
     state.resolve = () => ({ data: pending, count: 2 });
     const res = await call(wordHandler, "POST", { query: { id: QID } });
-    expect(res._getJSONData()).toEqual({ status: "not_configured", worded: 0, remaining: 2 });
+    expect(json(res)).toEqual({ status: "not_configured", worded: 0, remaining: 2 });
     expect(state.calls.some((c) => c.op === "update")).toBe(false);
     const q = state.calls[0];
     expect(q.filters).toEqual(expect.arrayContaining([["eq", "status", "draft"], ["eq", "ai_checked", false], ["is", "reused_from", null], ["neq", "confidence", "none"]]));
@@ -316,7 +321,7 @@ describe("POST /api/questionnaires/[id]/word", () => {
     vi.stubGlobal("fetch", fetchMock);
     state.resolve = (q) => (q.op === "select" ? { data: pending, count: 12 } : { data: null });
     const res = await call(wordHandler, "POST", { query: { id: QID } });
-    expect(res._getJSONData()).toEqual({ status: "ok", worded: 1, remaining: 10 });
+    expect(json(res)).toEqual({ status: "ok", worded: 1, remaining: 10 });
     const updates = state.calls.filter((c) => c.op === "update").map((c) => c.values);
     expect(updates).toEqual([
       expect.objectContaining({ answer: "Yes, we enforce MFA on every account.", ai_checked: true, ai_worded: true }),
@@ -328,7 +333,7 @@ describe("POST /api/questionnaires/[id]/word", () => {
 
   it("answers ok with nothing to do, logs AI errors without failing, and handles DB errors", async () => {
     state.resolve = () => ({ data: [], count: 0 });
-    expect((await call(wordHandler, "POST", { query: { id: QID } }))._getJSONData()).toEqual({ status: "ok", worded: 0, remaining: 0 });
+    expect(json((await call(wordHandler, "POST", { query: { id: QID } })))).toEqual({ status: "ok", worded: 0, remaining: 0 });
 
     vi.stubEnv("AZURE_OPENAI_ENDPOINT", "https://x");
     vi.stubEnv("AZURE_OPENAI_KEY", "k");
@@ -336,7 +341,7 @@ describe("POST /api/questionnaires/[id]/word", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     state.resolve = () => ({ data: pending, count: null });
-    expect((await call(wordHandler, "POST", { query: { id: QID } }))._getJSONData()).toEqual({ status: "error", worded: 0, remaining: 2 });
+    expect(json((await call(wordHandler, "POST", { query: { id: QID } })))).toEqual({ status: "error", worded: 0, remaining: 2 });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"answers":[]}' } }] }) }));
     state.resolve = (q) => (q.op === "select" ? { data: pending, count: null } : { error: { message: "x" } });
     expect((await call(wordHandler, "POST", { query: { id: QID } })).statusCode).toBe(500);
